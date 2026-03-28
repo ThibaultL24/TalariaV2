@@ -1,0 +1,17 @@
+default: &default
+  adapter: postgis
+  encoding: unicode
+  pool: <%= ENV.fetch('RAILS_MAX_THREADS', 5) %>
+  url: <%= ENV['DATABASE_URL'] %>
+
+development:
+  <<: *default
+  database: talaria_development
+
+test:
+  <<: *default
+  database: talaria_test
+
+production:
+  <<: *default
+  database: talaria_production
