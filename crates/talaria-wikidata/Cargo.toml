@@ -1,0 +1,15 @@
+[package]
+name = "talaria-wikidata"
+version.workspace = true
+edition.workspace = true
+description = "Wikidata place geocoding for Talaria Engine"
+
+[dependencies]
+anyhow = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

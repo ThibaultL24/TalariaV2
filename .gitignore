@@ -1,0 +1,11 @@
+/target/
+/web/node_modules/
+/web/dist/
+**/*.rs.bk
+.env
+*.log
+/data/
+/parquet/
+/dumps/
+/sidecar/.venv/
+/sidecar/cosmos/

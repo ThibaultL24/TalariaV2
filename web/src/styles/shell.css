@@ -1,0 +1,82 @@
+/* web/src/styles/shell.css — map shell & navbar (POC) */
+
+.map-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+}
+
+.map-shell__body {
+  flex: 1;
+  display: flex;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.navbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px clamp(12px, 3vw, 24px);
+  border-bottom: 1px solid var(--navbar-chrome-border);
+  background: var(--navbar-chrome-bg);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.navbar__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+  color: var(--navbar-chrome-text);
+}
+
+.navbar__title {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  letter-spacing: 0.08em;
+}
+
+.navbar__subtitle {
+  font-size: 0.7rem;
+  color: var(--navbar-chrome-muted);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.navbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.navbar__stat {
+  font-size: 12px;
+  color: var(--navbar-chrome-muted);
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+}
+
+.person-filter {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-subtle);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--color-text-primary);
+  font: inherit;
+}
+
+.person-filter:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(var(--rgb-sea-accent), 0.25);
+}

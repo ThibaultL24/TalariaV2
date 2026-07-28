@@ -1,0 +1,434 @@
+/* src/styles/tokens.css */
+/* Design system Intuition-compatible — sobre, analytique, premium */
+
+:root {
+  /* Accent méditerranée — même famille en clair et sombre (lueurs calculées via RGB) */
+  --rgb-sea-accent: 42, 154, 168;
+
+  /* Fond — parchemin chaud jaune-orangé */
+  --color-bg-primary: #e8dfc8;
+  --color-bg-surface: #efe8d6;
+  --color-bg-elevated: #f6efd9;
+
+  /* Texte — encre chaude */
+  --color-text-primary: #2a2622;
+  --color-text-secondary: #5a5348;
+  --color-text-muted: #7d7568;
+
+  /* Accent UI — bleu mer / lagoon */
+  --color-accent: rgb(var(--rgb-sea-accent));
+  --color-accent-soft: rgba(var(--rgb-sea-accent), 0.14);
+  --color-accent-strong: #2f8f9f;
+
+  /* Signal sémantique — monochrome */
+  --color-success: #4B5563;
+  --color-warning: #6B7280;
+  --color-danger: #374151;
+  --color-trust-high: #2f855a;
+  --color-trust-medium: #b7791f;
+  --color-trust-low: #c53030;
+  --color-trust-unknown: #5a5348;
+
+  /* Texte sur accent / navbar — blanc comme le logo */
+  --color-on-accent: #ffffff;
+
+  /* Bordures — tons pierre */
+  --color-border-subtle: #c4bbb0;
+  --color-border-strong: #a69b8c;
+
+  /* Typographie */
+  --font-display: "Cinzel", "Georgia", serif;
+  --font-body: "Inter", "Segoe UI", system-ui, sans-serif;
+
+  --text-entity-title: 22px;
+  --text-section-title: 14px;
+  --text-body: 14px;
+  --text-meta: 12px;
+  --text-line-body: 1.6;
+  --letter-spacing-entity: 0.04em;
+
+  /* Spacing (échelle fixe) */
+  --space-4: 4px;
+  --space-8: 8px;
+  --space-12: 12px;
+  --space-16: 16px;
+  --space-24: 24px;
+  --space-32: 32px;
+  --space-48: 48px;
+  --space-20: 20px;
+
+  /* Radius — un peu plus souples */
+  --radius-sm: 7px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  /* Ombres — plus diffuses, teinte chaude */
+  --shadow-sm: 0 1px 3px rgba(45, 38, 28, 0.07);
+  --shadow-md: 0 6px 20px rgba(45, 38, 28, 0.1);
+  --shadow-default: 0 2px 8px rgba(45, 38, 28, 0.09);
+  --shadow-elevated-interactive: 0 12px 28px rgba(45, 38, 28, 0.14);
+  /* Néon très léger sous cartes sombres (hero / marketing) */
+  --shadow-neon-under:
+    0 8px 26px rgba(45, 38, 28, 0.09),
+    0 0 22px -10px rgba(var(--rgb-sea-accent), 0.18);
+  --font-family-title: var(--font-display);
+  --text-h2: 28px;
+
+  /* Focus */
+  --focus-ring: 2px solid rgba(var(--rgb-sea-accent), 0.45);
+  --focus-offset: 2px;
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-slow: 220ms;
+
+  /* Aliases pour app.css */
+  --color-papyrus: var(--color-bg-primary);
+  --color-sand: var(--color-bg-elevated);
+  --color-tunic: var(--color-bg-surface);
+  --color-lapis: var(--color-accent);
+  --color-stone: var(--color-border-subtle);
+  --color-stone-strong: var(--color-border-strong);
+  --color-sea: var(--color-text-secondary);
+  --color-ink: var(--color-text-primary);
+  --color-marble: var(--color-bg-surface);
+  --color-violet: #7D679D;
+  --color-bronze: var(--color-accent-strong);
+  --color-terra: var(--color-danger);
+  --color-malachite: var(--color-success);
+
+  /* Navbar & footer — bleu mer méditerranée (clair), comme défini à l’origine */
+  --navbar-chrome-bg: #5b77be;
+  --navbar-chrome-border: #97aecb;
+  --navbar-chrome-text: #ffffff;
+  --navbar-chrome-muted: rgba(255, 255, 255, 0.82);
+  --navbar-chrome-hover-bg: rgba(255, 255, 255, 0.1);
+  --navbar-btn-outline-border: rgba(255, 255, 255, 0.4);
+  --navbar-btn-outline-bg: rgba(255, 255, 255, 0.08);
+  --navbar-btn-outline-hover-border: rgba(255, 255, 255, 0.55);
+  --navbar-btn-outline-hover-bg: rgba(255, 255, 255, 0.14);
+
+  --footer-chrome-bg: var(--navbar-chrome-bg);
+  --footer-chrome-border: var(--navbar-chrome-border);
+  --footer-chrome-text: rgba(255, 255, 255, 0.88);
+  --footer-chrome-muted: rgba(255, 255, 255, 0.74);
+
+  /* Panneaux carte (clair) — alignés sur le parchemin */
+  --map-panel-bg: #ebe4d4;
+  --map-panel-border: rgba(42, 38, 34, 0.12);
+
+  --mode-switch-bg: rgba(255, 255, 255, 0.12);
+  --mode-switch-border: rgba(255, 255, 255, 0.22);
+  --mode-switch-inactive: rgba(255, 255, 255, 0.65);
+  --mode-switch-active-bg: rgba(255, 255, 255, 0.22);
+  --mode-switch-active-text: #fff8e9;
+
+  /* Page d’accueil — marketing (light) */
+  --home-hero-bg:
+    radial-gradient(ellipse 100% 72% at 50% -28%, rgba(var(--rgb-sea-accent), 0.09), transparent 52%),
+    linear-gradient(185deg, #f8f5ef 0%, #ebe7df 52%, var(--color-bg-primary) 100%);
+  --home-hero-fg: var(--color-text-primary);
+  --home-hero-border-bottom: rgba(42, 38, 34, 0.08);
+  --home-hero-eyebrow: var(--color-text-muted);
+  --home-hero-badge-bg: rgba(255, 255, 255, 0.78);
+  --home-hero-badge-border: rgba(42, 38, 34, 0.14);
+  --home-hero-badge-fg: var(--color-text-secondary);
+  --home-hero-title: var(--color-text-primary);
+  --home-hero-subtitle: rgba(42, 38, 34, 0.78);
+  --home-hero-stat-bg: var(--color-bg-elevated);
+  --home-hero-stat-border: rgba(42, 38, 34, 0.12);
+  --home-hero-stat-value: var(--color-text-primary);
+  --home-hero-stat-label: var(--color-text-secondary);
+  --home-hero-feature-bg: rgba(255, 255, 255, 0.88);
+  --home-hero-feature-border: rgba(42, 38, 34, 0.11);
+  --home-hero-feature-title: var(--color-text-primary);
+  --home-hero-feature-text: var(--color-text-secondary);
+  --home-hero-secondary-btn-bg: var(--color-bg-elevated);
+  --home-hero-secondary-btn-fg: var(--color-text-primary);
+  --home-hero-secondary-hover-bg: var(--color-bg-surface);
+  --home-hero-secondary-hover-fg: var(--color-text-primary);
+  --home-hero-feature-hover-shadow:
+    0 14px 34px rgba(45, 38, 28, 0.11),
+    0 0 34px -12px rgba(var(--rgb-sea-accent), 0.28);
+
+  --home-about-bg:
+    radial-gradient(ellipse 92% 56% at 50% -14%, rgba(var(--rgb-sea-accent), 0.07), transparent 56%),
+    var(--color-bg-surface);
+  --home-about-border-top: rgba(42, 38, 34, 0.08);
+  --home-about-title: var(--color-text-primary);
+  --home-about-body: rgba(42, 38, 34, 0.82);
+  --home-about-intro-lead: rgba(42, 38, 34, 0.92);
+  --home-about-panel-bg:
+    linear-gradient(165deg, rgba(255, 255, 255, 0.92) 0%, transparent 44%), var(--color-bg-elevated);
+  --home-about-panel-border: rgba(42, 38, 34, 0.11);
+  --home-about-panel-stance-bg:
+    radial-gradient(ellipse 85% 70% at 12% 0%, rgba(var(--rgb-sea-accent), 0.12), transparent 52%),
+    linear-gradient(165deg, rgba(255, 255, 255, 0.95) 0%, transparent 46%), var(--color-bg-elevated);
+  --home-about-panel-sources-border: rgba(42, 38, 34, 0.11);
+  --home-about-panel-answers-border: rgba(var(--rgb-sea-accent), 0.22);
+  --home-about-subhead: rgba(42, 38, 34, 0.52);
+  --home-about-list: rgba(42, 38, 34, 0.82);
+  --home-about-prose: rgba(42, 38, 34, 0.78);
+  --home-about-stance: rgba(42, 38, 34, 0.84);
+  --home-about-quote-bg: rgba(255, 255, 255, 0.92);
+  --home-about-quote-border: rgba(var(--rgb-sea-accent), 0.35);
+  --home-about-quote-inner-border: rgba(var(--rgb-sea-accent), 0.55);
+  --home-about-quote-text: var(--color-text-primary);
+  --home-about-closing: rgba(42, 38, 34, 0.88);
+  --home-about-closing-border: rgba(42, 38, 34, 0.12);
+  --home-about-pillar-bg: rgba(255, 255, 255, 0.82);
+  --home-about-pillar-border: rgba(42, 38, 34, 0.11);
+  --home-about-pillar-label: var(--color-accent-strong);
+  --home-about-pillar-text: rgba(42, 38, 34, 0.74);
+
+  --home-cta-outer-bg: var(--color-bg-primary);
+  --home-cta-inner-bg: var(--color-bg-elevated);
+  --home-cta-inner-border: rgba(42, 38, 34, 0.12);
+  --home-cta-inner-shadow: 0 14px 36px rgba(45, 38, 28, 0.1);
+  --home-cta-title: var(--color-text-primary);
+  --home-cta-subtitle: var(--color-text-secondary);
+  --home-cta-secondary-fg: var(--color-text-primary);
+  --home-cta-secondary-bg: rgba(255, 255, 255, 0.65);
+  --home-cta-secondary-hover-bg: rgba(255, 255, 255, 0.95);
+
+  --home-login-bg: var(--color-bg-primary);
+  --home-login-panel-bg: var(--color-bg-elevated);
+  --home-login-panel-border: rgba(42, 38, 34, 0.12);
+  --home-login-panel-shadow: 0 14px 36px rgba(45, 38, 28, 0.1);
+  --home-login-heading: var(--color-text-primary);
+  --home-login-subtitle: var(--color-text-secondary);
+  --home-login-field-label: rgba(42, 38, 34, 0.68);
+  --home-login-input-bg: rgba(255, 255, 255, 0.94);
+  --home-login-input-border: rgba(42, 38, 34, 0.18);
+  --home-login-input-fg: var(--color-text-primary);
+
+  /* Panneaux Intuition / on-chain — même famille que Talaria (pas de doré Portal) */
+  --agora-intuition-accent: var(--color-accent-strong);
+  --agora-intuition-border: rgba(var(--rgb-sea-accent), 0.32);
+  --agora-intuition-surface:
+    linear-gradient(165deg, var(--color-bg-elevated) 0%, var(--color-bg-surface) 55%, var(--color-bg-primary) 100%);
+  --agora-intuition-heading: var(--color-text-primary);
+  --agora-intuition-muted: var(--color-text-secondary);
+  --agora-intuition-dim: var(--color-text-muted);
+  --agora-intuition-shadow: var(--shadow-md);
+  --agora-intuition-gold: var(--agora-intuition-accent);
+
+  /* Hero — globe animé N&B */
+  --home-earth-bg: #0a0a0a;
+  --home-earth-canvas-filter: grayscale(1) contrast(1.08) brightness(0.55);
+  --home-earth-canvas-vignette: rgba(0, 0, 0, 0.55);
+  --home-earth-dot: rgba(255, 255, 255, 0.22);
+  --home-earth-dot-mid: rgba(255, 255, 255, 0.45);
+  --home-earth-glow: #ffffff;
+  --home-earth-glow-halo: rgba(255, 255, 255, 0.35);
+  --home-earth-rim: rgba(255, 255, 255, 0.5);
+  --home-earth-airglow: rgba(255, 255, 255, 0.28);
+  --home-earth-star: rgba(255, 255, 255, 0.45);
+  --home-portal-line: rgba(255, 255, 255, 0.1);
+  --home-portal-core: rgba(255, 255, 255, 0.07);
+  --home-earth-vignette: radial-gradient(ellipse 85% 75% at 42% 52%, transparent 40%, var(--color-bg-primary) 100%);
+  --home-hero-earth-scrim:
+    linear-gradient(
+      108deg,
+      var(--color-bg-primary) 0%,
+      color-mix(in srgb, var(--color-bg-primary) 94%, transparent) 32%,
+      color-mix(in srgb, var(--color-bg-primary) 55%, transparent) 52%,
+      transparent 78%
+    ),
+    linear-gradient(to bottom, transparent 55%, var(--color-bg-primary) 100%);
+  --home-hero-feature-bg-scrim: color-mix(in srgb, var(--home-hero-feature-bg) 88%, transparent);
+}
+
+/* Dark mode — noir & blanc + accent mer (style proche Intuition) */
+[data-theme="dark"] {
+  --color-bg-primary: #000000;
+  --color-bg-surface: #0c0e12;
+  --color-bg-elevated: #14181f;
+
+  --color-text-primary: #f5f5f5;
+  --color-text-secondary: #a1a1aa;
+  --color-text-muted: #71717a;
+
+  --rgb-sea-accent: 74, 205, 218;
+
+  --color-accent: rgb(var(--rgb-sea-accent));
+  --color-accent-soft: rgba(var(--rgb-sea-accent), 0.12);
+  --color-accent-strong: #7ae8f5;
+  --color-on-accent: #061016;
+
+  --color-border-subtle: #2A3139;
+  --color-border-strong: #3A434D;
+  --color-trust-high: #2ecc71;
+  --color-trust-medium: #ffb020;
+  --color-trust-low: #ff4d4f;
+  --color-trust-unknown: #a1a1aa;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 24px rgba(0, 0, 0, 0.35);
+  --shadow-elevated-interactive: 0 10px 26px rgba(0, 0, 0, 0.42);
+  --shadow-neon-under:
+    0 12px 40px rgba(0, 0, 0, 0.5),
+    0 0 36px -12px rgba(var(--rgb-sea-accent), 0.28);
+
+  --focus-ring: 2px solid rgba(var(--rgb-sea-accent), 0.42);
+
+  --navbar-chrome-bg: #060708;
+  --navbar-chrome-border: rgba(var(--rgb-sea-accent), 0.22);
+  --navbar-chrome-text: #fafafa;
+  --navbar-chrome-muted: #a1a1aa;
+  --navbar-chrome-hover-bg: rgba(255, 255, 255, 0.08);
+  --map-panel-bg: #0f0f0f;
+  --map-panel-border: rgba(255, 255, 255, 0.1);
+  --mode-switch-bg: rgba(0, 0, 0, 0.25);
+  --mode-switch-border: rgba(255, 255, 255, 0.1);
+  --mode-switch-inactive: #6b7280;
+  --mode-switch-active-bg: rgba(255, 255, 255, 0.1);
+  --mode-switch-active-text: #f5f5f5;
+
+  --navbar-btn-outline-border: rgba(255, 255, 255, 0.4);
+  --navbar-btn-outline-bg: rgba(255, 255, 255, 0.08);
+  --navbar-btn-outline-hover-border: rgba(255, 255, 255, 0.55);
+  --navbar-btn-outline-hover-bg: rgba(255, 255, 255, 0.14);
+
+  --footer-chrome-bg: var(--navbar-chrome-bg);
+  --footer-chrome-border: var(--navbar-chrome-border);
+  --footer-chrome-text: rgba(245, 245, 245, 0.85);
+  --footer-chrome-muted: rgba(245, 245, 245, 0.68);
+
+  --home-hero-bg:
+    radial-gradient(ellipse 90% 55% at 50% -18%, rgba(var(--rgb-sea-accent), 0.14), transparent 55%),
+    #000000;
+  --home-hero-fg: rgba(245, 245, 245, 0.92);
+  --home-hero-border-bottom: rgba(255, 255, 255, 0.06);
+  --home-hero-eyebrow: rgba(255, 255, 255, 0.45);
+  --home-hero-badge-bg: rgba(255, 255, 255, 0.06);
+  --home-hero-badge-border: rgba(255, 255, 255, 0.18);
+  --home-hero-badge-fg: rgba(255, 255, 255, 0.78);
+  --home-hero-title: #fafafa;
+  --home-hero-subtitle: rgba(255, 255, 255, 0.68);
+  --home-hero-stat-bg: #111317;
+  --home-hero-stat-border: rgba(255, 255, 255, 0.16);
+  --home-hero-stat-value: #f5f5f5;
+  --home-hero-stat-label: rgba(255, 255, 255, 0.68);
+  --home-hero-feature-bg: #111317;
+  --home-hero-feature-border: rgba(255, 255, 255, 0.1);
+  --home-hero-feature-title: rgba(255, 255, 255, 0.95);
+  --home-hero-feature-text: rgba(255, 255, 255, 0.62);
+  --home-hero-secondary-btn-bg: #111317;
+  --home-hero-secondary-btn-fg: rgba(255, 255, 255, 0.92);
+  --home-hero-secondary-hover-bg: #111317;
+  --home-hero-secondary-hover-fg: #ffffff;
+  --home-hero-feature-hover-shadow:
+    0 14px 44px rgba(0, 0, 0, 0.55),
+    0 0 42px -12px rgba(var(--rgb-sea-accent), 0.38);
+
+  --home-about-bg:
+    radial-gradient(ellipse 90% 55% at 50% -15%, rgba(var(--rgb-sea-accent), 0.09), transparent 55%),
+    #000000;
+  --home-about-border-top: rgba(255, 255, 255, 0.06);
+  --home-about-title: #f8f7f3;
+  --home-about-body: rgba(255, 255, 255, 0.74);
+  --home-about-intro-lead: rgba(255, 255, 255, 0.86);
+  --home-about-panel-bg:
+    linear-gradient(165deg, rgba(255, 255, 255, 0.04) 0%, transparent 42%), #0b0d11;
+  --home-about-panel-border: rgba(255, 255, 255, 0.09);
+  --home-about-panel-stance-bg:
+    radial-gradient(ellipse 85% 70% at 10% 0%, rgba(var(--rgb-sea-accent), 0.12), transparent 55%),
+    linear-gradient(165deg, rgba(255, 255, 255, 0.05) 0%, transparent 45%), #0b0d11;
+  --home-about-panel-sources-border: rgba(255, 255, 255, 0.1);
+  --home-about-panel-answers-border: rgba(var(--rgb-sea-accent), 0.14);
+  --home-about-subhead: rgba(255, 255, 255, 0.55);
+  --home-about-list: rgba(255, 255, 255, 0.76);
+  --home-about-prose: rgba(255, 255, 255, 0.72);
+  --home-about-stance: rgba(255, 255, 255, 0.78);
+  --home-about-quote-bg: rgba(0, 0, 0, 0.35);
+  --home-about-quote-border: rgba(var(--rgb-sea-accent), 0.2);
+  --home-about-quote-inner-border: rgba(var(--rgb-sea-accent), 0.65);
+  --home-about-quote-text: rgba(248, 247, 243, 0.96);
+  --home-about-closing: rgba(255, 255, 255, 0.82);
+  --home-about-closing-border: rgba(255, 255, 255, 0.08);
+  --home-about-pillar-bg: #111317;
+  --home-about-pillar-border: rgba(255, 255, 255, 0.14);
+  --home-about-pillar-label: #f6e9cb;
+  --home-about-pillar-text: rgba(255, 255, 255, 0.7);
+
+  --home-cta-outer-bg: #000000;
+  --home-cta-inner-bg: #111317;
+  --home-cta-inner-border: rgba(255, 255, 255, 0.16);
+  --home-cta-inner-shadow: 0 16px 40px -24px rgba(0, 0, 0, 0.7);
+  --home-cta-title: #f8f7f3;
+  --home-cta-subtitle: rgba(255, 255, 255, 0.72);
+  --home-cta-secondary-fg: rgba(255, 255, 255, 0.9);
+  --home-cta-secondary-bg: rgba(255, 255, 255, 0.03);
+  --home-cta-secondary-hover-bg: rgba(255, 255, 255, 0.08);
+
+  --home-login-bg: #000000;
+  --home-login-panel-bg: #111317;
+  --home-login-panel-border: rgba(255, 255, 255, 0.14);
+  --home-login-panel-shadow: 0 16px 40px -24px rgba(0, 0, 0, 0.68);
+  --home-login-heading: #f8f7f3;
+  --home-login-subtitle: rgba(255, 255, 255, 0.72);
+  --home-login-field-label: rgba(255, 255, 255, 0.7);
+  --home-login-input-bg: rgba(0, 0, 0, 0.25);
+  --home-login-input-border: rgba(255, 255, 255, 0.18);
+  --home-login-input-fg: #f8f7f3;
+
+  --agora-intuition-accent: var(--color-accent-strong);
+  --agora-intuition-border: rgba(var(--rgb-sea-accent), 0.28);
+  --agora-intuition-surface:
+    linear-gradient(165deg, var(--color-bg-elevated) 0%, var(--color-bg-surface) 100%);
+  --agora-intuition-heading: var(--color-text-primary);
+  --agora-intuition-muted: var(--color-text-secondary);
+  --agora-intuition-dim: var(--color-text-muted);
+  --agora-intuition-shadow: var(--shadow-elevated-interactive);
+  --agora-intuition-gold: var(--agora-intuition-accent);
+
+  --home-earth-bg: #000000;
+  --home-earth-canvas-filter: grayscale(1) contrast(1.08) brightness(0.55);
+  --home-earth-canvas-vignette: rgba(0, 0, 0, 0.55);
+  --home-earth-dot: rgba(255, 255, 255, 0.18);
+  --home-earth-dot-mid: rgba(255, 255, 255, 0.42);
+  --home-earth-glow: #fafafa;
+  --home-earth-glow-halo: rgba(255, 255, 255, 0.42);
+  --home-earth-rim: rgba(255, 255, 255, 0.62);
+  --home-earth-airglow: rgba(255, 255, 255, 0.38);
+  --home-earth-star: rgba(255, 255, 255, 0.55);
+  --home-portal-line: rgba(255, 255, 255, 0.14);
+  --home-portal-core: rgba(255, 255, 255, 0.1);
+  --home-earth-vignette: radial-gradient(ellipse 88% 78% at 40% 50%, transparent 38%, #000000 100%);
+  --home-hero-earth-scrim:
+    linear-gradient(
+      108deg,
+      #000000 0%,
+      rgba(0, 0, 0, 0.92) 30%,
+      rgba(0, 0, 0, 0.5) 50%,
+      transparent 76%
+    ),
+    linear-gradient(to bottom, transparent 50%, #000000 100%);
+  --home-hero-feature-bg-scrim: rgba(17, 19, 23, 0.82);
+}
+
+/* Classes utilitaires */
+.entity-title {
+  font-family: var(--font-display);
+  font-size: var(--text-entity-title);
+  letter-spacing: var(--letter-spacing-entity);
+}
+
+.section-title {
+  font-family: var(--font-body);
+  font-size: var(--text-section-title);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.body-text {
+  font-family: var(--font-body);
+  font-size: var(--text-body);
+  line-height: var(--text-line-body);
+}
+
+.text-meta--tabular {
+  font-variant-numeric: tabular-nums;
+}

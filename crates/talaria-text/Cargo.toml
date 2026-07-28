@@ -1,0 +1,7 @@
+[package]
+name = "talaria-text"
+version.workspace = true
+edition.workspace = true
+description = "Wikitext cleanup and sentence segmentation for Talaria Engine"
+
+[dependencies]

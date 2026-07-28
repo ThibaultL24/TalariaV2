@@ -1,0 +1,239 @@
+/* src/styles/nebula.css */
+/* Composants glass / timeline — couleurs via tokens Intuition (tokens.css) */
+
+[data-theme="dark"] {
+  --ui-panel-bg: rgba(15, 15, 15, 0.82);
+  --ui-panel-border: rgba(var(--rgb-sea-accent), 0.22);
+  --ui-panel-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  --ui-accent-gradient: linear-gradient(90deg, var(--color-accent) 0%, var(--color-accent-strong) 100%);
+  --ui-glow-accent: 0 0 24px rgba(var(--rgb-sea-accent), 0.35);
+}
+
+[data-theme="dark"] .surface-nav,
+[data-theme="dark"] .nebula-panel {
+  background: var(--ui-panel-bg);
+  border: 1px solid var(--ui-panel-border);
+  border-radius: 12px;
+  box-shadow: var(--ui-panel-shadow);
+  backdrop-filter: blur(12px);
+}
+
+[data-theme="dark"] .map-shell__sidebar {
+  background: linear-gradient(180deg, #0c0e12 0%, var(--color-bg-primary) 100%);
+  border-color: var(--color-border-subtle) !important;
+}
+
+[data-theme="dark"] .map-shell__map-stage {
+  background: radial-gradient(ellipse 80% 60% at 50% 40%, #0c0e12 0%, var(--color-bg-primary) 70%);
+}
+
+[data-theme="dark"] .nebula-timeline-card {
+  background: rgba(17, 19, 23, 0.6);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+[data-theme="dark"] .nebula-timeline-card:hover {
+  border-color: rgba(var(--rgb-sea-accent), 0.35);
+  background: rgba(20, 24, 31, 0.75);
+}
+
+[data-theme="dark"] .nebula-timeline-card.is-selected {
+  border-color: var(--color-accent);
+  box-shadow: var(--ui-glow-accent);
+  background: rgba(var(--rgb-sea-accent), 0.08);
+}
+
+[data-theme="dark"] .nebula-timeline-card.is-selected::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.75rem;
+  bottom: 0.75rem;
+  width: 3px;
+  border-radius: 0 4px 4px 0;
+  background: var(--ui-accent-gradient);
+}
+
+[data-theme="dark"] .nebula-waveform {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 2.5rem;
+  padding: 0 2px;
+}
+
+[data-theme="dark"] .nebula-waveform__bar {
+  flex: 1;
+  min-width: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--ui-accent-gradient);
+  opacity: 0.55;
+  transition: opacity 0.2s ease, height 0.2s ease;
+}
+
+[data-theme="dark"] .nebula-waveform__bar.is-active {
+  opacity: 1;
+  box-shadow: 0 0 10px rgba(var(--rgb-sea-accent), 0.45);
+}
+
+[data-theme="dark"] .nebula-range-track {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+[data-theme="dark"] .nebula-range-track__fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--ui-accent-gradient);
+  opacity: 0.85;
+  border-radius: inherit;
+}
+
+[data-theme="dark"] .nebula-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  margin: 0;
+  background: transparent;
+  position: relative;
+  z-index: 1;
+}
+
+[data-theme="dark"] .nebula-range::-webkit-slider-runnable-track {
+  height: 6px;
+  background: transparent;
+}
+
+[data-theme="dark"] .nebula-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -5px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  background: var(--color-accent);
+  box-shadow: var(--ui-glow-accent);
+  cursor: pointer;
+}
+
+[data-theme="dark"] .nebula-range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  background: var(--color-accent);
+  box-shadow: var(--ui-glow-accent);
+  cursor: pointer;
+}
+
+[data-theme="dark"] .nebula-trust-bar {
+  display: flex;
+  height: 0.5rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .nebula-trust-bar__believe {
+  background: linear-gradient(90deg, var(--color-trust-high), var(--color-accent-strong));
+}
+
+[data-theme="dark"] .nebula-trust-bar__uncertain {
+  background: linear-gradient(90deg, var(--color-trust-medium), var(--color-accent));
+}
+
+[data-theme="dark"] .nebula-trust-bar__disbelieve {
+  background: linear-gradient(90deg, var(--color-trust-low), #be185d);
+}
+
+[data-theme="dark"] .nebula-chart-line-believe {
+  stroke: url(#nebula-believe-gradient);
+  filter: drop-shadow(0 0 4px rgba(var(--rgb-sea-accent), 0.5));
+}
+
+[data-theme="dark"] .nebula-chart-line-uncertain {
+  stroke: var(--color-trust-medium);
+  filter: drop-shadow(0 0 4px rgba(255, 176, 32, 0.4));
+}
+
+[data-theme="dark"] .nebula-chart-line-disbelieve {
+  stroke: var(--color-trust-low);
+  filter: drop-shadow(0 0 4px rgba(255, 77, 79, 0.4));
+}
+
+[data-theme="dark"] .nebula-section-kicker {
+  color: var(--color-accent-strong);
+  letter-spacing: 0.14em;
+}
+
+[data-theme="dark"] .nebula-chip {
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+  background: rgba(17, 19, 23, 0.5);
+  color: var(--color-text-secondary);
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+[data-theme="dark"] .nebula-chip.is-active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
+  box-shadow: 0 0 12px rgba(var(--rgb-sea-accent), 0.2);
+}
+
+[data-theme="dark"] .nebula-thesis-card {
+  background: var(--ui-panel-bg);
+  border: 1px solid var(--ui-panel-border);
+  border-radius: 12px;
+  box-shadow: var(--ui-panel-shadow);
+}
+
+[data-theme="dark"] .nebula-event-detail {
+  background: var(--ui-panel-bg);
+  border: 1px solid var(--ui-panel-border);
+  box-shadow: var(--ui-panel-shadow);
+  backdrop-filter: blur(14px);
+}
+
+[data-theme="dark"] .agora-canvas {
+  background:
+    radial-gradient(ellipse 70% 45% at 50% -5%, rgba(var(--rgb-sea-accent), 0.08), transparent 55%),
+    var(--color-bg-primary);
+}
+
+[data-theme="dark"] .map-shell {
+  background: var(--color-bg-primary);
+}
+
+/* Accueil — logo hero (structure conservée, teinte Intuition) */
+[data-theme="dark"] .talaria-logo--hero {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+
+[data-theme="dark"] .talaria-logo--hero .talaria-logo__img {
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 0 18px rgba(var(--rgb-sea-accent), 0.28))
+    drop-shadow(0 4px 14px rgba(0, 0, 0, 0.4));
+}
+
+[data-theme="dark"] .hero--home.hero--has-earth::after {
+  background: linear-gradient(to bottom, transparent, var(--color-bg-primary));
+}

@@ -1,0 +1,13 @@
+[package]
+name = "talaria-judge"
+version.workspace = true
+edition.workspace = true
+description = "Rule-based judge for phrase candidates → canonical events"
+
+[dependencies]
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = "1"

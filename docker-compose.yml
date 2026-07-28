@@ -1,13 +1,16 @@
+# PostgreSQL + PostGIS for talaria-engine (local dev).
+# Dumps live on external disk via TALARIA_DATA_ROOT — not in this volume.
 services:
   db:
     image: postgis/postgis:16-3.4
-    ports:
-      - "5432:5432"
     environment:
-      POSTGRES_PASSWORD: postgres
       POSTGRES_USER: postgres
-      POSTGRES_DB: talaria_development
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: talaria_engine_development
+    ports:
+      - "5433:5432"
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - talaria_pg_data:/var/lib/postgresql/data
+
 volumes:
-  pg_data:
+  talaria_pg_data:
