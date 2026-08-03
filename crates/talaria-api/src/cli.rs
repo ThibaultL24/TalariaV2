@@ -118,9 +118,55 @@ pub enum Commands {
         fixture: bool,
         #[arg(long, help = "Call live Wikimedia APIs (requires network)")]
         live: bool,
+        /// Lot E: seed-driven dense Wikipedia exploration toward density targets
+        #[arg(long, help = "Path to seed title list (enables Lot E density ingest when --live)")]
+        seed_list: Option<PathBuf>,
+        #[arg(long, default_value_t = 500)]
+        target_timeline_events: u32,
+        #[arg(long, default_value_t = 500)]
+        target_map_events: u32,
+        #[arg(long, default_value_t = 10_000)]
+        max_documents: u32,
+        #[arg(long, default_value_t = 3)]
+        max_depth: u16,
+        #[arg(long, default_value_t = 2_500)]
+        max_documents_per_source: u32,
+        #[arg(long, help = "Cap seed titles processed (0 = all)")]
+        max_titles: Option<u32>,
+        #[arg(long, default_value = "en", help = "Wikipedia language for Lot E seed fetch")]
+        wiki_lang: String,
+        #[arg(long, help = "Resume flag reserved for exploration queue (accepted, Lot E uses seed cursor)")]
+        resume: bool,
+    },
+    /// Resolve unresolved quality places (offline gazetteer / aliases)
+    ResolvePlaces {
+        #[arg(long)]
+        subject: String,
+        #[arg(long, default_value_t = true, help = "Resolve all unresolved timeline-eligible events")]
+        all_unresolved: bool,
+        #[arg(long, help = "Allow live Wikidata P625 (optional; offline used first)")]
+        live: bool,
     },
     /// Density / multi-source quality report for a subject
     DensityReport {
+        #[arg(long)]
+        subject: Option<String>,
+        #[arg(long, help = "Include structured bottleneck reasons")]
+        show_bottlenecks: bool,
+        #[arg(long, help = "Include source / connector coverage")]
+        show_source_coverage: bool,
+        #[arg(long, help = "List unresolved place labels")]
+        show_unresolved_places: bool,
+    },
+    /// Print connector implementation maturity
+    SourceStatus,
+    /// Exploration queue / seed coverage report
+    ExplorationReport {
+        #[arg(long)]
+        subject: String,
+    },
+    /// Connector maturity report (alias of source-status + subject context)
+    ConnectorReport {
         #[arg(long)]
         subject: Option<String>,
     },

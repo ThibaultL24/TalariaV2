@@ -3,6 +3,8 @@
 
 mod claim;
 mod dense;
+mod itinerary;
+mod military;
 mod posthumous;
 mod publication;
 mod structured;
@@ -11,6 +13,8 @@ mod travel;
 
 pub use claim::{claim_fingerprint, ClaimKey};
 pub use dense::DenseClauseExtractor;
+pub use itinerary::ItineraryExtractor;
+pub use military::MilitaryCampaignExtractor;
 pub use posthumous::PosthumousEventExtractor;
 pub use publication::PublicationExtractor;
 pub use structured::StructuredStatementExtractor;
@@ -19,7 +23,6 @@ pub use travel::TravelResidenceExtractor;
 
 use talaria_quality::{ClauseAnalyzeInput, ClauseExtraction};
 
-/// Common extractor output before persistence as EventCandidate.
 #[derive(Debug, Clone)]
 pub struct RawCandidate {
     pub event_type: String,
@@ -48,19 +51,31 @@ pub trait CandidateExtractor: Send + Sync {
 pub struct ExtractorInput {
     pub text: String,
     pub page_title: Option<String>,
+    pub subject_label: Option<String>,
     pub document_type: String,
     pub subject_death_year: Option<i32>,
 }
 
-pub fn run_all_extractors(
-    extractors: &[&dyn CandidateExtractor],
-    input: &ExtractorInput,
-) -> Vec<RawCandidate> {
-    let mut out = Vec::new();
-    for ex in extractors {
-        out.extend(ex.extract(input));
+impl ExtractorInput {
+    pub fn effective_subject(&self) -> String {
+        self.subject_label
+            .clone()
+            .or_else(|| self.page_title.clone())
+            .unwrap_or_else(|| "Unknown".into())
     }
-    out
+}
+
+pub fn default_extractor_stack() -> Vec<Box<dyn CandidateExtractor>> {
+    vec![
+        Box::new(StructuredStatementExtractor),
+        Box::new(TimelineListExtractor),
+        Box::new(MilitaryCampaignExtractor),
+        Box::new(ItineraryExtractor),
+        Box::new(DenseClauseExtractor),
+        Box::new(TravelResidenceExtractor),
+        Box::new(PublicationExtractor),
+        Box::new(PosthumousEventExtractor),
+    ]
 }
 
 pub fn to_clause_extraction(raw: &RawCandidate) -> ClauseExtraction {
@@ -80,18 +95,6 @@ pub fn to_clause_extraction(raw: &RawCandidate) -> ClauseExtraction {
     }
 }
 
-pub fn default_extractor_stack() -> Vec<Box<dyn CandidateExtractor>> {
-    vec![
-        Box::new(StructuredStatementExtractor),
-        Box::new(TimelineListExtractor),
-        Box::new(DenseClauseExtractor),
-        Box::new(TravelResidenceExtractor),
-        Box::new(PublicationExtractor),
-        Box::new(PosthumousEventExtractor),
-    ]
-}
-
-/// Helper for dense path tests.
 pub fn analyze_as_clause_input(text: &str, title: Option<&str>) -> ClauseAnalyzeInput {
     ClauseAnalyzeInput {
         text: text.to_string(),

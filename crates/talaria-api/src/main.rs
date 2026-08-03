@@ -4,6 +4,7 @@ mod cosmos;
 mod geocode;
 mod ingest;
 mod judge;
+mod lot_e;
 mod narrative_dossier;
 mod quality;
 mod routes;
@@ -87,44 +88,79 @@ async fn main() -> anyhow::Result<()> {
             sources,
             fixture,
             live,
+            seed_list,
+            target_timeline_events,
+            target_map_events,
+            max_documents,
+            max_depth,
+            max_documents_per_source,
+            max_titles,
+            wiki_lang,
+            resume: _,
         } => {
-            let report = ingest::run_ingest_quality(
+            if live && seed_list.is_some() {
+                let seeds = seed_list.unwrap_or_else(lot_e::default_napoleon_seed);
+                let targets = talaria_sources::DensityTargets {
+                    target_timeline_events,
+                    target_map_events,
+                    max_documents,
+                    max_linked_entities: 5_000,
+                    max_depth,
+                    max_documents_per_source,
+                };
+                let _ = lot_e::run_lot_e_density_ingest(
+                    &config,
+                    &subject,
+                    qid.as_deref(),
+                    &seeds,
+                    targets,
+                    &wiki_lang,
+                    max_titles.filter(|n| *n > 0),
+                )
+                .await?;
+            } else {
+                let report = ingest::run_ingest_quality(
+                    &config,
+                    &subject,
+                    qid.as_deref(),
+                    sources,
+                    fixture,
+                    live,
+                )
+                .await?;
+                println!("---\n{report}");
+            }
+        }
+        Commands::ResolvePlaces {
+            subject,
+            all_unresolved,
+            live: _,
+        } => {
+            let report = lot_e::run_resolve_places(&config, &subject, all_unresolved).await?;
+            println!("{report}");
+        }
+        Commands::DensityReport {
+            subject,
+            show_bottlenecks,
+            show_source_coverage,
+            show_unresolved_places,
+        } => {
+            let report = lot_e::run_density_report(
                 &config,
-                &subject,
-                qid.as_deref(),
-                sources,
-                fixture,
-                live,
+                subject.as_deref(),
+                show_bottlenecks,
+                show_source_coverage,
+                show_unresolved_places,
             )
             .await?;
-            println!("---\n{report}");
+            println!("{report}");
         }
-        Commands::DensityReport { subject } => {
-            let pool = talaria_store::connect(&config).await?;
-            talaria_store::run_migrations(&pool).await?;
-            let sid = if let Some(label) = subject {
-                Some(
-                    talaria_store::upsert_entity_with_kind(&pool, &config.wiki_lang, &label, "person")
-                        .await?,
-                )
-            } else {
-                None
-            };
-            let counts = talaria_store::density_report_counts(&pool, sid).await?;
-            println!("{}", serde_json::to_string_pretty(&serde_json::json!({
-                "documents_discovered": counts.documents_discovered,
-                "documents_snapshotted": counts.documents_snapshotted,
-                "fragments": counts.fragments,
-                "candidates": counts.candidates,
-                "rejected": counts.rejected,
-                "needs_review": counts.needs_review,
-                "claims": counts.claims,
-                "accepted_events": counts.accepted_events,
-                "timeline_eligible": counts.timeline_eligible,
-                "map_eligible": counts.map_eligible,
-                "events_without_place": counts.events_without_place,
-                "multi_source_events": counts.multi_source_events,
-            }))?);
+        Commands::SourceStatus | Commands::ConnectorReport { subject: _ } => {
+            println!("{}", lot_e::connector_status_json());
+        }
+        Commands::ExplorationReport { subject } => {
+            let report = lot_e::run_exploration_report(&config, &subject).await?;
+            println!("{report}");
         }
     }
 

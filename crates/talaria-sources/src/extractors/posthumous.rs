@@ -18,10 +18,7 @@ impl CandidateExtractor for PosthumousEventExtractor {
         let Some(death) = input.subject_death_year else {
             return vec![];
         };
-        let subject = input
-            .page_title
-            .clone()
-            .unwrap_or_else(|| "Unknown".into());
+        let subject = input.effective_subject();
         let mut out = Vec::new();
         for (i, line) in input.text.lines().enumerate() {
             let lower = line.to_lowercase();

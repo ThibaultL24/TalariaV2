@@ -1,0 +1,603 @@
+# data/seeds/napoleon_wiki_titles.txt
+# Seed Wikipedia titles for dense quality exploration of Q517.
+# Not business rules — discovery seeds only.
+
+Napoleon
+Military career of Napoleon
+Napoleonic Wars
+List of battles of the Napoleonic Wars
+French Revolutionary Wars
+Italian campaigns of the French Revolutionary Wars
+Egyptian campaign
+War of the Third Coalition
+War of the Fourth Coalition
+War of the Fifth Coalition
+War of the Sixth Coalition
+Peninsular War
+French invasion of Russia
+Hundred Days
+Battle of Montenotte
+Battle of Millesimo
+Battle of Dego
+Battle of Mondovì
+Battle of Lodi
+Battle of Arcole
+Battle of Rivoli
+Siege of Mantua (1796–1797)
+Battle of the Pyramids
+Battle of the Nile
+Siege of Acre (1799)
+Battle of Abukir (1799)
+Battle of Marengo
+Battle of Hohenlinden
+Battle of Ulm
+Battle of Austerlitz
+Battle of Jena–Auerstedt
+Battle of Lübeck
+Battle of Eylau
+Battle of Friedland
+Battle of Vimeiro
+Battle of Corunna
+Battle of Talavera
+Battle of Wagram
+Battle of Aspern-Essling
+Battle of Ocana
+Battle of Fuentes de Oñoro
+Battle of Albuera
+Battle of Salamanca
+Battle of Smolensk (1812)
+Battle of Borodino
+Battle of Maloyaroslavets
+Battle of Krasnoi
+Battle of Berezina
+Battle of Lützen (1813)
+Battle of Bautzen (1813)
+Battle of Dresden
+Battle of Kulm
+Battle of Leipzig
+Battle of Hanau
+Battle of Brienne
+Battle of La Rothière
+Battle of Champaubert
+Battle of Montmirail
+Battle of Château-Thierry (1814)
+Battle of Vauchamps
+Battle of Craonne
+Battle of Laon
+Battle of Reims (1814)
+Battle of Arcis-sur-Aube
+Battle of Fère-Champenoise
+Battle of Paris (1814)
+Battle of Quatre Bras
+Battle of Ligny
+Battle of Waterloo
+Battle of Wavre
+Treaty of Campo Formio
+Treaty of Lunéville
+Treaty of Amiens
+Treaties of Tilsit
+Treaty of Schönbrunn
+Treaty of Fontainebleau (1814)
+Congress of Erfurt
+Coup of 18 Brumaire
+Concordat of 1801
+Napoleonic Code
+Continental System
+First French Empire
+French Consulate
+Joséphine de Beauharnais
+Marie Louise, Duchess of Parma
+Napoleon II
+Exile of Napoleon to Elba
+Saint Helena
+Longwood House
+Voyage of the HMS Northumberland
+Return of the ashes
+Invalides
+Malmaison
+Château de Fontainebleau
+Tuileries Palace
+Palais des Tuileries
+Battle of Castiglione
+Battle of Bassano
+Battle of Caldiero (1796)
+Battle of Magnano
+Battle of Cassano (1799)
+Battle of Trebbia (1799)
+Battle of Novi (1799)
+Battle of Montebello (1800)
+Battle of Pozzolo
+Battle of Cape Finisterre (1805)
+Trafalgar Campaign
+Battle of Cape Ortegal
+Battle of Maida
+Battle of Saalfeld
+Battle of Halle
+Battle of Prenzlau
+Battle of Pultusk
+Battle of Golymin
+Battle of Heilsberg
+Battle of Guttstadt-Deppen
+Battle of Roliça
+Battle of Vimeiro
+Convention of Cintra
+Battle of Somosierra
+Battle of Cardedeu
+Battle of Molins de Rei
+Battle of Uclés (1809)
+Battle of Medellín
+Battle of Ciudad Real
+Battle of María
+Battle of Belchite
+Battle of Almonacid
+Battle of Tamames
+Battle of Ocaña
+Battle of Alba de Tormes
+Siege of Zaragoza (1808)
+Siege of Zaragoza (1809)
+Siege of Gerona (1809)
+Siege of Ciudad Rodrigo (1810)
+Siege of Almeida
+Battle of Bussaco
+Lines of Torres Vedras
+Battle of Sabugal
+Battle of Barrosa
+Battle of Gebora
+Battle of Albuera
+Battle of Talavera
+Battle of Villagarcia
+Battle of Maguilla
+Battle of Garcia Hernandez
+Battle of Majadahonda
+Battle of Vitoria
+Battle of the Pyrenees
+Battle of Maya
+Battle of Roncesvalles (1813)
+Battle of Sorauren
+Battle of San Marcial
+Siege of San Sebastián
+Battle of the Bidassoa
+Battle of Nivelle
+Battle of the Nive
+Battle of Orthez
+Battle of Toulouse (1814)
+Battle of Bayonne
+Battle of Mohrungen
+Battle of Ostrołęka (1807)
+Siege of Kolberg (1807)
+Siege of Danzig (1807)
+Battle of Guttstadt-Deppen
+Battle of Heilsberg
+Battle of Friedland
+Battle of Raszyn (1809)
+Battle of Sacile
+Battle of Caldiero (1809)
+Battle of Piave River (1809)
+Battle of Tarvis (1809)
+Battle of Raab
+Battle of Graz
+Battle of Znaim
+Walcheren Campaign
+Battle of Flushing
+Battle of Vitebsk (1812)
+First Battle of Polotsk
+Battle of Valutino
+Battle of Tarutino
+Battle of Vyazma
+Battle of Czasniki
+Second Battle of Polotsk
+Battle of Smoliani
+Battle of Wolkowisk
+Battle of Liège (1815)
+Battle of Gilly
+Battle of Waterloo
+Battle of Wavre
+Battle of Rocquencourt
+Battle of Issy
+Battle of Paris (1815)
+Battle of Rocheserviere
+Battle of La Suffel
+Battle of Castalla
+Battle of Ordal
+Battle of Nivelle
+Battle of Stoney Creek
+Battle of Chippawa
+Battle of Lundy's Lane
+Battle of Bladensburg
+Burning of Washington
+Battle of Plattsburgh
+Battle of New Orleans
+Battle of Trafalgar
+Battle of Cape Santa Maria
+Battle of Cape Finisterre (1805)
+Battle of Cape Ortugal
+Capture of the Cape Colony
+Battle of Blaauwberg
+Battle of Montevideo (1807)
+British invasions of the River Plate
+Battle of Buenos Aires
+Battle of Maida
+Calabrian insurrection
+Battle of Mileto
+Siege of Gaeta (1806)
+Battle of Campo Tenese
+Battle of Guadeloupe (1810)
+Invasion of Martinique (1809)
+Battle of Grand Port
+Mauritius campaign of 1809–1811
+Java Expedition
+Capture of HMS Guerriere
+USS Constitution vs HMS Guerriere
+Battle of Lake Erie
+Battle of the Thames
+Battle of Crysler's Farm
+Battle of Châteauguay
+Raid on Havre de Grace
+Battle of Craney Island
+Battle of Fort Oswego (1814)
+Battle of Mackinac Island (1814)
+Battle of Pensacola (1814)
+Treaty of Ghent
+Battle of Copenhagen (1801)
+Battle of Copenhagen (1807)
+Gunboat War
+Dano-Swedish War (1808–1809)
+Finnish War
+Battle of Ratan
+Battle of Sävar
+Battle of Oravais
+Battle of Revolax
+Battle of Pulkkila
+Battle of Koljonvirta
+Battle of Jutas
+Battle of Siikajoki
+Battle of Revolax
+Anglo-Russian War (1807–1812)
+Anglo-Swedish War (1810–1812)
+Russo-Turkish War (1806–1812)
+Battle of Arpachai
+Battle of the Danube
+Battle of Batina
+Siege of Silistra (1810)
+Battle of Batin
+Battle of Slobozia
+Russo-Persian War (1804–1813)
+Battle of Aslanduz
+Treaty of Gulistan
+War of the Fourth Coalition
+War of the Fifth Coalition
+War of the Sixth Coalition
+War of the Seventh Coalition
+German campaign of 1813
+Campaign in north-east France (1814)
+Six Days' Campaign
+Flanders Campaign
+Rhine Campaign of 1796
+Rhine Campaign of 1795
+Flanders Campaign
+Battle of Fleurus (1794)
+Battle of Tourcoing
+Battle of Tournay
+Siege of Toulon
+Battle of Hondschoote
+Battle of Wattignies
+Battle of Kaiserslautern
+Battle of Wissembourg (1793)
+Battle of Geisberg
+Battle of First of June
+Glorious First of June
+Battle of Groix
+Battle of Hyères Islands
+Battle of Genoa (1795)
+Battle of the Hyères Islands
+Battle of Cape St Vincent (1797)
+Battle of Camperdown
+Battle of the Nile
+Battle of Donegal
+Irish Rebellion of 1798
+Battle of Castlebar
+Battle of Ballinamuck
+Expédition d'Irlande
+French expedition to Ireland (1796)
+Battle of Quiberon
+Invasion of France (1795)
+Battle of Verdun
+Valmy
+Battle of Valmy
+Battle of Jemappes
+Battle of Neerwinden (1793)
+Siege of Mainz (1793)
+Battle of Wattignies
+Battle of Fleurus (1794)
+Battle of Aldenhoven
+Capture of Brussels
+Battle of Boxtel
+Battle of Mainz
+Battle of Amberg
+Battle of Würzburg
+Battle of Neresheim
+Battle of Ettlingen
+Battle of Biberach
+Battle of Emmendingen
+Battle of Schliengen
+Battle of Diersheim
+Battle of Ostrach
+Battle of Stockach
+Battle of Magnano
+Battle of Cassano
+Battle of Trebbia
+Battle of Novi
+Battle of Zurich
+Second Battle of Zurich
+Battle of Bergen
+Battle of Alkmaar
+Battle of Castricum
+Anglo-Russian invasion of Holland
+Convention of Alkmaar
+Battle of Montebello
+Battle of Marengo
+Battle of Höchstädt
+Battle of Neuburg
+Battle of Hohenlinden
+Treaty of Lunéville
+Peace of Amiens
+Louisiana Purchase
+Saint-Domingue expedition
+Haitian Revolution
+Battle of Vertières
+Battle of Crête-à-Pierrot
+Leclerc expedition
+Battle of Santo Domingo
+Napoleon and the Jews
+Sanhedrin
+Assemblée des notables
+Imperial Coronation of Napoleon
+Coronation of Napoleon I
+Napoleon Crossing the Alps
+Napoleon at the Saint-Bernard Pass
+Retreat from Moscow
+Berezina
+Crossing of the Berezina
+Abdication of Napoleon
+Treaty of Fontainebleau
+Elba
+Palais Mulini
+Congress of Vienna
+Hundred Days
+New Brunswick
+Waterloo Campaign
+Quatre Bras order of battle
+Ligny order of battle
+Waterloo order of battle
+Wavre order of battle
+Capture of Napoleon
+HMS Bellerophon
+HMS Northumberland (1798)
+Longwood House
+Death of Napoleon
+Napoleon's tomb
+Les Invalides
+Return of Napoleon's remains
+Retour des cendres
+Napoleon III
+Second French Empire
+Bonapartism
+House of Bonaparte
+Carlo Buonaparte
+Letizia Bonaparte
+Joseph Bonaparte
+Lucien Bonaparte
+Elisa Bonaparte
+Louis Bonaparte
+Pauline Bonaparte
+Caroline Bonaparte
+Jérôme Bonaparte
+Eugène de Beauharnais
+Hortense de Beauharnais
+Joachim Murat
+Jean-Andoche Junot
+Michel Ney
+Jean Lannes
+Louis-Nicolas Davout
+André Masséna
+Jean-de-Dieu Soult
+Laurent de Gouvion Saint-Cyr
+Pierre Augereau
+François Joseph Lefebvre
+Jean-Baptiste Bessières
+Guillaume Brune
+Édouard Mortier
+Bon-Adrien Jeannot de Moncey
+Claude Victor-Perrin
+Jacques MacDonald
+Nicolas Oudinot
+Auguste de Marmont
+Louis Gabriel Suchet
+Emmanuel de Grouchy
+Marshal of the Empire
+Grande Armée
+Imperial Guard (Napoleon I)
+Confederation of the Rhine
+Duchy of Warsaw
+Kingdom of Italy (Napoleonic)
+Kingdom of Naples
+Kingdom of Holland
+Kingdom of Westphalia
+Illyrian Provinces
+Batavian Republic
+Cisalpine Republic
+Liguria
+Parthenopean Republic
+Roman Republic (18th century)
+Helvetic Republic
+Swiss Confederation (Napoleonic)
+Act of Mediation
+German mediatisation
+Reichsdeputationshauptschluss
+End of the Holy Roman Empire
+Francis II, Holy Roman Emperor
+Alexander I of Russia
+Frederick William III of Prussia
+Francis I of Austria
+George III
+George IV
+William Pitt the Younger
+Spencer Perceval
+Lord Castlereagh
+Arthur Wellesley, 1st Duke of Wellington
+Horatio Nelson, 1st Viscount Nelson
+Gebhard Leberecht von Blücher
+Karl Philipp, Prince of Schwarzenberg
+Mikhail Kutuzov
+Barclay de Tolly
+Pyotr Bagration
+Levin August von Bennigsen
+Charles XIV John
+Jean-Baptiste Bernadotte
+Ferdinand VII
+Charles IV of Spain
+Manuel Godoy
+Joseph I of Spain
+John VI of Portugal
+Maria I of Portugal
+Transfer of the Portuguese Court to Brazil
+Pope Pius VII
+Concordat of 1801
+Organic Articles
+Gallican Church
+Catechism of the Catholic Church
+Napoleonic Code
+Code of Criminal Instruction
+Code of Civil Procedure
+Commercial Code
+Penal Code of 1810
+Bank of France
+French franc
+Napoleonic medal
+Legion of Honour
+Order of the Reunion
+Nobility of the First French Empire
+Princess of France
+King of Rome
+King of Italy
+Protector of the Confederation of the Rhine
+Mediator of the Swiss Confederation
+Co-Prince of Andorra
+Napoleonic propaganda
+Napoleonic art
+Empire style
+Empire furniture
+Arc de Triomphe
+Vendôme Column
+Madeleine, Paris
+Pont d'Iéna
+Rue de Rivoli
+Place Vendôme
+Napoleon museum
+Musée de l'Armée
+Château de Malmaison
+Château de Bois-Préau
+Palace of Versailles
+Grand Trianon
+Petit Trianon
+Compiègne
+Saint-Cloud
+Rambouillet
+Fontainebleau
+Bayonne
+Valençay
+Prisoner of Valençay
+Ferdinand VII of Spain
+Abdications of Bayonne
+Spanish Constitution of 1812
+Cádiz Cortes
+Guerilla
+Guerrilla warfare in the Peninsular War
+Dos de Mayo Uprising
+Third of May 1808
+Francisco Goya
+The Disasters of War
+Spanish American wars of independence
+Simón Bolívar
+José de San Martín
+Mexican War of Independence
+Argentine War of Independence
+Chilean War of Independence
+Peruvian War of Independence
+Bolivian War of Independence
+Venezuelan War of Independence
+Colombian War of Independence
+Ecuadorian War of Independence
+Portuguese conquest of French Guiana
+Swedish Pomerania
+Finnish War
+Treaty of Fredrikshamn
+Treaty of Paris (1810)
+Treaty of Paris (1814)
+Treaty of Paris (1815)
+Second Treaty of Paris
+Quadruple Alliance
+Holy Alliance
+Concert of Europe
+Metternich
+Talleyrand
+Charles Maurice de Talleyrand-Périgord
+Fouché
+Joseph Fouché
+Cambacérès
+Lebrun
+Sièyes
+Barras
+Directory (France)
+Council of Five Hundred
+Council of Ancients
+18 Brumaire
+Constitution of the Year VIII
+Constitution of the Year X
+Constitution of the Year XII
+Plebiscite
+Senatus consultum
+Napoleonic aristocracy
+Prefect (France)
+Department (France)
+Arrondissement
+Conscription
+Levée en masse
+Mass conscription
+Grande Armée order of battle
+Army of Italy (France)
+Army of the Reserve
+Army of England
+Army of the Orient
+Armée d'Angleterre
+Boulogne camp
+Flotilla of Boulogne
+Napoleon's planned invasion of the United Kingdom
+English Channel
+Blockade of the United Kingdom
+Orders in Council (1807)
+Milan Decree
+Berlin Decree
+Continental System
+Smuggling
+Licensing system
+Economic warfare
+War of 1812
+Causes of the War of 1812
+Timeline of the Napoleonic Wars
+Timeline of the French Revolution
+Chronology of the French Revolution
+Napoleon timeline
+Early life of Napoleon
+Education of Napoleon
+Napoleon Bonaparte's military education
+École militaire
+Brienne-le-Château
+Ajaccio
+Casa Buonaparte
+Corsican nationalism
+Paoli
+Pasquale Paoli
+Corsican Republic
+French conquest of Corsica
+Napoleon and Corsica

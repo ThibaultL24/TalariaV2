@@ -293,6 +293,7 @@ pub async fn run_ingest_quality(
                 let input = ExtractorInput {
                     text: fetched.text.clone(),
                     page_title: Some(label.to_string()),
+                    subject_label: Some(label.to_string()),
                     document_type: doc.document_type.as_str().to_string(),
                     subject_death_year: subject.death_year,
                 };

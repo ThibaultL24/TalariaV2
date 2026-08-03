@@ -82,6 +82,7 @@ fn josephine_not_place_via_extractors_object_path() {
     let input = ExtractorInput {
         text: "STATEMENT\tmarriage\tmarried\t1796\tParis\n".into(),
         page_title: Some("Subject".into()),
+        subject_label: Some("Subject".into()),
         document_type: "structured_statement".into(),
         subject_death_year: Some(1821),
     };
@@ -104,6 +105,7 @@ fn low_relevance_doc_produces_no_forced_candidates_when_skipped() {
     let input = ExtractorInput {
         text: "Market prices rose in Lyon. Weather was mild.".into(),
         page_title: Some("Unrelated".into()),
+        subject_label: Some("Unrelated".into()),
         document_type: "press_ocr".into(),
         subject_death_year: None,
     };
@@ -152,6 +154,7 @@ fn posthumous_typed_as_commemoration() {
     let input = ExtractorInput {
         text: "* 1840 — Paris — remains returned\n".into(),
         page_title: Some("Subject".into()),
+        subject_label: Some("Subject".into()),
         document_type: "chronology_list".into(),
         subject_death_year: Some(1821),
     };

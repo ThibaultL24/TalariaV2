@@ -13,10 +13,7 @@ impl CandidateExtractor for TravelResidenceExtractor {
     }
 
     fn extract(&self, input: &ExtractorInput) -> Vec<RawCandidate> {
-        let subject = input
-            .page_title
-            .clone()
-            .unwrap_or_else(|| "Unknown".into());
+        let subject = input.effective_subject();
         let mut out = Vec::new();
         for (i, line) in input.text.lines().enumerate() {
             let lower = line.to_lowercase();

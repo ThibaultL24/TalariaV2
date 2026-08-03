@@ -55,6 +55,19 @@ Event families include battle, diplomatic, meeting, residence, marriage/divorce,
 - Gates unchanged globally; density comes from more documents + multi-extractors (structured, timeline, dense clause, travel, publication, posthumous).
 - Tests: `cargo test -p talaria-sources` (fixtures only, no network).
 
+### Lot E — granular trajectory toward ≥500 map points (Napoleon floor)
+- **Legacy vs quality coexistence is strict**: never import or auto-requalify `pipeline='legacy'` into quality-accepted.
+- Migration `011`: `exploration_targets`, `place_aliases`, `occurrence_key` columns, density targets on runs.
+- CLI (JSON-capable): `ingest-quality --live --seed-list fixtures/seeds/napoleon_wiki_titles.txt --target-timeline-events 500 --target-map-events 500 --max-depth 3 --max-documents 10000`, `resolve-places --subject … --all-unresolved`, `density-report --subject … --show-bottlenecks --show-source-coverage --show-unresolved-places`, `source-status`, `exploration-report`, `connector-report`.
+- A **point** = one canonical historical occurrence (dated, typed, sourced). Extra sources reinforce the same occurrence; they never auto-create a new map point.
+- Events are **append-only**; corrections use supersession. Partial dates stay typed (`year`/`month`); do not coerce year → 1 Jan.
+- Events without coords stay `timeline_eligible=true`, `map_eligible=false` until `ResolvePlaces` / page coordinates / aliases succeed.
+- Density targets **pilot exploration only** — never invent, never duplicate, never silently lower gates. If budgets exhaust below 500, report `target_not_reached` with bottlenecks.
+- For extremely documented subjects (e.g. Napoleon/Q517), the product floor is **≥500 map_eligible** quality events; this is not a global system cap.
+- **Stubs ≠ integrations**: BnF/Gallica/Europeana/Open Library/IA/etc. remain stubs until fetch/parse/extract work end-to-end. Announce maturity via `source-status` only.
+- Occurrence identity uses `occurrence_key` (subject+type+role+time+place+primary object…), not display title.
+- Seed lists / gazetteer aliases are data, not Napoleon-hardcoded gate rules.
+
 ### Seeding demo data without a real Wikipedia dump
 `extract-pages` needs a multistream `.xml.bz2` dump + `-index.txt` (format `offset:page_id:title`, one bz2 stream at offset 0 is fine). After a dump exists under `$TALARIA_DATA_ROOT/dumps/`, run:
 `extract-pages --dump <file> --skip-existing` → `split-sentences` → `cosmos-extract --mock` → `judge-candidates`. Then query `/api/v1/timeline?person=...` and `/api/v1/events/geojson`. Re-extracting after expanding mock patterns: omit `--skip-existing` or truncate `phrase_candidates` first.

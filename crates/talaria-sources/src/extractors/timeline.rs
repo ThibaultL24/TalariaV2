@@ -14,10 +14,7 @@ impl CandidateExtractor for TimelineListExtractor {
     }
 
     fn extract(&self, input: &ExtractorInput) -> Vec<RawCandidate> {
-        let subject = input
-            .page_title
-            .clone()
-            .unwrap_or_else(|| "Unknown".into());
+        let subject = input.effective_subject();
         let mut out = Vec::new();
         for (i, line) in input.text.lines().enumerate() {
             let raw = line.trim().trim_start_matches(['*', '-', '•']).trim();
