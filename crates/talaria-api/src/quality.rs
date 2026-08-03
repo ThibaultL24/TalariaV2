@@ -165,6 +165,7 @@ async fn judge_and_maybe_assemble(
     );
 
     if let Some(existing) = find_active_quality_event_by_fingerprint(pool, &fp).await? {
+        talaria_store::reinforce_quality_event(pool, existing).await?;
         mark_candidate_assembled(pool, candidate_id, existing).await?;
         stats.assembled_deduped += 1;
         return Ok(());
@@ -211,11 +212,15 @@ async fn judge_and_maybe_assemble(
             lon,
             confidence: 0.8,
             map_eligible,
+            historically_valid: true,
+            timeline_eligible: true,
             fingerprint: fp,
             predicate: shell.predicate.clone(),
             assembler_version: ASSEMBLER_V1.into(),
             event_candidate_id: candidate_id,
             supersedes: None,
+            source_count: 1,
+            evidence_count: 1,
         },
     )
     .await?;
@@ -778,11 +783,15 @@ pub async fn run_quality_supersede_death(
             lon: place_parsed.lon,
             confidence: 0.95,
             map_eligible: place_parsed.map_eligible(),
+            historically_valid: true,
+            timeline_eligible: true,
             fingerprint: fp,
             predicate: "died_in".into(),
             assembler_version: ASSEMBLER_V1.into(),
             event_candidate_id: cand_id,
             supersedes: old,
+            source_count: 1,
+            evidence_count: 1,
         },
     )
     .await?;

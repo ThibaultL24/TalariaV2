@@ -94,6 +94,36 @@ pub enum Commands {
         #[arg(long)]
         place: String,
     },
+    /// List source connectors and implementation status
+    SourceRegistry {
+        #[arg(long, help = "Include live Wikimedia clients as implemented")]
+        live: bool,
+    },
+    /// Plan sources for a subject (deterministic, auditable JSON)
+    PlanSources {
+        #[arg(long)]
+        subject: String,
+        #[arg(long)]
+        qid: Option<String>,
+    },
+    /// Multi-source quality ingest (fixture by default; --live for Wikimedia APIs)
+    IngestQuality {
+        #[arg(long)]
+        subject: String,
+        #[arg(long)]
+        qid: Option<String>,
+        #[arg(long, value_delimiter = ',', help = "Optional source filter, e.g. wikidata,wikipedia,fixture")]
+        sources: Option<Vec<String>>,
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set, help = "Use deterministic fixture corpus")]
+        fixture: bool,
+        #[arg(long, help = "Call live Wikimedia APIs (requires network)")]
+        live: bool,
+    },
+    /// Density / multi-source quality report for a subject
+    DensityReport {
+        #[arg(long)]
+        subject: Option<String>,
+    },
 }
 
 pub async fn run_migrate(config: &AppConfig) -> anyhow::Result<()> {

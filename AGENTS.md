@@ -47,6 +47,14 @@ Event families include battle, diplomatic, meeting, residence, marriage/divorce,
 - Display titles on quality events are **derived** at assemble time (`BuildProjections`); title is not the source of truth.
 - Unit tests: `cargo test -p talaria-quality`. End-to-end demo needs Postgres.
 
+### Multi-source density (Lot A/B)
+- Crate `talaria-sources`: `SourceConnector`, `SourceRegistry`, `PlanSources`, fixture/Wikidata/Wikipedia connectors; Lot C sources are **stubs only** (not claimed integrated).
+- Migration `010`: discovery runs, discovered documents, `quality_claims` (+ supports), place_resolutions, eligibility triad (`historically_valid` / `timeline_eligible` / `map_eligible`).
+- CLI: `talaria source-registry`, `plan-sources --subject …`, `ingest-quality --subject … [--qid Q…] [--fixture true|false] [--live] [--sources wikidata,wikipedia,fixture]`, `density-report`.
+- Extra sources **reinforce** existing quality events (`source_count++`) via event fingerprint — they must not create duplicate map points.
+- Gates unchanged globally; density comes from more documents + multi-extractors (structured, timeline, dense clause, travel, publication, posthumous).
+- Tests: `cargo test -p talaria-sources` (fixtures only, no network).
+
 ### Seeding demo data without a real Wikipedia dump
 `extract-pages` needs a multistream `.xml.bz2` dump + `-index.txt` (format `offset:page_id:title`, one bz2 stream at offset 0 is fine). After a dump exists under `$TALARIA_DATA_ROOT/dumps/`, run:
 `extract-pages --dump <file> --skip-existing` → `split-sentences` → `cosmos-extract --mock` → `judge-candidates`. Then query `/api/v1/timeline?person=...` and `/api/v1/events/geojson`. Re-extracting after expanding mock patterns: omit `--skip-existing` or truncate `phrase_candidates` first.

@@ -587,11 +587,15 @@ pub struct QualityEventInsert {
     pub lon: Option<f64>,
     pub confidence: f64,
     pub map_eligible: bool,
+    pub historically_valid: bool,
+    pub timeline_eligible: bool,
     pub fingerprint: String,
     pub predicate: String,
     pub assembler_version: String,
     pub event_candidate_id: Uuid,
     pub supersedes: Option<Uuid>,
+    pub source_count: i32,
+    pub evidence_count: i32,
 }
 
 /// Append-only insert for quality pipeline. Never mutates prior rows in place.
@@ -619,13 +623,14 @@ pub async fn insert_quality_canonical_event(
             INSERT INTO canonical_events (
                 entity_id, event_type, epistemic_status, title, summary, start_time, time_json,
                 place_label, place_entity_id, geom, confidence, map_eligible,
+                historically_valid, timeline_eligible, source_count, evidence_count,
                 fingerprint, is_active, supersedes, predicate, assembler_version,
                 pipeline, event_candidate_id
             )
             VALUES (
                 $1,$2,$3,$4,$5,$6,$7,$8,$9,
                 ST_SetSRID(ST_MakePoint($10,$11),4326)::geography,
-                $12,$13,$14,true,$15,$16,$17,'quality',$18
+                $12,$13,$14,$15,$16,$17,$18,true,$19,$20,$21,'quality',$22
             )
             RETURNING id
             "#,
@@ -643,6 +648,10 @@ pub async fn insert_quality_canonical_event(
         .bind(event.lat)
         .bind(event.confidence)
         .bind(event.map_eligible)
+        .bind(event.historically_valid)
+        .bind(event.timeline_eligible)
+        .bind(event.source_count)
+        .bind(event.evidence_count)
         .bind(&event.fingerprint)
         .bind(event.supersedes)
         .bind(&event.predicate)
@@ -656,11 +665,12 @@ pub async fn insert_quality_canonical_event(
             INSERT INTO canonical_events (
                 entity_id, event_type, epistemic_status, title, summary, start_time, time_json,
                 place_label, place_entity_id, confidence, map_eligible,
+                historically_valid, timeline_eligible, source_count, evidence_count,
                 fingerprint, is_active, supersedes, predicate, assembler_version,
                 pipeline, event_candidate_id
             )
             VALUES (
-                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,$13,$14,$15,'quality',$16
+                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,true,$17,$18,$19,'quality',$20
             )
             RETURNING id
             "#,
@@ -676,6 +686,10 @@ pub async fn insert_quality_canonical_event(
         .bind(event.place_entity_id)
         .bind(event.confidence)
         .bind(event.map_eligible)
+        .bind(event.historically_valid)
+        .bind(event.timeline_eligible)
+        .bind(event.source_count)
+        .bind(event.evidence_count)
         .bind(&event.fingerprint)
         .bind(event.supersedes)
         .bind(&event.predicate)
@@ -713,6 +727,60 @@ pub async fn find_active_quality_event_by_fingerprint(
     .fetch_optional(pool)
     .await?;
     Ok(id)
+}
+
+/// Reinforce an existing quality event with another source/evidence (no new map point).
+pub async fn reinforce_quality_event(
+    pool: &PgPool,
+    event_id: Uuid,
+) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"
+        UPDATE canonical_events SET
+            source_count = source_count + 1,
+            evidence_count = evidence_count + 1
+        WHERE id = $1 AND pipeline = 'quality'
+        "#,
+    )
+    .bind(event_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Promote timeline event to map-eligible after place resolution (append-only fields only).
+pub async fn apply_place_to_quality_event(
+    pool: &PgPool,
+    event_id: Uuid,
+    place_label: &str,
+    place_entity_id: Option<Uuid>,
+    lat: f64,
+    lon: f64,
+    precision: &str,
+    uncertainty_radius_m: Option<f64>,
+) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"
+        UPDATE canonical_events SET
+            place_label = $2,
+            place_entity_id = $3,
+            geom = ST_SetSRID(ST_MakePoint($4, $5), 4326)::geography,
+            map_eligible = true,
+            location_precision = $6,
+            uncertainty_radius_m = $7
+        WHERE id = $1 AND pipeline = 'quality' AND is_active
+        "#,
+    )
+    .bind(event_id)
+    .bind(place_label)
+    .bind(place_entity_id)
+    .bind(lon)
+    .bind(lat)
+    .bind(precision)
+    .bind(uncertainty_radius_m)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 pub async fn find_active_singleton(

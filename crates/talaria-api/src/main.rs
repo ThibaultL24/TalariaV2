@@ -2,6 +2,7 @@
 mod cli;
 mod cosmos;
 mod geocode;
+mod ingest;
 mod judge;
 mod narrative_dossier;
 mod quality;
@@ -75,6 +76,55 @@ async fn main() -> anyhow::Result<()> {
         } => {
             let id = quality::run_quality_supersede_death(&config, &subject, year, &place).await?;
             tracing::info!(%id, "supersession done");
+        }
+        Commands::SourceRegistry { live } => ingest::run_source_registry(live).await?,
+        Commands::PlanSources { subject, qid } => {
+            ingest::run_plan_sources(&subject, qid.as_deref()).await?
+        }
+        Commands::IngestQuality {
+            subject,
+            qid,
+            sources,
+            fixture,
+            live,
+        } => {
+            let report = ingest::run_ingest_quality(
+                &config,
+                &subject,
+                qid.as_deref(),
+                sources,
+                fixture,
+                live,
+            )
+            .await?;
+            println!("---\n{report}");
+        }
+        Commands::DensityReport { subject } => {
+            let pool = talaria_store::connect(&config).await?;
+            talaria_store::run_migrations(&pool).await?;
+            let sid = if let Some(label) = subject {
+                Some(
+                    talaria_store::upsert_entity_with_kind(&pool, &config.wiki_lang, &label, "person")
+                        .await?,
+                )
+            } else {
+                None
+            };
+            let counts = talaria_store::density_report_counts(&pool, sid).await?;
+            println!("{}", serde_json::to_string_pretty(&serde_json::json!({
+                "documents_discovered": counts.documents_discovered,
+                "documents_snapshotted": counts.documents_snapshotted,
+                "fragments": counts.fragments,
+                "candidates": counts.candidates,
+                "rejected": counts.rejected,
+                "needs_review": counts.needs_review,
+                "claims": counts.claims,
+                "accepted_events": counts.accepted_events,
+                "timeline_eligible": counts.timeline_eligible,
+                "map_eligible": counts.map_eligible,
+                "events_without_place": counts.events_without_place,
+                "multi_source_events": counts.multi_source_events,
+            }))?);
         }
     }
 

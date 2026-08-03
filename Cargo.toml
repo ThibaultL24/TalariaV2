@@ -8,6 +8,7 @@ members = [
     "crates/talaria-cosmos",
     "crates/talaria-judge",
     "crates/talaria-quality",
+    "crates/talaria-sources",
     "crates/talaria-wikidata",
     "crates/talaria-api",
 ]
