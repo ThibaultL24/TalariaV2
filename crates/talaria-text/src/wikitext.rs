@@ -8,6 +8,7 @@ pub fn wikitext_to_plain(input: &str) -> String {
     text = simplify_wiki_links(&text);
     text = strip_remaining_html_tags(&text);
     text = strip_category_lines(&text);
+    text = text.replace("'''", "").replace("''", "");
     collapse_whitespace(&text)
 }
 

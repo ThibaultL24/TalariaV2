@@ -76,6 +76,16 @@ Dev mock pipeline (no dump required if pages already extracted):
 # or with dump: DUMP=/mnt/wiki-dump/dumps/enwiki-....xml.bz2 ./scripts/dev-pipeline.sh 1000
 ```
 
+Dense Napoleon demo (cultural events in Talaria; opinion `claims` lane for Intuition):
+
+```bash
+./scripts/seed_napoleon_pipeline.sh
+curl "http://localhost:8080/api/v1/timeline?person=Napoleon"
+curl "http://localhost:8080/api/v1/events/geojson?person=Napoleon"
+```
+
+Cultural biography / places / evidence stay in Postgres (`canonical_events`). Table `claims` is reserved for avis/théories exportable to Intuition — not for map facts.
+
 ## Crates
 
 | Crate | Role |
