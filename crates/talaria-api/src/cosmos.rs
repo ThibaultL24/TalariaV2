@@ -52,6 +52,7 @@ pub async fn run_cosmos_extract(
             .map(|row| BatchInputItem {
                 id: row.id.to_string(),
                 text: row.text.clone(),
+                page_title: Some(row.page_title.clone()),
             })
             .collect();
 

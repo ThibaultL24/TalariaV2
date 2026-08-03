@@ -62,8 +62,8 @@ WHERE e.wikipedia_title IN ('Napoleon', 'Napoleon Bonaparte')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO raw_documents (source_type, source_uri, source_identifier, title, language, wiki_page_id, content_hash, license)
-SELECT 'wikipedia_dump',
-       'dump://enwiki-20250101/' || wp.title,
+SELECT 'wikipedia_api',
+       'https://en.wikipedia.org/wiki/' || replace(wp.title, ' ', '_'),
        wp.title,
        wp.title,
        wp.wiki_lang,
@@ -111,7 +111,9 @@ SELECT ce.event_type, ce.title, ce.place_label, ce.start_time::date AS year, ce.
 FROM canonical_events ce
 JOIN entities e ON e.id = ce.entity_id
 WHERE e.wikipedia_title ILIKE '%Napoleon%'
-ORDER BY ce.start_time NULLS LAST, ce.title;
+   OR e.canonical_name ILIKE '%Napoleon%'
+ORDER BY ce.start_time NULLS LAST, ce.title
+LIMIT 40;
 SQL
 )
 if command -v psql >/dev/null 2>&1; then
@@ -121,5 +123,5 @@ else
 fi
 
 echo
-echo "Try: curl 'http://localhost:8080/api/v1/timeline?person=Napoleon'"
-echo "     curl 'http://localhost:8080/api/v1/events/geojson?person=Napoleon'"
+echo "Try: curl 'http://localhost:8080/api/v1/timeline?person=Napoleon&limit=500'"
+echo "     curl 'http://localhost:8080/api/v1/events/geojson?person=Napoleon&limit=500'"
