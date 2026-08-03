@@ -203,6 +203,7 @@ fn classify_verb(verb: &str) -> Option<Classified> {
         (&["born", "birth"], "birth", "born", "bio"),
         (&["died", "death", "deceased", "killed"], "death", "died", "bio"),
         (&["married", "marriage", "wed"], "marriage", "married", "bio"),
+        (&["divorced", "divorce", "annulled"], "divorce", "divorced", "bio"),
         (
             &["studied", "graduated", "enrolled", "educated"],
             "education",
@@ -228,7 +229,7 @@ fn classify_verb(verb: &str) -> Option<Classified> {
             "bio",
         ),
         (&["lived", "resided", "stayed"], "residence", "lived", "bio"),
-        (&["exiled", "fled"], "exile", "exiled", "bio"),
+        (&["exiled", "fled", "abdicated"], "exile", "exiled", "bio"),
         (&["imprisoned", "arrested", "jailed"], "imprisonment", "imprisoned", "bio"),
         (
             &["fought", "defeated", "besieged", "invaded", "commanded"],
@@ -236,6 +237,14 @@ fn classify_verb(verb: &str) -> Option<Classified> {
             "fought",
             "bio",
         ),
+        (&["associated"], "life_event", "associated", "other"),
+        (
+            &["signed", "negotiated", "treaty", "alliance", "concordat"],
+            "diplomatic",
+            "signed",
+            "bio",
+        ),
+        (&["met", "received", "audience", "congress"], "meeting", "met", "bio"),
         (&["crowned", "elected", "proclaimed", "reigned"], "office", "took office", "bio"),
         (&["spoke", "speech", "addressed", "lectured"], "speech", "spoke", "bio"),
         (
@@ -257,6 +266,7 @@ fn classify_verb(verb: &str) -> Option<Classified> {
             "work",
         ),
         (&["awarded", "received", "won", "nobel"], "award", "awarded", "bio"),
+        (&["unveiled"], "statue", "statue unveiled", "legacy"),
     ];
     for (needles, event_type, label, family) in rules {
         if needles.iter().any(|n| verb_token_match(verb, n)) {
@@ -295,12 +305,15 @@ fn classify_sentence_cues(sentence_lc: &str) -> Option<Classified> {
         (&["battle of", "fought at", "defeated at"], "battle", "fought", "bio"),
         (&["published", "principia", "wrote "], "publication", "published", "work"),
         (&["discovered", "invented"], "discovery", "discovered", "work"),
-        (&["moved to", "settled in", "emigrated to"], "relocation", "moved", "bio"),
+        (&["moved to", "settled in", "emigrated to", "returned to", "arrived in"], "relocation", "moved", "bio"),
         (&["visited", "travelled to", "traveled to"], "travel", "visited", "bio"),
         (&["lived in", "resided in"], "residence", "lived", "bio"),
         (&["worked at", "worked in", "served as"], "employment", "worked", "bio"),
         (&["imprisoned", "arrested in"], "imprisonment", "imprisoned", "bio"),
         (&["awarded", "nobel prize", "received the"], "award", "awarded", "bio"),
+        (&["signed the", "treaty of", "concordat", "alliance with"], "diplomatic", "signed", "bio"),
+        (&["divorced", "annulled"], "divorce", "divorced", "bio"),
+        (&["met with", "congress of"], "meeting", "met", "bio"),
     ];
     for (needles, event_type, label, family) in cues {
         if needles.iter().any(|n| sentence_lc.contains(n)) {

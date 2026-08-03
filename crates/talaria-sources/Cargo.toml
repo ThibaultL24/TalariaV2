@@ -1,0 +1,24 @@
+[package]
+name = "talaria-sources"
+version.workspace = true
+edition.workspace = true
+description = "Multi-source connectors, registry, and discovery planning for Talaria quality pipeline"
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+hex = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+talaria-quality = { path = "../talaria-quality" }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+url = "2"
+uuid = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = "1"
+tokio = { workspace = true }

@@ -72,6 +72,104 @@ pub enum Commands {
         #[arg(long, default_value = "0", help = "Max place labels (0 = all pending)")]
         limit: i64,
     },
+    /// Quality pipeline: fixture extract → EventCandidate → gates → assemble
+    QualityFixture {
+        #[arg(long, help = "Subject / page title")]
+        title: String,
+        #[arg(long, help = "Path to fixture text file")]
+        file: PathBuf,
+        #[arg(long, default_value_t = true, help = "Assemble accepted candidates")]
+        assemble: bool,
+    },
+    /// Deterministic Napoleon quality demo + adversarial gates + report
+    QualityNapoleonDemo,
+    /// Print quality pipeline execution report
+    QualityReport,
+    /// Append-only supersession of active quality death event
+    QualitySupersedeDeath {
+        #[arg(long)]
+        subject: String,
+        #[arg(long)]
+        year: i32,
+        #[arg(long)]
+        place: String,
+    },
+    /// List source connectors and implementation status
+    SourceRegistry {
+        #[arg(long, help = "Include live Wikimedia clients as implemented")]
+        live: bool,
+    },
+    /// Plan sources for a subject (deterministic, auditable JSON)
+    PlanSources {
+        #[arg(long)]
+        subject: String,
+        #[arg(long)]
+        qid: Option<String>,
+    },
+    /// Multi-source quality ingest (fixture by default; --live for Wikimedia APIs)
+    IngestQuality {
+        #[arg(long)]
+        subject: String,
+        #[arg(long)]
+        qid: Option<String>,
+        #[arg(long, value_delimiter = ',', help = "Optional source filter, e.g. wikidata,wikipedia,fixture")]
+        sources: Option<Vec<String>>,
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set, help = "Use deterministic fixture corpus")]
+        fixture: bool,
+        #[arg(long, help = "Call live Wikimedia APIs (requires network)")]
+        live: bool,
+        /// Lot E: seed-driven dense Wikipedia exploration toward density targets
+        #[arg(long, help = "Path to seed title list (enables Lot E density ingest when --live)")]
+        seed_list: Option<PathBuf>,
+        #[arg(long, default_value_t = 500)]
+        target_timeline_events: u32,
+        #[arg(long, default_value_t = 500)]
+        target_map_events: u32,
+        #[arg(long, default_value_t = 10_000)]
+        max_documents: u32,
+        #[arg(long, default_value_t = 3)]
+        max_depth: u16,
+        #[arg(long, default_value_t = 2_500)]
+        max_documents_per_source: u32,
+        #[arg(long, help = "Cap seed titles processed (0 = all)")]
+        max_titles: Option<u32>,
+        #[arg(long, default_value = "en", help = "Wikipedia language for Lot E seed fetch")]
+        wiki_lang: String,
+        #[arg(long, help = "Resume flag reserved for exploration queue (accepted, Lot E uses seed cursor)")]
+        resume: bool,
+    },
+    /// Resolve unresolved quality places (offline gazetteer / aliases)
+    ResolvePlaces {
+        #[arg(long)]
+        subject: String,
+        #[arg(long, default_value_t = true, help = "Resolve all unresolved timeline-eligible events")]
+        all_unresolved: bool,
+        #[arg(long, help = "Allow live Wikidata P625 (optional; offline used first)")]
+        live: bool,
+    },
+    /// Density / multi-source quality report for a subject
+    DensityReport {
+        #[arg(long)]
+        subject: Option<String>,
+        #[arg(long, help = "Include structured bottleneck reasons")]
+        show_bottlenecks: bool,
+        #[arg(long, help = "Include source / connector coverage")]
+        show_source_coverage: bool,
+        #[arg(long, help = "List unresolved place labels")]
+        show_unresolved_places: bool,
+    },
+    /// Print connector implementation maturity
+    SourceStatus,
+    /// Exploration queue / seed coverage report
+    ExplorationReport {
+        #[arg(long)]
+        subject: String,
+    },
+    /// Connector maturity report (alias of source-status + subject context)
+    ConnectorReport {
+        #[arg(long)]
+        subject: Option<String>,
+    },
 }
 
 pub async fn run_migrate(config: &AppConfig) -> anyhow::Result<()> {

@@ -22,6 +22,8 @@ talaria-dump = { path = "../talaria-dump" }
 talaria-cosmos = { path = "../talaria-cosmos" }
 talaria-wikidata = { path = "../talaria-wikidata" }
 talaria-judge = { path = "../talaria-judge" }
+talaria-quality = { path = "../talaria-quality" }
+talaria-sources = { path = "../talaria-sources" }
 talaria-store = { path = "../talaria-store" }
 talaria-text = { path = "../talaria-text" }
 tokio = { workspace = true }
@@ -31,3 +33,5 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 reqwest = { workspace = true }
 chrono = { workspace = true }
+hex = { workspace = true }
+sha2 = { workspace = true }

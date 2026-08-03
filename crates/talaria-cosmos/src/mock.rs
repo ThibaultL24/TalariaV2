@@ -1,49 +1,560 @@
 // crates/talaria-cosmos/src/mock.rs
+//! Dense Wikipedia-prose life-event extractor for demos without spaCy/COSMOS.
+//! Uses person aliases + year + gazetteer place + verb cues; page title supplies
+//! place context for Battle/Treaty/Congress pages.
+
 use crate::{BatchInputItem, BatchOutputItem, ExtractedTuple};
 
-/// Lightweight rule-based extractor for dev/CI when COSMOS models are unavailable.
+/// Dense rule-based extractor over real biographical prose.
 pub fn mock_extract(items: &[BatchInputItem]) -> Vec<BatchOutputItem> {
     items
         .iter()
         .map(|item| BatchOutputItem {
             id: item.id.clone(),
-            tuples: mock_extract_text(&item.text),
+            tuples: mock_extract_text(&item.text, item.page_title.as_deref()),
         })
         .collect()
 }
 
-fn mock_extract_text(text: &str) -> Vec<ExtractedTuple> {
-    let lower = text.to_lowercase();
+fn mock_extract_text(text: &str, page_title: Option<&str>) -> Vec<ExtractedTuple> {
+    let cleaned = strip_wiki_markup(text);
+    let lower = cleaned.to_lowercase();
+    let page = page_title.unwrap_or("").trim();
     let mut tuples = Vec::new();
 
-    if let Some(tuple) = match_born_in(text, &lower) {
-        tuples.push(tuple);
+    // 1) Explicit high-precision cue layouts (legacy + structured)
+    for pattern in STRUCTURED_PATTERNS {
+        if let Some(tuple) = try_structured(&cleaned, &lower, pattern) {
+            push_unique(&mut tuples, tuple);
+        }
+    }
+
+    // 2) Dense Wikipedia prose: person/alias + year + place + verb cue
+    if let Some(tuple) = try_prose_dense(&cleaned, &lower, page) {
+        push_unique(&mut tuples, tuple);
     }
 
     tuples
 }
 
-fn match_born_in(text: &str, lower: &str) -> Option<ExtractedTuple> {
-    let born_idx = lower.find(" was born in ")?;
-    let person = text[..born_idx].trim().trim_start_matches('"').to_string();
-    let rest = &text[born_idx + " was born in ".len()..];
-    let mut parts = rest.splitn(3, ' ');
-    let time = parts.next()?.trim_end_matches('.').to_string();
-    if parts.next()? != "in" {
+fn push_unique(tuples: &mut Vec<ExtractedTuple>, tuple: ExtractedTuple) {
+    if !tuples.iter().any(|existing| {
+        existing.verb == tuple.verb
+            && existing.time == tuple.time
+            && existing.place.eq_ignore_ascii_case(&tuple.place)
+    }) {
+        tuples.push(tuple);
+    }
+}
+
+// --- structured patterns (strict layouts) ---------------------------------
+
+struct Pattern {
+    cue: &'static str,
+    verb: &'static str,
+    layout: Layout,
+}
+
+enum Layout {
+    YearThenInPlace,
+    PlaceThenInYear,
+    ObjectYearPlace,
+}
+
+const STRUCTURED_PATTERNS: &[Pattern] = &[
+    Pattern { cue: " was born in ", verb: "born", layout: Layout::YearThenInPlace },
+    Pattern { cue: " died in ", verb: "died", layout: Layout::YearThenInPlace },
+    Pattern { cue: " studied at ", verb: "studied", layout: Layout::PlaceThenInYear },
+    Pattern { cue: " fought at ", verb: "fought", layout: Layout::PlaceThenInYear },
+    Pattern { cue: " was crowned in ", verb: "crowned", layout: Layout::YearThenInPlace },
+    Pattern { cue: " married ", verb: "married", layout: Layout::ObjectYearPlace },
+    Pattern { cue: " divorced ", verb: "divorced", layout: Layout::ObjectYearPlace },
+    Pattern { cue: " was exiled to ", verb: "exiled", layout: Layout::PlaceThenInYear },
+    Pattern { cue: " was exiled in ", verb: "exiled", layout: Layout::YearThenInPlace },
+    Pattern { cue: " lived in ", verb: "lived", layout: Layout::PlaceThenInYear },
+    Pattern { cue: " resided in ", verb: "lived", layout: Layout::PlaceThenInYear },
+    Pattern { cue: " moved to ", verb: "moved", layout: Layout::PlaceThenInYear },
+    Pattern { cue: " returned to ", verb: "moved", layout: Layout::PlaceThenInYear },
+    Pattern { cue: " arrived in ", verb: "moved", layout: Layout::PlaceThenInYear },
+    Pattern { cue: " visited ", verb: "visited", layout: Layout::PlaceThenInYear },
+    Pattern { cue: " signed ", verb: "signed", layout: Layout::ObjectYearPlace },
+    Pattern { cue: " negotiated ", verb: "signed", layout: Layout::ObjectYearPlace },
+    Pattern { cue: " met ", verb: "met", layout: Layout::ObjectYearPlace },
+    Pattern { cue: " invaded ", verb: "fought", layout: Layout::PlaceThenInYear },
+    Pattern { cue: " was unveiled in ", verb: "unveiled", layout: Layout::YearThenInPlace },
+];
+
+fn try_structured(text: &str, lower: &str, pattern: &Pattern) -> Option<ExtractedTuple> {
+    let cue_idx = lower.find(pattern.cue)?;
+    let person = person_before(text, cue_idx).or_else(|| find_person_alias(text))?;
+    let after = &text[cue_idx + pattern.cue.len()..];
+    let (time, place) = match pattern.layout {
+        Layout::YearThenInPlace => parse_year_then_in_place(after)?,
+        Layout::PlaceThenInYear => parse_place_then_in_year(after)?,
+        Layout::ObjectYearPlace => parse_object_year_place(after)?,
+    };
+    if !is_clean_place(&place) {
         return None;
     }
-    let place = parts.next()?.trim_end_matches('.').to_string();
+    Some(ExtractedTuple {
+        person,
+        time,
+        place,
+        verb: Some(pattern.verb.into()),
+    })
+}
 
-    if person.is_empty() || time.is_empty() || place.is_empty() {
+// --- dense Wikipedia prose ------------------------------------------------
+
+const PERSON_ALIASES: &[&str] = &[
+    "napoleon bonaparte",
+    "napoléon bonaparte",
+    "napoleon i",
+    "napoléon ier",
+    "emperor napoleon",
+    "general bonaparte",
+    "first consul",
+    "bonaparte",
+    "napoleon",
+    "napoléon",
+];
+
+const VERB_CUES: &[(&str, &str)] = &[
+    (r"was born|born in|birth of", "born"),
+    (r"\bdied\b|death of|passed away", "died"),
+    (r"married|wedding|marriage to|marriage with", "married"),
+    (r"divorced|divorce|annulled|anulled", "divorced"),
+    (r"studied|educated|enrolled|school at", "studied"),
+    (
+        r"fought|defeated|victory at|won at|battle of|besieged|invaded|captured|commanded|siege of",
+        "fought",
+    ),
+    (
+        r"signed|treaty of|negotiated|peace of|concordat|alliance with|diplomacy",
+        "signed",
+    ),
+    (r"crowned|coronation|proclaimed emperor|became emperor|became consul|first consul", "crowned"),
+    (r"exiled|exile to|banished|abdicated|abdication", "exiled"),
+    (
+        r"lived|resided|residence|stayed|settled|moved to|returned to|arrived in|arrived at|left for|departed",
+        "lived",
+    ),
+    (r"visited|travelled|traveled|toured|went to", "visited"),
+    (r"\bmet\b|received|audience|congress of", "met"),
+    (r"imprisoned|detained|confined|captive", "imprisoned"),
+    (r"published|napoleonic code|code civil|\bwrote\b", "published"),
+    (r"appointed|promoted|commissioned|named general", "appointed"),
+];
+
+/// Places ordered longest-first for greedy match.
+const GAZETTEER: &[&str] = &[
+    "brienne-le-chateau",
+    "boulogne-sur-mer",
+    "saint-helena",
+    "st helena",
+    "saint helena",
+    "preussisch eylau",
+    "maloyaroslavets",
+    "arcis-sur-aube",
+    "campo formio",
+    "quatre bras",
+    "french invasion of russia",
+    "notre-dame",
+    "notre dame",
+    "saint-cloud",
+    "saint cloud",
+    "portoferraio",
+    "fontainebleau",
+    "schönbrunn",
+    "schonbrunn",
+    "pressburg",
+    "lunéville",
+    "luneville",
+    "austerlitz",
+    "waterloo",
+    "borodino",
+    "smolensk",
+    "leipzig",
+    "wagram",
+    "aspern",
+    "essling",
+    "marengo",
+    "friedland",
+    "jena",
+    "auerstedt",
+    "toulon",
+    "ajaccio",
+    "corsica",
+    "malmaison",
+    "tuileries",
+    "compiegne",
+    "compiègne",
+    "grenoble",
+    "avignon",
+    "antibes",
+    "auxonne",
+    "valence",
+    "cairo",
+    "egypt",
+    "pyramids",
+    "alexandria",
+    "jaffa",
+    "acre",
+    "malta",
+    "milan",
+    "turin",
+    "genoa",
+    "venice",
+    "florence",
+    "naples",
+    "rome",
+    "vienna",
+    "berlin",
+    "warsaw",
+    "tilsit",
+    "eylau",
+    "ulm",
+    "ratisbon",
+    "regensburg",
+    "munich",
+    "dresden",
+    "prague",
+    "erfurt",
+    "moscow",
+    "berezina",
+    "vilnius",
+    "vilna",
+    "minsk",
+    "vyazma",
+    "krasnoi",
+    "liggy",
+    "ligny",
+    "wavre",
+    "plancenoit",
+    "charleroi",
+    "brussels",
+    "belgium",
+    "elba",
+    "longwood",
+    "paris",
+    "lyon",
+    "nice",
+    "spain",
+    "portugal",
+    "madrid",
+    "lisbon",
+    "russia",
+    "prussia",
+    "austria",
+    "italy",
+    "germany",
+    "france",
+    "england",
+    "britain",
+    "arcola",
+    "lodi",
+    "rivoli",
+    "mantua",
+    "amiens",
+    "boulogne",
+    "craonne",
+    "montereau",
+    "montmirail",
+    "champaubert",
+    "vauchamps",
+    "lützen",
+    "lutzen",
+    "bautzen",
+    "hanau",
+    "kulm",
+];
+
+fn try_prose_dense(text: &str, lower: &str, page_title: &str) -> Option<ExtractedTuple> {
+    let page_lower = page_title.to_lowercase();
+    let page_is_subject = page_lower.contains("napoleon")
+        || page_lower.contains("napoléon")
+        || matches!(
+            page_lower.as_str(),
+            "french consulate"
+                | "first french empire"
+                | "hundred days"
+                | "french invasion of russia"
+                | "peninsular war"
+                | "continental system"
+                | "napoleonic code"
+                | "concordat of 1801"
+                | "coup of 18 brumaire"
+                | "treaties of tilsit"
+                | "treaty of amiens"
+                | "congress of erfurt"
+        )
+        || page_lower.starts_with("battle of ")
+        || page_lower.starts_with("treaty of ")
+        || page_lower.starts_with("congress of ")
+        || page_lower.starts_with("coup of ");
+
+    let person = find_person_alias(text).or_else(|| {
+        if page_is_subject {
+            Some("Napoleon Bonaparte".into())
+        } else {
+            None
+        }
+    })?;
+
+    // Prefer Napoleonic lifetime / immediate legacy years; drop citation years.
+    let year = find_year_in_window(lower, 1765, 1865)?;
+    let place = find_place(lower, page_title)?;
+    if !is_clean_place(&place) {
+        return None;
+    }
+    let verb = find_verb_cue(lower).or_else(|| {
+        if page_lower.starts_with("battle of ") {
+            Some("fought".into())
+        } else if page_lower.starts_with("treaty of ") || page_lower.contains("concordat") {
+            Some("signed".into())
+        } else if page_lower.starts_with("congress of ") {
+            Some("met".into())
+        } else {
+            None
+        }
+    })?;
+
+    // Weak "associated" fallback removed — require a real cue or typed page.
+    if verb == "associated" {
         return None;
     }
 
     Some(ExtractedTuple {
         person,
-        time,
+        time: year,
         place,
-        verb: Some("born".into()),
+        verb: Some(verb),
     })
+}
+
+fn is_clean_place(place: &str) -> bool {
+    let trimmed = place.trim();
+    if trimmed.chars().count() < 2 || trimmed.chars().count() > 40 {
+        return false;
+    }
+    let lower = trimmed.to_lowercase();
+    if lower.contains(" and ")
+        || lower.contains(" was ")
+        || lower.contains(" were ")
+        || lower.contains(" the french")
+        || lower.contains(" commissioned")
+        || lower.contains(" officer")
+    {
+        return false;
+    }
+    true
+}
+
+fn find_year_in_window(lower: &str, min_year: i32, max_year: i32) -> Option<String> {
+    let bytes = lower.as_bytes();
+    let mut i = 0;
+    let mut last = None;
+    while i + 4 <= bytes.len() {
+        if bytes[i..i + 4].iter().all(|b| b.is_ascii_digit()) {
+            let boundary_before = i == 0 || !bytes[i - 1].is_ascii_digit();
+            let boundary_after = i + 4 == bytes.len() || !bytes[i + 4].is_ascii_digit();
+            if boundary_before && boundary_after {
+                if let Ok(y) = std::str::from_utf8(&bytes[i..i + 4])
+                    .unwrap_or("")
+                    .parse::<i32>()
+                {
+                    if (min_year..=max_year).contains(&y) {
+                        last = Some(format!("{y:04}"));
+                    }
+                }
+            }
+            i += 4;
+        } else {
+            i += 1;
+        }
+    }
+    last
+}
+
+fn find_person_alias(text: &str) -> Option<String> {
+    let lower = text.to_lowercase();
+    for alias in PERSON_ALIASES {
+        if let Some(idx) = lower.find(alias) {
+            // Avoid matching inside unrelated words
+            let before_ok = idx == 0
+                || !lower.as_bytes()[idx - 1].is_ascii_alphanumeric();
+            let end = idx + alias.len();
+            let after_ok = end >= lower.len()
+                || !lower.as_bytes()[end].is_ascii_alphanumeric();
+            if before_ok && after_ok {
+                return Some("Napoleon Bonaparte".into());
+            }
+        }
+    }
+    // Generic leading proper-name span for non-Napoleon structured cues
+    None
+}
+
+fn find_year(lower: &str) -> Option<String> {
+    let bytes = lower.as_bytes();
+    let mut i = 0;
+    let mut last = None;
+    while i + 4 <= bytes.len() {
+        if bytes[i..i + 4].iter().all(|b| b.is_ascii_digit()) {
+            let boundary_before = i == 0 || !bytes[i - 1].is_ascii_digit();
+            let boundary_after = i + 4 == bytes.len() || !bytes[i + 4].is_ascii_digit();
+            if boundary_before && boundary_after {
+                let y: i32 = std::str::from_utf8(&bytes[i..i + 4])
+                    .ok()?
+                    .parse()
+                    .ok()?;
+                if (1000..=2100).contains(&y) {
+                    last = Some(format!("{y:04}"));
+                }
+            }
+            i += 4;
+        } else {
+            i += 1;
+        }
+    }
+    last
+}
+
+fn find_place(lower: &str, page_title: &str) -> Option<String> {
+    for place in GAZETTEER {
+        if let Some(idx) = lower.find(place) {
+            let before_ok = idx == 0 || !lower.as_bytes()[idx - 1].is_ascii_alphanumeric();
+            let end = idx + place.len();
+            let after_ok = end >= lower.len() || !lower.as_bytes()[end].is_ascii_alphanumeric();
+            if before_ok && after_ok {
+                return Some(title_case_place(place));
+            }
+        }
+    }
+    place_from_page_title(page_title)
+}
+
+fn place_from_page_title(page_title: &str) -> Option<String> {
+    let title = page_title.trim();
+    for prefix in ["Battle of ", "Treaty of ", "Congress of ", "Coup of ", "Siege of "] {
+        if let Some(rest) = title.strip_prefix(prefix) {
+            let name = rest.split('(').next()?.trim();
+            if name.len() >= 2 {
+                return Some(name.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn find_verb_cue(lower: &str) -> Option<String> {
+    for (pat, verb) in VERB_CUES {
+        if regex_simple_or(lower, pat) {
+            return Some((*verb).into());
+        }
+    }
+    None
+}
+
+/// Tiny alternation matcher for `a|b|c` and optional `\b` anchors (no full regex crate).
+fn regex_simple_or(hay: &str, pattern: &str) -> bool {
+    for alt in pattern.split('|') {
+        let alt = alt.trim();
+        let alt = alt.strip_prefix(r"\b").unwrap_or(alt);
+        let alt = alt.strip_suffix(r"\b").unwrap_or(alt);
+        if alt.is_empty() {
+            continue;
+        }
+        if hay.contains(alt) {
+            return true;
+        }
+    }
+    false
+}
+
+fn title_case_place(place: &str) -> String {
+    place
+        .split(|c: char| c == '-' || c == ' ')
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(f) => f.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(if place.contains('-') { "-" } else { " " })
+}
+
+// --- shared parsers -------------------------------------------------------
+
+fn person_before(text: &str, cue_idx: usize) -> Option<String> {
+    if let Some(alias) = find_person_alias(&text[..cue_idx]) {
+        return Some(alias);
+    }
+    let before = text[..cue_idx].trim();
+    let lowered = before.to_lowercase();
+    let name_src = if let Some(idx) = lowered.rfind(" of ") {
+        before[idx + 4..].trim()
+    } else if let Some(idx) = lowered.rfind(". ") {
+        before[idx + 2..].trim()
+    } else {
+        before
+    };
+    let person = strip_wiki_markup(name_src)
+        .trim()
+        .trim_matches(|c: char| c == '"' || c == '\'')
+        .to_string();
+    if person.chars().count() < 3 {
+        return None;
+    }
+    Some(person)
+}
+
+fn parse_year_then_in_place(after: &str) -> Option<(String, String)> {
+    let after = after.trim();
+    let mut parts = after.splitn(2, " in ");
+    let year = find_year(&parts.next()?.to_lowercase())?;
+    let place = clean_place(parts.next()?.trim())?;
+    Some((year, place))
+}
+
+fn parse_place_then_in_year(after: &str) -> Option<(String, String)> {
+    let after = after.trim();
+    let in_idx = after.to_lowercase().rfind(" in ")?;
+    let place = clean_place(after[..in_idx].trim())?;
+    let year = find_year(&after[in_idx + 4..].to_lowercase())?;
+    Some((year, place))
+}
+
+fn parse_object_year_place(after: &str) -> Option<(String, String)> {
+    let after = after.trim();
+    let lower = after.to_lowercase();
+    let first_in = lower.find(" in ")?;
+    let rest = &after[first_in + 4..];
+    let rest_lower = rest.to_lowercase();
+    if let Some(second_in) = rest_lower.find(" in ") {
+        let year = find_year(&rest[..second_in].to_lowercase())?;
+        let place = clean_place(rest[second_in + 4..].trim())?;
+        return Some((year, place));
+    }
+    parse_place_then_in_year(after)
+}
+
+fn clean_place(surface: &str) -> Option<String> {
+    let place = surface
+        .trim()
+        .trim_end_matches(|c: char| c == '.' || c == ',' || c == ';' || c == ')')
+        .trim()
+        .to_string();
+    if place.chars().count() < 2 || place.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    Some(place)
+}
+
+fn strip_wiki_markup(input: &str) -> String {
+    input.replace("'''", "").replace("''", "").trim().to_string()
 }
 
 #[cfg(test)]
@@ -52,10 +563,40 @@ mod tests {
 
     #[test]
     fn extracts_born_in_pattern() {
-        let tuples = mock_extract_text("Alan Turing was born in 1912 in London.");
+        let tuples = mock_extract_text("Alan Turing was born in 1912 in London.", None);
         assert_eq!(tuples.len(), 1);
         assert_eq!(tuples[0].person, "Alan Turing");
         assert_eq!(tuples[0].time, "1912");
         assert_eq!(tuples[0].place, "London");
+    }
+
+    #[test]
+    fn dense_prose_napoleon_siege_of_toulon() {
+        let text = "He rose rapidly through the ranks after winning the siege of Toulon in 1793 and fighting the War of the First Coalition.";
+        let tuples = mock_extract_text(text, Some("Napoleon"));
+        assert!(!tuples.is_empty());
+        assert_eq!(tuples[0].person, "Napoleon Bonaparte");
+        assert_eq!(tuples[0].time, "1793");
+        assert!(tuples[0].place.to_lowercase().contains("toulon"));
+    }
+
+    #[test]
+    fn battle_page_supplies_place_and_person() {
+        let text = "The armies clashed on 18 June 1815 near the ridge.";
+        let tuples = mock_extract_text(text, Some("Battle of Waterloo"));
+        assert_eq!(tuples.len(), 1);
+        assert_eq!(tuples[0].person, "Napoleon Bonaparte");
+        assert_eq!(tuples[0].time, "1815");
+        assert!(tuples[0].place.to_lowercase().contains("waterloo"));
+        assert_eq!(tuples[0].verb.as_deref(), Some("fought"));
+    }
+
+    #[test]
+    fn diplomatic_treaty_cue() {
+        let text = "Napoleon signed the Treaty of Tilsit with Russia in 1807 at Tilsit.";
+        let tuples = mock_extract_text(text, Some("Treaties of Tilsit"));
+        assert!(!tuples.is_empty());
+        assert_eq!(tuples[0].verb.as_deref(), Some("signed"));
+        assert_eq!(tuples[0].time, "1807");
     }
 }

@@ -1,0 +1,18 @@
+[package]
+name = "talaria-quality"
+version.workspace = true
+edition.workspace = true
+description = "EventCandidate quality pipeline: clause analysis, typed resolution, deterministic gates"
+
+[dependencies]
+anyhow = { workspace = true }
+chrono = { workspace = true }
+hex = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+talaria-judge = { path = "../talaria-judge" }
+uuid = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = "1"

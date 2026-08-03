@@ -8,6 +8,9 @@ use talaria_core::AppConfig;
 pub struct BatchInputItem {
     pub id: String,
     pub text: String,
+    /// Optional Wikipedia page title for page-scoped dense extraction.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_title: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

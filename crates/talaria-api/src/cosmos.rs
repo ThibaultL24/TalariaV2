@@ -10,7 +10,7 @@ use talaria_store::{
 use uuid::Uuid;
 
 const EXTRACTOR_COSMOS: &str = "cosmos:tuple_extraction";
-const EXTRACTOR_MOCK: &str = "mock:born_in";
+const EXTRACTOR_MOCK: &str = "mock:life_events";
 
 pub async fn run_cosmos_extract(
     config: &AppConfig,
@@ -52,6 +52,7 @@ pub async fn run_cosmos_extract(
             .map(|row| BatchInputItem {
                 id: row.id.to_string(),
                 text: row.text.clone(),
+                page_title: Some(row.page_title.clone()),
             })
             .collect();
 
