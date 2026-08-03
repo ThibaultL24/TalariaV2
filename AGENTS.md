@@ -26,13 +26,16 @@ Talaria Engine is a Rust workspace (Wikipedia dump → sentences → phrase-cand
 - Mock extractor is `mock:life_events` (not birth-only): born/died/studied/fought/married/crowned/exiled/lived/visited/… Patterns need person + year + place. Prefer bare years (`1769`) for `parse_time_surface`.
 
 ### Napoleon density demo
+Ingests **real English Wikipedia extracts** (biography + battles + treaties + sentimental pages), runs dense prose extraction (`mock:life_events` with page-title context), keeps years in **1765–1865**, and leaves opinion rows in `claims` only.
+
 ```bash
 ./scripts/seed_napoleon_pipeline.sh
-# → ~24 canonical events for Napoleon Bonaparte, all map_eligible; claims stay opinion-only
-curl 'http://localhost:8080/api/v1/timeline?person=Napoleon'
-curl 'http://localhost:8080/api/v1/events/geojson?person=Napoleon'
+# Expected ballpark after precision filters: ~250+ Napoleon canonical_events, ~50+ places, 0 modern citation noise
+curl 'http://localhost:8080/api/v1/timeline?person=Napoleon&limit=500'
+curl 'http://localhost:8080/api/v1/events/geojson?person=Napoleon&limit=500'
 ```
 
+Event families include battle, diplomatic, meeting, residence, marriage/divorce, exile, office, travel — cultural facts only.
 ### Seeding demo data without a real Wikipedia dump
 `extract-pages` needs a multistream `.xml.bz2` dump + `-index.txt` (format `offset:page_id:title`, one bz2 stream at offset 0 is fine). After a dump exists under `$TALARIA_DATA_ROOT/dumps/`, run:
 `extract-pages --dump <file> --skip-existing` → `split-sentences` → `cosmos-extract --mock` → `judge-candidates`. Then query `/api/v1/timeline?person=...` and `/api/v1/events/geojson`. Re-extracting after expanding mock patterns: omit `--skip-existing` or truncate `phrase_candidates` first.
