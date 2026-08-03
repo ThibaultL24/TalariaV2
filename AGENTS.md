@@ -36,6 +36,17 @@ curl 'http://localhost:8080/api/v1/events/geojson?person=Napoleon&limit=500'
 ```
 
 Event families include battle, diplomatic, meeting, residence, marriage/divorce, exile, office, travel — cultural facts only.
+
+### Quality pipeline (Livrable 1) — coexistence
+- **Legacy path unchanged**: `cosmos-extract` → `phrase_candidates` → `judge-candidates` → `canonical_events` (`pipeline='legacy'` by default). Do not delete or reinterpret old noisy rows as quality-accepted.
+- **Quality path**: `quality-napoleon-demo` / `quality-fixture` → `document_snapshots` + `document_fragments` → `event_candidates` → deterministic gates → assemble into `canonical_events` with `pipeline='quality'`.
+- Migrations `006`–`009` are additive. Rebuild after adding migrations (sqlx embed).
+- CLI: `talaria quality-napoleon-demo`, `talaria quality-report`, `talaria quality-fixture --title … --file …`, `talaria quality-supersede-death --subject … --year … --place …`.
+- Domain crate: `talaria-quality` (`ClauseAnalyzer`, typed resolution, gates, fingerprints). No fake COSMOS adapter; `CosmosClauseAnalyzer` is interface-only.
+- Singleton active `birth`/`death` and fingerprint uniqueness apply **only** to `pipeline='quality'`.
+- Display titles on quality events are **derived** at assemble time (`BuildProjections`); title is not the source of truth.
+- Unit tests: `cargo test -p talaria-quality`. End-to-end demo needs Postgres.
+
 ### Seeding demo data without a real Wikipedia dump
 `extract-pages` needs a multistream `.xml.bz2` dump + `-index.txt` (format `offset:page_id:title`, one bz2 stream at offset 0 is fine). After a dump exists under `$TALARIA_DATA_ROOT/dumps/`, run:
 `extract-pages --dump <file> --skip-existing` → `split-sentences` → `cosmos-extract --mock` → `judge-candidates`. Then query `/api/v1/timeline?person=...` and `/api/v1/events/geojson`. Re-extracting after expanding mock patterns: omit `--skip-existing` or truncate `phrase_candidates` first.

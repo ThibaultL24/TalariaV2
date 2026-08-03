@@ -2042,14 +2042,17 @@ dependencies = [
  "chrono",
  "clap",
  "dotenvy",
+ "hex",
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "sqlx",
  "talaria-core",
  "talaria-cosmos",
  "talaria-dump",
  "talaria-judge",
+ "talaria-quality",
  "talaria-store",
  "talaria-text",
  "talaria-wikidata",
@@ -2112,6 +2115,21 @@ dependencies = [
  "pretty_assertions",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "talaria-quality"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "hex",
+ "pretty_assertions",
+ "serde",
+ "serde_json",
+ "sha2",
+ "talaria-judge",
+ "uuid",
 ]
 
 [[package]]

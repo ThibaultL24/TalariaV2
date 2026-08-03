@@ -6,6 +6,7 @@ pub mod judgments;
 pub mod phrase_candidates;
 pub mod places;
 pub mod pool;
+pub mod quality;
 pub mod sentences;
 pub mod wiki_pages;
 
@@ -30,6 +31,15 @@ pub use phrase_candidates::{
     PhraseCandidateRecord,
 };
 pub use pool::{connect, run_migrations, DbPool};
+pub use quality::{
+    count_active_quality_by_type, find_active_quality_event_by_fingerprint, find_active_singleton,
+    get_entity_kind, get_event_candidate_by_fingerprint, insert_document_fragment,
+    insert_document_snapshot, insert_quality_canonical_event, list_event_candidates_by_status,
+    mark_candidate_assembled, quality_lifespan_years, quality_report_counts,
+    rejection_reason_counts, update_event_candidate_judgment, upsert_entity_with_kind,
+    upsert_event_candidate, DocumentFragmentInsert, DocumentSnapshotInsert, EventCandidateInsert,
+    EventCandidateRow, QualityEventInsert, QualityReportCounts, RejectionReasonCount,
+};
 pub use sentences::{
     list_sentences_for_extraction, replace_sentences_for_page, SentenceRecord, SentenceRow,
 };

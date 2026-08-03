@@ -4,6 +4,7 @@ mod cosmos;
 mod geocode;
 mod judge;
 mod narrative_dossier;
+mod quality;
 mod routes;
 
 use clap::Parser;
@@ -51,6 +52,30 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::JudgeCandidates { limit } => judge::run_judge_candidates(&config, limit).await?,
         Commands::GeocodePlaces { limit } => geocode::run_geocode_places(&config, limit).await?,
+        Commands::QualityFixture {
+            title,
+            file,
+            assemble,
+        } => {
+            let text = std::fs::read_to_string(&file)?;
+            let stats = quality::run_quality_fixture(&config, &title, &text, assemble).await?;
+            tracing::info!(?stats, "quality fixture complete");
+        }
+        Commands::QualityNapoleonDemo => {
+            let report = quality::run_quality_napoleon_demo(&config).await?;
+            println!("---\n{report}");
+        }
+        Commands::QualityReport => {
+            quality::run_quality_report(&config).await?;
+        }
+        Commands::QualitySupersedeDeath {
+            subject,
+            year,
+            place,
+        } => {
+            let id = quality::run_quality_supersede_death(&config, &subject, year, &place).await?;
+            tracing::info!(%id, "supersession done");
+        }
     }
 
     Ok(())

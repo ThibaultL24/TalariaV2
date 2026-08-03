@@ -72,6 +72,28 @@ pub enum Commands {
         #[arg(long, default_value = "0", help = "Max place labels (0 = all pending)")]
         limit: i64,
     },
+    /// Quality pipeline: fixture extract → EventCandidate → gates → assemble
+    QualityFixture {
+        #[arg(long, help = "Subject / page title")]
+        title: String,
+        #[arg(long, help = "Path to fixture text file")]
+        file: PathBuf,
+        #[arg(long, default_value_t = true, help = "Assemble accepted candidates")]
+        assemble: bool,
+    },
+    /// Deterministic Napoleon quality demo + adversarial gates + report
+    QualityNapoleonDemo,
+    /// Print quality pipeline execution report
+    QualityReport,
+    /// Append-only supersession of active quality death event
+    QualitySupersedeDeath {
+        #[arg(long)]
+        subject: String,
+        #[arg(long)]
+        year: i32,
+        #[arg(long)]
+        place: String,
+    },
 }
 
 pub async fn run_migrate(config: &AppConfig) -> anyhow::Result<()> {
