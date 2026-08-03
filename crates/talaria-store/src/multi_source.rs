@@ -297,7 +297,7 @@ pub async fn density_report_counts(
     };
 
     let documents_snapshotted: i64 = sqlx::query_scalar(
-        r#"SELECT COUNT(*)::bigint FROM discovered_documents WHERE fetch_status = 'snapshotted'"#,
+        r#"SELECT COUNT(*)::bigint FROM document_snapshots"#,
     )
     .fetch_one(pool)
     .await?;

@@ -59,6 +59,17 @@ pub fn is_plausible_place_label(raw: &str) -> bool {
     if s.contains(' ') && s.chars().all(|c| !c.is_uppercase()) {
         return false;
     }
+    // Must not end mid-phrase with prepositions/articles
+    if lower.ends_with(" on")
+        || lower.ends_with(" in")
+        || lower.ends_with(" at")
+        || lower.ends_with(" of")
+        || lower.ends_with(" the")
+        || lower.ends_with('(')
+        || lower.ends_with('-')
+    {
+        return false;
+    }
     // Digits-only or year-like
     if s.chars().all(|c| c.is_ascii_digit() || c == '-') {
         return false;
@@ -84,5 +95,7 @@ mod tests {
         assert!(!is_plausible_place_label("the afternoon"));
         assert!(!is_plausible_place_label("have regained the initiative"));
         assert!(!is_plausible_place_label("fight"));
+        assert!(!is_plausible_place_label("Portoferraio on"));
+        assert!(!is_plausible_place_label("Abukir ("));
     }
 }

@@ -65,27 +65,45 @@ async fn fetch_wikipedia_extract(
     title: &str,
 ) -> anyhow::Result<(String, String, Option<String>, Option<(f64, f64)>)> {
     let client = reqwest::Client::builder()
-        .user_agent("TalariaEngine/0.1 (lot-e density; research)")
+        .user_agent("TalariaEngine/0.1 (lot-e density; research; contact: talaria-dev)")
         .timeout(Duration::from_secs(45))
         .build()?;
     let api = format!("https://{lang}.wikipedia.org/w/api.php");
-    let response = client
-        .get(&api)
-        .query(&[
-            ("action", "query"),
-            ("prop", "extracts|info|coordinates"),
-            ("explaintext", "1"),
-            ("exlimit", "1"),
-            ("titles", title),
-            ("format", "json"),
-            ("redirects", "1"),
-            ("colimit", "1"),
-        ])
-        .send()
-        .await?
-        .error_for_status()?
-        .json::<serde_json::Value>()
-        .await?;
+    let mut attempt = 0u32;
+    let response = loop {
+        attempt += 1;
+        let resp = client
+            .get(&api)
+            .query(&[
+                ("action", "query"),
+                ("prop", "extracts|info|coordinates"),
+                ("explaintext", "1"),
+                ("exlimit", "1"),
+                ("titles", title),
+                ("format", "json"),
+                ("redirects", "1"),
+                ("colimit", "1"),
+            ])
+            .send()
+            .await?;
+        if resp.status().as_u16() == 429 {
+            let wait = resp
+                .headers()
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(5u64 * attempt as u64)
+                .min(60);
+            if attempt >= 6 {
+                anyhow::bail!("HTTP 429 after retries for {title}");
+            }
+            tracing::warn!(%title, wait, attempt, "wikipedia 429 — backing off");
+            tokio::time::sleep(Duration::from_secs(wait)).await;
+            continue;
+        }
+        break resp.error_for_status()?;
+    };
+    let response = response.json::<serde_json::Value>().await?;
     let pages = response
         .pointer("/query/pages")
         .and_then(|v| v.as_object())
@@ -196,11 +214,7 @@ pub async fn run_lot_e_density_ingest(
         titles.into_iter().collect();
     let mut seen_titles: std::collections::HashSet<String> =
         title_queue.iter().cloned().collect();
-    let langs = if lang == "en" {
-        vec![lang.to_string(), "fr".to_string()]
-    } else {
-        vec![lang.to_string()]
-    };
+    let langs = vec![lang.to_string()]; // one language per run; re-run with --wiki-lang fr to densify further
 
     for current_lang in &langs {
         // Re-seed queue per language so FR also explores the same seeds + discoveries.
@@ -261,7 +275,7 @@ pub async fn run_lot_e_density_ingest(
             }
         };
         metrics.titles_fetched += 1;
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(750)).await;
 
         // Grow exploration queue from high-value linked titles mentioned in the extract.
         for linked in discover_linked_titles(&text) {
