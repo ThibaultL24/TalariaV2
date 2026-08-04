@@ -6,6 +6,10 @@ export interface ExplorerFilters {
   types: string[];
   /** Empty = show all epistemic statuses */
   statuses: string[];
+  /** Single selected profile slug, or undefined = all */
+  profileSlug?: string;
+  /** Single selected period slug, or undefined = all */
+  periodSlug?: string;
   from?: string;
   to?: string;
   minConfidence?: number;
@@ -25,6 +29,8 @@ interface ExplorerState {
   setFilters: (patch: Partial<ExplorerFilters>) => void;
   toggleTypeFilter: (type: string) => void;
   toggleStatusFilter: (status: string) => void;
+  setProfileFilter: (slug?: string) => void;
+  setPeriodFilter: (slug?: string) => void;
   clearFilters: () => void;
   closeDetail: () => void;
   clearEntity: () => void;
@@ -70,7 +76,24 @@ export const useExplorerStore = create<ExplorerState>((set) => ({
     set((state) => ({
       filters: { ...state.filters, statuses: toggleInList(state.filters.statuses, status) },
     })),
-  clearFilters: () => set((state) => ({ filters: { ...state.filters, types: [], statuses: [] } })),
+  setProfileFilter: (profileSlug) =>
+    set((state) => ({
+      filters: {
+        ...state.filters,
+        profileSlug: state.filters.profileSlug === profileSlug ? undefined : profileSlug,
+      },
+    })),
+  setPeriodFilter: (periodSlug) =>
+    set((state) => ({
+      filters: {
+        ...state.filters,
+        periodSlug: state.filters.periodSlug === periodSlug ? undefined : periodSlug,
+      },
+    })),
+  clearFilters: () =>
+    set((state) => ({
+      filters: { ...state.filters, types: [], statuses: [], profileSlug: undefined, periodSlug: undefined },
+    })),
   closeDetail: () => set({ selectedEventId: undefined }),
   clearEntity: () =>
     set({

@@ -1,4 +1,5 @@
 // crates/talaria-api/src/main.rs
+mod claim_extract;
 mod cli;
 mod cosmos;
 mod geocode;
@@ -8,6 +9,7 @@ mod lot_e;
 mod narrative_dossier;
 mod quality;
 mod routes;
+mod wikidata_ingest;
 
 use clap::Parser;
 use cli::{Cli, Commands};
@@ -161,6 +163,12 @@ async fn main() -> anyhow::Result<()> {
         Commands::ExplorationReport { subject } => {
             let report = lot_e::run_exploration_report(&config, &subject).await?;
             println!("{report}");
+        }
+        Commands::WikidataIngest { dump, limit } => {
+            wikidata_ingest::run_wikidata_ingest(&config, dump, limit).await?
+        }
+        Commands::ClaimsExtract { limit } => {
+            claim_extract::run_claims_extract(&config, limit).await?
         }
     }
 

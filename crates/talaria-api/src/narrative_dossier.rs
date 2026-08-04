@@ -24,23 +24,34 @@ pub struct EventDossier {
 }
 
 pub async fn build_event_dossier(
+    pool: &sqlx::PgPool,
     event: &CanonicalEventRow,
     fact: Option<&str>,
     narrative: &[NarrativeContextRow],
     evidence: &[EventEvidenceRow],
     wikipedia_title: Option<&str>,
     wiki_lang: &str,
+    offline_only: bool,
 ) -> EventDossier {
     let mut claims = local_claims(event, fact, narrative, evidence);
 
+    // Prefer locally stored dump sections before any live MediaWiki call.
     if let Some(title) = wikipedia_title {
-        let oldid = evidence.iter().find_map(|row| row.revision_id);
-        for lang in dossier_languages(wiki_lang) {
-            if claims.len() >= 6 {
-                break;
-            }
-            if let Ok(extra) = fetch_section_claims(title, lang, event, oldid).await {
-                merge_claims(&mut claims, extra);
+        if let Ok(extra) = local_section_claims(pool, title, wiki_lang, event, evidence).await {
+            merge_claims(&mut claims, extra);
+        }
+    }
+
+    if !offline_only && claims.len() < 4 {
+        if let Some(title) = wikipedia_title {
+            let oldid = evidence.iter().find_map(|row| row.revision_id);
+            for lang in dossier_languages(wiki_lang) {
+                if claims.len() >= 6 {
+                    break;
+                }
+                if let Ok(extra) = fetch_section_claims(title, lang, event, oldid).await {
+                    merge_claims(&mut claims, extra);
+                }
             }
         }
     }
@@ -189,6 +200,125 @@ fn local_claims(
         });
     }
     out
+}
+
+async fn local_section_claims(
+    pool: &sqlx::PgPool,
+    title: &str,
+    wiki_lang: &str,
+    event: &CanonicalEventRow,
+    evidence: &[EventEvidenceRow],
+) -> anyhow::Result<Vec<DossierClaim>> {
+    let mut sections = talaria_store::list_sections_for_title(pool, wiki_lang, title).await?;
+    // Also try FR title aliases for denser bios when primary lang is EN.
+    if sections.is_empty() && wiki_lang != "fr" {
+        if title.to_ascii_lowercase().contains("napoleon") {
+            sections = talaria_store::list_sections_for_title(pool, "fr", "Napoléon Ier").await?;
+        }
+    }
+    if sections.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let preferred = sections
+        .iter()
+        .find(|section| section_matches_event(&section.title, event))
+        .cloned();
+
+    let mut chosen = Vec::new();
+    if let Some(section) = preferred {
+        chosen.push(section);
+    }
+    for section in sections {
+        if chosen.iter().any(|existing| existing.id == section.id) {
+            continue;
+        }
+        if section_matches_event(&section.title, event) || chosen.len() < 2 {
+            chosen.push(section);
+        }
+        if chosen.len() >= 2 {
+            break;
+        }
+    }
+
+    let oldid = evidence
+        .iter()
+        .find_map(|row| row.revision_id)
+        .or_else(|| chosen.first().and_then(|s| s.revision_id));
+    let keywords = relevance_keywords(event);
+    let mut claims = Vec::new();
+
+    for section in chosen {
+        let plain = talaria_text::wikitext_to_plain(&section.text);
+        for span in split_sentences(&plain) {
+            let text = clean_claim_text(&span.text);
+            let text = strip_section_heading(&text, &section.title);
+            if text.chars().count() < 40 || text.chars().count() > 320 {
+                continue;
+            }
+            if !is_relevant(&text, &keywords) {
+                continue;
+            }
+            if is_identity_blurb(&text) {
+                continue;
+            }
+            let lang = section.wiki_lang.clone();
+            let page_title = section.page_title.clone();
+            let cite_url = oldid
+                .map(|id| {
+                    format!(
+                        "https://{lang}.wikipedia.org/w/index.php?title={}&oldid={id}",
+                        page_title.replace(' ', "_")
+                    )
+                })
+                .unwrap_or_else(|| {
+                    format!(
+                        "https://{lang}.wikipedia.org/wiki/{}",
+                        page_title.replace(' ', "_")
+                    )
+                });
+            claims.push(DossierClaim {
+                text,
+                page_title,
+                language: lang,
+                section_title: Some(section.title.clone()),
+                oldid,
+                url: cite_url,
+            });
+            if claims.len() >= 5 {
+                return Ok(claims);
+            }
+        }
+    }
+
+    Ok(claims)
+}
+
+fn section_matches_event(section_title: &str, event: &CanonicalEventRow) -> bool {
+    let lower = section_title.to_ascii_lowercase();
+    match event.event_type.as_str() {
+        "birth" => {
+            lower.contains("naissance")
+                || lower.contains("birth")
+                || lower.contains("early")
+                || lower.contains("enfance")
+                || lower.contains("jeunesse")
+        }
+        "death" => {
+            lower.contains("mort")
+                || lower.contains("death")
+                || lower.contains("décès")
+                || lower.contains("deces")
+        }
+        _ => {
+            lower.contains("career")
+                || lower.contains("carrière")
+                || lower.contains("carriere")
+                || lower.contains("reign")
+                || lower.contains("military")
+                || lower.contains("life")
+        }
+    }
 }
 
 async fn fetch_section_claims(

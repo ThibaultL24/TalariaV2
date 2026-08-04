@@ -123,3 +123,70 @@ pub async fn update_entity_qid(
         .await?;
     Ok(())
 }
+
+pub async fn find_entity_by_wikipedia_title(
+    pool: &PgPool,
+    wiki_lang: &str,
+    wikipedia_title: &str,
+) -> anyhow::Result<Option<EntityRow>> {
+    let row = sqlx::query_as::<_, EntityRow>(
+        r#"
+        SELECT
+            e.id,
+            e.qid,
+            e.wikipedia_title,
+            e.canonical_name,
+            COUNT(ce.id)::bigint AS event_count
+        FROM entities e
+        LEFT JOIN canonical_events ce ON ce.entity_id = e.id
+        WHERE e.wiki_lang = $1
+          AND e.wikipedia_title = $2
+        GROUP BY e.id
+        LIMIT 1
+        "#,
+    )
+    .bind(wiki_lang)
+    .bind(wikipedia_title)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
+}
+
+/// Resolve entity by QID, then by Wikipedia sitelink; create surface if missing.
+pub async fn upsert_entity_from_wikidata(
+    pool: &PgPool,
+    qid: &str,
+    label: &str,
+    wiki_lang: &str,
+    wikipedia_title: &str,
+) -> anyhow::Result<Uuid> {
+    if let Some(existing) = find_entity_by_qid(pool, qid).await? {
+        return Ok(existing.id);
+    }
+    if let Some(existing) =
+        find_entity_by_wikipedia_title(pool, wiki_lang, wikipedia_title).await?
+    {
+        update_entity_qid(pool, existing.id, qid).await?;
+        sqlx::query(
+            r#"
+            UPDATE entities
+            SET canonical_name = COALESCE(canonical_name, $2)
+            WHERE id = $1
+            "#,
+        )
+        .bind(existing.id)
+        .bind(label)
+        .execute(pool)
+        .await?;
+        return Ok(existing.id);
+    }
+
+    let id = upsert_entity_surface(pool, wiki_lang, wikipedia_title).await?;
+    update_entity_qid(pool, id, qid).await?;
+    sqlx::query("UPDATE entities SET canonical_name = $2 WHERE id = $1")
+        .bind(id)
+        .bind(label)
+        .execute(pool)
+        .await?;
+    Ok(id)
+}

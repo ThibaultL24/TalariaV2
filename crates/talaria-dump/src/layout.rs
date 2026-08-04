@@ -8,6 +8,7 @@ pub fn ensure_data_dirs(config: &AppConfig) -> anyhow::Result<()> {
         &config.dumps_dir(),
         &config.parquet_dir(),
         &config.pages_dir(),
+        &config.wikidata_dir(),
     ] {
         std::fs::create_dir_all(dir)?;
     }

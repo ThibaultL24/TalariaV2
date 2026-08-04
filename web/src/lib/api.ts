@@ -34,11 +34,13 @@ export interface GeoJsonFeature {
 }
 
 export interface StatusResponse {
+  offline_only?: boolean;
   counts: {
     wiki_pages: number;
     sentences: number;
     phrase_candidates: number;
     canonical_events: number;
+    entity_profiles?: number;
   };
 }
 
@@ -122,6 +124,8 @@ export interface EventDetailResponse {
 export interface TimelineQuery {
   entityId?: string;
   person?: string;
+  profileSlug?: string;
+  periodSlug?: string;
   limit?: number;
 }
 
@@ -129,6 +133,8 @@ export async function fetchTimeline(query: TimelineQuery = {}): Promise<Timeline
   const params = new URLSearchParams({ limit: String(query.limit ?? 500) });
   if (query.entityId) params.set("entity_id", query.entityId);
   if (query.person?.trim()) params.set("person", query.person.trim());
+  if (query.profileSlug) params.set("profile_slug", query.profileSlug);
+  if (query.periodSlug) params.set("period_slug", query.periodSlug);
   const response = await fetch(`/api/v1/timeline?${params}`);
   if (!response.ok) throw new Error("timeline fetch failed");
   return response.json();
@@ -138,6 +144,8 @@ export async function fetchGeoJson(query: TimelineQuery = {}): Promise<GeoJsonFe
   const params = new URLSearchParams({ limit: String(query.limit ?? 500) });
   if (query.entityId) params.set("entity_id", query.entityId);
   if (query.person?.trim()) params.set("person", query.person.trim());
+  if (query.profileSlug) params.set("profile_slug", query.profileSlug);
+  if (query.periodSlug) params.set("period_slug", query.periodSlug);
   const response = await fetch(`/api/v1/events/geojson?${params}`);
   if (!response.ok) throw new Error("geojson fetch failed");
   return response.json();
@@ -175,4 +183,18 @@ export async function fetchEventDetail(eventId: string): Promise<EventDetailResp
   const response = await fetch(`/api/v1/events/${eventId}`);
   if (!response.ok) throw new Error("event detail fetch failed");
   return response.json();
+}
+
+export async function fetchPeriods(): Promise<import("@/lib/schemas/entity").PeriodFacet[]> {
+  const response = await fetch("/api/v1/periods");
+  if (!response.ok) throw new Error("periods fetch failed");
+  const data = (await response.json()) as { periods: import("@/lib/schemas/entity").PeriodFacet[] };
+  return data.periods ?? [];
+}
+
+export async function fetchProfiles(): Promise<import("@/lib/schemas/entity").ProfileFacet[]> {
+  const response = await fetch("/api/v1/profiles");
+  if (!response.ok) throw new Error("profiles fetch failed");
+  const data = (await response.json()) as { profiles: import("@/lib/schemas/entity").ProfileFacet[] };
+  return data.profiles ?? [];
 }

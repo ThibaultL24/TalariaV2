@@ -10,6 +10,8 @@ pub struct AppConfig {
     pub cosmos_python: String,
     pub cosmos_script: PathBuf,
     pub cosmos_batch_script: PathBuf,
+    /// When true, skip live MediaWiki/Wikidata HTTP in request paths (dossier, etc.).
+    pub offline_only: bool,
 }
 
 impl AppConfig {
@@ -31,6 +33,7 @@ impl AppConfig {
                 std::env::var("COSMOS_BATCH_SCRIPT")
                     .unwrap_or_else(|_| "sidecar/cosmos_batch.py".into()),
             ),
+            offline_only: env_truthy("TALARIA_OFFLINE_ONLY"),
         })
     }
 
@@ -46,9 +49,20 @@ impl AppConfig {
         self.data_root.join("pages")
     }
 
+    pub fn wikidata_dir(&self) -> PathBuf {
+        self.data_root.join("wikidata")
+    }
+
     pub fn page_file(&self, wiki_lang: &str, page_id: u64) -> PathBuf {
         self.pages_dir()
             .join(wiki_lang)
             .join(format!("{page_id}.wiki"))
     }
+}
+
+fn env_truthy(key: &str) -> bool {
+    matches!(
+        std::env::var(key).ok().as_deref(),
+        Some("1" | "true" | "TRUE" | "yes" | "YES" | "on" | "ON")
+    )
 }

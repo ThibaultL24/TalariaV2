@@ -5,14 +5,21 @@ import {
   eventTypeLabel,
   epistemicStatusLabel,
 } from "@/lib/event-taxonomy";
+import type { PeriodFacet, ProfileFacet } from "@/lib/schemas/entity";
 
 interface ExplorerEventFiltersProps {
   availableTypes: string[];
   availableStatuses: string[];
   selectedTypes: string[];
   selectedStatuses: string[];
+  profiles?: ProfileFacet[];
+  periods?: PeriodFacet[];
+  selectedProfileSlug?: string;
+  selectedPeriodSlug?: string;
   onToggleType: (type: string) => void;
   onToggleStatus: (status: string) => void;
+  onToggleProfile?: (slug: string) => void;
+  onTogglePeriod?: (slug: string) => void;
   onClear: () => void;
 }
 
@@ -21,8 +28,14 @@ export function ExplorerEventFilters({
   availableStatuses,
   selectedTypes,
   selectedStatuses,
+  profiles = [],
+  periods = [],
+  selectedProfileSlug,
+  selectedPeriodSlug,
   onToggleType,
   onToggleStatus,
+  onToggleProfile,
+  onTogglePeriod,
   onClear,
 }: ExplorerEventFiltersProps) {
   const typeKeys =
@@ -34,7 +47,11 @@ export function ExplorerEventFilters({
       ? availableStatuses
       : EPISTEMIC_STATUS_OPTIONS.map((option) => option.key);
 
-  const hasFilter = selectedTypes.length > 0 || selectedStatuses.length > 0;
+  const hasFilter =
+    selectedTypes.length > 0 ||
+    selectedStatuses.length > 0 ||
+    Boolean(selectedProfileSlug) ||
+    Boolean(selectedPeriodSlug);
 
   return (
     <div className="space-y-3 border-b border-(--color-border-subtle) px-3 py-3">
@@ -54,6 +71,58 @@ export function ExplorerEventFilters({
           <span className="text-[10px] text-(--color-text-muted)">All visible</span>
         )}
       </div>
+
+      {profiles.length > 0 && onToggleProfile ? (
+        <div>
+          <p className="mb-1.5 text-[10px] text-(--color-text-muted)">Profile</p>
+          <div className="flex flex-wrap gap-1.5">
+            {profiles.map((profile) => {
+              const active = !selectedProfileSlug || selectedProfileSlug === profile.slug;
+              const dimmed = Boolean(selectedProfileSlug) && selectedProfileSlug !== profile.slug;
+              return (
+                <button
+                  key={profile.slug}
+                  type="button"
+                  onClick={() => onToggleProfile(profile.slug)}
+                  className={`rounded-md border px-2 py-0.5 text-[10px] transition-colors ${
+                    active && !dimmed
+                      ? "border-(--color-accent) bg-(--color-accent)/15 text-(--color-text-primary)"
+                      : "border-(--color-border-subtle) text-(--color-text-muted) opacity-50"
+                  }`}
+                >
+                  {profile.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {periods.length > 0 && onTogglePeriod ? (
+        <div>
+          <p className="mb-1.5 text-[10px] text-(--color-text-muted)">Period</p>
+          <div className="flex flex-wrap gap-1.5">
+            {periods.map((period) => {
+              const active = !selectedPeriodSlug || selectedPeriodSlug === period.slug;
+              const dimmed = Boolean(selectedPeriodSlug) && selectedPeriodSlug !== period.slug;
+              return (
+                <button
+                  key={period.slug}
+                  type="button"
+                  onClick={() => onTogglePeriod(period.slug)}
+                  className={`rounded-md border px-2 py-0.5 text-[10px] transition-colors ${
+                    active && !dimmed
+                      ? "border-(--color-accent) bg-(--color-accent)/15 text-(--color-text-primary)"
+                      : "border-(--color-border-subtle) text-(--color-text-muted) opacity-50"
+                  }`}
+                >
+                  {period.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
 
       <div>
         <p className="mb-1.5 text-[10px] text-(--color-text-muted)">Category</p>

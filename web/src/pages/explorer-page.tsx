@@ -14,7 +14,10 @@ import { EntitySearchBox } from "@/components/search/entity-search-box";
 import { TimelineList } from "@/components/timeline/timeline-list";
 import { mapTimelineEventToItem } from "@/features/events/mappers/timeline";
 import {
+  fetchEntity,
   fetchGeoJson,
+  fetchPeriods,
+  fetchProfiles,
   fetchStatus,
   fetchTimeline,
   searchEntities,
@@ -22,7 +25,7 @@ import {
   type StatusResponse,
   type TimelineEvent,
 } from "@/lib/api";
-import type { SearchSuggestion } from "@/lib/schemas/entity";
+import type { PeriodFacet, ProfileFacet, SearchSuggestion } from "@/lib/schemas/entity";
 import {
   buildYearBounds,
   buildYearHistogram,
@@ -44,6 +47,9 @@ export function ExplorerPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [periods, setPeriods] = useState<PeriodFacet[]>([]);
+  const [profiles, setProfiles] = useState<ProfileFacet[]>([]);
+  const [entityProfiles, setEntityProfiles] = useState<Array<{ slug: string; label: string }>>([]);
 
   const {
     entityId,
@@ -56,6 +62,8 @@ export function ExplorerPage() {
     setSelectedEventId,
     toggleTypeFilter,
     toggleStatusFilter,
+    setProfileFilter,
+    setPeriodFilter,
     clearFilters,
     closeDetail,
   } = useExplorerStore();
@@ -66,7 +74,34 @@ export function ExplorerPage() {
     fetchStatus()
       .then(setStatus)
       .catch(() => undefined);
+    Promise.all([fetchPeriods(), fetchProfiles()])
+      .then(([periodRows, profileRows]) => {
+        setPeriods(periodRows);
+        setProfiles(profileRows);
+      })
+      .catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    if (!entityId) {
+      setEntityProfiles([]);
+      return;
+    }
+    let cancelled = false;
+    fetchEntity(entityId)
+      .then((entity) => {
+        if (cancelled || !entity?.profiles) return;
+        setEntityProfiles(
+          entity.profiles.map((profile) => ({ slug: profile.slug, label: profile.label })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setEntityProfiles([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [entityId]);
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -108,6 +143,8 @@ export function ExplorerPage() {
     const query = {
       entityId: entityId ?? undefined,
       person: personFilter ?? undefined,
+      profileSlug: filters.profileSlug,
+      periodSlug: filters.periodSlug,
     };
 
     Promise.all([fetchTimeline(query), fetchGeoJson(query)])
@@ -127,7 +164,7 @@ export function ExplorerPage() {
     return () => {
       cancelled = true;
     };
-  }, [entityId, personFilter, hasEntity]);
+  }, [entityId, personFilter, hasEntity, filters.profileSlug, filters.periodSlug]);
 
   const dataBounds = useMemo(() => buildYearBounds(allEvents), [allEvents]);
   const activeRange = yearRange ?? dataBounds;
@@ -225,17 +262,32 @@ export function ExplorerPage() {
             <EntityProfile
               name={entityLabel}
               eventCount={allEvents.length}
+              profiles={entityProfiles}
             />
           ) : null}
 
-          {hasEntity && allEvents.length > 0 ? (
+          {hasEntity ? (
             <ExplorerEventFilters
               availableTypes={availableTypes}
               availableStatuses={availableStatuses}
               selectedTypes={filters.types}
               selectedStatuses={filters.statuses}
+              profiles={
+                entityProfiles.length > 0
+                  ? entityProfiles.map((profile) => ({
+                      slug: profile.slug,
+                      label: profile.label,
+                      entity_count: 1,
+                    }))
+                  : profiles
+              }
+              periods={periods.filter((period) => period.kind === "century" || period.kind === "era")}
+              selectedProfileSlug={filters.profileSlug}
+              selectedPeriodSlug={filters.periodSlug}
               onToggleType={toggleTypeFilter}
               onToggleStatus={toggleStatusFilter}
+              onToggleProfile={setProfileFilter}
+              onTogglePeriod={setPeriodFilter}
               onClear={clearFilters}
             />
           ) : null}

@@ -14,6 +14,8 @@ use super::AppState;
 pub struct TimelineQuery {
     pub entity_id: Option<Uuid>,
     pub person: Option<String>,
+    pub profile_slug: Option<String>,
+    pub period_slug: Option<String>,
     #[serde(default = "default_limit")]
     pub limit: i64,
 }
@@ -22,6 +24,8 @@ pub struct TimelineQuery {
 pub struct GeoJsonQuery {
     pub entity_id: Option<Uuid>,
     pub person: Option<String>,
+    pub profile_slug: Option<String>,
+    pub period_slug: Option<String>,
     #[serde(default = "default_true")]
     pub map_eligible: bool,
     #[serde(default = "default_limit")]
@@ -44,6 +48,8 @@ pub async fn timeline(
         &state.pool,
         query.entity_id,
         query.person.as_deref(),
+        query.profile_slug.as_deref(),
+        query.period_slug.as_deref(),
         query.limit,
     )
     .await
@@ -64,6 +70,8 @@ pub async fn geojson(
         query.entity_id,
         query.person.as_deref(),
         query.map_eligible,
+        query.profile_slug.as_deref(),
+        query.period_slug.as_deref(),
         query.limit,
     )
     .await
@@ -159,12 +167,14 @@ pub async fn detail(
         .or_else(|| event.summary.clone());
 
     let dossier = crate::narrative_dossier::build_event_dossier(
+        &state.pool,
         &event,
         fact_text.as_deref(),
         &narrative,
         &evidence_rows,
         wikipedia_title.as_deref(),
         &wiki_lang,
+        state.offline_only,
     )
     .await;
 

@@ -170,6 +170,18 @@ pub enum Commands {
         #[arg(long)]
         subject: Option<String>,
     },
+    /// Ingest Wikidata JSON dump → entity QIDs + occupation/position profiles
+    WikidataIngest {
+        #[arg(long, help = "Path to wikidata-*-all.json[.bz2] or sample JSON")]
+        dump: Option<PathBuf>,
+        #[arg(long, default_value = "0", help = "Max humans to ingest (0 = all)")]
+        limit: usize,
+    },
+    /// Extract soft claims from sentences (+ backfill life_events from canonical events)
+    ClaimsExtract {
+        #[arg(long, default_value = "0", help = "Max sentences (0 = all pending)")]
+        limit: i64,
+    },
 }
 
 pub async fn run_migrate(config: &AppConfig) -> anyhow::Result<()> {
@@ -313,6 +325,7 @@ pub async fn run_split_sentences(
             }
         };
 
+        let wikitext_for_sections = wikitext.clone();
         let spans = tokio::task::spawn_blocking(move || segment_wikitext(&wikitext)).await?;
 
         let records: Vec<SentenceRecord> = spans
@@ -332,6 +345,26 @@ pub async fn run_split_sentences(
         }
 
         let count = replace_sentences_for_page(&pool, page.id, &records).await?;
+
+        let section_spans =
+            tokio::task::spawn_blocking(move || talaria_text::split_wiki_sections(&wikitext_for_sections))
+                .await?;
+        let section_records: Vec<talaria_store::WikiSectionRecord> = section_spans
+            .into_iter()
+            .map(|section| {
+                let plain = talaria_text::wikitext_to_plain(&section.wikitext);
+                talaria_store::WikiSectionRecord {
+                    ordinal: section.ordinal,
+                    title: section.title,
+                    text: plain,
+                }
+            })
+            .filter(|section| !section.text.trim().is_empty())
+            .collect();
+        if !section_records.is_empty() {
+            let _ = talaria_store::replace_sections_for_page(&pool, page.id, &section_records).await?;
+        }
+
         pages_processed += 1;
         sentences_stored += count;
 
