@@ -7,13 +7,15 @@ use std::process::Stdio;
 
 use talaria_core::AppConfig;
 use talaria_intuition::{
-    debate_from_place_conflict, debate_from_soft_claim, ConflictGroup, PlannedDebate, SoftClaimInput,
+    fact_fingerprint, fact_from_place_conflict, fact_from_soft_claim, ConflictGroup, DebateFact,
+    SoftClaimInput, SCHEMA_VERSION_V2,
 };
 use talaria_store::{
     connect, find_entity_by_wikipedia_title, find_quality_event_for_stem,
     get_intuition_publication_by_fingerprint, get_quality_event_pointer, list_conflict_quality_claims,
-    list_exportable_soft_claims, mark_intuition_failed, mark_intuition_published, run_migrations,
-    search_local_entities, upsert_intuition_publication, IntuitionPublicationInsert,
+    list_exportable_soft_claims, mark_intuition_failed, mark_intuition_pin_failed,
+    mark_intuition_published, run_migrations, search_local_entities, upsert_intuition_publication,
+    IntuitionPublicationInsert,
 };
 use uuid::Uuid;
 
@@ -56,11 +58,11 @@ async fn resolve_subject(
     Ok((e.id, label))
 }
 
-async fn collect_debates(
+async fn collect_facts(
     pool: &sqlx::PgPool,
     subject_id: Uuid,
     subject_label: &str,
-) -> anyhow::Result<Vec<PlannedDebate>> {
+) -> anyhow::Result<Vec<DebateFact>> {
     let mut out = Vec::new();
     let conflicts = list_conflict_quality_claims(pool, subject_id).await?;
     let mut by_stem: BTreeMap<String, Vec<_>> = BTreeMap::new();
@@ -98,7 +100,7 @@ async fn collect_debates(
             event_title: pointer.as_ref().map(|p| p.title.clone()),
         };
         for place in &places {
-            out.push(debate_from_place_conflict(&group, place)?);
+            out.push(fact_from_place_conflict(&group, place));
         }
     }
 
@@ -107,37 +109,51 @@ async fn collect_debates(
             Some(eid) => get_quality_event_pointer(pool, eid).await?,
             None => None,
         };
-        out.push(debate_from_soft_claim(&SoftClaimInput {
+        out.push(fact_from_soft_claim(&SoftClaimInput {
             subject_label: subject_label.into(),
             claim_id: row.id.to_string(),
             claim_kind: row.claim_kind,
             text: row.text,
             event_id: pointer.as_ref().map(|p| p.id.to_string()),
             event_title: pointer.as_ref().map(|p| p.title.clone()),
-            place_label: row.place_label.or(pointer.and_then(|p| p.place_label)),
-        })?);
+            place_label: row.place_label.or(pointer.as_ref().and_then(|p| p.place_label.clone())),
+            event_type: pointer.as_ref().map(|p| p.event_type.clone()),
+            time_surface: pointer.as_ref().map(|p| time_key(&p.time_json)),
+        }));
     }
     Ok(out)
 }
 
-async fn persist(
+async fn model_fact(fact: &DebateFact) -> anyhow::Result<serde_json::Value> {
+    let out = spawn_sidecar("model", fact).await?;
+    if out.get("status").and_then(|s| s.as_str()) != Some("ok") {
+        anyhow::bail!("sidecar model status not ok: {out}");
+    }
+    Ok(out.get("graph").cloned().unwrap_or(out))
+}
+
+async fn persist_pending(
     pool: &sqlx::PgPool,
     subject_id: Uuid,
-    debates: &[PlannedDebate],
-    status: &str,
+    facts: &[DebateFact],
+    graphs: &[serde_json::Value],
 ) -> anyhow::Result<Vec<Uuid>> {
     let mut ids = Vec::new();
-    for d in debates {
-        let fp = d.bundle.vote_target.triple_fingerprint.clone();
+    for (fact, graph) in facts.iter().zip(graphs.iter()) {
+        let fp = fact_fingerprint(fact);
         let id = upsert_intuition_publication(
             pool,
             &IntuitionPublicationInsert {
                 subject_entity_id: subject_id,
-                debate_id: d.debate_id.clone(),
+                debate_id: fact.debate_id.clone(),
                 bundle_fingerprint: fp,
-                kind: d.kind.clone(),
-                status: status.into(),
-                payload_json: serde_json::to_value(d)?,
+                kind: fact.kind.clone(),
+                status: "pending".into(),
+                payload_json: serde_json::json!({
+                    "version": SCHEMA_VERSION_V2,
+                    "fact": fact,
+                    "graph": graph,
+                }),
             },
         )
         .await?;
@@ -150,18 +166,25 @@ pub async fn run_intuition_plan(config: &AppConfig, subject: &str) -> anyhow::Re
     let pool = connect(config).await?;
     run_migrations(&pool).await?;
     let (id, label) = resolve_subject(&pool, &config.wiki_lang, subject).await?;
-    let debates = collect_debates(&pool, id, &label).await?;
-    persist(&pool, id, &debates, "planned").await?;
+    let facts = collect_facts(&pool, id, &label).await?;
+    let mut graphs = Vec::new();
+    for fact in &facts {
+        graphs.push(model_fact(fact).await?);
+    }
+    persist_pending(&pool, id, &facts, &graphs).await?;
     let report = serde_json::json!({
+        "version": SCHEMA_VERSION_V2,
         "subject": label,
         "entity_id": id,
-        "debate_count": debates.len(),
-        "debates": debates.iter().map(|d| serde_json::json!({
-            "kind": d.kind,
-            "debate_id": d.debate_id,
-            "question": d.question_label,
-            "proposition": d.proposition_label,
-            "vote_target": d.bundle.vote_target,
+        "debate_count": facts.len(),
+        "debates": facts.iter().zip(graphs.iter()).map(|(f, g)| serde_json::json!({
+            "kind": f.kind,
+            "debate_id": f.debate_id,
+            "question": f.question.text,
+            "proposition": f.proposition.text,
+            "category": g.get("category"),
+            "voteTripleId": g.get("voteTripleId"),
+            "eventAtom": g.get("eventAtom"),
         })).collect::<Vec<_>>(),
     });
     println!("{}", serde_json::to_string_pretty(&report)?);
@@ -172,13 +195,20 @@ pub async fn run_intuition_export(config: &AppConfig, subject: &str) -> anyhow::
     let pool = connect(config).await?;
     run_migrations(&pool).await?;
     let (id, label) = resolve_subject(&pool, &config.wiki_lang, subject).await?;
-    let debates = collect_debates(&pool, id, &label).await?;
-    persist(&pool, id, &debates, "exported").await?;
+    let facts = collect_facts(&pool, id, &label).await?;
+    let mut graphs = Vec::new();
+    for fact in &facts {
+        graphs.push(model_fact(fact).await?);
+    }
+    persist_pending(&pool, id, &facts, &graphs).await?;
     let report = serde_json::json!({
-        "version": talaria_intuition::SCHEMA_VERSION,
+        "version": SCHEMA_VERSION_V2,
         "subject": label,
         "entity_id": id,
-        "debates": debates,
+        "debates": facts.iter().zip(graphs.iter()).map(|(f, g)| serde_json::json!({
+            "fact": f,
+            "graph": g,
+        })).collect::<Vec<_>>(),
     });
     println!("{}", serde_json::to_string_pretty(&report)?);
     Ok(())
@@ -199,35 +229,61 @@ pub async fn run_intuition_publish(
     let pool = connect(config).await?;
     run_migrations(&pool).await?;
     let (id, label) = resolve_subject(&pool, &config.wiki_lang, subject).await?;
-    let debates = collect_debates(&pool, id, &label).await?;
-    let pub_ids = persist(&pool, id, &debates, "exported").await?;
+    let facts = collect_facts(&pool, id, &label).await?;
+    let mut graphs = Vec::new();
+    for fact in &facts {
+        graphs.push(model_fact(fact).await?);
+    }
+    let pub_ids = persist_pending(&pool, id, &facts, &graphs).await?;
     let mut results = Vec::new();
-    for (debate, pub_id) in debates.iter().zip(pub_ids.iter()) {
-        let fp = &debate.bundle.vote_target.triple_fingerprint;
-        if let Some(existing) = get_intuition_publication_by_fingerprint(&pool, fp).await? {
+    for (fact, pub_id) in facts.iter().zip(pub_ids.iter()) {
+        let fp = fact_fingerprint(fact);
+        if let Some(existing) = get_intuition_publication_by_fingerprint(&pool, &fp).await? {
             if existing.status == "published" {
                 results.push(serde_json::json!({
-                    "debate_id": debate.debate_id,
+                    "debate_id": fact.debate_id,
                     "status": "already_published",
                     "triple_term_id": existing.triple_term_id,
                 }));
                 continue;
             }
+            if existing.status == "planned" || existing.status == "exported" {
+                results.push(serde_json::json!({
+                    "debate_id": fact.debate_id,
+                    "status": "skipped_v1",
+                }));
+                continue;
+            }
         }
-        let main = debate
-            .bundle
-            .triples
-            .iter()
-            .find(|t| t.role == "question_has_proposition")
-            .ok_or_else(|| anyhow::anyhow!("missing vote-target triple"))?;
-        let payload = serde_json::json!({
-            "subject": main.subject,
-            "predicate": main.predicate,
-            "object": main.object,
-            "positionKind": "believe",
-        });
-        match spawn_sidecar(&payload).await {
+        match spawn_sidecar("publish", fact).await {
             Ok(out) => {
+                let status = out.get("status").and_then(|s| s.as_str()).unwrap_or("failed");
+                if status == "pin_failed" {
+                    let err = out
+                        .get("error")
+                        .and_then(|s| s.as_str())
+                        .unwrap_or("pin failed");
+                    mark_intuition_pin_failed(&pool, *pub_id, err).await?;
+                    results.push(serde_json::json!({
+                        "debate_id": fact.debate_id,
+                        "status": "pin_failed",
+                        "error": err,
+                    }));
+                    continue;
+                }
+                if status != "ok" {
+                    let err = out
+                        .get("error")
+                        .and_then(|s| s.as_str())
+                        .unwrap_or("settle failed");
+                    mark_intuition_failed(&pool, *pub_id, err).await?;
+                    results.push(serde_json::json!({
+                        "debate_id": fact.debate_id,
+                        "status": "failed",
+                        "error": err,
+                    }));
+                    continue;
+                }
                 let chain_id = out
                     .pointer("/network/observedChainId")
                     .and_then(|v| v.as_i64())
@@ -238,23 +294,31 @@ pub async fn run_intuition_publish(
                 let t_term = out
                     .pointer("/terms/mainTriple/termId")
                     .and_then(|v| v.as_str());
-                let tx = out
-                    .pointer("/tx/mainTriple")
-                    .and_then(|v| v.as_str());
+                let tx = out.pointer("/tx/mainTriple").and_then(|v| v.as_str());
                 mark_intuition_published(&pool, *pub_id, chain_id, q_term, t_term, tx).await?;
                 results.push(serde_json::json!({
-                    "debate_id": debate.debate_id,
+                    "debate_id": fact.debate_id,
                     "status": "published",
                     "sidecar": out,
                 }));
             }
             Err(err) => {
-                mark_intuition_failed(&pool, *pub_id, &err.to_string()).await?;
-                results.push(serde_json::json!({
-                    "debate_id": debate.debate_id,
-                    "status": "failed",
-                    "error": err.to_string(),
-                }));
+                let msg = err.to_string();
+                if msg.contains("pin_failed") {
+                    mark_intuition_pin_failed(&pool, *pub_id, &msg).await?;
+                    results.push(serde_json::json!({
+                        "debate_id": fact.debate_id,
+                        "status": "pin_failed",
+                        "error": msg,
+                    }));
+                } else {
+                    mark_intuition_failed(&pool, *pub_id, &msg).await?;
+                    results.push(serde_json::json!({
+                        "debate_id": fact.debate_id,
+                        "status": "failed",
+                        "error": msg,
+                    }));
+                }
             }
         }
     }
@@ -269,10 +333,9 @@ pub async fn run_intuition_publish(
     Ok(())
 }
 
-async fn spawn_sidecar(payload: &serde_json::Value) -> anyhow::Result<serde_json::Value> {
+async fn spawn_sidecar(mode: &str, fact: &DebateFact) -> anyhow::Result<serde_json::Value> {
     let script = PathBuf::from(
-        std::env::var("INTUITION_SIDECAR")
-            .unwrap_or_else(|_| "sidecar/intuition/writeOnChain.ts".into()),
+        std::env::var("INTUITION_SIDECAR").unwrap_or_else(|_| "sidecar/intuition/cli.ts".into()),
     );
     let dir = script
         .parent()
@@ -281,9 +344,19 @@ async fn spawn_sidecar(payload: &serde_json::Value) -> anyhow::Result<serde_json
     let file = script
         .file_name()
         .and_then(|s| s.to_str())
-        .unwrap_or("writeOnChain.ts");
-    let child = tokio::process::Command::new("npx")
-        .args(["tsx", file, &payload.to_string()])
+        .unwrap_or("cli.ts");
+    let payload = serde_json::to_string(fact)?;
+    let tsx = dir.join("node_modules/.bin/tsx");
+    let mut cmd = if tsx.exists() {
+        let mut c = tokio::process::Command::new(tsx);
+        c.args([file, mode, &payload]);
+        c
+    } else {
+        let mut c = tokio::process::Command::new("npx");
+        c.args(["tsx", file, mode, &payload]);
+        c
+    };
+    let child = cmd
         .current_dir(&dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -296,17 +369,18 @@ async fn spawn_sidecar(payload: &serde_json::Value) -> anyhow::Result<serde_json
     let output = child.wait_with_output().await?;
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let parsed: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap_or(serde_json::json!({}));
+    if parsed.get("status").and_then(|s| s.as_str()) == Some("ok")
+        || parsed.get("status").and_then(|s| s.as_str()) == Some("pin_failed")
+        || parsed.get("status").and_then(|s| s.as_str()) == Some("failed")
+    {
+        return Ok(parsed);
+    }
     if !output.status.success() {
         anyhow::bail!(
             "sidecar failed: {}",
             if stderr.is_empty() { stdout } else { stderr }
         );
     }
-    let parsed: serde_json::Value = serde_json::from_str(stdout.trim()).map_err(|e| {
-        anyhow::anyhow!("sidecar non-JSON stdout: {e}; stderr={stderr}")
-    })?;
-    if parsed.get("status").and_then(|s| s.as_str()) != Some("ok") {
-        anyhow::bail!("sidecar status not ok: {parsed}");
-    }
-    Ok(parsed)
+    anyhow::bail!("sidecar non-JSON stdout: {stdout}; stderr={stderr}");
 }

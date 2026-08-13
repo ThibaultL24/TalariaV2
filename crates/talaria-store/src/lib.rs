@@ -46,7 +46,7 @@ pub use entities::{
 pub use intuition::{
     find_quality_event_for_stem, get_intuition_publication_by_fingerprint, get_quality_event_pointer,
     list_conflict_quality_claims, list_exportable_soft_claims, mark_intuition_failed,
-    mark_intuition_published, upsert_intuition_publication, EventPointerRow, IntuitionPublicationInsert,
+    mark_intuition_pin_failed, mark_intuition_published, upsert_intuition_publication, EventPointerRow, IntuitionPublicationInsert,
     IntuitionPublicationRow, QualityConflictRow, SoftClaimExportRow,
 };
 pub use judgments::insert_judgment;

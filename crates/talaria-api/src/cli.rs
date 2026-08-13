@@ -244,7 +244,7 @@ pub enum Commands {
         #[arg(long)]
         subject: String,
     },
-    /// Write talaria.intuition_canon.v1 JSON (no RPC)
+    /// Write talaria.intuition_canon.v2 JSON via Alpha packages (no RPC)
     IntuitionExport {
         #[arg(long)]
         subject: String,

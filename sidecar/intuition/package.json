@@ -7,17 +7,23 @@
     "node": ">=20"
   },
   "scripts": {
-    "write": "tsx writeOnChain.ts"
+    "write": "tsx writeOnChain.ts",
+    "model": "tsx cli.ts model",
+    "test": "vitest run"
   },
   "dependencies": {
-    "@0xintuition/protocol": "2.0.2",
-    "@0xintuition/sdk": "2.0.2",
+    "@0xintuition/classifications": "alpha",
+    "@0xintuition/deployments": "alpha",
+    "@0xintuition/ids": "alpha",
+    "@0xintuition/predicates": "alpha",
+    "@0xintuition/protocol": "^3.0.0",
     "viem": "^2.48.1",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.4"
   }
 }

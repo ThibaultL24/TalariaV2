@@ -26,6 +26,8 @@ pub struct SoftClaimInput {
     pub event_id: Option<String>,
     pub event_title: Option<String>,
     pub place_label: Option<String>,
+    pub event_type: Option<String>,
+    pub time_surface: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -168,6 +170,8 @@ mod tests {
             event_id: None,
             event_title: None,
             place_label: None,
+            event_type: None,
+            time_surface: None,
         };
         let d = debate_from_soft_claim(&c).unwrap();
         assert_eq!(d.kind, "theory");

@@ -29,6 +29,8 @@ pub struct EventPointerRow {
     pub id: Uuid,
     pub title: String,
     pub place_label: Option<String>,
+    pub event_type: String,
+    pub time_json: serde_json::Value,
 }
 
 #[derive(Debug, Clone)]
@@ -95,7 +97,7 @@ pub async fn get_quality_event_pointer(
 ) -> anyhow::Result<Option<EventPointerRow>> {
     let row = sqlx::query_as::<_, EventPointerRow>(
         r#"
-        SELECT id, title, place_label
+        SELECT id, title, place_label, event_type, time_json
         FROM canonical_events
         WHERE id = $1 AND pipeline = 'quality'
         "#,
@@ -113,7 +115,7 @@ pub async fn find_quality_event_for_stem(
 ) -> anyhow::Result<Option<EventPointerRow>> {
     let row = sqlx::query_as::<_, EventPointerRow>(
         r#"
-        SELECT id, title, place_label
+        SELECT id, title, place_label, event_type, time_json
         FROM canonical_events
         WHERE entity_id = $1
           AND occurrence_stem = $2
@@ -141,9 +143,18 @@ pub async fn upsert_intuition_publication(
         )
         VALUES ($1,$2,$3,$4,$5,$6)
         ON CONFLICT (bundle_fingerprint) DO UPDATE SET
-            payload_json = EXCLUDED.payload_json,
-            kind = EXCLUDED.kind,
-            debate_id = EXCLUDED.debate_id,
+            payload_json = CASE
+                WHEN intuition_publications.status = 'published' THEN intuition_publications.payload_json
+                ELSE EXCLUDED.payload_json
+            END,
+            kind = CASE
+                WHEN intuition_publications.status = 'published' THEN intuition_publications.kind
+                ELSE EXCLUDED.kind
+            END,
+            debate_id = CASE
+                WHEN intuition_publications.status = 'published' THEN intuition_publications.debate_id
+                ELSE EXCLUDED.debate_id
+            END,
             status = CASE
                 WHEN intuition_publications.status = 'published' THEN intuition_publications.status
                 ELSE EXCLUDED.status
@@ -198,7 +209,7 @@ pub async fn mark_intuition_published(
             tx_hash = $5,
             last_error = NULL,
             updated_at = NOW()
-        WHERE id = $1
+        WHERE id = $1 AND status <> 'published' AND $4 IS NOT NULL
         "#,
     )
     .bind(id)
@@ -212,17 +223,31 @@ pub async fn mark_intuition_published(
 }
 
 pub async fn mark_intuition_failed(pool: &PgPool, id: Uuid, err: &str) -> anyhow::Result<()> {
+    mark_intuition_retryable(pool, id, "failed", err).await
+}
+
+pub async fn mark_intuition_pin_failed(pool: &PgPool, id: Uuid, err: &str) -> anyhow::Result<()> {
+    mark_intuition_retryable(pool, id, "pin_failed", err).await
+}
+
+async fn mark_intuition_retryable(
+    pool: &PgPool,
+    id: Uuid,
+    status: &str,
+    err: &str,
+) -> anyhow::Result<()> {
     sqlx::query(
         r#"
         UPDATE intuition_publications SET
-            status = 'failed',
+            status = $3,
             last_error = $2,
             updated_at = NOW()
-        WHERE id = $1
+        WHERE id = $1 AND status <> 'published'
         "#,
     )
     .bind(id)
     .bind(err)
+    .bind(status)
     .execute(pool)
     .await?;
     Ok(())
