@@ -10,6 +10,7 @@ members = [
     "crates/talaria-quality",
     "crates/talaria-sources",
     "crates/talaria-wikidata",
+    "crates/talaria-intuition",
     "crates/talaria-api",
 ]
 

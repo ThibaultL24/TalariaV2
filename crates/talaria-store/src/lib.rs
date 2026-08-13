@@ -6,6 +6,7 @@ pub mod claims;
 pub mod corpus;
 pub mod dump_runs;
 pub mod entities;
+pub mod intuition;
 pub mod judgments;
 pub mod multi_source;
 pub mod phrase_candidates;
@@ -40,6 +41,12 @@ pub use dump_runs::{finish_dump_run, start_dump_run};
 pub use entities::{
     find_entity_by_qid, find_entity_by_wikipedia_title, get_entity, search_local_entities,
     update_entity_qid, upsert_entity_from_wikidata, upsert_entity_surface, EntityRow,
+};
+pub use intuition::{
+    find_quality_event_for_stem, get_intuition_publication_by_fingerprint, get_quality_event_pointer,
+    list_conflict_quality_claims, list_exportable_soft_claims, mark_intuition_failed,
+    mark_intuition_published, upsert_intuition_publication, EventPointerRow, IntuitionPublicationInsert,
+    IntuitionPublicationRow, QualityConflictRow, SoftClaimExportRow,
 };
 pub use judgments::insert_judgment;
 pub use multi_source::{

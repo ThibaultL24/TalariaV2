@@ -227,6 +227,23 @@ pub enum Commands {
         #[arg(long, help = "Call live provider APIs")]
         live: bool,
     },
+    /// List situated debates for a subject (conflicts + theory/controversy claims)
+    IntuitionPlan {
+        #[arg(long)]
+        subject: String,
+    },
+    /// Write talaria.intuition_canon.v1 JSON (no RPC)
+    IntuitionExport {
+        #[arg(long)]
+        subject: String,
+    },
+    /// Export, then optionally write vote-target triples on Intuition testnet
+    IntuitionPublish {
+        #[arg(long)]
+        subject: String,
+        #[arg(long, help = "Broadcast to Intuition testnet (needs INTUITION_PRIVATE_KEY)")]
+        live: bool,
+    },
 }
 
 pub async fn run_migrate(config: &AppConfig) -> anyhow::Result<()> {

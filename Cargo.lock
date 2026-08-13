@@ -412,6 +412,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "deunicode"
+version = "1.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "abd57806937c9cc163efc8ea3910e00a62e2aeb0b8119f1793a978088f8f6b04"
+
+[[package]]
 name = "diff"
 version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2114,6 +2120,7 @@ dependencies = [
  "talaria-core",
  "talaria-cosmos",
  "talaria-dump",
+ "talaria-intuition",
  "talaria-judge",
  "talaria-quality",
  "talaria-sources",
@@ -2169,6 +2176,20 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "talaria-intuition"
+version = "0.1.0"
+dependencies = [
+ "deunicode",
+ "hex",
+ "pretty_assertions",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror",
+ "uuid",
 ]
 
 [[package]]

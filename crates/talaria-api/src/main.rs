@@ -14,6 +14,7 @@ mod corpus_ingest;
 mod cosmos;
 mod geocode;
 mod ingest;
+mod intuition;
 mod judge;
 mod lot_e;
 mod narrative_dossier;
@@ -201,6 +202,15 @@ async fn main() -> anyhow::Result<()> {
                 live,
             )
             .await?;
+        }
+        Commands::IntuitionPlan { subject } => {
+            intuition::run_intuition_plan(&config, &subject).await?
+        }
+        Commands::IntuitionExport { subject } => {
+            intuition::run_intuition_export(&config, &subject).await?
+        }
+        Commands::IntuitionPublish { subject, live } => {
+            intuition::run_intuition_publish(&config, &subject, live).await?
         }
     }
 
