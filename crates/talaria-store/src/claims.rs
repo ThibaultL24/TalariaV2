@@ -27,6 +27,8 @@ pub struct ClaimInsert {
     pub place_label: Option<String>,
     pub confidence: f64,
     pub canonical_event_id: Option<Uuid>,
+    pub debate_type: Option<String>,
+    pub evidence_layer: Option<String>,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -45,9 +47,10 @@ pub async fn insert_claim(pool: &PgPool, claim: &ClaimInsert) -> anyhow::Result<
         r#"
         INSERT INTO soft_claims (
             entity_id, claim_kind, text, epistemic_status, relation_to_subject,
-            event_time, place_label, confidence, canonical_event_id
+            event_time, place_label, confidence, canonical_event_id,
+            debate_type, evidence_layer
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
         RETURNING id
         "#,
     )
@@ -60,6 +63,8 @@ pub async fn insert_claim(pool: &PgPool, claim: &ClaimInsert) -> anyhow::Result<
     .bind(&claim.place_label)
     .bind(claim.confidence)
     .bind(claim.canonical_event_id)
+    .bind(&claim.debate_type)
+    .bind(&claim.evidence_layer)
     .fetch_one(pool)
     .await?;
     Ok(id)
@@ -260,6 +265,8 @@ pub async fn backfill_life_event_claims(pool: &PgPool) -> anyhow::Result<usize> 
                 place_label,
                 confidence,
                 canonical_event_id: Some(event_id),
+                debate_type: None,
+                evidence_layer: None,
             },
         )
         .await?;

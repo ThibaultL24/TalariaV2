@@ -31,11 +31,12 @@ pub use claims::{
 };
 pub use corpus::{
     count_corpus_snapshots, get_corpus_document, link_corpus_snapshot, list_document_contributions,
-    list_document_identifiers, list_entity_documents, mark_discovered_corpus_document,
+    list_document_identifiers, list_entity_corpus_passages, list_entity_documents,
+    mark_discovered_corpus_document,
     replace_document_contributions, replace_document_identifiers, replace_document_subjects,
     upsert_corpus_document, upsert_entity_document_link, ContributionInsert, CorpusDocumentInsert,
-    CorpusDocumentRow, DocumentContributionRow, DocumentIdentifierRow, EntityDocumentLinkInsert,
-    EntityDocumentsFilter, EntityLinkedDocumentRow, SubjectInsert,
+    CorpusDocumentRow, CorpusPassageRow, DocumentContributionRow, DocumentIdentifierRow,
+    EntityDocumentLinkInsert, EntityDocumentsFilter, EntityLinkedDocumentRow, SubjectInsert,
 };
 pub use dump_runs::{finish_dump_run, start_dump_run};
 pub use entities::{
@@ -88,6 +89,6 @@ pub use wiki_pages::{
     list_pages_for_sentence_split, store_extracted_page, WikiPageRecord, WikiPageRow,
 };
 pub use wiki_sections::{
-    list_pages_for_section_split, list_sections_for_title, replace_sections_for_page,
-    WikiSectionRecord, WikiSectionRow,
+    list_pages_for_section_split, list_sections_for_title, list_sections_matching_page,
+    replace_sections_for_page, HistoriographySectionRow, WikiSectionRecord, WikiSectionRow,
 };

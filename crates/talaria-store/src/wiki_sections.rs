@@ -110,3 +110,39 @@ pub async fn list_pages_for_section_split(
     .await?;
     Ok(rows)
 }
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct HistoriographySectionRow {
+    pub title: String,
+    pub text: String,
+    pub page_title: String,
+    pub wiki_lang: String,
+    pub revision_id: Option<i64>,
+}
+
+pub async fn list_sections_matching_page(
+    pool: &PgPool,
+    wiki_lang: &str,
+    page_title: &str,
+) -> anyhow::Result<Vec<HistoriographySectionRow>> {
+    let rows = sqlx::query_as::<_, HistoriographySectionRow>(
+        r#"
+        SELECT
+            ws.title,
+            ws.text,
+            wp.title AS page_title,
+            wp.wiki_lang,
+            wp.revision_id
+        FROM wiki_sections ws
+        INNER JOIN wiki_pages wp ON wp.id = ws.wiki_page_id
+        WHERE wp.wiki_lang = $1
+          AND wp.title ILIKE $2
+        ORDER BY wp.title ASC, ws.ordinal ASC
+        "#,
+    )
+    .bind(wiki_lang)
+    .bind(page_title)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}

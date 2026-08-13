@@ -22,6 +22,7 @@ mod types;
 
 pub mod connectors;
 pub mod extractors;
+pub mod historiography;
 
 pub use budgets::{BudgetCounters, BudgetExhausted, IngestBudgets};
 pub use connector::{
@@ -33,6 +34,10 @@ pub use corpus::{
     NormalizedIdentifier, NormalizedSubject, SUBJECT_MATCH_V1,
 };
 pub use density::{DensityProgress, DensityTargets};
+pub use historiography::{
+    is_historiography_section, scan_bibliographic, scan_passage, DebateType, EvidenceLayer,
+    EventHint, HistoriographyHit,
+};
 pub use identifiers::{normalize_identifier, normalize_person_name};
 pub use kinds::{
     AcademicStatus, AccessLevel, AuthorityTier, ContributionRole, DiscoveryMethod, DocumentType,

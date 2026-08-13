@@ -210,6 +210,11 @@ pub enum Commands {
         #[arg(long, default_value = "0", help = "Max sentences (0 = all pending)")]
         limit: i64,
     },
+    /// Extract debates/theories from wiki historiography sections + corpus titles
+    HistoriographyExtract {
+        #[arg(long)]
+        subject: String,
+    },
     /// Corpus bibliographic ingest (theses.fr PR1; no claims/events)
     CorpusIngest {
         #[arg(long)]

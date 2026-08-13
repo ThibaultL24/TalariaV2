@@ -458,3 +458,35 @@ pub async fn count_corpus_snapshots(
     .await?;
     Ok(n)
 }
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct CorpusPassageRow {
+    pub id: Uuid,
+    pub source_kind: String,
+    pub title: String,
+    pub abstract_text: Option<String>,
+    pub canonical_url: Option<String>,
+    pub academic_status: String,
+}
+
+pub async fn list_entity_corpus_passages(
+    pool: &PgPool,
+    entity_id: Uuid,
+    limit: i64,
+) -> anyhow::Result<Vec<CorpusPassageRow>> {
+    let rows = sqlx::query_as::<_, CorpusPassageRow>(
+        r#"
+        SELECT d.id, d.source_kind, d.title, d.abstract_text, d.canonical_url, d.academic_status
+        FROM entity_document_links l
+        JOIN corpus_documents d ON d.id = l.corpus_document_id
+        WHERE l.entity_id = $1
+        ORDER BY l.score DESC, d.id DESC
+        LIMIT $2
+        "#,
+    )
+    .bind(entity_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}

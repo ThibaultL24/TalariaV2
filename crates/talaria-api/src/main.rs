@@ -13,6 +13,7 @@ mod cli;
 mod corpus_ingest;
 mod cosmos;
 mod geocode;
+mod historiography;
 mod ingest;
 mod intuition;
 mod judge;
@@ -181,6 +182,9 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::ClaimsExtract { limit } => {
             claim_extract::run_claims_extract(&config, limit).await?
+        }
+        Commands::HistoriographyExtract { subject } => {
+            historiography::run_historiography_extract(&config, &subject).await?
         }
         Commands::CorpusIngest {
             subject,

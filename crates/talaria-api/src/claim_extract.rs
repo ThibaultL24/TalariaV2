@@ -54,6 +54,8 @@ pub async fn run_claims_extract(config: &AppConfig, limit: i64) -> anyhow::Resul
                 place_label: None,
                 confidence: class.confidence,
                 canonical_event_id: None,
+                debate_type: None,
+                evidence_layer: None,
             },
         )
         .await?;
