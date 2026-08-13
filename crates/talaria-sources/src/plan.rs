@@ -37,6 +37,7 @@ pub struct SourcePlan {
 pub const PLANNER_V1: &str = "plan_sources:v1";
 
 /// Deterministic planner — no subject-specific hardcoding.
+#[allow(clippy::vec_init_then_push)]
 pub fn plan_sources(subject: &ResolvedSubject, budgets: IngestBudgets) -> SourcePlan {
     let mut sources = Vec::new();
 
@@ -96,11 +97,26 @@ pub fn plan_sources(subject: &ResolvedSubject, budgets: IngestBudgets) -> Source
             priority: 90,
             max_documents: 10,
         });
+        sources.push(PlannedSource {
+            kind: SourceKind::ThesesFr,
+            reason: "French doctoral theses and subjects (ABES)".into(),
+            priority: 65,
+            max_documents: budgets.max_documents_per_source.min(25),
+        });
+        sources.push(PlannedSource {
+            kind: SourceKind::Hal,
+            reason: "French open archive scholarly works (stub until PR2)".into(),
+            priority: 68,
+            max_documents: 15,
+        });
     }
 
     let military = subject.occupations.iter().any(|o| {
         let o = o.to_lowercase();
-        o.contains("military") || o.contains("soldier") || o.contains("general") || o.contains("officer")
+        o.contains("military")
+            || o.contains("soldier")
+            || o.contains("general")
+            || o.contains("officer")
     });
     if military {
         // Linked Wikipedia battle/campaign pages are discovered via Wikipedia connector depth.

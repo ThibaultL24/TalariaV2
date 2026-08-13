@@ -193,8 +193,20 @@ pub async fn seed_default_periods(pool: &PgPool) -> anyhow::Result<usize> {
     let eras = [
         ("antiquity", "Antiquity", Some(-800i32), Some(500), "era"),
         ("medieval", "Medieval period", Some(500), Some(1500), "era"),
-        ("early-modern", "Early modern period", Some(1500), Some(1800), "era"),
-        ("contemporary", "Contemporary period", Some(1900), Some(2100), "era"),
+        (
+            "early-modern",
+            "Early modern period",
+            Some(1500),
+            Some(1800),
+            "era",
+        ),
+        (
+            "contemporary",
+            "Contemporary period",
+            Some(1900),
+            Some(2100),
+            "era",
+        ),
     ];
     for (slug, label, start, end, kind) in eras {
         upsert_period(pool, slug, label, start, end, kind, None).await?;

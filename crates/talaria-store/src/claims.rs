@@ -222,7 +222,17 @@ pub async fn list_sentences_for_claims(
 }
 
 pub async fn backfill_life_event_claims(pool: &PgPool) -> anyhow::Result<usize> {
-    let rows = sqlx::query_as::<_, (Uuid, Uuid, String, Option<chrono::DateTime<chrono::Utc>>, Option<String>, f64)>(
+    let rows = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            Uuid,
+            String,
+            Option<chrono::DateTime<chrono::Utc>>,
+            Option<String>,
+            f64,
+        ),
+    >(
         r#"
         SELECT ce.id, ce.entity_id,
                COALESCE(ce.summary, ce.title) AS text,
@@ -244,7 +254,7 @@ pub async fn backfill_life_event_claims(pool: &PgPool) -> anyhow::Result<usize> 
                 entity_id,
                 claim_kind: "life_event".into(),
                 text: text.clone(),
-                epistemic_status: "established".into(),
+                epistemic_status: "attested".into(),
                 relation_to_subject: "direct".into(),
                 event_time,
                 place_label,

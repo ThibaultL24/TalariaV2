@@ -1,9 +1,13 @@
 // crates/talaria-api/src/routes.rs
+mod documents;
 mod entities;
 mod events;
 mod facets;
 
 use axum::{routing::get, Json, Router};
+use documents::{
+    get_document, list_document_fragments, list_entity_bibliography, list_entity_documents,
+};
 use entities::{get_entity, list_claims, search as search_entities};
 use events::{detail, evidence, geojson, timeline};
 use facets::{list_periods, list_profiles};
@@ -29,6 +33,19 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/v1/entities/search", get(search_entities))
         .route("/api/v1/entities/{entity_id}", get(get_entity))
         .route("/api/v1/entities/{entity_id}/claims", get(list_claims))
+        .route(
+            "/api/v1/entities/{entity_id}/documents",
+            get(list_entity_documents),
+        )
+        .route(
+            "/api/v1/entities/{entity_id}/bibliography",
+            get(list_entity_bibliography),
+        )
+        .route("/api/v1/documents/{document_id}", get(get_document))
+        .route(
+            "/api/v1/documents/{document_id}/fragments",
+            get(list_document_fragments),
+        )
         .route("/api/v1/periods", get(list_periods))
         .route("/api/v1/profiles", get(list_profiles))
         .route("/api/v1/timeline", get(timeline))
@@ -106,9 +123,7 @@ fn attach_web_ui(app: Router) -> Router {
     let dist = Path::new("web/dist");
     let index = dist.join("index.html");
     if dist.is_dir() && index.is_file() {
-        app.fallback_service(
-            ServeDir::new(dist).not_found_service(ServeFile::new(index)),
-        )
+        app.fallback_service(ServeDir::new(dist).not_found_service(ServeFile::new(index)))
     } else {
         app
     }

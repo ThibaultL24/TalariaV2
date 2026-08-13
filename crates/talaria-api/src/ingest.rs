@@ -5,9 +5,10 @@ use sha2::{Digest, Sha256};
 use talaria_core::AppConfig;
 use talaria_judge::{parse_place_surface, parse_time_surface};
 use talaria_quality::{
-    apply_gates, candidate_fingerprint, event_fingerprint, parse_typed_time, resolve_mentions,
-    BuildProjections, DerivedLabelProjections, EntityKind, EvidencePtr, GazetteerResolver,
-    GateContext, TypedTime, ASSEMBLER_V1,
+    apply_gates, candidate_fingerprint, existing_candidate_action, occurrence_key_for_event,
+    occurrence_stem_for_event, parse_typed_time, resolve_mentions, should_reinforce_existing_event,
+    BuildProjections, DerivedLabelProjections, EntityKind, EvidencePtr, ExistingCandidateAction,
+    EXTRACTOR_EPISTEMIC_STATUS, GazetteerResolver, GateContext, TypedTime, ASSEMBLER_V1,
 };
 use talaria_sources::connectors::{default_registry, FixtureConnector};
 use talaria_sources::extractors::{
@@ -17,8 +18,9 @@ use talaria_sources::{
     plan_sources, BudgetCounters, DiscoveredDocument, IngestBudgets, ResolvedSubject, SourceKind,
 };
 use talaria_store::{
-    add_claim_support, connect, density_report_counts, find_active_quality_event_by_fingerprint,
-    find_active_singleton, finish_discovery_run, insert_document_fragment, insert_document_snapshot,
+    add_claim_support, connect, density_report_counts,
+    find_active_quality_event_by_occurrence_key, find_active_singleton, finish_discovery_run,
+    get_event_candidate_by_fingerprint, insert_document_fragment, insert_document_snapshot,
     insert_quality_canonical_event, link_claim_to_event, mark_candidate_assembled,
     mark_discovered_skipped, mark_discovered_snapshotted, quality_lifespan_years,
     reinforce_quality_event, run_migrations, start_discovery_run, update_event_candidate_judgment,
@@ -27,6 +29,8 @@ use talaria_store::{
     DocumentSnapshotInsert, EventCandidateInsert, QualityClaimInsert, QualityEventInsert,
 };
 use uuid::Uuid;
+
+use crate::place_conflict::{abstain_if_competing_place, competing_place_codes};
 
 fn content_hash(text: &str) -> String {
     let mut hasher = Sha256::new();
@@ -111,8 +115,7 @@ pub async fn run_ingest_quality(
     let pool = connect(config).await?;
     run_migrations(&pool).await?;
 
-    let subject_id =
-        upsert_entity_with_kind(&pool, &config.wiki_lang, label, "person").await?;
+    let subject_id = upsert_entity_with_kind(&pool, &config.wiki_lang, label, "person").await?;
 
     let mut subject = ResolvedSubject {
         entity_id: Some(subject_id),
@@ -208,11 +211,9 @@ pub async fn run_ingest_quality(
             for doc in page.documents {
                 metrics.documents_discovered += 1;
                 if doc.relevance_score < budgets.min_relevance {
-                    let (doc_id, _) = upsert_discovered_document(
-                        &pool,
-                        &to_discovered_insert(run_id, &doc),
-                    )
-                    .await?;
+                    let (doc_id, _) =
+                        upsert_discovered_document(&pool, &to_discovered_insert(run_id, &doc))
+                            .await?;
                     mark_discovered_skipped(&pool, doc_id, "document_irrelevant").await?;
                     metrics.documents_skipped += 1;
                     metrics.bump_loss("document_irrelevant");
@@ -454,6 +455,27 @@ async fn process_raw_candidate(
         &shell.participant_mentions,
     );
 
+    let primary_object = shell
+        .object_mentions
+        .first()
+        .map(|m| m.surface.clone())
+        .or_else(|| raw.object_surface.clone());
+    let occ = occurrence_key_for_event(
+        &subject.label,
+        &shell.event_type,
+        &shell.predicate,
+        &shell.time,
+        shell.place_label.as_deref(),
+        primary_object.as_deref(),
+    );
+    let stem = occurrence_stem_for_event(
+        &subject.label,
+        &shell.event_type,
+        &shell.predicate,
+        &shell.time,
+        primary_object.as_deref(),
+    );
+
     let (cand_id, inserted) = upsert_event_candidate(
         pool,
         &EventCandidateInsert {
@@ -473,6 +495,9 @@ async fn process_raw_candidate(
             evidence_ptrs: serde_json::to_value(&shell.evidence_ptrs)?,
             extractor_version: shell.extractor_version.clone(),
             fingerprint: shell.fingerprint.clone(),
+            occurrence_key: Some(occ.clone()),
+            primary_object: primary_object.clone(),
+            action_role: Some(shell.predicate.clone()),
             status: "pending".into(),
             rejection_codes: vec![],
             judgment_json: serde_json::json!({}),
@@ -480,61 +505,77 @@ async fn process_raw_candidate(
     )
     .await?;
     shell.id = cand_id;
-    if !inserted {
-        metrics.candidates_deduped += 1;
-        return Ok(());
-    }
-    metrics.candidates += 1;
-
-    let (birth_year, death_year, has_birth, has_death) =
-        quality_lifespan_years(pool, subject_id).await?;
-    let place_entity_kind = match shell.place_entity_id {
-        Some(pid) => talaria_store::get_entity_kind(pool, pid)
+    let is_new_candidate = inserted;
+    let mut skip_gates = false;
+    if inserted {
+        metrics.candidates += 1;
+    } else {
+        let existing = get_event_candidate_by_fingerprint(pool, &shell.fingerprint)
             .await?
-            .map(|s| EntityKind::parse(&s)),
-        None => None,
-    };
-    let ctx = GateContext {
-        subject_birth_year: birth_year.or(subject.birth_year),
-        subject_death_year: death_year.or(subject.death_year),
-        has_active_birth: has_birth,
-        has_active_death: has_death,
-        fingerprint_exists: false,
-        cross_clause_join_detected: raw.cross_clause_join,
-        place_entity_kind,
-    };
-    let decision = apply_gates(&shell, &ctx);
-    let status = decision.status().as_str();
-    let codes = decision.codes();
-    for c in &codes {
-        metrics.bump_loss(c);
+            .ok_or_else(|| anyhow::anyhow!("fingerprint conflict without existing row"))?;
+        match existing_candidate_action(&existing.status) {
+            ExistingCandidateAction::SkipTerminal => {
+                metrics.candidates_deduped += 1;
+                return Ok(());
+            }
+            ExistingCandidateAction::ResumeAssembleOnly => {
+                skip_gates = true;
+            }
+            ExistingCandidateAction::ResumeFromGates => {}
+        }
     }
-    update_event_candidate_judgment(
-        pool,
-        cand_id,
-        status,
-        &codes,
-        &serde_json::json!({"codes": codes, "source": source_kind}),
-        shell.subject_entity_id,
-        shell.place_entity_id,
-        shell.place_label.as_deref(),
-        &serde_json::to_value(&shell.place_mentions)?,
-        &serde_json::to_value(&shell.object_mentions)?,
-        &serde_json::to_value(&shell.participant_mentions)?,
-    )
-    .await?;
 
-    match status {
-        "accepted" => metrics.accepted += 1,
-        "rejected" => {
-            metrics.rejected += 1;
-            return Ok(());
+    if !skip_gates {
+        let (birth_year, death_year, has_birth, has_death) =
+            quality_lifespan_years(pool, subject_id).await?;
+        let place_entity_kind = match shell.place_entity_id {
+            Some(pid) => talaria_store::get_entity_kind(pool, pid)
+                .await?
+                .map(|s| EntityKind::parse(&s)),
+            None => None,
+        };
+        let ctx = GateContext {
+            subject_birth_year: birth_year.or(subject.birth_year),
+            subject_death_year: death_year.or(subject.death_year),
+            has_active_birth: has_birth,
+            has_active_death: has_death,
+            fingerprint_exists: false,
+            cross_clause_join_detected: raw.cross_clause_join,
+            place_entity_kind,
+        };
+        let decision = apply_gates(&shell, &ctx);
+        let status = decision.status().as_str();
+        let codes = decision.codes();
+        for c in &codes {
+            metrics.bump_loss(c);
         }
-        "needs_review" => {
-            metrics.needs_review += 1;
-            return Ok(());
+        update_event_candidate_judgment(
+            pool,
+            cand_id,
+            status,
+            &codes,
+            &serde_json::json!({"codes": codes, "source": source_kind}),
+            shell.subject_entity_id,
+            shell.place_entity_id,
+            shell.place_label.as_deref(),
+            &serde_json::to_value(&shell.place_mentions)?,
+            &serde_json::to_value(&shell.object_mentions)?,
+            &serde_json::to_value(&shell.participant_mentions)?,
+        )
+        .await?;
+
+        match status {
+            "accepted" => metrics.accepted += 1,
+            "rejected" => {
+                metrics.rejected += 1;
+                return Ok(());
+            }
+            "needs_review" => {
+                metrics.needs_review += 1;
+                return Ok(());
+            }
+            _ => {}
         }
-        _ => {}
     }
 
     // Claim consolidation
@@ -560,6 +601,7 @@ async fn process_raw_candidate(
             time_json: time_to_json(&shell.time),
             place_entity_id: shell.place_entity_id,
             place_label: shell.place_label.clone(),
+            occurrence_stem: Some(stem.clone()),
         },
     )
     .await?;
@@ -578,25 +620,39 @@ async fn process_raw_candidate(
     )
     .await?;
 
-    let participant_ids: Vec<String> = shell
-        .participant_mentions
-        .iter()
-        .filter_map(|m| m.entity_id.map(|id| id.to_string()))
-        .collect();
-    let fp = event_fingerprint(
-        &subject_id.to_string(),
-        &shell.event_type,
-        &shell.predicate,
-        &shell.time,
-        shell.place_entity_id.map(|id| id.to_string()).as_deref(),
-        &participant_ids,
-    );
+    if let Some(places) =
+        abstain_if_competing_place(pool, subject_id, &stem, shell.place_label.as_deref()).await?
+    {
+        let codes = competing_place_codes();
+        update_event_candidate_judgment(
+            pool,
+            cand_id,
+            "needs_review",
+            &codes,
+            &serde_json::json!({"abstain": true, "places": places, "source": source_kind}),
+            shell.subject_entity_id,
+            shell.place_entity_id,
+            shell.place_label.as_deref(),
+            &serde_json::to_value(&shell.place_mentions)?,
+            &serde_json::to_value(&shell.object_mentions)?,
+            &serde_json::to_value(&shell.participant_mentions)?,
+        )
+        .await?;
+        metrics.needs_review += 1;
+        metrics.accepted = metrics.accepted.saturating_sub(1);
+        metrics.bump_loss("competing_place");
+        return Ok(());
+    }
 
-    if let Some(existing) = find_active_quality_event_by_fingerprint(pool, &fp).await? {
-        reinforce_quality_event(pool, existing).await?;
+    if let Some(existing) =
+        find_active_quality_event_by_occurrence_key(pool, subject_id, &occ).await?
+    {
+        if should_reinforce_existing_event(is_new_candidate) {
+            reinforce_quality_event(pool, existing).await?;
+            metrics.events_reinforced += 1;
+        }
         mark_candidate_assembled(pool, cand_id, existing).await?;
         link_claim_to_event(pool, claim_id, existing).await?;
-        metrics.events_reinforced += 1;
         return Ok(());
     }
 
@@ -640,7 +696,7 @@ async fn process_raw_candidate(
         &QualityEventInsert {
             entity_id: subject_id,
             event_type: shell.event_type.clone(),
-            epistemic_status: "attested".into(),
+            epistemic_status: EXTRACTOR_EPISTEMIC_STATUS.into(),
             title: title_derived,
             summary: Some(raw.clause_text.clone()),
             start_time: start_time_from_typed(&shell.time),
@@ -653,7 +709,10 @@ async fn process_raw_candidate(
             map_eligible,
             historically_valid: true,
             timeline_eligible: true,
-            fingerprint: fp,
+            fingerprint: occ.clone(),
+            occurrence_key: Some(occ),
+            occurrence_stem: Some(stem),
+            primary_object,
             predicate: shell.predicate.clone(),
             assembler_version: ASSEMBLER_V1.into(),
             event_candidate_id: cand_id,

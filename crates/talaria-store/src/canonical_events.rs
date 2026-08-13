@@ -443,9 +443,7 @@ pub async fn refresh_event_source_refs(
                     page_title.replace(' ', "_")
                 )
             });
-            let citation_url = revision_url
-                .clone()
-                .unwrap_or_else(|| page_url.clone());
+            let citation_url = revision_url.clone().unwrap_or_else(|| page_url.clone());
             let label = format!("Wikipedia — {page_title}");
             let section_title = row
                 .sentence_ordinal

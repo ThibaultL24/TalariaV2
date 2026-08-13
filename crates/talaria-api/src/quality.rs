@@ -6,20 +6,24 @@ use sha2::{Digest, Sha256};
 use talaria_core::AppConfig;
 use talaria_judge::{parse_place_surface, parse_time_surface};
 use talaria_quality::{
-    apply_gates, candidate_fingerprint, event_fingerprint, parse_typed_time, resolve_mentions,
+    apply_gates, candidate_fingerprint, existing_candidate_action, occurrence_key_for_event,
+    occurrence_stem_for_event, parse_typed_time, resolve_mentions, should_reinforce_existing_event,
     BuildProjections, ClauseAnalyzeInput, ClauseAnalyzer, DerivedLabelProjections,
-    DeterministicClauseAnalyzer, EntityKind, EvidencePtr, GazetteerResolver, GateContext,
-    ParticipantRole, TypedTime, ASSEMBLER_V1, EXTRACTOR_DETERMINISTIC_V1,
+    DeterministicClauseAnalyzer, EntityKind, EvidencePtr, ExistingCandidateAction,
+    EXTRACTOR_EPISTEMIC_STATUS, GateContext, GazetteerResolver, ParticipantRole, TypedTime,
+    ASSEMBLER_V1, EXTRACTOR_DETERMINISTIC_V1,
 };
 use talaria_store::{
-    connect, count_active_quality_by_type, find_active_quality_event_by_fingerprint,
-    find_active_singleton, insert_document_fragment, insert_document_snapshot,
-    insert_quality_canonical_event, mark_candidate_assembled, quality_lifespan_years,
-    quality_report_counts, rejection_reason_counts, run_migrations,
+    connect, count_active_quality_by_type, find_active_quality_event_by_occurrence_key,
+    find_active_singleton, get_event_candidate_by_fingerprint, insert_document_fragment,
+    insert_document_snapshot, insert_quality_canonical_event, mark_candidate_assembled,
+    quality_lifespan_years, quality_report_counts, rejection_reason_counts, run_migrations,
     update_event_candidate_judgment, upsert_entity_with_kind, upsert_event_candidate,
     DocumentFragmentInsert, DocumentSnapshotInsert, EventCandidateInsert, QualityEventInsert,
 };
 use uuid::Uuid;
+
+use crate::place_conflict::{abstain_if_competing_place, competing_place_codes};
 
 fn content_hash(text: &str) -> String {
     let mut hasher = Sha256::new();
@@ -72,7 +76,8 @@ async fn judge_and_maybe_assemble(
     pool: &sqlx::PgPool,
     shell: &mut talaria_quality::EventCandidate,
     candidate_id: Uuid,
-    inserted: bool,
+    is_new_candidate: bool,
+    skip_gates: bool,
     cross_clause_join: bool,
     invalid_place_attempt: bool,
     clause_text: &str,
@@ -95,49 +100,53 @@ async fn judge_and_maybe_assemble(
         None => None,
     };
 
-    let ctx = GateContext {
-        subject_birth_year: birth_year,
-        subject_death_year: death_year,
-        has_active_birth: has_birth,
-        has_active_death: has_death,
-        fingerprint_exists: !inserted,
-        cross_clause_join_detected: cross_clause_join,
-        place_entity_kind,
-    };
+    if !skip_gates {
+        let ctx = GateContext {
+            subject_birth_year: birth_year,
+            subject_death_year: death_year,
+            has_active_birth: has_birth,
+            has_active_death: has_death,
+            fingerprint_exists: false,
+            cross_clause_join_detected: cross_clause_join,
+            place_entity_kind,
+        };
 
-    let decision = apply_gates(shell, &ctx);
-    let status = decision.status().as_str();
-    let codes = decision.codes();
-    let judgment = serde_json::json!({
-        "decision": status,
-        "codes": codes,
-        "cross_clause_join": cross_clause_join,
-        "invalid_place_attempt": invalid_place_attempt,
-    });
+        let decision = apply_gates(shell, &ctx);
+        let status = decision.status().as_str();
+        let codes = decision.codes();
+        let judgment = serde_json::json!({
+            "decision": status,
+            "codes": codes,
+            "cross_clause_join": cross_clause_join,
+            "invalid_place_attempt": invalid_place_attempt,
+        });
 
-    update_event_candidate_judgment(
-        pool,
-        candidate_id,
-        status,
-        &codes,
-        &judgment,
-        shell.subject_entity_id,
-        shell.place_entity_id,
-        shell.place_label.as_deref(),
-        &serde_json::to_value(&shell.place_mentions)?,
-        &serde_json::to_value(&shell.object_mentions)?,
-        &serde_json::to_value(&shell.participant_mentions)?,
-    )
-    .await?;
+        update_event_candidate_judgment(
+            pool,
+            candidate_id,
+            status,
+            &codes,
+            &judgment,
+            shell.subject_entity_id,
+            shell.place_entity_id,
+            shell.place_label.as_deref(),
+            &serde_json::to_value(&shell.place_mentions)?,
+            &serde_json::to_value(&shell.object_mentions)?,
+            &serde_json::to_value(&shell.participant_mentions)?,
+        )
+        .await?;
 
-    match status {
-        "accepted" => stats.accepted += 1,
-        "rejected" => stats.rejected += 1,
-        "needs_review" => stats.needs_review += 1,
-        _ => {}
-    }
+        match status {
+            "accepted" => stats.accepted += 1,
+            "rejected" => stats.rejected += 1,
+            "needs_review" => stats.needs_review += 1,
+            _ => {}
+        }
 
-    if !(assemble && status == "accepted") {
+        if !(assemble && status == "accepted") {
+            return Ok(());
+        }
+    } else if !assemble {
         return Ok(());
     }
 
@@ -150,24 +159,59 @@ async fn judge_and_maybe_assemble(
         .map(|p| (p.lat, p.lon))
         .unwrap_or((None, None));
 
-    let participant_ids: Vec<String> = shell
-        .participant_mentions
-        .iter()
-        .filter_map(|m| m.entity_id.map(|id| id.to_string()))
-        .collect();
-    let fp = event_fingerprint(
-        &subject_entity_id.to_string(),
+    let primary_object = shell.object_mentions.first().map(|m| m.surface.clone());
+    let occ = occurrence_key_for_event(
+        &shell.subject_surface,
         &shell.event_type,
         &shell.predicate,
         &shell.time,
-        shell.place_entity_id.map(|id| id.to_string()).as_deref(),
-        &participant_ids,
+        shell.place_label.as_deref(),
+        primary_object.as_deref(),
+    );
+    let stem = occurrence_stem_for_event(
+        &shell.subject_surface,
+        &shell.event_type,
+        &shell.predicate,
+        &shell.time,
+        primary_object.as_deref(),
     );
 
-    if let Some(existing) = find_active_quality_event_by_fingerprint(pool, &fp).await? {
-        talaria_store::reinforce_quality_event(pool, existing).await?;
+    if let Some(places) = abstain_if_competing_place(
+        pool,
+        subject_entity_id,
+        &stem,
+        shell.place_label.as_deref(),
+    )
+    .await?
+    {
+        let codes = competing_place_codes();
+        update_event_candidate_judgment(
+            pool,
+            candidate_id,
+            "needs_review",
+            &codes,
+            &serde_json::json!({"abstain": true, "places": places}),
+            shell.subject_entity_id,
+            shell.place_entity_id,
+            shell.place_label.as_deref(),
+            &serde_json::to_value(&shell.place_mentions)?,
+            &serde_json::to_value(&shell.object_mentions)?,
+            &serde_json::to_value(&shell.participant_mentions)?,
+        )
+        .await?;
+        stats.needs_review += 1;
+        stats.accepted = stats.accepted.saturating_sub(1);
+        return Ok(());
+    }
+
+    if let Some(existing) =
+        find_active_quality_event_by_occurrence_key(pool, subject_entity_id, &occ).await?
+    {
+        if should_reinforce_existing_event(is_new_candidate) {
+            talaria_store::reinforce_quality_event(pool, existing).await?;
+            stats.assembled_deduped += 1;
+        }
         mark_candidate_assembled(pool, candidate_id, existing).await?;
-        stats.assembled_deduped += 1;
         return Ok(());
     }
 
@@ -201,7 +245,7 @@ async fn judge_and_maybe_assemble(
         &QualityEventInsert {
             entity_id: subject_entity_id,
             event_type: shell.event_type.clone(),
-            epistemic_status: "attested".into(),
+            epistemic_status: EXTRACTOR_EPISTEMIC_STATUS.into(),
             title: title_derived,
             summary: Some(clause_text.to_string()),
             start_time: start_time_from_typed(&shell.time),
@@ -214,7 +258,10 @@ async fn judge_and_maybe_assemble(
             map_eligible,
             historically_valid: true,
             timeline_eligible: true,
-            fingerprint: fp,
+            fingerprint: occ.clone(),
+            occurrence_key: Some(occ),
+            occurrence_stem: Some(stem),
+            primary_object,
             predicate: shell.predicate.clone(),
             assembler_version: ASSEMBLER_V1.into(),
             event_candidate_id: candidate_id,
@@ -354,10 +401,7 @@ pub async fn run_quality_fixture(
             shell.participant_mentions = resolved.participant_mentions.clone();
             shell.place_label = resolved.place_label.clone();
 
-            let subject_kind = resolved
-                .subject_kind
-                .unwrap_or(EntityKind::Person)
-                .as_str();
+            let subject_kind = resolved.subject_kind.unwrap_or(EntityKind::Person).as_str();
             let subject_entity_id = upsert_entity_with_kind(
                 &pool,
                 &config.wiki_lang,
@@ -423,6 +467,16 @@ pub async fn run_quality_fixture(
                     evidence_ptrs: serde_json::to_value(&shell.evidence_ptrs)?,
                     extractor_version: shell.extractor_version.clone(),
                     fingerprint: shell.fingerprint.clone(),
+                    occurrence_key: Some(occurrence_key_for_event(
+                        &shell.subject_surface,
+                        &shell.event_type,
+                        &shell.predicate,
+                        &shell.time,
+                        shell.place_label.as_deref(),
+                        shell.object_mentions.first().map(|m| m.surface.as_str()),
+                    )),
+                    primary_object: shell.object_mentions.first().map(|m| m.surface.clone()),
+                    action_role: Some(shell.predicate.clone()),
                     status: "pending".into(),
                     rejection_codes: vec![],
                     judgment_json: serde_json::json!({}),
@@ -436,7 +490,8 @@ pub async fn run_quality_fixture(
                     &pool,
                     &mut shell,
                     candidate_id,
-                    inserted,
+                    true,
+                    false,
                     ex.cross_clause_join,
                     resolved.invalid_place_attempt,
                     &ex.clause_text,
@@ -445,7 +500,44 @@ pub async fn run_quality_fixture(
                 )
                 .await?;
             } else {
-                stats.candidates_deduped += 1;
+                let existing = get_event_candidate_by_fingerprint(&pool, &shell.fingerprint)
+                    .await?
+                    .ok_or_else(|| anyhow::anyhow!("fingerprint conflict without existing row"))?;
+                match existing_candidate_action(&existing.status) {
+                    ExistingCandidateAction::SkipTerminal => {
+                        stats.candidates_deduped += 1;
+                    }
+                    ExistingCandidateAction::ResumeAssembleOnly => {
+                        judge_and_maybe_assemble(
+                            &pool,
+                            &mut shell,
+                            candidate_id,
+                            false,
+                            true,
+                            ex.cross_clause_join,
+                            resolved.invalid_place_attempt,
+                            &ex.clause_text,
+                            assemble,
+                            &mut stats,
+                        )
+                        .await?;
+                    }
+                    ExistingCandidateAction::ResumeFromGates => {
+                        judge_and_maybe_assemble(
+                            &pool,
+                            &mut shell,
+                            candidate_id,
+                            false,
+                            false,
+                            ex.cross_clause_join,
+                            resolved.invalid_place_attempt,
+                            &ex.clause_text,
+                            assemble,
+                            &mut stats,
+                        )
+                        .await?;
+                    }
+                }
             }
         }
     }
@@ -545,8 +637,7 @@ pub async fn inject_adversarial_candidate(
     let mut invalid_place = false;
     if force_person_as_place {
         if let Some(ps) = place_surface {
-            let person_id =
-                upsert_entity_with_kind(&pool, &config.wiki_lang, ps, "person").await?;
+            let person_id = upsert_entity_with_kind(&pool, &config.wiki_lang, ps, "person").await?;
             shell.place_entity_id = Some(person_id);
             shell.place_label = Some(ps.into());
             shell.place_mentions.push(talaria_quality::Mention {
@@ -565,9 +656,8 @@ pub async fn inject_adversarial_candidate(
         shell.place_label = resolved.place_label;
         if resolved.place_kind == Some(EntityKind::Place) {
             if let Some(label) = &shell.place_label.clone() {
-                shell.place_entity_id = Some(
-                    upsert_entity_with_kind(&pool, &config.wiki_lang, label, "place").await?,
-                );
+                shell.place_entity_id =
+                    Some(upsert_entity_with_kind(&pool, &config.wiki_lang, label, "place").await?);
             }
         }
     }
@@ -605,6 +695,16 @@ pub async fn inject_adversarial_candidate(
             evidence_ptrs: serde_json::to_value(&shell.evidence_ptrs)?,
             extractor_version: shell.extractor_version.clone(),
             fingerprint: shell.fingerprint.clone(),
+            occurrence_key: Some(occurrence_key_for_event(
+                &shell.subject_surface,
+                &shell.event_type,
+                &shell.predicate,
+                &shell.time,
+                shell.place_label.as_deref(),
+                shell.object_mentions.first().map(|m| m.surface.as_str()),
+            )),
+            primary_object: shell.object_mentions.first().map(|m| m.surface.clone()),
+            action_role: Some(shell.predicate.clone()),
             status: "pending".into(),
             rejection_codes: vec![],
             judgment_json: serde_json::json!({}),
@@ -619,6 +719,7 @@ pub async fn inject_adversarial_candidate(
         &mut shell,
         candidate_id,
         inserted,
+        false,
         cross_clause_join,
         invalid_place,
         &text,
@@ -646,10 +747,7 @@ pub async fn run_quality_report(config: &AppConfig) -> anyhow::Result<String> {
     report.push_str(&format!("candidats\t{}\n", counts.candidates));
     report.push_str(&format!("rejetés\t{}\n", counts.rejected));
     for r in &reasons {
-        report.push_str(&format!(
-            "  rejetés par raison\t{}\t{}\n",
-            r.code, r.count
-        ));
+        report.push_str(&format!("  rejetés par raison\t{}\t{}\n", r.code, r.count));
     }
     report.push_str(&format!("à revoir\t{}\n", counts.needs_review));
     report.push_str("claims consolidées\t0\n");
@@ -677,15 +775,6 @@ pub async fn run_quality_supersede_death(
     let old = find_active_singleton(&pool, subject_id, "death").await?;
     let place_id = upsert_entity_with_kind(&pool, &config.wiki_lang, place, "place").await?;
     let time = parse_typed_time(Some(&new_year.to_string()));
-    let fp = event_fingerprint(
-        &subject_id.to_string(),
-        "death",
-        "died_in",
-        &time,
-        Some(&place_id.to_string()),
-        &[],
-    );
-
     let text = format!("{subject} died in {place} in {new_year}.");
     let snap = insert_document_snapshot(
         &pool,
@@ -757,6 +846,16 @@ pub async fn run_quality_supersede_death(
             }]),
             extractor_version: EXTRACTOR_DETERMINISTIC_V1.into(),
             fingerprint: cand_fp,
+            occurrence_key: Some(occurrence_key_for_event(
+                subject,
+                "death",
+                "died_in",
+                &time,
+                Some(place),
+                None,
+            )),
+            primary_object: None,
+            action_role: Some("died_in".into()),
             status: "accepted".into(),
             rejection_codes: vec![],
             judgment_json: serde_json::json!({"supersession": true}),
@@ -766,13 +865,15 @@ pub async fn run_quality_supersede_death(
 
     let place_parsed = parse_place_surface(place);
     // Distinct fingerprint for superseding correction when same year/place already active.
-    let fp = format!("{fp}:correction");
+    let occ = occurrence_key_for_event(subject, "death", "died_in", &time, Some(place), None);
+    let stem = occurrence_stem_for_event(subject, "death", "died_in", &time, None);
+    let fp = format!("{occ}:correction");
     let new_id = insert_quality_canonical_event(
         &pool,
         &QualityEventInsert {
             entity_id: subject_id,
             event_type: "death".into(),
-            epistemic_status: "established".into(),
+            epistemic_status: EXTRACTOR_EPISTEMIC_STATUS.into(),
             title: format!("{subject} — death ({new_year}) @ {place}"),
             summary: Some(text),
             start_time: start_time_from_typed(&time),
@@ -786,6 +887,9 @@ pub async fn run_quality_supersede_death(
             historically_valid: true,
             timeline_eligible: true,
             fingerprint: fp,
+            occurrence_key: Some(occ),
+            occurrence_stem: Some(stem),
+            primary_object: None,
             predicate: "died_in".into(),
             assembler_version: ASSEMBLER_V1.into(),
             event_candidate_id: cand_id,

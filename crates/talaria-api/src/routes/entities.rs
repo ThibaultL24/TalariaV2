@@ -68,7 +68,11 @@ pub async fn search(
 
     let local_qids: std::collections::HashSet<String> = items
         .iter()
-        .filter_map(|item| item.get("qid").and_then(|value| value.as_str()).map(str::to_string))
+        .filter_map(|item| {
+            item.get("qid")
+                .and_then(|value| value.as_str())
+                .map(str::to_string)
+        })
         .collect();
 
     if !state.offline_only && items.len() < query.limit as usize {

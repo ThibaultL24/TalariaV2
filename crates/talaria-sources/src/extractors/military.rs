@@ -68,7 +68,8 @@ impl CandidateExtractor for MilitaryCampaignExtractor {
                 ("surrender", "surrendered_at")
             } else if lower.contains("headquarters") || lower.contains("quartier général") {
                 ("headquarters", "hq_at")
-            } else if lower.contains("campaign") && (lower.contains("began") || lower.contains("opened"))
+            } else if lower.contains("campaign")
+                && (lower.contains("began") || lower.contains("opened"))
             {
                 ("military_campaign", "campaign_at")
             } else {
@@ -132,7 +133,7 @@ fn title_case_place(s: &str) -> String {
         .next()
         .unwrap_or(s)
         .trim()
-        .trim_end_matches(|c: char| c == '.' || c == ',')
+        .trim_end_matches(['.', ','])
         .to_string()
 }
 

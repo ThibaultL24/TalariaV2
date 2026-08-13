@@ -1,12 +1,23 @@
 // crates/talaria-api/src/main.rs
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::collapsible_if)]
+#![allow(clippy::redundant_closure)]
+#![allow(clippy::useless_format)]
+#![allow(clippy::if_same_then_else)]
+#![allow(clippy::needless_borrows_for_generic_args)]
+#![allow(clippy::unnecessary_cast)]
+#![allow(dead_code)]
+
 mod claim_extract;
 mod cli;
+mod corpus_ingest;
 mod cosmos;
 mod geocode;
 mod ingest;
 mod judge;
 mod lot_e;
 mod narrative_dossier;
+mod place_conflict;
 mod quality;
 mod routes;
 mod wikidata_ingest;
@@ -37,23 +48,23 @@ async fn main() -> anyhow::Result<()> {
             main_namespace,
             skip_existing,
         } => {
-            cli::run_extract_pages(&config, dump, index, limit, main_namespace, skip_existing).await?
+            cli::run_extract_pages(&config, dump, index, limit, main_namespace, skip_existing)
+                .await?
         }
         Commands::DataInit => {
             talaria_dump::ensure_data_dirs(&config)?;
             tracing::info!(root = %config.data_root.display(), "data directories ready");
         }
-        Commands::SplitSentences { limit, skip_existing } => {
-            cli::run_split_sentences(&config, limit, skip_existing).await?
-        }
+        Commands::SplitSentences {
+            limit,
+            skip_existing,
+        } => cli::run_split_sentences(&config, limit, skip_existing).await?,
         Commands::CosmosExtract {
             batch_size,
             limit,
             skip_existing,
             mock,
-        } => {
-            cosmos::run_cosmos_extract(&config, batch_size, limit, skip_existing, mock).await?
-        }
+        } => cosmos::run_cosmos_extract(&config, batch_size, limit, skip_existing, mock).await?,
         Commands::JudgeCandidates { limit } => judge::run_judge_candidates(&config, limit).await?,
         Commands::GeocodePlaces { limit } => geocode::run_geocode_places(&config, limit).await?,
         Commands::QualityFixture {
@@ -169,6 +180,27 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::ClaimsExtract { limit } => {
             claim_extract::run_claims_extract(&config, limit).await?
+        }
+        Commands::CorpusIngest {
+            subject,
+            qid,
+            providers,
+            limit,
+            fixture,
+            fixture_dir,
+            live,
+        } => {
+            let _ = corpus_ingest::run_corpus_ingest(
+                &config,
+                &subject,
+                qid.as_deref(),
+                &providers,
+                limit,
+                fixture && !live,
+                fixture_dir,
+                live,
+            )
+            .await?;
         }
     }
 

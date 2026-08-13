@@ -1,0 +1,22 @@
+{
+  "titrePrincipal": "La chimie des polymères au XXIe siècle",
+  "nnt": "2015PA010999",
+  "dateSoutenance": "2015-11-02",
+  "discipline": "Chimie",
+  "titres": { "fr": "La chimie des polymères au XXIe siècle" },
+  "resumes": { "fr": "Étude expérimentale des polymères conducteurs." },
+  "etabSoutenance": { "ppn": "026404451", "nom": "Sorbonne Université", "type": "etab" },
+  "mapSujets": {
+    "sujets": [{ "keyword": "Polymères", "type": "sujet", "query": "Polymeres" }]
+  },
+  "auteurs": [{ "nom": "Nguyen", "prenom": "Minh" }],
+  "directeurs": [],
+  "membresJury": [],
+  "rapporteurs": [],
+  "langues": ["fr"],
+  "accessible": "non",
+  "ecolesDoctorales": [],
+  "source": "star",
+  "status": "soutenue",
+  "isSoutenue": true
+}

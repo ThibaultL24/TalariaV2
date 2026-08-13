@@ -2,7 +2,9 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use talaria_core::AppConfig;
-use talaria_dump::{build_extract_job, content_hash, read_multistream_index, run_page_extraction, write_index_jsonl};
+use talaria_dump::{
+    build_extract_job, content_hash, read_multistream_index, run_page_extraction, write_index_jsonl,
+};
 use talaria_store::{
     connect, finish_dump_run, list_pages_for_sentence_split, replace_sentences_for_page,
     run_migrations, start_dump_run, store_extracted_page, SentenceRecord, WikiPageRecord,
@@ -37,7 +39,11 @@ pub enum Commands {
         index: Option<PathBuf>,
         #[arg(long, default_value = "0", help = "Max pages (0 = all indexed)")]
         limit: usize,
-        #[arg(long, default_value_t = true, help = "Only namespace 0 (main articles)")]
+        #[arg(
+            long,
+            default_value_t = true,
+            help = "Only namespace 0 (main articles)"
+        )]
         main_namespace: bool,
         #[arg(long, help = "Skip pages already stored with same content hash")]
         skip_existing: bool,
@@ -46,7 +52,11 @@ pub enum Commands {
     DataInit,
     /// Split stored wiki pages into sentences
     SplitSentences {
-        #[arg(long, default_value = "0", help = "Max pages to process (0 = all pending)")]
+        #[arg(
+            long,
+            default_value = "0",
+            help = "Max pages to process (0 = all pending)"
+        )]
         limit: i64,
         #[arg(long, help = "Skip pages that already have sentences")]
         skip_existing: bool,
@@ -112,14 +122,21 @@ pub enum Commands {
         subject: String,
         #[arg(long)]
         qid: Option<String>,
-        #[arg(long, value_delimiter = ',', help = "Optional source filter, e.g. wikidata,wikipedia,fixture")]
+        #[arg(
+            long,
+            value_delimiter = ',',
+            help = "Optional source filter, e.g. wikidata,wikipedia,fixture"
+        )]
         sources: Option<Vec<String>>,
         #[arg(long, default_value_t = true, action = clap::ArgAction::Set, help = "Use deterministic fixture corpus")]
         fixture: bool,
         #[arg(long, help = "Call live Wikimedia APIs (requires network)")]
         live: bool,
         /// Lot E: seed-driven dense Wikipedia exploration toward density targets
-        #[arg(long, help = "Path to seed title list (enables Lot E density ingest when --live)")]
+        #[arg(
+            long,
+            help = "Path to seed title list (enables Lot E density ingest when --live)"
+        )]
         seed_list: Option<PathBuf>,
         #[arg(long, default_value_t = 500)]
         target_timeline_events: u32,
@@ -133,16 +150,27 @@ pub enum Commands {
         max_documents_per_source: u32,
         #[arg(long, help = "Cap seed titles processed (0 = all)")]
         max_titles: Option<u32>,
-        #[arg(long, default_value = "en", help = "Wikipedia language for Lot E seed fetch")]
+        #[arg(
+            long,
+            default_value = "en",
+            help = "Wikipedia language for Lot E seed fetch"
+        )]
         wiki_lang: String,
-        #[arg(long, help = "Resume flag reserved for exploration queue (accepted, Lot E uses seed cursor)")]
+        #[arg(
+            long,
+            help = "Resume flag reserved for exploration queue (accepted, Lot E uses seed cursor)"
+        )]
         resume: bool,
     },
     /// Resolve unresolved quality places (offline gazetteer / aliases)
     ResolvePlaces {
         #[arg(long)]
         subject: String,
-        #[arg(long, default_value_t = true, help = "Resolve all unresolved timeline-eligible events")]
+        #[arg(
+            long,
+            default_value_t = true,
+            help = "Resolve all unresolved timeline-eligible events"
+        )]
         all_unresolved: bool,
         #[arg(long, help = "Allow live Wikidata P625 (optional; offline used first)")]
         live: bool,
@@ -181,6 +209,23 @@ pub enum Commands {
     ClaimsExtract {
         #[arg(long, default_value = "0", help = "Max sentences (0 = all pending)")]
         limit: i64,
+    },
+    /// Corpus bibliographic ingest (theses.fr PR1; no claims/events)
+    CorpusIngest {
+        #[arg(long)]
+        subject: String,
+        #[arg(long)]
+        qid: Option<String>,
+        #[arg(long, value_delimiter = ',', default_value = "theses_fr")]
+        providers: Vec<String>,
+        #[arg(long, default_value_t = 25)]
+        limit: u32,
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set, help = "Use frozen fixtures (no network)")]
+        fixture: bool,
+        #[arg(long, help = "Fixture directory (default fixtures/theses_fr)")]
+        fixture_dir: Option<PathBuf>,
+        #[arg(long, help = "Call live provider APIs")]
+        live: bool,
     },
 }
 
@@ -346,9 +391,10 @@ pub async fn run_split_sentences(
 
         let count = replace_sentences_for_page(&pool, page.id, &records).await?;
 
-        let section_spans =
-            tokio::task::spawn_blocking(move || talaria_text::split_wiki_sections(&wikitext_for_sections))
-                .await?;
+        let section_spans = tokio::task::spawn_blocking(move || {
+            talaria_text::split_wiki_sections(&wikitext_for_sections)
+        })
+        .await?;
         let section_records: Vec<talaria_store::WikiSectionRecord> = section_spans
             .into_iter()
             .map(|section| {
@@ -362,7 +408,8 @@ pub async fn run_split_sentences(
             .filter(|section| !section.text.trim().is_empty())
             .collect();
         if !section_records.is_empty() {
-            let _ = talaria_store::replace_sections_for_page(&pool, page.id, &section_records).await?;
+            let _ =
+                talaria_store::replace_sections_for_page(&pool, page.id, &section_records).await?;
         }
 
         pages_processed += 1;

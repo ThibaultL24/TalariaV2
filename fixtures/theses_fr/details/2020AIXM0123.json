@@ -1,0 +1,41 @@
+{
+  "titrePrincipal": "Napoléon Bonaparte et la construction de l'État moderne",
+  "nnt": "2020AIXM0123",
+  "doi": "10.1234/theses.napoleon.state",
+  "dateSoutenance": "2020-06-15",
+  "discipline": "Histoire",
+  "titres": {
+    "fr": "Napoléon Bonaparte et la construction de l'État moderne",
+    "en": "Napoleon Bonaparte and the making of the modern state"
+  },
+  "resumes": {
+    "fr": "Cette thèse analyse le rôle de Napoléon dans la modernisation administrative française entre 1799 et 1815.",
+    "en": "This thesis analyses Napoleon's role in French administrative modernization."
+  },
+  "etabSoutenance": { "ppn": "026403715", "nom": "Aix-Marseille Université", "type": "etab" },
+  "codeEtab": "AIXM",
+  "etabCotutelle": [],
+  "partenairesRecherche": [],
+  "mapSujets": {
+    "rameau": [
+      {
+        "keyword": "Napoléon I (empereur des Français ; 1769-1821)",
+        "type": "sujetsRameau",
+        "query": "027248840"
+      }
+    ],
+    "sujets": [{ "keyword": "Empire", "type": "sujet", "query": "Empire" }]
+  },
+  "membresJury": [{ "ppn": "111222333", "nom": "Petit", "prenom": "Sophie" }],
+  "rapporteurs": [{ "ppn": "444555666", "nom": "Garcia", "prenom": "Luis" }],
+  "auteurs": [{ "ppn": "123456789", "nom": "Dupont", "prenom": "Alice" }],
+  "directeurs": [{ "ppn": "987654321", "nom": "Martin", "prenom": "Jean" }],
+  "langues": ["fr"],
+  "cas": "ok",
+  "accessible": "oui",
+  "ecolesDoctorales": [{ "ppn": "000111222", "nom": "ED 355", "type": "ed" }],
+  "presidentJury": { "ppn": "777888999", "nom": "Blanc", "prenom": "Marie" },
+  "source": "star",
+  "status": "soutenue",
+  "isSoutenue": true
+}

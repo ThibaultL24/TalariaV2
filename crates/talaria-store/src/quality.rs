@@ -34,15 +34,15 @@ pub async fn insert_document_snapshot(
     pool: &PgPool,
     snap: &DocumentSnapshotInsert,
 ) -> anyhow::Result<Uuid> {
-    let id: Uuid = sqlx::query_scalar(
+    // Append-only: never mutate an existing snapshot row (title/text/metadata stay frozen).
+    let inserted: Option<(Uuid,)> = sqlx::query_as(
         r#"
         INSERT INTO document_snapshots (
             source_type, source_uri, source_identifier, language, title,
             content_hash, revision_id, wiki_page_id, raw_document_id, text, metadata
         )
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-        ON CONFLICT (source_type, source_uri, content_hash) DO UPDATE SET
-            title = EXCLUDED.title
+        ON CONFLICT (source_type, source_uri, content_hash) DO NOTHING
         RETURNING id
         "#,
     )
@@ -57,6 +57,20 @@ pub async fn insert_document_snapshot(
     .bind(snap.raw_document_id)
     .bind(&snap.text)
     .bind(&snap.metadata)
+    .fetch_optional(pool)
+    .await?;
+    if let Some((id,)) = inserted {
+        return Ok(id);
+    }
+    let id: Uuid = sqlx::query_scalar(
+        r#"
+        SELECT id FROM document_snapshots
+        WHERE source_type = $1 AND source_uri = $2 AND content_hash = $3
+        "#,
+    )
+    .bind(&snap.source_type)
+    .bind(&snap.source_uri)
+    .bind(&snap.content_hash)
     .fetch_one(pool)
     .await?;
     Ok(id)
@@ -200,7 +214,12 @@ pub struct EventCandidateInsert {
     pub place_label: Option<String>,
     pub evidence_ptrs: serde_json::Value,
     pub extractor_version: String,
+    /// Snapshot-local extraction idempotence (≠ historical occurrence).
     pub fingerprint: String,
+    /// Shared historical identity across extractors / sources.
+    pub occurrence_key: Option<String>,
+    pub primary_object: Option<String>,
+    pub action_role: Option<String>,
     pub status: String,
     pub rejection_codes: Vec<String>,
     pub judgment_json: serde_json::Value,
@@ -243,10 +262,11 @@ pub async fn upsert_event_candidate(
             subject_surface, subject_entity_id, event_type, predicate, time_json,
             place_mentions, object_mentions, participant_mentions,
             place_entity_id, place_label, evidence_ptrs,
-            extractor_version, fingerprint, status, rejection_codes, judgment_json
+            extractor_version, fingerprint, occurrence_key, primary_object, action_role,
+            status, rejection_codes, judgment_json
         )
         VALUES (
-            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22
         )
         ON CONFLICT (fingerprint) DO NOTHING
         RETURNING id
@@ -268,6 +288,9 @@ pub async fn upsert_event_candidate(
     .bind(&c.evidence_ptrs)
     .bind(&c.extractor_version)
     .bind(&c.fingerprint)
+    .bind(&c.occurrence_key)
+    .bind(&c.primary_object)
+    .bind(&c.action_role)
     .bind(&c.status)
     .bind(&c.rejection_codes)
     .bind(&c.judgment_json)
@@ -278,12 +301,11 @@ pub async fn upsert_event_candidate(
         return Ok((id, true));
     }
 
-    let existing: Uuid = sqlx::query_scalar(
-        r#"SELECT id FROM event_candidates WHERE fingerprint = $1"#,
-    )
-    .bind(&c.fingerprint)
-    .fetch_one(pool)
-    .await?;
+    let existing: Uuid =
+        sqlx::query_scalar(r#"SELECT id FROM event_candidates WHERE fingerprint = $1"#)
+            .bind(&c.fingerprint)
+            .fetch_one(pool)
+            .await?;
     Ok((existing, false))
 }
 
@@ -524,11 +546,10 @@ pub async fn upsert_entity_with_kind(
 }
 
 pub async fn get_entity_kind(pool: &PgPool, entity_id: Uuid) -> anyhow::Result<Option<String>> {
-    let kind: Option<String> =
-        sqlx::query_scalar(r#"SELECT kind FROM entities WHERE id = $1"#)
-            .bind(entity_id)
-            .fetch_optional(pool)
-            .await?;
+    let kind: Option<String> = sqlx::query_scalar(r#"SELECT kind FROM entities WHERE id = $1"#)
+        .bind(entity_id)
+        .fetch_optional(pool)
+        .await?;
     Ok(kind)
 }
 
@@ -589,7 +610,11 @@ pub struct QualityEventInsert {
     pub map_eligible: bool,
     pub historically_valid: bool,
     pub timeline_eligible: bool,
+    /// Prefer same value as `occurrence_key` for active quality uniqueness.
     pub fingerprint: String,
+    pub occurrence_key: Option<String>,
+    pub occurrence_stem: Option<String>,
+    pub primary_object: Option<String>,
     pub predicate: String,
     pub assembler_version: String,
     pub event_candidate_id: Uuid,
@@ -624,13 +649,13 @@ pub async fn insert_quality_canonical_event(
                 entity_id, event_type, epistemic_status, title, summary, start_time, time_json,
                 place_label, place_entity_id, geom, confidence, map_eligible,
                 historically_valid, timeline_eligible, source_count, evidence_count,
-                fingerprint, is_active, supersedes, predicate, assembler_version,
-                pipeline, event_candidate_id
+                fingerprint, occurrence_key, occurrence_stem, primary_object, is_active, supersedes, predicate,
+                assembler_version, pipeline, event_candidate_id
             )
             VALUES (
                 $1,$2,$3,$4,$5,$6,$7,$8,$9,
                 ST_SetSRID(ST_MakePoint($10,$11),4326)::geography,
-                $12,$13,$14,$15,$16,$17,$18,true,$19,$20,$21,'quality',$22
+                $12,$13,$14,$15,$16,$17,$18,$19,$20,$21,true,$22,$23,$24,'quality',$25
             )
             RETURNING id
             "#,
@@ -653,6 +678,9 @@ pub async fn insert_quality_canonical_event(
         .bind(event.source_count)
         .bind(event.evidence_count)
         .bind(&event.fingerprint)
+        .bind(&event.occurrence_key)
+        .bind(&event.occurrence_stem)
+        .bind(&event.primary_object)
         .bind(event.supersedes)
         .bind(&event.predicate)
         .bind(&event.assembler_version)
@@ -666,11 +694,11 @@ pub async fn insert_quality_canonical_event(
                 entity_id, event_type, epistemic_status, title, summary, start_time, time_json,
                 place_label, place_entity_id, confidence, map_eligible,
                 historically_valid, timeline_eligible, source_count, evidence_count,
-                fingerprint, is_active, supersedes, predicate, assembler_version,
-                pipeline, event_candidate_id
+                fingerprint, occurrence_key, occurrence_stem, primary_object, is_active, supersedes, predicate,
+                assembler_version, pipeline, event_candidate_id
             )
             VALUES (
-                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,true,$17,$18,$19,'quality',$20
+                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,true,$20,$21,$22,'quality',$23
             )
             RETURNING id
             "#,
@@ -691,6 +719,9 @@ pub async fn insert_quality_canonical_event(
         .bind(event.source_count)
         .bind(event.evidence_count)
         .bind(&event.fingerprint)
+        .bind(&event.occurrence_key)
+        .bind(&event.occurrence_stem)
+        .bind(&event.primary_object)
         .bind(event.supersedes)
         .bind(&event.predicate)
         .bind(&event.assembler_version)
@@ -700,13 +731,11 @@ pub async fn insert_quality_canonical_event(
     };
 
     if let Some(old_id) = event.supersedes {
-        sqlx::query(
-            r#"UPDATE canonical_events SET superseded_by = $1 WHERE id = $2"#,
-        )
-        .bind(id)
-        .bind(old_id)
-        .execute(pool)
-        .await?;
+        sqlx::query(r#"UPDATE canonical_events SET superseded_by = $1 WHERE id = $2"#)
+            .bind(id)
+            .bind(old_id)
+            .execute(pool)
+            .await?;
     }
 
     Ok(id)
@@ -729,11 +758,31 @@ pub async fn find_active_quality_event_by_fingerprint(
     Ok(id)
 }
 
-/// Reinforce an existing quality event with another source/evidence (no new map point).
-pub async fn reinforce_quality_event(
+/// Look up an active quality event by shared historical occurrence identity.
+pub async fn find_active_quality_event_by_occurrence_key(
     pool: &PgPool,
-    event_id: Uuid,
-) -> anyhow::Result<()> {
+    entity_id: Uuid,
+    occurrence_key: &str,
+) -> anyhow::Result<Option<Uuid>> {
+    let id: Option<Uuid> = sqlx::query_scalar(
+        r#"
+        SELECT id FROM canonical_events
+        WHERE entity_id = $1
+          AND occurrence_key = $2
+          AND pipeline = 'quality'
+          AND is_active
+        LIMIT 1
+        "#,
+    )
+    .bind(entity_id)
+    .bind(occurrence_key)
+    .fetch_optional(pool)
+    .await?;
+    Ok(id)
+}
+
+/// Reinforce an existing quality event with another source/evidence (no new map point).
+pub async fn reinforce_quality_event(pool: &PgPool, event_id: Uuid) -> anyhow::Result<()> {
     sqlx::query(
         r#"
         UPDATE canonical_events SET

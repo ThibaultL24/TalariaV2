@@ -111,11 +111,7 @@ pub async fn find_entity_by_qid(pool: &PgPool, qid: &str) -> anyhow::Result<Opti
     Ok(row)
 }
 
-pub async fn update_entity_qid(
-    pool: &PgPool,
-    entity_id: Uuid,
-    qid: &str,
-) -> anyhow::Result<()> {
+pub async fn update_entity_qid(pool: &PgPool, entity_id: Uuid, qid: &str) -> anyhow::Result<()> {
     sqlx::query("UPDATE entities SET qid = $2 WHERE id = $1")
         .bind(entity_id)
         .bind(qid)
@@ -163,8 +159,7 @@ pub async fn upsert_entity_from_wikidata(
     if let Some(existing) = find_entity_by_qid(pool, qid).await? {
         return Ok(existing.id);
     }
-    if let Some(existing) =
-        find_entity_by_wikipedia_title(pool, wiki_lang, wikipedia_title).await?
+    if let Some(existing) = find_entity_by_wikipedia_title(pool, wiki_lang, wikipedia_title).await?
     {
         update_entity_qid(pool, existing.id, qid).await?;
         sqlx::query(

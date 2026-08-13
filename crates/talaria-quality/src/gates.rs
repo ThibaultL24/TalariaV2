@@ -13,6 +13,7 @@ pub enum RejectionCode {
     SingletonCardinalityViolation,
     MissingEvidence,
     DuplicateCandidate,
+    CompetingPlace,
 }
 
 impl RejectionCode {
@@ -26,6 +27,7 @@ impl RejectionCode {
             Self::SingletonCardinalityViolation => "singleton_cardinality_violation",
             Self::MissingEvidence => "missing_evidence",
             Self::DuplicateCandidate => "duplicate_candidate",
+            Self::CompetingPlace => "competing_place",
         }
     }
 
@@ -39,6 +41,7 @@ impl RejectionCode {
             "singleton_cardinality_violation" => Self::SingletonCardinalityViolation,
             "missing_evidence" => Self::MissingEvidence,
             "duplicate_candidate" => Self::DuplicateCandidate,
+            "competing_place" => Self::CompetingPlace,
             _ => return None,
         })
     }

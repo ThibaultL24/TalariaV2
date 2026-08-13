@@ -53,10 +53,7 @@ pub async fn run_wikidata_ingest(
     Ok(())
 }
 
-async fn persist_human(
-    pool: &sqlx::PgPool,
-    human: &WikidataHuman,
-) -> anyhow::Result<uuid::Uuid> {
+async fn persist_human(pool: &sqlx::PgPool, human: &WikidataHuman) -> anyhow::Result<uuid::Uuid> {
     let entity_id = resolve_entity(pool, human).await?;
 
     for profile in &human.profiles {
@@ -77,10 +74,7 @@ async fn persist_human(
     Ok(entity_id)
 }
 
-async fn resolve_entity(
-    pool: &sqlx::PgPool,
-    human: &WikidataHuman,
-) -> anyhow::Result<uuid::Uuid> {
+async fn resolve_entity(pool: &sqlx::PgPool, human: &WikidataHuman) -> anyhow::Result<uuid::Uuid> {
     use talaria_store::{find_entity_by_qid, find_entity_by_wikipedia_title, update_entity_qid};
 
     if let Some(existing) = find_entity_by_qid(pool, &human.qid).await? {

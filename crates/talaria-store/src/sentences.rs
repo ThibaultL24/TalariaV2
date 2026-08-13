@@ -11,12 +11,11 @@ pub struct SentenceRecord {
 }
 
 pub async fn page_has_sentences(pool: &PgPool, wiki_page_id: Uuid) -> anyhow::Result<bool> {
-    let exists: bool = sqlx::query_scalar(
-        "SELECT EXISTS(SELECT 1 FROM sentences WHERE wiki_page_id = $1)",
-    )
-    .bind(wiki_page_id)
-    .fetch_one(pool)
-    .await?;
+    let exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM sentences WHERE wiki_page_id = $1)")
+            .bind(wiki_page_id)
+            .fetch_one(pool)
+            .await?;
 
     Ok(exists)
 }

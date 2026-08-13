@@ -1,7 +1,7 @@
 // crates/talaria-sources/tests/lot_a_foundations.rs
 use talaria_sources::connectors::FixtureConnector;
 use talaria_sources::extractors::{
-    claim_fingerprint, default_extractor_stack, CandidateExtractor, ClaimKey, ExtractorInput,
+    claim_fingerprint, default_extractor_stack, ClaimKey, ExtractorInput,
 };
 use talaria_sources::{
     plan_sources, BudgetCounters, DiscoveryCursor, IngestBudgets, ResolvedSubject, SourceConnector,

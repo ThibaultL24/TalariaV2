@@ -270,8 +270,7 @@ mod tests {
     fn no_cross_clause_year_place_join() {
         let analyzer = DeterministicClauseAnalyzer;
         let input = ClauseAnalyzeInput {
-            text: "He was born in Ajaccio. He later fought at Leipzig in 1813."
-                .into(),
+            text: "He was born in Ajaccio. He later fought at Leipzig in 1813.".into(),
             page_title: Some("Napoleon".into()),
             start_offset: 0,
         };
@@ -298,8 +297,7 @@ mod tests {
         let analyzer = DeterministicClauseAnalyzer;
         // Classic noise pattern: year in clause A, place+verb in clause B
         let input = ClauseAnalyzeInput {
-            text: "In 1774 his father died; he fought in Leipzig."
-                .into(),
+            text: "In 1774 his father died; he fought in Leipzig.".into(),
             page_title: Some("Napoleon".into()),
             start_offset: 0,
         };
