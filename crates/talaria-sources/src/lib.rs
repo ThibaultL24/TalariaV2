@@ -23,6 +23,7 @@ mod types;
 pub mod connectors;
 pub mod extractors;
 pub mod historiography;
+pub mod wdqs;
 
 pub use budgets::{BudgetCounters, BudgetExhausted, IngestBudgets};
 pub use connector::{
@@ -51,4 +52,9 @@ pub use registry::{ConnectorRegistration, SourceRegistry};
 pub use seeds::{is_high_value_link_title, load_seed_titles};
 pub use types::{DiscoveredDocument, ExternalEntityRef, SourceMetadata, TypedTimeLite};
 
-pub use connectors::{normalize_these_detail, ThesesFrConfig, ThesesFrConnector};
+pub use connectors::{
+    normalize_bnf_notice, normalize_europeana_item, normalize_ia_item, normalize_openalex_work,
+    normalize_these_detail, BnfConfig, BnfConnector, CorpusConnectors, EuropeanaConfig,
+    EuropeanaConnector, InternetArchiveConfig, InternetArchiveConnector, OpenAlexConfig,
+    OpenAlexConnector, ThesesFrConfig, ThesesFrConnector,
+};

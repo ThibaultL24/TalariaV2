@@ -61,6 +61,8 @@ impl CandidateExtractor for TimelineListExtractor {
                 cross_clause_join: false,
                 extractor_id: self.extractor_id().into(),
                 is_posthumous,
+                lat: None,
+                lon: None,
             });
         }
         out

@@ -39,6 +39,8 @@ pub struct RawCandidate {
     pub cross_clause_join: bool,
     pub extractor_id: String,
     pub is_posthumous: bool,
+    pub lat: Option<f64>,
+    pub lon: Option<f64>,
 }
 
 pub trait CandidateExtractor: Send + Sync {

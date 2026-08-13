@@ -1,11 +1,25 @@
 // crates/talaria-sources/src/connectors/mod.rs
+mod bnf;
+mod europeana;
 mod fixture;
+mod internet_archive;
+mod net;
+mod openalex;
 mod stub;
 mod theses_fr;
 mod wikidata;
 mod wikipedia;
 
+pub use bnf::{normalize_bnf_notice, BnfConfig, BnfConnector};
+pub use europeana::{normalize_europeana_item, EuropeanaConfig, EuropeanaConnector};
 pub use fixture::FixtureConnector;
+pub use internet_archive::{
+    normalize_ia_item, InternetArchiveConfig, InternetArchiveConnector,
+};
+pub use openalex::{
+    normalize_openalex_work, openalex_debate_query, OpenAlexConfig, OpenAlexConnector,
+    CONNECTOR_VERSION as OPENALEX_VERSION,
+};
 pub use stub::StubConnector;
 pub use theses_fr::{
     normalize_these_detail, ThesesFrConfig, ThesesFrConnector,
@@ -18,6 +32,15 @@ use std::sync::Arc;
 
 use crate::kinds::{AuthorityTier, DocumentType, SourceAccessMode, SourceCapabilities, SourceKind};
 use crate::registry::{ConnectorRegistration, SourceRegistry};
+
+#[derive(Default)]
+pub struct CorpusConnectors {
+    pub theses_fr: Option<ThesesFrConnector>,
+    pub open_alex: Option<OpenAlexConnector>,
+    pub internet_archive: Option<InternetArchiveConnector>,
+    pub europeana: Option<EuropeanaConnector>,
+    pub bnf: Option<BnfConnector>,
+}
 
 fn caps_wikidata() -> SourceCapabilities {
     SourceCapabilities {
@@ -83,6 +106,53 @@ fn caps_fixture() -> SourceCapabilities {
         default_confidence_ocr: 1.0,
         identifiers: vec![],
         document_types: vec![DocumentType::Article, DocumentType::StructuredStatement],
+    }
+}
+
+fn caps_open_alex() -> SourceCapabilities {
+    SourceCapabilities {
+        access_mode: SourceAccessMode::Api,
+        authority_tier: AuthorityTier::ScholarlyIndex,
+        provides_text: true,
+        provides_structured_statements: true,
+        provides_coordinates: false,
+        provides_identifiers: true,
+        provides_full_text: false,
+        provides_ocr: false,
+        provides_iiif: false,
+        provides_audiovisual: false,
+        provides_authority_alignment: false,
+        license_notes: "OpenAlex metadata (CC0); abstracts only, never PDF".into(),
+        default_confidence_structured: 0.8,
+        default_confidence_ocr: 0.0,
+        identifiers: vec!["doi".into(), "openalex".into()],
+        document_types: vec![DocumentType::AcademicArticle, DocumentType::Thesis],
+    }
+}
+
+fn caps_notice(kind: SourceKind) -> SourceCapabilities {
+    let (tier, idents) = match kind {
+        SourceKind::Bnf => (AuthorityTier::Institutional, vec!["ark".into()]),
+        SourceKind::Europeana => (AuthorityTier::HeritageAggregator, vec!["europeana".into()]),
+        _ => (AuthorityTier::HeritageAggregator, vec!["ia".into()]),
+    };
+    SourceCapabilities {
+        access_mode: SourceAccessMode::Api,
+        authority_tier: tier,
+        provides_text: true,
+        provides_structured_statements: true,
+        provides_coordinates: false,
+        provides_identifiers: true,
+        provides_full_text: false,
+        provides_ocr: false,
+        provides_iiif: matches!(kind, SourceKind::Europeana),
+        provides_audiovisual: false,
+        provides_authority_alignment: matches!(kind, SourceKind::Bnf),
+        license_notes: "metadata notices only; never PDF/OCR/media bytes".into(),
+        default_confidence_structured: 0.7,
+        default_confidence_ocr: 0.0,
+        identifiers: idents,
+        document_types: vec![DocumentType::BibliographicNotice],
     }
 }
 
@@ -180,7 +250,7 @@ pub fn default_registry(
     fixture: Option<FixtureConnector>,
     enable_live_wikimedia: bool,
 ) -> anyhow::Result<SourceRegistry> {
-    default_registry_with_theses(fixture, enable_live_wikimedia, None)
+    default_registry_corpus(fixture, enable_live_wikimedia, None, None)
 }
 
 pub fn default_registry_with_theses(
@@ -188,6 +258,38 @@ pub fn default_registry_with_theses(
     enable_live_wikimedia: bool,
     theses_fr: Option<ThesesFrConnector>,
 ) -> anyhow::Result<SourceRegistry> {
+    default_registry_corpus(fixture, enable_live_wikimedia, theses_fr, None)
+}
+
+pub fn default_registry_corpus(
+    fixture: Option<FixtureConnector>,
+    enable_live_wikimedia: bool,
+    theses_fr: Option<ThesesFrConnector>,
+    open_alex: Option<OpenAlexConnector>,
+) -> anyhow::Result<SourceRegistry> {
+    default_registry_with_corpus(
+        fixture,
+        enable_live_wikimedia,
+        CorpusConnectors {
+            theses_fr,
+            open_alex,
+            ..CorpusConnectors::default()
+        },
+    )
+}
+
+pub fn default_registry_with_corpus(
+    fixture: Option<FixtureConnector>,
+    enable_live_wikimedia: bool,
+    corpus: CorpusConnectors,
+) -> anyhow::Result<SourceRegistry> {
+    let CorpusConnectors {
+        theses_fr,
+        open_alex,
+        internet_archive,
+        europeana,
+        bnf,
+    } = corpus;
     let mut reg = SourceRegistry::new();
 
     if let Some(fx) = fixture {
@@ -259,21 +361,102 @@ pub fn default_registry_with_theses(
         });
     }
 
+    if let Some(oa) = open_alex {
+        reg.register(ConnectorRegistration {
+            kind: SourceKind::OpenAlex,
+            implemented: true,
+            capabilities: caps_open_alex(),
+            connector: Some(Arc::new(oa)),
+            config_notes: "OpenAlex works API (title + abstract; fixture or live)".into(),
+        });
+    } else {
+        reg.register(ConnectorRegistration {
+            kind: SourceKind::OpenAlex,
+            implemented: false,
+            capabilities: caps_open_alex(),
+            connector: Some(Arc::new(StubConnector::new(
+                SourceKind::OpenAlex,
+                "pass OpenAlexConnector (fixture dir or live)",
+            ))),
+            config_notes: "not wired; use corpus-ingest --providers open_alex --fixture or --live"
+                .into(),
+        });
+    }
+
+    if let Some(ia) = internet_archive {
+        reg.register(ConnectorRegistration {
+            kind: SourceKind::InternetArchive,
+            implemented: true,
+            capabilities: caps_notice(SourceKind::InternetArchive),
+            connector: Some(Arc::new(ia)),
+            config_notes: "Internet Archive search+metadata (texts; fixture or live)".into(),
+        });
+    } else {
+        reg.register(ConnectorRegistration {
+            kind: SourceKind::InternetArchive,
+            implemented: false,
+            capabilities: caps_notice(SourceKind::InternetArchive),
+            connector: Some(Arc::new(StubConnector::new(
+                SourceKind::InternetArchive,
+                "pass InternetArchiveConnector",
+            ))),
+            config_notes: "not wired; corpus-ingest --providers internet_archive".into(),
+        });
+    }
+
+    if let Some(eu) = europeana {
+        reg.register(ConnectorRegistration {
+            kind: SourceKind::Europeana,
+            implemented: true,
+            capabilities: caps_notice(SourceKind::Europeana),
+            connector: Some(Arc::new(eu)),
+            config_notes: "Europeana Search API v2 (EUROPEANA_API_KEY for live)".into(),
+        });
+    } else {
+        reg.register(ConnectorRegistration {
+            kind: SourceKind::Europeana,
+            implemented: false,
+            capabilities: caps_notice(SourceKind::Europeana),
+            connector: Some(Arc::new(StubConnector::new(
+                SourceKind::Europeana,
+                "EUROPEANA_API_KEY + EuropeanaConnector",
+            ))),
+            config_notes: "not wired; corpus-ingest --providers europeana".into(),
+        });
+    }
+
+    if let Some(b) = bnf {
+        reg.register(ConnectorRegistration {
+            kind: SourceKind::Bnf,
+            implemented: true,
+            capabilities: caps_notice(SourceKind::Bnf),
+            connector: Some(Arc::new(b)),
+            config_notes: "BnF catalogue SRU Dublin Core (fixture or live)".into(),
+        });
+    } else {
+        reg.register(ConnectorRegistration {
+            kind: SourceKind::Bnf,
+            implemented: false,
+            capabilities: caps_notice(SourceKind::Bnf),
+            connector: Some(Arc::new(StubConnector::new(
+                SourceKind::Bnf,
+                "pass BnfConnector",
+            ))),
+            config_notes: "not wired; corpus-ingest --providers bnf".into(),
+        });
+    }
+
     for kind in [
         SourceKind::Wikisource,
         SourceKind::WikimediaCommons,
-        SourceKind::Bnf,
         SourceKind::Gallica,
-        SourceKind::Europeana,
         SourceKind::OpenLibrary,
-        SourceKind::InternetArchive,
         SourceKind::Persee,
         SourceKind::Viaf,
         SourceKind::Isni,
         SourceKind::IdRef,
         SourceKind::Hal,
         SourceKind::Crossref,
-        SourceKind::OpenAlex,
         SourceKind::OpenEdition,
         SourceKind::Sudoc,
     ] {
@@ -285,9 +468,8 @@ pub fn default_registry_with_theses(
             SourceKind::InternetArchive => "public API available — Lot C",
             SourceKind::Persee => "OAI-PMH / API — Lot C",
             SourceKind::Hal => "HAL search API — PR2+",
-            SourceKind::Crossref => "Crossref REST — PR3",
-            SourceKind::OpenAlex => "OpenAlex API — PR3",
-            SourceKind::OpenEdition => "OpenEdition OAI-PMH — PR3",
+            SourceKind::Crossref => "Crossref REST — later",
+            SourceKind::OpenEdition => "OpenEdition OAI-PMH — later",
             SourceKind::Sudoc => "Sudoc / ABES — Lot A remainder",
             SourceKind::Wikisource | SourceKind::WikimediaCommons => "Wikimedia Lot B remainder",
             _ => "alignment layer Lot C/D",

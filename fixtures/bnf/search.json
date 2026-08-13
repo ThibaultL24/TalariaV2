@@ -1,0 +1,22 @@
+{
+  "total": 2,
+  "records": [
+    {
+      "ark": "ark:/12148/cb11985936k",
+      "title": "Christophe Colomb : son origine, sa vie",
+      "description": "Examen des théories sur les origines de Christophe Colomb.",
+      "date": "1884",
+      "creator": "Harrisse, Henry",
+      "language": "fre",
+      "canonical_url": "https://catalogue.bnf.fr/ark:/12148/cb11985936k"
+    },
+    {
+      "ark": "ark:/12148/cb31234567x",
+      "title": "La chimie des polymères au XXIe siècle",
+      "description": "Synthèse des polymères.",
+      "date": "2015",
+      "creator": "Nguyen, Minh",
+      "language": "fre"
+    }
+  ]
+}

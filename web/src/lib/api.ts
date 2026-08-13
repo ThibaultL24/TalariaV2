@@ -185,6 +185,42 @@ export async function fetchEventDetail(eventId: string): Promise<EventDetailResp
   return response.json();
 }
 
+export interface ClaimEvidence {
+  id: string;
+  source_system: string;
+  locator?: string | null;
+  quote?: string | null;
+  sentence_id?: string | null;
+  confidence: number;
+}
+
+export interface EntityClaim {
+  id: string;
+  claim_kind: string;
+  text: string;
+  epistemic_status: string;
+  relation_to_subject: string;
+  confidence: number;
+  canonical_event_id?: string | null;
+  debate_type?: string | null;
+  evidence_layer?: string | null;
+  evidence: ClaimEvidence[];
+}
+
+export async function fetchEntityClaims(
+  entityId: string,
+  opts: { limit?: number; debatesOnly?: boolean } = {},
+): Promise<EntityClaim[]> {
+  const params = new URLSearchParams({
+    limit: String(opts.limit ?? 50),
+    debates_only: String(opts.debatesOnly ?? true),
+  });
+  const response = await fetch(`/api/v1/entities/${entityId}/claims?${params}`);
+  if (!response.ok) throw new Error("claims fetch failed");
+  const data = (await response.json()) as { claims?: EntityClaim[] };
+  return data.claims ?? [];
+}
+
 export async function fetchPeriods(): Promise<import("@/lib/schemas/entity").PeriodFacet[]> {
   const response = await fetch("/api/v1/periods");
   if (!response.ok) throw new Error("periods fetch failed");

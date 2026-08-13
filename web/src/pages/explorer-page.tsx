@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Map } from "maplibre-gl";
 import { ExplorerEventFilters } from "@/components/filters/explorer-event-filters";
 import { EntityProfile } from "@/components/explorer/entity-profile";
+import { DebatesPanel } from "@/components/explorer/debates-panel";
 import { Navbar } from "@/components/layout/navbar";
 import { EventDetailCard } from "@/components/detail/event-detail-card";
 import { ExplorerMapTimelineBar } from "@/components/map/explorer-map-timeline-bar";
@@ -15,12 +16,14 @@ import { TimelineList } from "@/components/timeline/timeline-list";
 import { mapTimelineEventToItem } from "@/features/events/mappers/timeline";
 import {
   fetchEntity,
+  fetchEntityClaims,
   fetchGeoJson,
   fetchPeriods,
   fetchProfiles,
   fetchStatus,
   fetchTimeline,
   searchEntities,
+  type EntityClaim,
   type GeoJsonFeatureCollection,
   type StatusResponse,
   type TimelineEvent,
@@ -50,6 +53,9 @@ export function ExplorerPage() {
   const [periods, setPeriods] = useState<PeriodFacet[]>([]);
   const [profiles, setProfiles] = useState<ProfileFacet[]>([]);
   const [entityProfiles, setEntityProfiles] = useState<Array<{ slug: string; label: string }>>([]);
+  const [sidebarTab, setSidebarTab] = useState<"timeline" | "debates">("timeline");
+  const [debates, setDebates] = useState<EntityClaim[]>([]);
+  const [debatesLoading, setDebatesLoading] = useState(false);
 
   const {
     entityId,
@@ -97,6 +103,28 @@ export function ExplorerPage() {
       })
       .catch(() => {
         if (!cancelled) setEntityProfiles([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [entityId]);
+
+  useEffect(() => {
+    if (!entityId) {
+      setDebates([]);
+      return;
+    }
+    let cancelled = false;
+    setDebatesLoading(true);
+    fetchEntityClaims(entityId)
+      .then((items) => {
+        if (!cancelled) setDebates(items);
+      })
+      .catch(() => {
+        if (!cancelled) setDebates([]);
+      })
+      .finally(() => {
+        if (!cancelled) setDebatesLoading(false);
       });
     return () => {
       cancelled = true;
@@ -292,14 +320,49 @@ export function ExplorerPage() {
             />
           ) : null}
 
+          {hasEntity ? (
+            <div className="flex border-b border-(--color-border-subtle)">
+              <button
+                type="button"
+                className={`flex-1 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide ${
+                  sidebarTab === "timeline"
+                    ? "text-(--color-text-primary)"
+                    : "text-(--color-text-muted)"
+                }`}
+                onClick={() => setSidebarTab("timeline")}
+              >
+                Timeline
+              </button>
+              <button
+                type="button"
+                className={`flex-1 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide ${
+                  sidebarTab === "debates"
+                    ? "text-(--color-text-primary)"
+                    : "text-(--color-text-muted)"
+                }`}
+                onClick={() => setSidebarTab("debates")}
+              >
+                Debates{debates.length > 0 ? ` (${debates.length})` : ""}
+              </button>
+            </div>
+          ) : null}
+
           <div className="min-h-0 flex-1 overflow-y-auto">
             {error ? <p className="p-4 text-sm text-red-400">{error}</p> : null}
-            <TimelineList
-              items={timelineItems}
-              hasEntity={hasEntity}
-              isLoading={loading}
-              onSelectEvent={handleSelectEvent}
-            />
+            {sidebarTab === "debates" && hasEntity ? (
+              <DebatesPanel
+                claims={debates}
+                isLoading={debatesLoading}
+                onOpenEvent={handleSelectEvent}
+              />
+            ) : (
+              <TimelineList
+                items={timelineItems}
+                hasEntity={hasEntity}
+                isLoading={loading}
+                onSelectEvent={handleSelectEvent}
+              />
+            )}
           </div>
         </aside>
 

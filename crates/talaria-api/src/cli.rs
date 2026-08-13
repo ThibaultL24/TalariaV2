@@ -214,14 +214,21 @@ pub enum Commands {
     HistoriographyExtract {
         #[arg(long)]
         subject: String,
+        #[arg(long, help = "Optional prose fixture (no wiki dump required)")]
+        file: Option<PathBuf>,
     },
-    /// Corpus bibliographic ingest (theses.fr PR1; no claims/events)
+    /// Corpus bibliographic ingest (theses.fr / OpenAlex; no claims/events)
     CorpusIngest {
         #[arg(long)]
         subject: String,
         #[arg(long)]
         qid: Option<String>,
-        #[arg(long, value_delimiter = ',', default_value = "theses_fr")]
+        #[arg(
+            long,
+            value_delimiter = ',',
+            default_value = "theses_fr",
+            help = "theses_fr,open_alex,internet_archive,europeana,bnf"
+        )]
         providers: Vec<String>,
         #[arg(long, default_value_t = 25)]
         limit: u32,

@@ -7,13 +7,16 @@ import {
   eventTypeLabel,
 } from "@/lib/event-taxonomy";
 import {
+  fetchEntityClaims,
   fetchEventDetail,
+  type EntityClaim,
   type EventDetailResponse,
   type EventSourceRef,
   type TimelineEvent,
 } from "@/lib/api";
 import { SourceRefsList } from "@/components/detail/source-refs-list";
 import { CitedParagraph } from "@/components/detail/cited-paragraph";
+import { DebatesPanel } from "@/components/explorer/debates-panel";
 
 interface EventDetailCardProps {
   event: TimelineEvent;
@@ -23,6 +26,7 @@ interface EventDetailCardProps {
 export function EventDetailCard({ event, onClose }: EventDetailCardProps) {
   const [detail, setDetail] = useState<EventDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [relatedDebates, setRelatedDebates] = useState<EntityClaim[]>([]);
   const [activeCite, setActiveCite] = useState<number | null>(null);
   const sourcesRef = useRef<HTMLElement | null>(null);
 
@@ -30,6 +34,7 @@ export function EventDetailCard({ event, onClose }: EventDetailCardProps) {
     let cancelled = false;
     setLoading(true);
     setActiveCite(null);
+    setRelatedDebates([]);
 
     fetchEventDetail(event.id)
       .then((payload) => {
@@ -40,6 +45,18 @@ export function EventDetailCard({ event, onClose }: EventDetailCardProps) {
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
+      });
+
+    fetchEntityClaims(event.entity_id)
+      .then((items) => {
+        if (!cancelled) {
+          setRelatedDebates(
+            items.filter((claim) => claim.canonical_event_id === event.id),
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setRelatedDebates([]);
       });
 
     return () => {
@@ -194,6 +211,18 @@ export function EventDetailCard({ event, onClose }: EventDetailCardProps) {
             </ul>
           </section>
         )}
+
+        {relatedDebates.length > 0 ? (
+          <section className="border-t border-(--color-border-subtle) pt-4">
+            <h4 className="mb-2 text-sm font-semibold text-(--color-text-primary)">
+              Historians’ debates
+            </h4>
+            <p className="mb-2 text-xs text-(--color-text-secondary)">
+              Theories and controversies linked to this event — not map facts.
+            </p>
+            <DebatesPanel claims={relatedDebates} />
+          </section>
+        ) : null}
 
         <section ref={sourcesRef} className="border-t border-(--color-border-subtle) pt-4">
           <h4 className="mb-2 text-sm font-semibold text-(--color-text-primary)">

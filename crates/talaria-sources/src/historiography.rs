@@ -10,6 +10,8 @@ pub enum DebateType {
     CauseOfDeathDispute,
     MotiveDispute,
     LegitimacyDispute,
+    IdentityOriginDispute,
+    AuthorshipDispute,
     LegendOrMyth,
     ConspiracyOrSpeculative,
     ArchivalGap,
@@ -24,6 +26,8 @@ impl DebateType {
             Self::CauseOfDeathDispute => "cause_of_death_dispute",
             Self::MotiveDispute => "motive_dispute",
             Self::LegitimacyDispute => "legitimacy_dispute",
+            Self::IdentityOriginDispute => "identity_origin_dispute",
+            Self::AuthorshipDispute => "authorship_dispute",
             Self::LegendOrMyth => "legend_or_myth",
             Self::ConspiracyOrSpeculative => "conspiracy_or_speculative",
             Self::ArchivalGap => "archival_gap",
@@ -105,6 +109,14 @@ const SECTION_MARKERS: &[&str] = &[
     "debat",
     "cause of death",
     "cause de la mort",
+    "origin",
+    "origine",
+    "identity",
+    "identité",
+    "identite",
+    "birthplace",
+    "correspondance",
+    "correspondence",
 ];
 
 const SKIP_SECTIONS: &[&str] = &[
@@ -122,7 +134,12 @@ const SKIP_SECTIONS: &[&str] = &[
 
 pub fn is_historiography_section(title: &str) -> bool {
     let t = title.to_lowercase();
-    if SKIP_SECTIONS.iter().any(|s| t.contains(s)) && !t.contains("death") && !t.contains("mort") {
+    if SKIP_SECTIONS.iter().any(|s| t.contains(s))
+        && !t.contains("death")
+        && !t.contains("mort")
+        && !t.contains("origin")
+        && !t.contains("identit")
+    {
         return false;
     }
     SECTION_MARKERS.iter().any(|m| t.contains(m))
@@ -143,13 +160,37 @@ pub fn scan_bibliographic(title: &str, abstract_text: Option<&str>) -> Vec<Histo
     }
     let mut hits = scan_passage(&blob);
     if hits.is_empty() && bibliographic_looks_historiographic(title) {
+        let origin_title = has_any(
+            &title.to_lowercase(),
+            &[
+                "origines",
+                "origins of",
+                "origin of",
+                "origin theor",
+                "identité de",
+                "identity of",
+                "birthplace",
+            ],
+        );
         hits.push(HistoriographyHit {
-            debate_type: DebateType::InterpretationDispute,
-            evidence_layer: EvidenceLayer::Interpretation,
-            claim_kind: "debate_stance",
+            debate_type: if origin_title {
+                DebateType::IdentityOriginDispute
+            } else {
+                DebateType::InterpretationDispute
+            },
+            evidence_layer: if origin_title {
+                EvidenceLayer::TheoryOrLegend
+            } else {
+                EvidenceLayer::Interpretation
+            },
+            claim_kind: if origin_title { "theory" } else { "debate_stance" },
             epistemic_status: "contested",
             quote: title.trim().to_string(),
-            event_hint: None,
+            event_hint: if origin_title {
+                Some(EventHint::Birth)
+            } else {
+                None
+            },
         });
     }
     hits
@@ -172,6 +213,12 @@ fn bibliographic_looks_historiographic(title: &str) -> bool {
         "mémoire de",
         "reception of",
         "postérité",
+        "origines",
+        "origins of",
+        "origin of",
+        "origin theor",
+        "identité de",
+        "identity of",
     ]
     .iter()
     .any(|m| t.contains(m))
@@ -227,6 +274,23 @@ fn detect(lower: &str) -> Option<(DebateType, EvidenceLayer, &'static str, &'sta
             EvidenceLayer::EvidenceGap,
             "controversy",
             "uncertain",
+        ));
+    }
+    // Letters / travel are evidence for identity, not a separate authorship claim.
+    if looks_like_correspondence_dispute(lower) {
+        return Some((
+            DebateType::IdentityOriginDispute,
+            EvidenceLayer::EvidenceGap,
+            "controversy",
+            "uncertain",
+        ));
+    }
+    if looks_like_origin_debate(lower) {
+        return Some((
+            DebateType::IdentityOriginDispute,
+            EvidenceLayer::TheoryOrLegend,
+            "theory",
+            "hypothesized",
         ));
     }
     if has_any(
@@ -401,7 +465,111 @@ fn detect(lower: &str) -> Option<(DebateType, EvidenceLayer, &'static str, &'sta
     None
 }
 
+fn looks_like_origin_debate(lower: &str) -> bool {
+    let about_origin = has_any(
+        lower,
+        &[
+            "origines",
+            "origine véritable",
+            "véritables origines",
+            "veritables origines",
+            "true origin",
+            "true origins",
+            "origin theor",
+            "origin of",
+            "origins of",
+            "birthplace",
+            "lieu de naissance",
+            "nationalité",
+            "nationalite",
+            "nationality",
+            "was he genoese",
+            "était-il génois",
+            "etait-il genois",
+        ],
+    ) || (has_any(
+        lower,
+        &[
+            "génois",
+            "genois",
+            "genovese",
+            "genoese",
+            "catalan",
+            "portugais",
+            "portuguese",
+            "convers",
+            "juif",
+            "jewish",
+            "suisse",
+            "swiss",
+            "espagnol",
+            "spanish",
+            "français",
+            "francais",
+            "french",
+        ],
+    ) && has_any(
+        lower,
+        &["origin", "origine", "théorie", "theorie", "theory", "national"],
+    ));
+    let contested = has_any(
+        lower,
+        &[
+            "disput",
+            "theor",
+            "théorie",
+            "unknown",
+            "on ne sait",
+            "plusieurs",
+            "several",
+            "uncertain",
+            "question",
+            "débat",
+            "debat",
+            "controvers",
+        ],
+    );
+    about_origin && contested
+}
+
+fn looks_like_correspondence_dispute(lower: &str) -> bool {
+    let letters = has_any(
+        lower,
+        &[
+            "correspondance",
+            "correspondence",
+            "his letters",
+            "ses lettres",
+            "langue de ses lettres",
+            "language of his letters",
+        ],
+    );
+    let puzzle = has_any(
+        lower,
+        &[
+            "langue",
+            "language",
+            "plusieurs langues",
+            "several languages",
+            "castilian",
+            "castillan",
+            "latin",
+            "voyage",
+            "traveled",
+            "travelled",
+            "beaucoup voyagé",
+            "beaucoup voyage",
+        ],
+    );
+    letters && puzzle
+}
+
 fn event_hint(lower: &str) -> Option<EventHint> {
+    if looks_like_origin_debate(lower)
+        || has_any(lower, &["origines", "nationalité", "nationalite", "birthplace"])
+    {
+        return Some(EventHint::Birth);
+    }
     if has_any(
         lower,
         &[

@@ -214,6 +214,23 @@ pub async fn run_lot_e_density_ingest(
     let projections = DerivedLabelProjections;
     let mut metrics = LotEMetrics::default();
 
+    if let Some(qid) = subject_res.qid.clone() {
+        match crate::ingest::ingest_wdqs_events(&pool, config, &subject_res, subject_id).await {
+            Ok(wdqs) => {
+                tracing::info!(
+                    created = wdqs.events_created,
+                    accepted = wdqs.accepted,
+                    %qid,
+                    "WDQS participant/conflict events ingested"
+                );
+                metrics.events_created += wdqs.events_created as u32;
+                metrics.accepted += wdqs.accepted as u32;
+                metrics.rejected += wdqs.rejected as u32;
+            }
+            Err(e) => tracing::warn!(error = %e, %qid, "WDQS ingest failed"),
+        }
+    }
+
     let original_seeds: Vec<String> = titles.clone();
     let mut title_queue: std::collections::VecDeque<String> = titles.into_iter().collect();
     let mut seen_titles: std::collections::HashSet<String> = title_queue.iter().cloned().collect();
@@ -386,6 +403,8 @@ pub async fn run_lot_e_density_ingest(
                             cross_clause_join: false,
                             extractor_id: "page_fallback".into(),
                             is_posthumous: false,
+                            lat: None,
+                            lon: None,
                         });
                     }
                 }
@@ -502,11 +521,12 @@ pub async fn run_lot_e_density_ingest(
             "wikipedia": "extraction_ready",
             "wikidata": "fetch_ready",
             "fixture": "production_ready",
-            "bnf": "stub",
+            "bnf": "extraction_ready",
             "gallica": "stub",
-            "europeana": "stub",
+            "europeana": "extraction_ready",
             "open_library": "stub",
-            "internet_archive": "stub",
+            "internet_archive": "extraction_ready",
+            "open_alex": "extraction_ready",
         }
     });
     let s = serde_json::to_string_pretty(&report)?;
@@ -639,7 +659,21 @@ async fn process_one(
     let mut lon = None;
     let mut location_precision = None;
     let mut uncertainty = None;
-    if let Some(ref pl) = shell.place_label {
+    if raw.lat.is_some() && raw.lon.is_some() {
+        lat = raw.lat;
+        lon = raw.lon;
+        location_precision = Some("wikidata_p625".into());
+        if let Some(pl) = shell
+            .place_label
+            .clone()
+            .or_else(|| raw.place_surface.clone())
+            .filter(|s| !s.is_empty())
+        {
+            shell.place_label = Some(pl.clone());
+            shell.place_entity_id =
+                Some(upsert_entity_with_kind(pool, &config.wiki_lang, &pl, "place").await?);
+        }
+    } else if let Some(ref pl) = shell.place_label {
         if let Some(pres) = resolve_place_offline(pl) {
             lat = Some(pres.lat);
             lon = Some(pres.lon);
@@ -967,21 +1001,22 @@ pub fn connector_status_json() -> String {
         "wikisource": "stub",
         "commons": "stub",
         "fixture": "production_ready",
-        "bnf": "stub",
+        "bnf": "extraction_ready",
         "gallica": "stub",
         "persee": "stub",
         "idref": "stub",
         "sudoc": "stub",
         "archives_nationales": "stub",
         "open_library": "stub",
-        "internet_archive": "stub",
-        "europeana": "stub",
+        "internet_archive": "extraction_ready",
+        "europeana": "extraction_ready",
+        "open_alex": "extraction_ready",
         "loc": "stub",
         "viaf": "metadata_only",
         "isni": "metadata_only",
-        "openalex": "stub",
+        "openalex": "extraction_ready",
         "crossref": "stub",
-        "note": "Only wikipedia/wikidata/fixture are executable beyond stubs; stubs must not be reported as integrated."
+        "note": "wikipedia/wikidata/fixture/theses_fr/open_alex/internet_archive/europeana/bnf are executable; remaining entries are stubs."
     }))
     .unwrap_or_else(|_| "{}".into())
 }

@@ -43,6 +43,9 @@ impl CandidateExtractor for StructuredStatementExtractor {
             } else {
                 Some(parts[4].to_string())
             };
+            let object = parts.get(5).copied().filter(|s| !s.is_empty()).map(str::to_string);
+            let lat = parts.get(6).and_then(|s| s.parse().ok());
+            let lon = parts.get(7).and_then(|s| s.parse().ok());
             let start = input.text[..input.text.find(line).unwrap_or(0)].len() as i32;
             out.push(RawCandidate {
                 event_type,
@@ -50,7 +53,7 @@ impl CandidateExtractor for StructuredStatementExtractor {
                 subject_surface: subject.clone(),
                 time_surface: time,
                 place_surface: place,
-                object_surface: None,
+                object_surface: object,
                 participant_surfaces: vec![],
                 clause_text: line.to_string(),
                 clause_index: i as i32,
@@ -59,6 +62,8 @@ impl CandidateExtractor for StructuredStatementExtractor {
                 cross_clause_join: false,
                 extractor_id: self.extractor_id().into(),
                 is_posthumous: false,
+                lat,
+                lon,
             });
         }
         out

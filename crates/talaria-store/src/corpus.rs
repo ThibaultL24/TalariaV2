@@ -147,7 +147,18 @@ pub async fn replace_document_contributions(
         .bind(corpus_document_id)
         .execute(pool)
         .await?;
+    let mut seen = std::collections::HashSet::new();
     for row in rows {
+        let key = (
+            row.role.clone(),
+            row.name_normalized.clone(),
+            row.identifier_scheme.clone().unwrap_or_default(),
+            row.identifier_value.clone().unwrap_or_default(),
+            row.ordinal,
+        );
+        if !seen.insert(key) {
+            continue;
+        }
         sqlx::query(
             r#"
             INSERT INTO document_contributions (
@@ -196,7 +207,16 @@ pub async fn replace_document_subjects(
         .bind(corpus_document_id)
         .execute(pool)
         .await?;
+    let mut seen = std::collections::HashSet::new();
     for row in rows {
+        let key = (
+            row.scheme.clone(),
+            row.identifier.clone().unwrap_or_default(),
+            row.label.clone(),
+        );
+        if !seen.insert(key) {
+            continue;
+        }
         sqlx::query(
             r#"
             INSERT INTO document_subjects (corpus_document_id, scheme, label, identifier)

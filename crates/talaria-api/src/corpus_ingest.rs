@@ -6,10 +6,13 @@ use std::path::PathBuf;
 
 use talaria_core::AppConfig;
 use talaria_sources::connectors::{
-    default_registry_with_theses, ThesesFrConfig, ThesesFrConnector,
+    default_registry_with_corpus, BnfConfig, BnfConnector, CorpusConnectors, EuropeanaConfig,
+    EuropeanaConnector, InternetArchiveConfig, InternetArchiveConnector, OpenAlexConfig,
+    OpenAlexConnector, ThesesFrConfig, ThesesFrConnector,
 };
 use talaria_sources::{
-    match_subject_to_document, normalize_these_detail, AccessLevel, DiscoveredDocument,
+    match_subject_to_document, normalize_bnf_notice, normalize_europeana_item, normalize_ia_item,
+    normalize_openalex_work, normalize_these_detail, AccessLevel, DiscoveredDocument,
     NormalizedCorpusDocument, ResolvedSubject, SourceKind, TypedTimeLite,
 };
 use talaria_store::{
@@ -64,13 +67,28 @@ pub async fn run_corpus_ingest(
         known_identifiers: vec![],
     };
 
-    let theses = if providers
+    let want_theses = providers.is_empty()
+        || providers
+            .iter()
+            .any(|p| SourceKind::parse(p) == SourceKind::ThesesFr);
+    let want_openalex = providers
         .iter()
-        .any(|p| SourceKind::parse(p) == SourceKind::ThesesFr)
-        || providers.is_empty()
-    {
+        .any(|p| SourceKind::parse(p) == SourceKind::OpenAlex);
+    let want_ia = providers
+        .iter()
+        .any(|p| SourceKind::parse(p) == SourceKind::InternetArchive);
+    let want_europeana = providers
+        .iter()
+        .any(|p| SourceKind::parse(p) == SourceKind::Europeana);
+    let want_bnf = providers
+        .iter()
+        .any(|p| SourceKind::parse(p) == SourceKind::Bnf);
+
+    let theses = if want_theses {
         if use_fixture {
-            let dir = fixture_dir.unwrap_or_else(|| PathBuf::from("fixtures/theses_fr"));
+            let dir = fixture_dir
+                .clone()
+                .unwrap_or_else(|| PathBuf::from("fixtures/theses_fr"));
             Some(ThesesFrConnector::from_fixture_dir(&dir)?)
         } else if live {
             Some(ThesesFrConnector::new(ThesesFrConfig::default())?)
@@ -81,7 +99,80 @@ pub async fn run_corpus_ingest(
         None
     };
 
-    let registry = default_registry_with_theses(None, false, theses)?;
+    let open_alex = if want_openalex {
+        if use_fixture {
+            let dir = PathBuf::from("fixtures/open_alex");
+            Some(OpenAlexConnector::from_fixture_dir(&dir)?)
+        } else if live {
+            let mut cfg = OpenAlexConfig::default();
+            cfg.mailto = std::env::var("OPENALEX_MAILTO")
+                .ok()
+                .filter(|s| !s.trim().is_empty());
+            Some(OpenAlexConnector::new(cfg)?)
+        } else {
+            anyhow::bail!("corpus-ingest open_alex requires --fixture or --live");
+        }
+    } else {
+        None
+    };
+
+    let internet_archive = if want_ia {
+        if use_fixture {
+            Some(InternetArchiveConnector::from_fixture_dir(
+                "fixtures/internet_archive",
+            )?)
+        } else if live {
+            Some(InternetArchiveConnector::new(
+                InternetArchiveConfig::default(),
+            )?)
+        } else {
+            anyhow::bail!("corpus-ingest internet_archive requires --fixture or --live");
+        }
+    } else {
+        None
+    };
+
+    let europeana = if want_europeana {
+        if use_fixture {
+            Some(EuropeanaConnector::from_fixture_dir("fixtures/europeana")?)
+        } else if live {
+            let api_key = std::env::var("EUROPEANA_API_KEY")
+                .ok()
+                .filter(|s| !s.trim().is_empty());
+            Some(EuropeanaConnector::new(EuropeanaConfig {
+                api_key,
+                ..EuropeanaConfig::default()
+            })?)
+        } else {
+            anyhow::bail!("corpus-ingest europeana requires --fixture or --live");
+        }
+    } else {
+        None
+    };
+
+    let bnf = if want_bnf {
+        if use_fixture {
+            Some(BnfConnector::from_fixture_dir("fixtures/bnf")?)
+        } else if live {
+            Some(BnfConnector::new(BnfConfig::default())?)
+        } else {
+            anyhow::bail!("corpus-ingest bnf requires --fixture or --live");
+        }
+    } else {
+        None
+    };
+
+    let registry = default_registry_with_corpus(
+        None,
+        false,
+        CorpusConnectors {
+            theses_fr: theses,
+            open_alex,
+            internet_archive,
+            europeana,
+            bnf,
+        },
+    )?;
     let kinds: Vec<SourceKind> = if providers.is_empty() {
         vec![SourceKind::ThesesFr]
     } else {
@@ -227,6 +318,34 @@ fn extract_normalized(
                 .cloned()
                 .unwrap_or_else(|| raw_metadata.clone());
             Ok(normalize_these_detail(&provider)?)
+        }
+        SourceKind::OpenAlex => {
+            let provider = raw_metadata
+                .get("provider")
+                .cloned()
+                .unwrap_or_else(|| raw_metadata.clone());
+            Ok(normalize_openalex_work(&provider)?)
+        }
+        SourceKind::InternetArchive => {
+            let provider = raw_metadata
+                .get("provider")
+                .cloned()
+                .unwrap_or_else(|| raw_metadata.clone());
+            Ok(normalize_ia_item(&provider)?)
+        }
+        SourceKind::Europeana => {
+            let provider = raw_metadata
+                .get("provider")
+                .cloned()
+                .unwrap_or_else(|| raw_metadata.clone());
+            Ok(normalize_europeana_item(&provider)?)
+        }
+        SourceKind::Bnf => {
+            let provider = raw_metadata
+                .get("provider")
+                .cloned()
+                .unwrap_or_else(|| raw_metadata.clone());
+            Ok(normalize_bnf_notice(&provider)?)
         }
         other => anyhow::bail!("no normalizer for {}", other.as_str()),
     }

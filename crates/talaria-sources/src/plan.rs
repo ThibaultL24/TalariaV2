@@ -78,6 +78,13 @@ pub fn plan_sources(subject: &ResolvedSubject, budgets: IngestBudgets) -> Source
             c.contains("france") || c.contains("french")
         });
 
+    sources.push(PlannedSource {
+        kind: SourceKind::OpenAlex,
+        reason: "scholarly works: historiography, origin theories, controversies (abstracts)".into(),
+        priority: 62,
+        max_documents: budgets.max_documents_per_source.min(25),
+    });
+
     if is_french {
         sources.push(PlannedSource {
             kind: SourceKind::Bnf,

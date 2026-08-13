@@ -8,11 +8,15 @@ use talaria_quality::{
     apply_gates, candidate_fingerprint, existing_candidate_action, occurrence_key_for_event,
     occurrence_stem_for_event, parse_typed_time, resolve_mentions, should_reinforce_existing_event,
     BuildProjections, DerivedLabelProjections, EntityKind, EvidencePtr, ExistingCandidateAction,
-    EXTRACTOR_EPISTEMIC_STATUS, GazetteerResolver, GateContext, TypedTime, ASSEMBLER_V1,
+    EXTRACTOR_EPISTEMIC_STATUS, GazetteerResolver, GateContext, Mention, TypedTime, ASSEMBLER_V1,
 };
 use talaria_sources::connectors::{default_registry, FixtureConnector};
 use talaria_sources::extractors::{
     claim_fingerprint, default_extractor_stack, CandidateExtractor, ClaimKey, ExtractorInput,
+    StructuredStatementExtractor,
+};
+use talaria_sources::wdqs::{
+    events_from_fixture_dir, events_to_statement_text, fetch_events_for_person,
 };
 use talaria_sources::{
     plan_sources, BudgetCounters, DiscoveredDocument, IngestBudgets, ResolvedSubject, SourceKind,
@@ -131,6 +135,21 @@ pub async fn run_ingest_quality(
     let (by, dy, _, _) = quality_lifespan_years(&pool, subject_id).await?;
     subject.birth_year = by;
     subject.death_year = dy;
+
+    if live {
+        if let Some(qid) = subject.qid.clone() {
+            match ingest_wdqs_events(&pool, config, &subject, subject_id).await {
+                Ok(wdqs_metrics) => {
+                    tracing::info!(
+                        created = wdqs_metrics.events_created,
+                        accepted = wdqs_metrics.accepted,
+                        "WDQS events ingested"
+                    );
+                }
+                Err(e) => tracing::error!(error = %e, %qid, "WDQS ingest failed"),
+            }
+        }
+    }
 
     let budgets = IngestBudgets {
         max_documents_per_source: 25,
@@ -337,6 +356,98 @@ pub async fn run_ingest_quality(
     Ok(report)
 }
 
+/// POC-parity harvest: WDQS P710 / P1344 / P607 → quality canonical events.
+pub async fn ingest_wdqs_events(
+    pool: &sqlx::PgPool,
+    config: &AppConfig,
+    subject: &ResolvedSubject,
+    subject_id: Uuid,
+) -> anyhow::Result<IngestMetrics> {
+    let qid = subject
+        .qid
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("WDQS requires a Wikidata QID"))?;
+    let events = if let Ok(dir) = std::env::var("TALARIA_WDQS_FIXTURE") {
+        events_from_fixture_dir(std::path::Path::new(&dir))?
+    } else {
+        tracing::info!(%qid, "fetching WDQS participant/conflict events");
+        fetch_events_for_person(qid).await?
+    };
+    tracing::info!(qid, n = events.len(), "WDQS events after merge");
+    let mut metrics = IngestMetrics::default();
+    if events.is_empty() {
+        return Ok(metrics);
+    }
+    let text = events_to_statement_text(&events);
+    let hash = content_hash(&text);
+    let snapshot_id = insert_document_snapshot(
+        pool,
+        &DocumentSnapshotInsert {
+            source_type: "wikidata".into(),
+            source_uri: format!("https://query.wikidata.org/sparql#{qid}"),
+            source_identifier: Some(format!("wdqs:{qid}")),
+            language: "en".into(),
+            title: Some(format!("WDQS events for {qid}")),
+            content_hash: hash,
+            revision_id: Some("wdqs:p710+p1344+p607".into()),
+            wiki_page_id: None,
+            raw_document_id: None,
+            text: text.clone(),
+            metadata: serde_json::json!({
+                "qid": qid,
+                "event_count": events.len(),
+                "source": "wdqs"
+            }),
+        },
+    )
+    .await?;
+    let frag_id = insert_document_fragment(
+        pool,
+        &DocumentFragmentInsert {
+            snapshot_id,
+            fragment_kind: "sentence".into(),
+            parent_fragment_id: None,
+            sentence_id: None,
+            text: text.clone(),
+            start_offset: 0,
+            end_offset: text.len() as i32,
+            clause_index: None,
+            ordinal: 0,
+        },
+    )
+    .await?;
+    metrics.documents_snapshotted += 1;
+    metrics.fragments += 1;
+
+    let input = ExtractorInput {
+        text,
+        page_title: Some(subject.label.clone()),
+        subject_label: Some(subject.label.clone()),
+        document_type: "structured_statement".into(),
+        subject_death_year: subject.death_year,
+    };
+    let raws = StructuredStatementExtractor.extract(&input);
+    let resolver = GazetteerResolver;
+    let projections = DerivedLabelProjections;
+    for raw in raws {
+        process_raw_candidate(
+            pool,
+            config,
+            subject,
+            subject_id,
+            snapshot_id,
+            frag_id,
+            "wikidata",
+            &raw,
+            &resolver,
+            &projections,
+            &mut metrics,
+        )
+        .await?;
+    }
+    Ok(metrics)
+}
+
 fn to_discovered_insert(run_id: Uuid, doc: &DiscoveredDocument) -> DiscoveredDocumentInsert {
     DiscoveredDocumentInsert {
         run_id,
@@ -421,7 +532,24 @@ async fn process_raw_candidate(
     shell.object_mentions = resolved.object_mentions;
     shell.participant_mentions = resolved.participant_mentions.clone();
     shell.place_label = resolved.place_label.clone();
-    if resolved.place_kind == Some(EntityKind::Place) {
+    if raw.extractor_id == "structured_statement" && !resolved.invalid_place_attempt {
+        if let Some(label) = shell
+            .place_label
+            .clone()
+            .or_else(|| raw.place_surface.clone())
+            .filter(|s| !s.is_empty())
+        {
+            shell.place_label = Some(label.clone());
+            shell.place_mentions = vec![Mention {
+                surface: label.clone(),
+                entity_id: None,
+                kind: Some(EntityKind::Place),
+                role: None,
+            }];
+            shell.place_entity_id =
+                Some(upsert_entity_with_kind(pool, &config.wiki_lang, &label, "place").await?);
+        }
+    } else if resolved.place_kind == Some(EntityKind::Place) {
         if let Some(label) = &shell.place_label {
             shell.place_entity_id =
                 Some(upsert_entity_with_kind(pool, &config.wiki_lang, label, "place").await?);
@@ -684,12 +812,17 @@ async fn process_raw_candidate(
 
     let proj = projections.from_candidate(&shell, &subject.label);
     let title_derived = projections.display_label(&proj);
-    let place = shell.place_label.as_deref().map(parse_place_surface);
-    let map_eligible = place.as_ref().is_some_and(|p| p.map_eligible());
-    let (lat, lon) = place
-        .as_ref()
-        .map(|p| (p.lat, p.lon))
-        .unwrap_or((None, None));
+    let (lat, lon, map_eligible) = if raw.lat.is_some() && raw.lon.is_some() {
+        (raw.lat, raw.lon, true)
+    } else {
+        let place = shell.place_label.as_deref().map(parse_place_surface);
+        let map_eligible = place.as_ref().is_some_and(|p| p.map_eligible());
+        let (lat, lon) = place
+            .as_ref()
+            .map(|p| (p.lat, p.lon))
+            .unwrap_or((None, None));
+        (lat, lon, map_eligible)
+    };
 
     let event_id = insert_quality_canonical_event(
         pool,

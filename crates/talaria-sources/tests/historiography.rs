@@ -64,3 +64,44 @@ fn polymer_chemistry_thesis_is_ignored() {
     let hits = scan_bibliographic("La chimie des polymères au XXIe siècle", None);
     assert!(hits.is_empty());
 }
+
+#[test]
+fn columbus_origin_debate_is_identity_not_a_birth_fact() {
+    let hits = scan_passage(include_str!(
+        "../../../fixtures/historiography/columbus_origins.txt"
+    ));
+    assert!(
+        hits.iter()
+            .any(|h| h.debate_type == DebateType::IdentityOriginDispute
+                && h.claim_kind == "theory"
+                && h.event_hint == Some(EventHint::Birth)),
+        "expected identity_origin_dispute theory, got {hits:?}"
+    );
+    assert!(
+        hits.iter().any(|h| h.debate_type == DebateType::IdentityOriginDispute
+            && (h.evidence_layer == EvidenceLayer::EvidenceGap
+                || h.quote.to_lowercase().contains("correspondance"))),
+        "expected correspondence as origin evidence, got {hits:?}"
+    );
+}
+
+#[test]
+fn columbus_birth_year_alone_is_not_an_origin_debate() {
+    let hits = scan_passage("Christopher Columbus was born in 1451 in Genoa.");
+    assert!(hits.is_empty());
+}
+
+#[test]
+fn origin_section_title_is_historiographic() {
+    assert!(is_historiography_section("Origins and identity"));
+    assert!(is_historiography_section("Origines"));
+    assert!(is_historiography_section("Early life and origins"));
+}
+
+#[test]
+fn columbus_origins_title_is_identity_theory() {
+    let hits = scan_bibliographic("Les origines de Christophe Colomb", None);
+    assert_eq!(hits[0].debate_type, DebateType::IdentityOriginDispute);
+    assert_eq!(hits[0].claim_kind, "theory");
+    assert_eq!(hits[0].event_hint, Some(EventHint::Birth));
+}

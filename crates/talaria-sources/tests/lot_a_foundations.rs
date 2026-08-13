@@ -146,6 +146,7 @@ fn plan_sources_for_french_military() {
     assert!(plan.sources.iter().any(|s| s.kind == SourceKind::Wikidata));
     assert!(plan.sources.iter().any(|s| s.kind == SourceKind::Bnf));
     assert!(plan.sources.iter().any(|s| s.kind == SourceKind::Gallica));
+    assert!(plan.sources.iter().any(|s| s.kind == SourceKind::OpenAlex));
 }
 
 #[test]

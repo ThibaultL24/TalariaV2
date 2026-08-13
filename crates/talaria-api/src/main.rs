@@ -183,8 +183,8 @@ async fn main() -> anyhow::Result<()> {
         Commands::ClaimsExtract { limit } => {
             claim_extract::run_claims_extract(&config, limit).await?
         }
-        Commands::HistoriographyExtract { subject } => {
-            historiography::run_historiography_extract(&config, &subject).await?
+        Commands::HistoriographyExtract { subject, file } => {
+            historiography::run_historiography_extract(&config, &subject, file.as_deref()).await?
         }
         Commands::CorpusIngest {
             subject,

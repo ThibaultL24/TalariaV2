@@ -1,0 +1,28 @@
+{
+  "results": {
+    "bindings": [
+      {
+        "event": { "type": "uri", "value": "http://www.wikidata.org/entity/Q179250" },
+        "eventLabel": { "xml:lang": "en", "type": "literal", "value": "Battle of Austerlitz" },
+        "date": { "datatype": "http://www.w3.org/2001/XMLSchema#dateTime", "type": "literal", "value": "1805-12-02T00:00:00Z" },
+        "place": { "type": "uri", "value": "http://www.wikidata.org/entity/Q26844" },
+        "placeLabel": { "xml:lang": "en", "type": "literal", "value": "Austerlitz" },
+        "evType": { "type": "literal", "value": "battle" },
+        "geo": { "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral", "type": "literal", "value": "Point(16.7622 49.1281)" }
+      },
+      {
+        "event": { "type": "uri", "value": "http://www.wikidata.org/entity/Q6882" },
+        "eventLabel": { "xml:lang": "en", "type": "literal", "value": "Treaties of Tilsit" },
+        "date": { "datatype": "http://www.w3.org/2001/XMLSchema#dateTime", "type": "literal", "value": "1807-07-07T00:00:00Z" },
+        "place": { "type": "uri", "value": "http://www.wikidata.org/entity/Q560477" },
+        "placeLabel": { "xml:lang": "en", "type": "literal", "value": "Tilsit" },
+        "evType": { "type": "literal", "value": "diplomatic" }
+      },
+      {
+        "event": { "type": "uri", "value": "http://www.wikidata.org/entity/Q999999" },
+        "eventLabel": { "type": "literal", "value": "Undated skirmish" },
+        "evType": { "type": "literal", "value": "battle" }
+      }
+    ]
+  }
+}
