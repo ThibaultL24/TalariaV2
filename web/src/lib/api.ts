@@ -130,7 +130,7 @@ export interface TimelineQuery {
 }
 
 export async function fetchTimeline(query: TimelineQuery = {}): Promise<TimelineResponse> {
-  const params = new URLSearchParams({ limit: String(query.limit ?? 500) });
+  const params = new URLSearchParams({ limit: String(query.limit ?? 2000) });
   if (query.entityId) params.set("entity_id", query.entityId);
   if (query.person?.trim()) params.set("person", query.person.trim());
   if (query.profileSlug) params.set("profile_slug", query.profileSlug);
@@ -141,7 +141,7 @@ export async function fetchTimeline(query: TimelineQuery = {}): Promise<Timeline
 }
 
 export async function fetchGeoJson(query: TimelineQuery = {}): Promise<GeoJsonFeatureCollection> {
-  const params = new URLSearchParams({ limit: String(query.limit ?? 500) });
+  const params = new URLSearchParams({ limit: String(query.limit ?? 2000) });
   if (query.entityId) params.set("entity_id", query.entityId);
   if (query.person?.trim()) params.set("person", query.person.trim());
   if (query.profileSlug) params.set("profile_slug", query.profileSlug);

@@ -33,7 +33,7 @@ pub struct GeoJsonQuery {
 }
 
 fn default_limit() -> i64 {
-    100
+    2000
 }
 
 fn default_true() -> bool {

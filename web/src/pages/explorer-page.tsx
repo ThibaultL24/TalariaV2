@@ -1,5 +1,5 @@
 // web/src/pages/explorer-page.tsx
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Map } from "maplibre-gl";
 import { ExplorerEventFilters } from "@/components/filters/explorer-event-filters";
 import { EntityProfile } from "@/components/explorer/entity-profile";
@@ -39,6 +39,9 @@ import {
 } from "@/lib/geo";
 import { useExplorerStore } from "@/stores/explorer-store";
 
+const POLL_MS = 5000;
+const LIVE_LIMIT = 2000;
+
 export function ExplorerPage() {
   const [map, setMap] = useState<Map | null>(null);
   const [allEvents, setAllEvents] = useState<TimelineEvent[]>([]);
@@ -56,6 +59,7 @@ export function ExplorerPage() {
   const [sidebarTab, setSidebarTab] = useState<"timeline" | "debates">("timeline");
   const [debates, setDebates] = useState<EntityClaim[]>([]);
   const [debatesLoading, setDebatesLoading] = useState(false);
+  const rangeTouched = useRef(false);
 
   const {
     entityId,
@@ -77,15 +81,27 @@ export function ExplorerPage() {
   const hasEntity = Boolean(entityId || personFilter);
 
   useEffect(() => {
-    fetchStatus()
-      .then(setStatus)
-      .catch(() => undefined);
+    let cancelled = false;
+    function loadStatus() {
+      fetchStatus()
+        .then((row) => {
+          if (!cancelled) setStatus(row);
+        })
+        .catch(() => undefined);
+    }
+    loadStatus();
+    const tick = window.setInterval(loadStatus, POLL_MS);
     Promise.all([fetchPeriods(), fetchProfiles()])
       .then(([periodRows, profileRows]) => {
+        if (cancelled) return;
         setPeriods(periodRows);
         setProfiles(profileRows);
       })
       .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      window.clearInterval(tick);
+    };
   }, []);
 
   useEffect(() => {
@@ -110,24 +126,29 @@ export function ExplorerPage() {
   }, [entityId]);
 
   useEffect(() => {
+    rangeTouched.current = false;
     if (!entityId) {
       setDebates([]);
       return;
     }
+    const id = entityId;
     let cancelled = false;
     setDebatesLoading(true);
-    fetchEntityClaims(entityId)
-      .then((items) => {
+    async function loadDebates() {
+      try {
+        const items = await fetchEntityClaims(id);
         if (!cancelled) setDebates(items);
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) setDebates([]);
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setDebatesLoading(false);
-      });
+      }
+    }
+    loadDebates();
+    const tick = window.setInterval(loadDebates, POLL_MS);
     return () => {
       cancelled = true;
+      window.clearInterval(tick);
     };
   }, [entityId]);
 
@@ -161,11 +182,13 @@ export function ExplorerPage() {
       setAllEvents([]);
       setGeojson(null);
       setYearRange(null);
+      rangeTouched.current = false;
       return;
     }
 
     let cancelled = false;
-    setLoading(true);
+    let inFlight = false;
+    let first = true;
     setError(null);
 
     const query = {
@@ -173,24 +196,46 @@ export function ExplorerPage() {
       person: personFilter ?? undefined,
       profileSlug: filters.profileSlug,
       periodSlug: filters.periodSlug,
+      limit: LIVE_LIMIT,
     };
 
-    Promise.all([fetchTimeline(query), fetchGeoJson(query)])
-      .then(([timeline, mapData]) => {
+    async function load() {
+      if (inFlight) return;
+      inFlight = true;
+      if (first) setLoading(true);
+      try {
+        const [timeline, mapData] = await Promise.all([
+          fetchTimeline(query),
+          fetchGeoJson(query),
+        ]);
         if (cancelled) return;
         setAllEvents(timeline.events);
         setGeojson(mapData);
-        setYearRange(buildYearBounds(timeline.events));
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "load failed");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+        const bounds = buildYearBounds(timeline.events);
+        setYearRange((prev) => {
+          if (!bounds) return prev;
+          if (!prev || !rangeTouched.current) return bounds;
+          return prev;
+        });
+        setError(null);
+      } catch (err) {
+        if (!cancelled && first) {
+          setError(err instanceof Error ? err.message : "load failed");
+        }
+      } finally {
+        inFlight = false;
+        if (!cancelled && first) {
+          setLoading(false);
+          first = false;
+        }
+      }
+    }
 
+    load();
+    const tick = window.setInterval(load, POLL_MS);
     return () => {
       cancelled = true;
+      window.clearInterval(tick);
     };
   }, [entityId, personFilter, hasEntity, filters.profileSlug, filters.periodSlug]);
 
@@ -234,6 +279,11 @@ export function ExplorerPage() {
     () => allEvents.find((event) => event.id === selectedEventId) ?? null,
     [allEvents, selectedEventId],
   );
+
+  const handleYearRange = useCallback((range: { min: number; max: number }) => {
+    rangeTouched.current = true;
+    setYearRange(range);
+  }, []);
 
   const handleSelectSuggestion = useCallback(
     (item: SearchSuggestion) => {
@@ -290,6 +340,7 @@ export function ExplorerPage() {
             <EntityProfile
               name={entityLabel}
               eventCount={allEvents.length}
+              mapCount={geojson?.features.length ?? 0}
               profiles={entityProfiles}
             />
           ) : null}
@@ -382,7 +433,7 @@ export function ExplorerPage() {
             <ExplorerMapTimelineBar
               bounds={dataBounds}
               range={activeRange}
-              onRangeChange={setYearRange}
+              onRangeChange={handleYearRange}
               visibleCount={filteredEvents.length}
               totalCount={taxonomyEvents.length}
               yearHistogram={histogram}
