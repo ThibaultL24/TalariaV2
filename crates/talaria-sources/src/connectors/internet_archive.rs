@@ -141,10 +141,7 @@ impl SourceConnector for InternetArchiveConnector {
             let client = self.client.as_ref().ok_or_else(|| {
                 ConnectorError::NotConfigured("live HTTP client missing".into())
             })?;
-            let q = format!(
-                "title:(\"{label}\") AND mediatype:texts AND (origins OR origine OR historiography OR controversy OR origines)",
-                label = subject.label.replace('"', "")
-            );
+            let q = subject.catalog_query(SourceKind::InternetArchive);
             let url = format!(
                 "{}/advancedsearch.php?q={}&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=year&fl[]=description&fl[]=mediatype&output=json&rows={nombre}&page={}",
                 self.config.base_url.trim_end_matches('/'),

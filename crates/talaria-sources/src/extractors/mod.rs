@@ -68,16 +68,26 @@ impl ExtractorInput {
 }
 
 pub fn default_extractor_stack() -> Vec<Box<dyn CandidateExtractor>> {
-    vec![
+    extractor_stack_for(crate::PersonClass::MilitaryLeader)
+}
+
+pub fn extractor_stack_for(class: crate::PersonClass) -> Vec<Box<dyn CandidateExtractor>> {
+    let profile = crate::profile_for(class);
+    let mut stack: Vec<Box<dyn CandidateExtractor>> = vec![
         Box::new(StructuredStatementExtractor),
         Box::new(TimelineListExtractor),
-        Box::new(MilitaryCampaignExtractor),
-        Box::new(ItineraryExtractor),
+    ];
+    if profile.enable_military_extractor {
+        stack.push(Box::new(MilitaryCampaignExtractor));
+    }
+    stack.extend([
+        Box::new(ItineraryExtractor) as Box<dyn CandidateExtractor>,
         Box::new(DenseClauseExtractor),
         Box::new(TravelResidenceExtractor),
         Box::new(PublicationExtractor),
         Box::new(PosthumousEventExtractor),
-    ]
+    ]);
+    stack
 }
 
 pub fn to_clause_extraction(raw: &RawCandidate) -> ClauseExtraction {

@@ -11,6 +11,62 @@ pub trait MentionResolver {
 /// Generic entries only — no biography-specific rules.
 pub struct GazetteerResolver;
 
+const GAZETTEER_PLACES: &[&str] = &[
+    "paris",
+    "london",
+    "ajaccio",
+    "waterloo",
+    "leipzig",
+    "austerlitz",
+    "elba",
+    "saint helena",
+    "st helena",
+    "corsica",
+    "moscow",
+    "vienna",
+    "rome",
+    "milan",
+    "toulon",
+    "fontainebleau",
+    "malmaison",
+    "brienne",
+    "egypt",
+    "cairo",
+    "jena",
+    "wagram",
+    "borodino",
+    "smolensk",
+    "tilsit",
+    "notre-dame",
+    "notre dame",
+    "amiens",
+];
+
+/// Whole-word gazetteer hit in `text`. Prefers the longest matching label.
+pub fn gazetteer_place_in_text(text: &str) -> Option<String> {
+    let lower = text.to_lowercase();
+    let mut best: Option<&str> = None;
+    for place in GAZETTEER_PLACES {
+        if !word_hit(&lower, place) {
+            continue;
+        }
+        if best.map(|b| place.len() > b.len()).unwrap_or(true) {
+            best = Some(place);
+        }
+    }
+    best.map(|p| p.to_string())
+}
+
+fn word_hit(lower: &str, needle: &str) -> bool {
+    let Some(idx) = lower.find(needle) else {
+        return false;
+    };
+    let before_ok = idx == 0 || !lower.as_bytes()[idx - 1].is_ascii_alphanumeric();
+    let end = idx + needle.len();
+    let after_ok = end >= lower.len() || !lower.as_bytes()[end].is_ascii_alphanumeric();
+    before_ok && after_ok
+}
+
 impl MentionResolver for GazetteerResolver {
     fn resolve_surface(&self, surface: &str) -> Option<(String, EntityKind)> {
         let key = surface.trim().to_lowercase();
@@ -32,37 +88,7 @@ impl MentionResolver for GazetteerResolver {
             return Some((surface.trim().to_string(), EntityKind::Person));
         }
 
-        // Places via judge gazetteer labels + common toponyms
-        const PLACES: &[&str] = &[
-            "paris",
-            "london",
-            "ajaccio",
-            "waterloo",
-            "leipzig",
-            "austerlitz",
-            "elba",
-            "saint helena",
-            "st helena",
-            "corsica",
-            "moscow",
-            "vienna",
-            "rome",
-            "milan",
-            "toulon",
-            "fontainebleau",
-            "malmaison",
-            "brienne",
-            "egypt",
-            "cairo",
-            "jena",
-            "wagram",
-            "borodino",
-            "smolensk",
-            "tilsit",
-            "notre-dame",
-            "notre dame",
-        ];
-        if PLACES.iter().any(|p| *p == key) {
+        if GAZETTEER_PLACES.iter().any(|p| *p == key) {
             return Some((surface.trim().to_string(), EntityKind::Place));
         }
 

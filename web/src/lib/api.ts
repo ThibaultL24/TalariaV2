@@ -234,3 +234,41 @@ export async function fetchProfiles(): Promise<import("@/lib/schemas/entity").Pr
   const data = (await response.json()) as { profiles: import("@/lib/schemas/entity").ProfileFacet[] };
   return data.profiles ?? [];
 }
+
+export interface IngestJobResponse {
+  job_id: string;
+  status: "queued" | "running" | "done" | "failed" | string;
+  subject: string;
+  qid?: string | null;
+  entity_id?: string | null;
+  error?: string | null;
+  report?: unknown;
+  deduped?: boolean;
+}
+
+export async function startPersonIngest(input: {
+  subject: string;
+  qid?: string | null;
+  live?: boolean;
+}): Promise<IngestJobResponse> {
+  const response = await fetch("/api/v1/ingest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      subject: input.subject,
+      qid: input.qid ?? undefined,
+      live: input.live ?? true,
+    }),
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? "ingest start failed");
+  }
+  return response.json();
+}
+
+export async function fetchIngestJob(jobId: string): Promise<IngestJobResponse> {
+  const response = await fetch(`/api/v1/ingest/${jobId}`);
+  if (!response.ok) throw new Error("ingest job fetch failed");
+  return response.json();
+}

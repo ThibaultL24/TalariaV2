@@ -153,10 +153,7 @@ impl SourceConnector for EuropeanaConnector {
                 .api_key
                 .as_deref()
                 .ok_or_else(|| ConnectorError::NotConfigured("EUROPEANA_API_KEY".into()))?;
-            let q = format!(
-                "\"{}\" AND (origins OR origines OR historiography OR controversy)",
-                subject.label.replace('"', "")
-            );
+            let q = subject.catalog_query(SourceKind::Europeana);
             let url = format!(
                 "{}/search.json?wskey={}&query={}&qf=TYPE:TEXT&rows={nombre}&start={}",
                 self.config.base_url.trim_end_matches('/'),

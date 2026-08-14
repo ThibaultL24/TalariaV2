@@ -50,6 +50,7 @@ export function MapSourceManager({ map, data }: MapSourceManagerProps) {
         map.addSource("events", {
           type: "geojson",
           data: collection,
+          promoteId: "id",
           cluster: true,
           clusterMaxZoom: 12,
           clusterRadius: 50,

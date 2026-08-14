@@ -60,7 +60,7 @@ export const selectedEventLayer: CircleLayerSpecification = {
   id: "selected-event",
   type: "circle",
   source: "events",
-  filter: ["==", ["id"], ""],
+  filter: ["==", ["get", "id"], ""],
   paint: {
     "circle-radius": 13,
     "circle-color": "#5b77be",

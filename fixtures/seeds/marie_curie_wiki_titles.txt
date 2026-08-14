@@ -1,0 +1,42 @@
+# fixtures/seeds/marie_curie_wiki_titles.txt
+# Seed Wikipedia titles for dense quality exploration of Q7186.
+
+Marie Curie
+Pierre Curie
+Irène Joliot-Curie
+Radium
+Polonium
+Radioactivity
+Curie Institute (Paris)
+University of Paris
+Sorbonne
+Warsaw
+Passy, Haute-Savoie
+Nobel Prize in Physics
+Nobel Prize in Chemistry
+Solvay Conference
+Espérance (ship)
+Discovery of radium
+History of the Curies
+Marie Skłodowska-Curie Museum
+Curie (unit)
+Curie family
+École normale supérieure (Paris)
+Faculty of Sciences of Paris
+Pantheon, Paris
+Sceaux, Hauts-de-Seine
+Collège de France
+Académie des sciences
+World War I
+X-ray
+Pitchblende
+Joachimsthal
+Bicêtre Hospital
+Curie Hospital
+Institut du radium
+Maria Skłodowska-Curie National Research Institute of Oncology
+Polish Academy of Learning
+Flying University
+Jagiellonian University
+Paris Observatory
+Salon of Madame Curie

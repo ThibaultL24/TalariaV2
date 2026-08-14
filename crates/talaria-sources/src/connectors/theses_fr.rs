@@ -122,8 +122,9 @@ impl ThesesFrConnector {
     }
 
     fn build_query(subject: &ResolvedSubject) -> String {
-        let label = escape_es_query(&subject.label);
-        format!("(titrePrincipal:({label}) OR sujetsRameauLibelle:({label}) OR resumes.fr:({label}) OR resumes.en:({label}))")
+        let mut escaped = subject.clone();
+        escaped.label = escape_es_query(&subject.label);
+        escaped.catalog_query(SourceKind::ThesesFr)
     }
 
     async fn http_get_json(&self, url: &str) -> Result<serde_json::Value, ConnectorError> {

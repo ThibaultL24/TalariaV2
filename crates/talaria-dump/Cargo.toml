@@ -2,12 +2,13 @@
 name = "talaria-dump"
 version.workspace = true
 edition.workspace = true
-description = "Wikipedia multistream dump indexing and page extraction"
+description = "Dump indexing: Wikipedia multistream plus generic DumpReader (JSONL)"
 
 [dependencies]
 anyhow = { workspace = true }
 bzip2 = { workspace = true }
 chrono = { workspace = true }
+flate2 = "1"
 hex = { workspace = true }
 quick-xml = { workspace = true }
 serde = { workspace = true }

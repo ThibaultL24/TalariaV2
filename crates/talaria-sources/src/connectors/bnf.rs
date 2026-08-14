@@ -163,10 +163,7 @@ impl SourceConnector for BnfConnector {
             let client = self.client.as_ref().ok_or_else(|| {
                 ConnectorError::NotConfigured("live HTTP client missing".into())
             })?;
-            let q = format!(
-                "bib.anywhere all \"{}\"",
-                subject.label.replace('"', "")
-            );
+            let q = subject.catalog_query(SourceKind::Bnf);
             let url = format!(
                 "{}?version=1.2&operation=searchRetrieve&recordSchema=dublincore&maximumRecords={nombre}&startRecord={}&query={}",
                 self.config.base_url.trim_end_matches('/'),

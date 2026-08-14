@@ -3,19 +3,27 @@ mod documents;
 mod entities;
 mod events;
 mod facets;
+mod ingest;
 
-use axum::{routing::get, Json, Router};
+use axum::{
+    routing::{get, post},
+    Json, Router,
+};
 use documents::{
     get_document, list_document_fragments, list_entity_bibliography, list_entity_documents,
 };
 use entities::{get_entity, list_claims, search as search_entities};
 use events::{detail, evidence, geojson, timeline};
 use facets::{list_periods, list_profiles};
+use ingest::{get_ingest_job, start_ingest, IngestJobMap};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::Path;
+use std::sync::Arc;
 use talaria_core::AppConfig;
 use talaria_store::{connect, run_migrations, seed_default_periods, DbPool};
+use tokio::sync::Mutex;
 use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
@@ -25,6 +33,11 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
     run_migrations(&pool).await?;
     let seeded = seed_default_periods(&pool).await.unwrap_or(0);
     tracing::info!(periods = seeded, "default periods ready");
+
+    let ingest_jobs: IngestJobMap = Arc::new(Mutex::new(HashMap::new()));
+
+    let offline_only = config.offline_only;
+    let addr: SocketAddr = config.bind_addr.parse()?;
 
     let app = Router::new()
         .route("/health", get(health))
@@ -52,17 +65,20 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/v1/events/geojson", get(geojson))
         .route("/api/v1/events/{event_id}", get(detail))
         .route("/api/v1/events/{event_id}/evidence", get(evidence))
+        .route("/api/v1/ingest", post(start_ingest))
+        .route("/api/v1/ingest/{job_id}", get(get_ingest_job))
         .with_state(AppState {
             pool,
-            offline_only: config.offline_only,
+            offline_only,
+            config,
+            ingest_jobs,
         })
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http());
 
     let app = attach_web_ui(app);
 
-    let addr: SocketAddr = config.bind_addr.parse()?;
-    tracing::info!(%addr, offline_only = config.offline_only, "listening");
+    tracing::info!(%addr, offline_only, "listening");
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
     Ok(())
@@ -72,6 +88,8 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
 pub struct AppState {
     pub pool: DbPool,
     pub offline_only: bool,
+    pub config: AppConfig,
+    pub ingest_jobs: IngestJobMap,
 }
 
 async fn health() -> Json<Value> {

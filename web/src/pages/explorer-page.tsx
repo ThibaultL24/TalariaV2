@@ -18,11 +18,13 @@ import {
   fetchEntity,
   fetchEntityClaims,
   fetchGeoJson,
+  fetchIngestJob,
   fetchPeriods,
   fetchProfiles,
   fetchStatus,
   fetchTimeline,
   searchEntities,
+  startPersonIngest,
   type EntityClaim,
   type GeoJsonFeatureCollection,
   type StatusResponse,
@@ -37,10 +39,37 @@ import {
   filterTimelineByTaxonomy,
   filterTimelineByYearRange,
 } from "@/lib/geo";
+import { strings } from "@/lib/strings";
 import { useExplorerStore } from "@/stores/explorer-store";
 
 const POLL_MS = 5000;
 const LIVE_LIMIT = 2000;
+const INGEST_POLL_MS = 3000;
+
+function namesOverlap(left: string, right: string): boolean {
+  const a = left.trim().toLowerCase();
+  const b = right.trim().toLowerCase();
+  return a.includes(b) || b.includes(a);
+}
+
+/** Prefer the dense local entity when aliases split (Napoleon vs Napoleon Bonaparte). */
+function preferDenseLocalAlias(
+  item: SearchSuggestion,
+  items: SearchSuggestion[],
+): SearchSuggestion {
+  if (!item.known_locally || !item.label) return item;
+  const denser = items
+    .filter(
+      (row) =>
+        row.known_locally &&
+        row.entity_id &&
+        row.label &&
+        namesOverlap(row.label, item.label) &&
+        (row.event_count ?? 0) > (item.event_count ?? 0),
+    )
+    .sort((a, b) => (b.event_count ?? 0) - (a.event_count ?? 0))[0];
+  return denser ?? item;
+}
 
 export function ExplorerPage() {
   const [map, setMap] = useState<Map | null>(null);
@@ -59,6 +88,7 @@ export function ExplorerPage() {
   const [sidebarTab, setSidebarTab] = useState<"timeline" | "debates">("timeline");
   const [debates, setDebates] = useState<EntityClaim[]>([]);
   const [debatesLoading, setDebatesLoading] = useState(false);
+  const [ingestStatus, setIngestStatus] = useState<string | null>(null);
   const rangeTouched = useRef(false);
 
   const {
@@ -275,10 +305,35 @@ export function ExplorerPage() {
     [filteredEvents],
   );
 
-  const selectedEvent = useMemo(
-    () => allEvents.find((event) => event.id === selectedEventId) ?? null,
-    [allEvents, selectedEventId],
-  );
+  const selectedEvent = useMemo(() => {
+    if (!selectedEventId) return null;
+    const fromTimeline = allEvents.find((event) => event.id === selectedEventId);
+    if (fromTimeline) return fromTimeline;
+    const feature = geojson?.features.find((row) => {
+      const props = row.properties ?? {};
+      return String(props.id ?? props.event_id ?? row.id ?? "") === selectedEventId;
+    });
+    if (!feature) return null;
+    const props = feature.properties ?? {};
+    const coords = feature.geometry?.coordinates;
+    return {
+      id: selectedEventId,
+      entity_id: String(props.entity_id ?? entityId ?? ""),
+      person: String(props.person ?? entityLabel ?? ""),
+      event_type: String(props.event_type ?? "unknown"),
+      epistemic_status: String(props.epistemic_status ?? "attested"),
+      title: String(props.title ?? "Event"),
+      summary: (props.summary as string | null | undefined) ?? null,
+      start_time: (props.start_time as string | null | undefined) ?? null,
+      place_label: (props.place_label as string | null | undefined) ?? null,
+      confidence: Number(props.confidence ?? 0.5),
+      map_eligible: true,
+      coordinates:
+        Array.isArray(coords) && coords.length >= 2
+          ? { lon: Number(coords[0]), lat: Number(coords[1]) }
+          : null,
+    };
+  }, [allEvents, selectedEventId, geojson, entityId, entityLabel]);
 
   const handleYearRange = useCallback((range: { min: number; max: number }) => {
     rangeTouched.current = true;
@@ -286,14 +341,59 @@ export function ExplorerPage() {
   }, []);
 
   const handleSelectSuggestion = useCallback(
-    (item: SearchSuggestion) => {
-      if (item.known_locally && item.entity_id) {
-        setEntity(item.entity_id, item.label);
+    async (item: SearchSuggestion) => {
+      const chosen = preferDenseLocalAlias(item, suggestions);
+      if (chosen.known_locally && chosen.entity_id) {
+        setIngestStatus(null);
+        setEntity(chosen.entity_id, chosen.label);
         return;
       }
-      setPersonFilter(item.label, item.label);
+
+      setPersonFilter(chosen.label, chosen.label);
+      setIngestStatus(strings.ingestQueued);
+      setError(null);
+      try {
+        const started = await startPersonIngest({
+          subject: chosen.label,
+          qid: chosen.qid,
+          live: true,
+        });
+        setIngestStatus(
+          started.status === "running" ? strings.ingestRunning : strings.ingestQueued,
+        );
+
+        const deadline = Date.now() + 45 * 60 * 1000;
+        while (Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, INGEST_POLL_MS));
+          const job = await fetchIngestJob(started.job_id);
+          if (job.status === "running" || job.status === "queued") {
+            setIngestStatus(strings.ingestRunning);
+            continue;
+          }
+          if (job.status === "failed") {
+            setIngestStatus(null);
+            setError(`${strings.ingestFailed}: ${job.error ?? "unknown"}`);
+            return;
+          }
+          if (job.status === "done") {
+            setIngestStatus(strings.ingestDone);
+            if (job.entity_id) {
+              setEntity(job.entity_id, chosen.label);
+            } else {
+              setPersonFilter(chosen.label, chosen.label);
+            }
+            setIngestStatus(null);
+            return;
+          }
+        }
+        setIngestStatus(null);
+        setError(`${strings.ingestFailed}: timeout`);
+      } catch (err) {
+        setIngestStatus(null);
+        setError(err instanceof Error ? err.message : strings.ingestFailed);
+      }
     },
-    [setEntity, setPersonFilter],
+    [setEntity, setPersonFilter, suggestions],
   );
 
   const handleSelectEvent = useCallback(
@@ -331,9 +431,16 @@ export function ExplorerPage() {
             <EntitySearchBox
               suggestions={suggestions}
               onSubmitQuery={setSearchQuery}
-              onSelect={handleSelectSuggestion}
+              onSelect={(item) => {
+                void handleSelectSuggestion(item);
+              }}
               isLoading={searchLoading}
             />
+            {ingestStatus ? (
+              <p className="mt-2 text-xs text-sky-300" role="status">
+                {ingestStatus}
+              </p>
+            ) : null}
           </div>
 
           {entityLabel ? (
@@ -458,12 +565,16 @@ export function ExplorerPage() {
                 onClick={closeDetail}
               />
               <div
-                className="nebula-event-detail relative flex max-h-[min(90vh,820px)] w-full max-w-lg flex-col overflow-hidden rounded-xl"
+                className="nebula-event-detail relative flex max-h-[min(90vh,860px)] w-full max-w-xl flex-col overflow-hidden rounded-xl"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="event-detail-card-title"
               >
-                <EventDetailCard event={selectedEvent} onClose={closeDetail} />
+                <EventDetailCard
+                  event={selectedEvent}
+                  onClose={closeDetail}
+                  offlineOnly={Boolean(status?.offline_only)}
+                />
               </div>
             </div>
           ) : null}

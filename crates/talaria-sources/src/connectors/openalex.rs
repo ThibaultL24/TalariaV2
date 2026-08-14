@@ -378,7 +378,7 @@ impl SourceConnector for OpenAlexConnector {
         let payload = if let Some(search) = &self.fixture_search {
             search.clone()
         } else {
-            let q = openalex_debate_query(&subject.label);
+            let q = subject.catalog_query(SourceKind::OpenAlex);
             let page = (debut / nombre) + 1;
             let mut url = format!(
                 "{}/works?search={}&per-page={nombre}&page={page}",

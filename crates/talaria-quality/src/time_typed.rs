@@ -2,10 +2,40 @@
 use crate::model::TypedTime;
 use talaria_judge::parse_time_surface;
 
+const MONTHS: &[(&str, u32)] = &[
+    ("january", 1),
+    ("february", 2),
+    ("march", 3),
+    ("april", 4),
+    ("may", 5),
+    ("june", 6),
+    ("july", 7),
+    ("august", 8),
+    ("september", 9),
+    ("october", 10),
+    ("november", 11),
+    ("december", 12),
+    ("jan", 1),
+    ("feb", 2),
+    ("mar", 3),
+    ("apr", 4),
+    ("jun", 6),
+    ("jul", 7),
+    ("aug", 8),
+    ("sep", 9),
+    ("sept", 9),
+    ("oct", 10),
+    ("nov", 11),
+    ("dec", 12),
+];
+
 pub fn parse_typed_time(surface: Option<&str>) -> TypedTime {
     let Some(raw) = surface.map(str::trim).filter(|s| !s.is_empty()) else {
         return TypedTime::Unknown { surface: None };
     };
+    if let Some(t) = parse_calendar_date(raw) {
+        return t;
+    }
     match parse_time_surface(raw) {
         Some(p) => TypedTime::Exact {
             year: p.year,
@@ -19,8 +49,134 @@ pub fn parse_typed_time(surface: Option<&str>) -> TypedTime {
     }
 }
 
+/// Best time surface in a clause: day-month-year if present, else a 4-digit year.
+pub fn extract_time_surface(text: &str) -> Option<String> {
+    if let Some(span) = scan_day_month_year(text) {
+        return Some(span);
+    }
+    if let Some(span) = scan_iso_date(text) {
+        return Some(span);
+    }
+    scan_year(text)
+}
+
 pub fn typed_time_year(time: &TypedTime) -> Option<i32> {
     time.year_for_gates()
+}
+
+fn parse_calendar_date(raw: &str) -> Option<TypedTime> {
+    let trimmed = raw.trim().trim_end_matches('.');
+    if let Some((year, month, day)) = parse_iso_ymd(trimmed) {
+        return Some(TypedTime::Exact {
+            year,
+            month: Some(month),
+            day: Some(day),
+            surface: Some(trimmed.to_string()),
+        });
+    }
+    if let Some((year, month, day, _)) = parse_day_month_year(trimmed) {
+        return Some(TypedTime::Exact {
+            year,
+            month: Some(month),
+            day: Some(day),
+            surface: Some(trimmed.to_string()),
+        });
+    }
+    None
+}
+
+fn scan_iso_date(text: &str) -> Option<String> {
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i + 10 <= bytes.len() {
+        let slice = &text[i..i + 10];
+        if parse_iso_ymd(slice).is_some() {
+            return Some(slice.to_string());
+        }
+        i += 1;
+    }
+    None
+}
+
+fn parse_iso_ymd(s: &str) -> Option<(i32, u32, u32)> {
+    if s.len() != 10 || s.as_bytes()[4] != b'-' || s.as_bytes()[7] != b'-' {
+        return None;
+    }
+    let year: i32 = s[0..4].parse().ok()?;
+    let month: u32 = s[5..7].parse().ok()?;
+    let day: u32 = s[8..10].parse().ok()?;
+    if !(1000..=2100).contains(&year) || !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+    Some((year, month, day))
+}
+
+fn scan_day_month_year(text: &str) -> Option<String> {
+    parse_day_month_year(text).map(|(_, _, _, span)| span)
+}
+
+fn parse_day_month_year(text: &str) -> Option<(i32, u32, u32, String)> {
+    let lower = text.to_lowercase();
+    for (name, month) in MONTHS {
+        let mut from = 0usize;
+        while let Some(rel) = lower[from..].find(name) {
+            let mstart = from + rel;
+            let mend = mstart + name.len();
+            if !month_boundaries(&lower, mstart, mend) {
+                from = mend;
+                continue;
+            }
+            let after = text[mend..].trim_start_matches(|c: char| c == ',' || c == ' ');
+            let Some(year) = leading_year(after) else {
+                from = mend;
+                continue;
+            };
+            let before = text[..mstart].trim_end();
+            let Some(day) = trailing_day(before) else {
+                from = mend;
+                continue;
+            };
+            let span = format!("{day} {name} {year}");
+            return Some((year, *month, day, span));
+        }
+    }
+    None
+}
+
+fn month_boundaries(lower: &str, start: usize, end: usize) -> bool {
+    let b = start == 0 || !lower.as_bytes()[start - 1].is_ascii_alphabetic();
+    let a = end >= lower.len() || !lower.as_bytes()[end].is_ascii_alphabetic();
+    b && a
+}
+
+fn leading_year(s: &str) -> Option<i32> {
+    let digits: String = s.chars().take(4).filter(|c| c.is_ascii_digit()).collect();
+    if digits.len() != 4 {
+        return None;
+    }
+    let y: i32 = digits.parse().ok()?;
+    (1000..=2100).contains(&y).then_some(y)
+}
+
+fn trailing_day(before: &str) -> Option<u32> {
+    let tok = before
+        .rsplit(|c: char| !c.is_ascii_digit())
+        .find(|s| !s.is_empty())?;
+    let day: u32 = tok.parse().ok()?;
+    (1..=31).contains(&day).then_some(day)
+}
+
+fn scan_year(text: &str) -> Option<String> {
+    for word in text.split(|c: char| !c.is_ascii_digit()) {
+        if word.len() == 4 {
+            if let Ok(y) = word.parse::<i32>() {
+                if (1000..=2100).contains(&y) {
+                    return Some(y.to_string());
+                }
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -28,8 +184,68 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_year_as_exact() {
+    fn parses_year_as_exact_without_month_day() {
         let t = parse_typed_time(Some("1769"));
+        match t {
+            TypedTime::Exact {
+                year,
+                month,
+                day,
+                ..
+            } => {
+                assert_eq!(year, 1769);
+                assert!(month.is_none());
+                assert!(day.is_none());
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_day_month_year() {
+        let t = parse_typed_time(Some("15 August 1769"));
+        match t {
+            TypedTime::Exact {
+                year,
+                month,
+                day,
+                ..
+            } => {
+                assert_eq!(year, 1769);
+                assert_eq!(month, Some(8));
+                assert_eq!(day, Some(15));
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn extracts_full_date_from_clause() {
+        let s = extract_time_surface(
+            "Napoleon Bonaparte was born on 15 August 1769 in Ajaccio.",
+        )
+        .unwrap();
+        let t = parse_typed_time(Some(&s));
         assert_eq!(t.year_for_gates(), Some(1769));
+        match t {
+            TypedTime::Exact { month, day, .. } => {
+                assert_eq!(month, Some(8));
+                assert_eq!(day, Some(15));
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn year_only_clause_has_no_month() {
+        let s = extract_time_surface("In 1814 Napoleon was exiled to Elba.").unwrap();
+        assert_eq!(s, "1814");
+        match parse_typed_time(Some(&s)) {
+            TypedTime::Exact { month, day, .. } => {
+                assert!(month.is_none());
+                assert!(day.is_none());
+            }
+            other => panic!("{other:?}"),
+        }
     }
 }

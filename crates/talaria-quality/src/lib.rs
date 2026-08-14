@@ -13,8 +13,9 @@ mod resume;
 mod time_typed;
 
 pub use analyzer::{
-    split_clauses, ClauseAnalyzeInput, ClauseAnalyzer, ClauseExtraction,
-    DeterministicClauseAnalyzer,
+    split_clauses, ClauseAnalyzeInput, ClauseAnalyzer, ClauseExtraction, CosmosClauseAnalyzer,
+    CosmosJudgment, CosmosTuple, DeterministicClauseAnalyzer, HeuristicCosmosAnalyzer,
+    COSMOS_DEFAULT_MIN_SCORE, COSMOS_HEURISTIC_ID, COSMOS_HEURISTIC_V1,
 };
 pub use fingerprint::{candidate_fingerprint, event_fingerprint, normalize_surface};
 pub use gates::{apply_gates, GateContext, GateDecision, RejectionCode};
@@ -27,8 +28,10 @@ pub use assertion::{
 };
 pub use occurrence::{occurrence_key, occurrence_key_for_event};
 pub use projections::{BuildProjections, DerivedLabelProjections, ProjectionEvent};
-pub use resolve::{resolve_mentions, GazetteerResolver, MentionResolver, ResolvedMentions};
+pub use resolve::{
+    gazetteer_place_in_text, resolve_mentions, GazetteerResolver, MentionResolver, ResolvedMentions,
+};
 pub use resume::{
     existing_candidate_action, should_reinforce_existing_event, ExistingCandidateAction,
 };
-pub use time_typed::{parse_typed_time, typed_time_year};
+pub use time_typed::{extract_time_surface, parse_typed_time, typed_time_year};

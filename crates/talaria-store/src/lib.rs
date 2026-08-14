@@ -4,6 +4,8 @@
 pub mod canonical_events;
 pub mod claims;
 pub mod corpus;
+pub mod corpus_dump;
+pub mod cosmos_judgments;
 pub mod dump_runs;
 pub mod entities;
 pub mod intuition;
@@ -37,6 +39,16 @@ pub use corpus::{
     upsert_corpus_document, upsert_entity_document_link, ContributionInsert, CorpusDocumentInsert,
     CorpusDocumentRow, CorpusPassageRow, DocumentContributionRow, DocumentIdentifierRow,
     EntityDocumentLinkInsert, EntityDocumentsFilter, EntityLinkedDocumentRow, SubjectInsert,
+};
+pub use corpus_dump::{
+    corpus_dump_document_status, corpus_dump_document_status_counts, finish_corpus_dump_run,
+    get_corpus_dump_run, latest_corpus_dump_run, mark_corpus_dump_running, start_corpus_dump_run, update_corpus_dump_progress,
+    upsert_corpus_dump_document, CorpusDumpDocumentUpsert, CorpusDumpRunInsert, CorpusDumpRunRow,
+};
+pub use cosmos_judgments::{
+    count_fragment_cosmos_judgments, get_fragment_cosmos_judgment, insert_fragment_cosmos_judgment,
+    list_cosmos_accepted_fragments, list_sentence_fragments_for_cosmos, CosmosJudgmentInsert,
+    CosmosJudgmentRow, CosmosJudgmentWrite, FragmentForCosmos,
 };
 pub use dump_runs::{finish_dump_run, start_dump_run};
 pub use entities::{
@@ -75,7 +87,8 @@ pub use quality::{
     apply_place_to_quality_event, count_active_quality_by_type,
     find_active_quality_event_by_fingerprint, find_active_quality_event_by_occurrence_key,
     find_active_singleton, get_entity_kind, get_event_candidate_by_fingerprint,
-    insert_document_fragment, insert_document_snapshot, insert_quality_canonical_event,
+    count_sentence_fragments, find_document_snapshot, insert_document_fragment,
+    insert_document_snapshot, insert_quality_canonical_event,
     list_event_candidates_by_status, mark_candidate_assembled, quality_lifespan_years,
     quality_report_counts, reinforce_quality_event, rejection_reason_counts,
     update_event_candidate_judgment, upsert_entity_with_kind, upsert_event_candidate,

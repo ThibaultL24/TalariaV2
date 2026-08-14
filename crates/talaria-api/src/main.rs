@@ -12,6 +12,9 @@ mod claim_extract;
 mod cli;
 mod corpus_ingest;
 mod cosmos;
+mod dump_cosmos;
+mod dump_events;
+mod dump_ingest;
 mod geocode;
 mod historiography;
 mod ingest;
@@ -25,7 +28,7 @@ mod routes;
 mod wikidata_ingest;
 
 use clap::Parser;
-use cli::{Cli, Commands};
+use cli::{Cli, Commands, DumpAction};
 use talaria_core::AppConfig;
 use tracing_subscriber::EnvFilter;
 
@@ -43,6 +46,163 @@ async fn main() -> anyhow::Result<()> {
         Commands::Migrate => cli::run_migrate(&config).await?,
         Commands::Serve => routes::serve(config).await?,
         Commands::DumpIndex { index, limit } => cli::run_dump_index(&config, &index, limit).await?,
+        Commands::Dump { action } => match action {
+            DumpAction::Plan {
+                file,
+                subject,
+                language,
+                source_kind,
+                limit,
+            } => {
+                let report = dump_ingest::run_dump_plan(&dump_ingest::DumpIngestOpts {
+                    file,
+                    source_kind,
+                    subject,
+                    language,
+                    dry_run: true,
+                    skip_existing: false,
+                    limit,
+                    resume_run: None,
+                })
+                .await?;
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            }
+            DumpAction::Ingest {
+                file,
+                dry_run,
+                subject,
+                language,
+                skip_existing,
+                source_kind,
+                limit,
+                run,
+            } => {
+                let resume_run = match run {
+                    Some(id) => Some(id.parse::<uuid::Uuid>()?),
+                    None => None,
+                };
+                let opts = dump_ingest::DumpIngestOpts {
+                    file,
+                    source_kind,
+                    subject,
+                    language,
+                    dry_run,
+                    skip_existing,
+                    limit,
+                    resume_run,
+                };
+                let report = if dry_run {
+                    dump_ingest::run_dump_plan(&opts).await?
+                } else {
+                    dump_ingest::run_dump_ingest(&config, &opts).await?
+                };
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            }
+            DumpAction::Resume { run, skip_existing } => {
+                let run_id: uuid::Uuid = run.parse()?;
+                let report = dump_ingest::run_dump_resume(&config, run_id, skip_existing).await?;
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            }
+            DumpAction::Status { run } => {
+                let run_id = match run {
+                    Some(id) => Some(id.parse::<uuid::Uuid>()?),
+                    None => None,
+                };
+                let status = dump_ingest::run_dump_status(&config, run_id).await?;
+                println!("{}", serde_json::to_string_pretty(&status)?);
+            }
+            DumpAction::ExtractCandidates {
+                run,
+                source_kind,
+                min_score,
+                cosmos,
+                skip_existing,
+                limit,
+                version,
+            } => {
+                let live = match cosmos.as_str() {
+                    "heuristic" => false,
+                    "live" => true,
+                    other => anyhow::bail!("unknown --cosmos {other} (heuristic|live)"),
+                };
+                let run_id = match run {
+                    Some(id) => Some(id.parse::<uuid::Uuid>()?),
+                    None => None,
+                };
+                let report = dump_cosmos::run_dump_extract_candidates(
+                    &config,
+                    &dump_cosmos::DumpExtractOpts {
+                        run_id,
+                        source_kind,
+                        min_score,
+                        live,
+                        skip_existing,
+                        limit,
+                        version,
+                    },
+                )
+                .await?;
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            }
+            DumpAction::ExtractEvents {
+                run,
+                source_kind,
+                subject,
+                extractors,
+                analyzer_id,
+                version,
+                limit,
+            } => {
+                let run_id = match run {
+                    Some(id) => Some(id.parse::<uuid::Uuid>()?),
+                    None => None,
+                };
+                let report = dump_events::run_dump_extract_events(
+                    &config,
+                    &dump_events::DumpEventsOpts {
+                        run_id,
+                        source_kind,
+                        subject,
+                        extractors,
+                        analyzer_id,
+                        version,
+                        limit,
+                        assemble: false,
+                    },
+                )
+                .await?;
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            }
+            DumpAction::Canonicalize {
+                run,
+                source_kind,
+                subject,
+                extractors,
+                analyzer_id,
+                version,
+                limit,
+            } => {
+                let run_id = match run {
+                    Some(id) => Some(id.parse::<uuid::Uuid>()?),
+                    None => None,
+                };
+                let report = dump_events::run_dump_canonicalize(
+                    &config,
+                    &dump_events::DumpEventsOpts {
+                        run_id,
+                        source_kind,
+                        subject,
+                        extractors,
+                        analyzer_id,
+                        version,
+                        limit,
+                        assemble: true,
+                    },
+                )
+                .await?;
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            }
+        },
         Commands::ExtractPages {
             dump,
             index,
@@ -113,8 +273,11 @@ async fn main() -> anyhow::Result<()> {
             wiki_lang,
             resume: _,
         } => {
-            if live && seed_list.is_some() {
-                let seeds = seed_list.unwrap_or_else(lot_e::default_napoleon_seed);
+            if live {
+                let seeds = match seed_list {
+                    Some(path) => path,
+                    None => lot_e::write_minimal_seed_list(&subject)?,
+                };
                 let targets = talaria_sources::DensityTargets {
                     target_timeline_events,
                     target_map_events,

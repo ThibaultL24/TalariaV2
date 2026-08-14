@@ -22,7 +22,7 @@ impl CandidateExtractor for MilitaryCampaignExtractor {
 
         // Page-level battle/siege → at least one occurrence (place from title).
         if let Some((etype, place, object)) = classify_page_title(&title) {
-            let year = first_year(&input.text);
+            let year = first_year(&input.text, input.subject_death_year);
             let place_opt = if place.is_empty() { None } else { Some(place) };
             out.push(RawCandidate {
                 event_type: etype.into(),
@@ -77,7 +77,7 @@ impl CandidateExtractor for MilitaryCampaignExtractor {
             } else {
                 continue;
             };
-            let year = first_year(line);
+            let year = first_year(line, input.subject_death_year);
             let place = place_from_battle_phrase(line)
                 .or_else(|| place_from_line(line))
                 .filter(|p| is_plausible_place_label(p));
@@ -141,17 +141,9 @@ fn title_case_place(s: &str) -> String {
         .to_string()
 }
 
-fn first_year(text: &str) -> Option<String> {
-    for w in text.split(|c: char| !c.is_ascii_digit()) {
-        if w.len() == 4 {
-            if let Ok(y) = w.parse::<i32>() {
-                if (1700..=1900).contains(&y) {
-                    return Some(y.to_string());
-                }
-            }
-        }
-    }
-    None
+fn first_year(text: &str, death_year: Option<i32>) -> Option<String> {
+    let (lo, hi) = crate::lifespan_year_window(None, death_year);
+    crate::first_year_in_window(text, lo, hi)
 }
 
 fn place_from_battle_phrase(line: &str) -> Option<String> {

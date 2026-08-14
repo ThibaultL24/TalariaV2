@@ -40,6 +40,19 @@ pub async fn search_local_entities(
     limit: i64,
 ) -> anyhow::Result<Vec<EntityRow>> {
     let pattern = format!("%{query}%");
+    let first_token = query
+        .split_whitespace()
+        .next()
+        .unwrap_or(query)
+        .trim();
+    // "Napoleon Bonaparte" must still surface the dense "Napoleon" entity.
+    let token_pattern = if first_token.len() >= 4
+        && !first_token.eq_ignore_ascii_case(query.trim())
+    {
+        Some(format!("%{first_token}%"))
+    } else {
+        None
+    };
     let rows = sqlx::query_as::<_, EntityRow>(
         r#"
         SELECT
@@ -53,6 +66,9 @@ pub async fn search_local_entities(
         WHERE e.canonical_name ILIKE $1
            OR e.wikipedia_title ILIKE $1
            OR e.qid ILIKE $1
+           OR ($3::text IS NOT NULL AND (
+                e.canonical_name ILIKE $3 OR e.wikipedia_title ILIKE $3
+           ))
         GROUP BY e.id
         ORDER BY event_count DESC, e.canonical_name ASC NULLS LAST
         LIMIT $2
@@ -60,6 +76,7 @@ pub async fn search_local_entities(
     )
     .bind(pattern)
     .bind(limit)
+    .bind(token_pattern)
     .fetch_all(pool)
     .await?;
 

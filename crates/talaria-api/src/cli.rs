@@ -31,6 +31,11 @@ pub enum Commands {
         #[arg(long, default_value = "0", help = "Max entries (0 = all)")]
         limit: usize,
     },
+    /// Generic corpus dump → snapshots + sentence fragments (not Wikipedia extract-pages)
+    Dump {
+        #[command(subcommand)]
+        action: DumpAction,
+    },
     /// Extract wiki pages from multistream XML bz2 into DB + raw files
     ExtractPages {
         #[arg(long, help = "Path to *-pages-articles-multistream.xml.bz2")]
@@ -255,6 +260,115 @@ pub enum Commands {
         subject: String,
         #[arg(long, help = "Broadcast to Intuition testnet (needs INTUITION_PRIVATE_KEY)")]
         live: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum DumpAction {
+    /// Read a dump and print planned snapshot/fragment counts (no Postgres writes)
+    Plan {
+        #[arg(long)]
+        file: PathBuf,
+        #[arg(long)]
+        subject: Option<String>,
+        #[arg(long)]
+        language: Option<String>,
+        #[arg(long, default_value = "jsonl")]
+        source_kind: String,
+        #[arg(long, default_value = "0", help = "Max documents (0 = all)")]
+        limit: usize,
+    },
+    /// Persist dump records as document_snapshots + sentence fragments
+    Ingest {
+        #[arg(long)]
+        file: PathBuf,
+        #[arg(long, help = "Read and count only; do not write Postgres")]
+        dry_run: bool,
+        #[arg(long)]
+        subject: Option<String>,
+        #[arg(long)]
+        language: Option<String>,
+        #[arg(long, help = "Skip documents already terminal on this run")]
+        skip_existing: bool,
+        #[arg(long, default_value = "jsonl")]
+        source_kind: String,
+        #[arg(long, default_value = "0", help = "Max documents this invocation (0 = all)")]
+        limit: usize,
+        #[arg(long, help = "Resume an existing corpus dump run")]
+        run: Option<String>,
+    },
+    /// Restore dump cursor and continue a run
+    Resume {
+        #[arg(long)]
+        run: String,
+        #[arg(
+            long,
+            default_value_t = true,
+            action = clap::ArgAction::Set,
+            help = "Skip documents already terminal on this run"
+        )]
+        skip_existing: bool,
+    },
+    /// Print corpus dump run status as JSON
+    Status {
+        #[arg(long)]
+        run: Option<String>,
+    },
+    /// Score dump sentence fragments with Cosmos (writes no canonical_events)
+    ExtractCandidates {
+        #[arg(long, help = "Limit to snapshots from this corpus dump run")]
+        run: Option<String>,
+        #[arg(long)]
+        source_kind: Option<String>,
+        #[arg(long, default_value_t = 0.45)]
+        min_score: f32,
+        #[arg(long, default_value = "heuristic", help = "heuristic | live")]
+        cosmos: String,
+        #[arg(
+            long,
+            default_value_t = true,
+            action = clap::ArgAction::Set,
+            help = "Skip fragments already judged for this analyzer+version"
+        )]
+        skip_existing: bool,
+        #[arg(long, default_value = "0", help = "Max fragments (0 = all)")]
+        limit: usize,
+        #[arg(long, help = "Override analyzer version (new version recalculates)")]
+        version: Option<String>,
+    },
+    /// Cosmos-accepted phrases → extractors → event_candidates (no assemble)
+    ExtractEvents {
+        #[arg(long)]
+        run: Option<String>,
+        #[arg(long)]
+        source_kind: Option<String>,
+        #[arg(long)]
+        subject: String,
+        #[arg(long, value_delimiter = ',', help = "Extractor ids (default: all)")]
+        extractors: Option<Vec<String>>,
+        #[arg(long, default_value = "cosmos-heuristic")]
+        analyzer_id: String,
+        #[arg(long, default_value = "heuristic:v1")]
+        version: String,
+        #[arg(long, default_value = "0")]
+        limit: usize,
+    },
+    /// Assemble accepted dump candidates into pipeline=quality events
+    Canonicalize {
+        #[arg(long)]
+        run: Option<String>,
+        #[arg(long)]
+        source_kind: Option<String>,
+        #[arg(long)]
+        subject: String,
+        #[arg(long, value_delimiter = ',')]
+        extractors: Option<Vec<String>>,
+        #[arg(long, default_value = "cosmos-heuristic")]
+        analyzer_id: String,
+        #[arg(long, default_value = "heuristic:v1")]
+        version: String,
+        #[arg(long, default_value = "0")]
+        limit: usize,
     },
 }
 

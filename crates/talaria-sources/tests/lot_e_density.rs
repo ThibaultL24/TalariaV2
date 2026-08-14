@@ -251,3 +251,20 @@ fn density_targets_signal_not_reached() {
     assert!(!progress.target_reached);
     assert_eq!(progress.status, "target_not_reached");
 }
+
+#[test]
+fn generic_seed_merge_does_not_use_napoleon_year_window() {
+    use talaria_sources::{first_year_in_window, lifespan_year_window, merge_seed_titles};
+    let (lo, hi) = lifespan_year_window(Some(1867), Some(1934));
+    assert!(first_year_in_window("awarded in 1903 in Stockholm", lo, hi).is_some());
+    assert!(first_year_in_window("cited in 2006", lo, hi).is_none());
+    let seeds = merge_seed_titles(
+        "Marie Curie",
+        ["Marie Curie".into()],
+        ["University of Paris".into(), "1867".into()],
+        8,
+    );
+    assert_eq!(seeds[0], "Marie Curie");
+    assert!(seeds.contains(&"University of Paris".into()));
+    assert!(!seeds.iter().any(|t| t == "1867"));
+}

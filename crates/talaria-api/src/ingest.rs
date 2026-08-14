@@ -12,14 +12,15 @@ use talaria_quality::{
 };
 use talaria_sources::connectors::{default_registry, FixtureConnector};
 use talaria_sources::extractors::{
-    claim_fingerprint, default_extractor_stack, CandidateExtractor, ClaimKey, ExtractorInput,
+    claim_fingerprint, extractor_stack_for, CandidateExtractor, ClaimKey, ExtractorInput,
     StructuredStatementExtractor,
 };
 use talaria_sources::wdqs::{
     events_from_fixture_dir, events_to_statement_text, fetch_events_for_person,
 };
 use talaria_sources::{
-    plan_sources, BudgetCounters, DiscoveredDocument, IngestBudgets, ResolvedSubject, SourceKind,
+    plan_sources, profile_for, BudgetCounters, DiscoveredDocument, IngestBudgets, ResolvedSubject,
+    SourceKind,
 };
 use talaria_store::{
     add_claim_support, connect, density_report_counts,
@@ -28,7 +29,7 @@ use talaria_store::{
     insert_quality_canonical_event, link_claim_to_event, mark_candidate_assembled,
     mark_discovered_skipped, mark_discovered_snapshotted, quality_lifespan_years,
     reinforce_quality_event, run_migrations, start_discovery_run, update_event_candidate_judgment,
-    upsert_discovered_document, upsert_entity_with_kind, upsert_event_candidate,
+    update_entity_qid, upsert_discovered_document, upsert_entity_with_kind, upsert_event_candidate,
     upsert_quality_claim, DiscoveredDocumentInsert, DiscoveryRunInsert, DocumentFragmentInsert,
     DocumentSnapshotInsert, EventCandidateInsert, QualityClaimInsert, QualityEventInsert,
 };
@@ -47,8 +48,20 @@ fn time_to_json(time: &TypedTime) -> serde_json::Value {
 }
 
 fn start_time_from_typed(time: &TypedTime) -> Option<chrono::DateTime<chrono::Utc>> {
-    time.year_for_gates()
-        .and_then(|y| parse_time_surface(&y.to_string()).map(|p| p.start))
+    use chrono::TimeZone;
+    match time {
+        TypedTime::Exact {
+            year,
+            month: Some(month),
+            day: Some(day),
+            ..
+        } => chrono::NaiveDate::from_ymd_opt(*year, *month, *day)
+            .and_then(|d| d.and_hms_opt(0, 0, 0))
+            .map(|n| chrono::Utc.from_utc_datetime(&n)),
+        other => other
+            .year_for_gates()
+            .and_then(|y| parse_time_surface(&y.to_string()).map(|p| p.start)),
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -97,8 +110,8 @@ pub async fn run_plan_sources(label: &str, qid: Option<&str>) -> anyhow::Result<
         languages: vec!["fr".into(), "en".into()],
         birth_year: None,
         death_year: None,
-        countries: vec!["France".into()],
-        occupations: vec!["military".into(), "statesman".into()],
+        countries: vec![],
+        occupations: vec![],
         known_identifiers: qid
             .map(|q| vec![("wikidata".into(), q.to_string())])
             .unwrap_or_default(),
@@ -120,6 +133,9 @@ pub async fn run_ingest_quality(
     run_migrations(&pool).await?;
 
     let subject_id = upsert_entity_with_kind(&pool, &config.wiki_lang, label, "person").await?;
+    if let Some(qid) = qid {
+        update_entity_qid(&pool, subject_id, qid).await?;
+    }
 
     let mut subject = ResolvedSubject {
         entity_id: Some(subject_id),
@@ -128,25 +144,41 @@ pub async fn run_ingest_quality(
         languages: vec!["fr".into(), "en".into()],
         birth_year: None,
         death_year: None,
-        countries: vec!["France".into()],
-        occupations: vec!["military".into()],
-        known_identifiers: vec![],
+        countries: vec![],
+        occupations: vec![],
+        known_identifiers: qid
+            .map(|q| vec![("wikidata".into(), q.to_string())])
+            .unwrap_or_default(),
     };
     let (by, dy, _, _) = quality_lifespan_years(&pool, subject_id).await?;
     subject.birth_year = by;
     subject.death_year = dy;
 
     if live {
-        if let Some(qid) = subject.qid.clone() {
-            match ingest_wdqs_events(&pool, config, &subject, subject_id).await {
-                Ok(wdqs_metrics) => {
-                    tracing::info!(
-                        created = wdqs_metrics.events_created,
-                        accepted = wdqs_metrics.accepted,
-                        "WDQS events ingested"
-                    );
+        if let Some(q) = subject.qid.clone() {
+            match crate::lot_e::fetch_wikidata_subject_meta(&q, &config.wiki_lang).await {
+                Ok(meta) => {
+                    if !meta.occupations.is_empty() {
+                        subject.occupations = meta.occupations;
+                    }
+                    subject.birth_year = meta.birth_year.or(subject.birth_year);
+                    subject.death_year = meta.death_year.or(subject.death_year);
                 }
-                Err(e) => tracing::error!(error = %e, %qid, "WDQS ingest failed"),
+                Err(e) => tracing::warn!(error = %e, %q, "wikidata occupations unavailable"),
+            }
+        }
+        if profile_for(subject.person_class()).enable_wdqs_military {
+            if let Some(qid) = subject.qid.clone() {
+                match ingest_wdqs_events(&pool, config, &subject, subject_id).await {
+                    Ok(wdqs_metrics) => {
+                        tracing::info!(
+                            created = wdqs_metrics.events_created,
+                            accepted = wdqs_metrics.accepted,
+                            "WDQS events ingested"
+                        );
+                    }
+                    Err(e) => tracing::error!(error = %e, %qid, "WDQS ingest failed"),
+                }
             }
         }
     }
@@ -181,7 +213,7 @@ pub async fn run_ingest_quality(
 
     let mut metrics = IngestMetrics::default();
     let mut counters = BudgetCounters::default();
-    let extractors = default_extractor_stack();
+    let extractors = extractor_stack_for(subject.person_class());
     let extractor_refs: Vec<&dyn CandidateExtractor> =
         extractors.iter().map(|e| e.as_ref()).collect();
     let resolver = GazetteerResolver;
@@ -335,6 +367,7 @@ pub async fn run_ingest_quality(
                         &raw,
                         &resolver,
                         &projections,
+                        true,
                         &mut metrics,
                     )
                     .await?;
@@ -441,6 +474,7 @@ pub async fn ingest_wdqs_events(
             &raw,
             &resolver,
             &projections,
+            true,
             &mut metrics,
         )
         .await?;
@@ -485,7 +519,7 @@ fn metrics_to_json(m: &IngestMetrics) -> serde_json::Value {
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn process_raw_candidate(
+pub(crate) async fn process_raw_candidate(
     pool: &sqlx::PgPool,
     config: &AppConfig,
     subject: &ResolvedSubject,
@@ -496,6 +530,7 @@ async fn process_raw_candidate(
     raw: &talaria_sources::extractors::RawCandidate,
     resolver: &GazetteerResolver,
     projections: &DerivedLabelProjections,
+    assemble: bool,
     metrics: &mut IngestMetrics,
 ) -> anyhow::Result<()> {
     let time = parse_typed_time(raw.time_surface.as_deref());
@@ -663,8 +698,8 @@ async fn process_raw_candidate(
             None => None,
         };
         let ctx = GateContext {
-            subject_birth_year: birth_year.or(subject.birth_year),
-            subject_death_year: death_year.or(subject.death_year),
+            subject_birth_year: subject.birth_year.or(birth_year),
+            subject_death_year: subject.death_year.or(death_year),
             has_active_birth: has_birth,
             has_active_death: has_death,
             fingerprint_exists: false,
@@ -769,6 +804,10 @@ async fn process_raw_candidate(
         metrics.needs_review += 1;
         metrics.accepted = metrics.accepted.saturating_sub(1);
         metrics.bump_loss("competing_place");
+        return Ok(());
+    }
+
+    if !assemble {
         return Ok(());
     }
 

@@ -76,6 +76,39 @@ pub async fn insert_document_snapshot(
     Ok(id)
 }
 
+pub async fn find_document_snapshot(
+    pool: &PgPool,
+    source_type: &str,
+    source_uri: &str,
+    content_hash: &str,
+) -> anyhow::Result<Option<Uuid>> {
+    let id: Option<Uuid> = sqlx::query_scalar(
+        r#"
+        SELECT id FROM document_snapshots
+        WHERE source_type = $1 AND source_uri = $2 AND content_hash = $3
+        "#,
+    )
+    .bind(source_type)
+    .bind(source_uri)
+    .bind(content_hash)
+    .fetch_optional(pool)
+    .await?;
+    Ok(id)
+}
+
+pub async fn count_sentence_fragments(pool: &PgPool, snapshot_id: Uuid) -> anyhow::Result<i64> {
+    let n: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint FROM document_fragments
+        WHERE snapshot_id = $1 AND fragment_kind = 'sentence'
+        "#,
+    )
+    .bind(snapshot_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(n)
+}
+
 #[derive(Debug, Clone)]
 pub struct DocumentFragmentInsert {
     pub snapshot_id: Uuid,
