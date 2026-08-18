@@ -446,7 +446,8 @@ fn try_prose_dense(
 ) -> Option<ExtractedTuple> {
     let page_lower = page_title.to_lowercase();
     let (person, year_min, year_max) = resolve_dense_subject(text, &page_lower)?;
-    let year = find_year_in_window(lower, year_min, year_max).or_else(|| {
+    let own_year = find_year_in_window(lower, year_min, year_max);
+    let year = own_year.clone().or_else(|| {
         let surface = carry_year?;
         let value = parse_year_surface(surface)?;
         if (year_min..=year_max).contains(&value) {
@@ -455,7 +456,13 @@ fn try_prose_dense(
             None
         }
     })?;
-    let place = find_place(lower, page_title).or_else(|| carry_place.map(str::to_string))?;
+    let own_place = find_place(lower, page_title);
+    let place = own_place
+        .clone()
+        .or_else(|| carry_place.map(str::to_string))?;
+    if (own_year.is_none() || own_place.is_none()) && !has_subject_hook(text, lower) {
+        return None;
+    }
     if !is_clean_place(&place) {
         return None;
     }
@@ -635,6 +642,29 @@ fn extract_year_surfaces(lower: &str) -> Vec<(i32, String)> {
         }
     }
     out
+}
+
+fn has_subject_hook(text: &str, lower: &str) -> bool {
+    if find_person_alias(text).is_some() {
+        return true;
+    }
+    for pronoun in ["she", "he", "they", "herself", "himself"] {
+        if contains_word(lower, pronoun) {
+            return true;
+        }
+    }
+    false
+}
+
+fn contains_word(hay: &str, needle: &str) -> bool {
+    let Some(idx) = hay.find(needle) else {
+        return false;
+    };
+    let bytes = hay.as_bytes();
+    let before_ok = idx == 0 || !bytes[idx - 1].is_ascii_alphanumeric();
+    let end = idx + needle.len();
+    let after_ok = end >= bytes.len() || !bytes[end].is_ascii_alphanumeric();
+    before_ok && after_ok
 }
 
 fn find_person_alias(text: &str) -> Option<String> {

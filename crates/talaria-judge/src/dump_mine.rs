@@ -313,8 +313,10 @@ pub fn mine_sentence_with_carry(
     let Some(subject) = resolve_subject(&lower, page_title) else {
         return vec![];
     };
-    let year = find_year_in_window(&lower, subject.year_min, subject.year_max)
-        .map(|found| found.surface)
+    let own_year = find_year_in_window(&lower, subject.year_min, subject.year_max);
+    let year = own_year
+        .as_ref()
+        .map(|found| found.surface.clone())
         .or_else(|| {
             let value = carry.year_value?;
             if (subject.year_min..=subject.year_max).contains(&value) {
@@ -326,9 +328,14 @@ pub fn mine_sentence_with_carry(
     let Some(year) = year else {
         return vec![];
     };
-    let Some(place) = resolve_place(cleaned, page_title).or_else(|| carry.place.clone()) else {
+    let own_place = resolve_place(cleaned, page_title);
+    let Some(place) = own_place.clone().or_else(|| carry.place.clone()) else {
         return vec![];
     };
+    let used_carry = own_year.is_none() || own_place.is_none();
+    if used_carry && !has_subject_hook(&lower, subject) {
+        return vec![];
+    }
 
     let anecdote = has_any(&lower, ANECDOTE_CUES);
     if anecdote {
@@ -504,6 +511,19 @@ fn has_any(hay: &str, needles: &[&str]) -> bool {
     needles.iter().any(|n| hay.contains(n))
 }
 
+fn has_subject_hook(lower: &str, subject: &Subject) -> bool {
+    if subject
+        .aliases
+        .iter()
+        .any(|alias| contains_word(lower, alias))
+    {
+        return true;
+    }
+    ["she", "he", "they", "herself", "himself"]
+        .iter()
+        .any(|pronoun| contains_word(lower, pronoun))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -572,6 +592,18 @@ mod tests {
         let place = hits[0].place.to_lowercase();
         assert!(place.contains("paris") || place.contains("sorbonne"));
         assert_eq!(hits[0].verb, "studied");
+    }
+
+    #[test]
+    fn carry_requires_pronoun_or_alias() {
+        let mut carry = MineCarry::default();
+        carry.absorb("In 1891 she left Warsaw for France.", "Marie Curie");
+        let hits = mine_sentence_with_carry(
+            "Wladyslaw Sklodowski taught mathematics at a gymnasium in Warsaw.",
+            "Marie Curie",
+            &carry,
+        );
+        assert!(hits.is_empty());
     }
 
     #[test]

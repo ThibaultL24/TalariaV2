@@ -30,7 +30,7 @@ RESTART IDENTITY CASCADE;
 SQL
 )
 if command -v psql >/dev/null 2>&1; then
-  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "$reset_sql"
+  PAGER=cat psql "$DATABASE_URL" -P pager=off -v ON_ERROR_STOP=1 -c "$reset_sql"
 else
   sudo docker exec -i workspace-db-1 psql -U postgres -d talaria_engine_development -v ON_ERROR_STOP=1 -c "$reset_sql"
 fi
@@ -76,7 +76,7 @@ SELECT extractor, COUNT(*) FROM phrase_candidates GROUP BY 1 ORDER BY 2 DESC;
 SQL
 )
 if command -v psql >/dev/null 2>&1; then
-  psql "$DATABASE_URL" -c "$report_sql"
+  psql "$DATABASE_URL" -P pager=off -c "$report_sql"
 else
-  sudo docker exec -i workspace-db-1 psql -U postgres -d talaria_engine_development -c "$report_sql"
+  sudo docker exec -i workspace-db-1 psql -U postgres -d talaria_engine_development -P pager=off -c "$report_sql"
 fi
