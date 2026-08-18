@@ -15,6 +15,37 @@ pub struct MinedCandidate {
     pub extractor: &'static str,
 }
 
+/// Year/place inherited from earlier sentences on the same page.
+#[derive(Debug, Clone, Default)]
+pub struct MineCarry {
+    pub year: Option<String>,
+    pub year_value: Option<i32>,
+    pub place: Option<String>,
+}
+
+impl MineCarry {
+    pub fn absorb(&mut self, text: &str, page_title: &str) {
+        let cleaned = text.trim();
+        if cleaned.len() < 20 {
+            return;
+        }
+        let lower = cleaned.to_ascii_lowercase();
+        if has_any(&lower, COMMEMORATIVE) {
+            return;
+        }
+        let Some(subject) = resolve_subject(&lower, page_title) else {
+            return;
+        };
+        if let Some(found) = find_year_in_window(&lower, subject.year_min, subject.year_max) {
+            self.year = Some(found.surface);
+            self.year_value = Some(found.year);
+        }
+        if let Some(place) = resolve_place(cleaned, page_title) {
+            self.place = Some(place);
+        }
+    }
+}
+
 struct Subject {
     wiki_title: &'static str,
     aliases: &'static [&'static str],
@@ -53,6 +84,16 @@ const SUBJECTS: &[Subject] = &[
             "wagram",
             "tilsit",
             "amiens",
+            "marengo",
+            "eylau",
+            "friedland",
+            "leipzig",
+            "malmaison",
+            "campo formio",
+            "concordat",
+            "toulon",
+            "pyramids",
+            "ligny",
         ],
         year_min: 1765,
         year_max: 1865,
@@ -66,42 +107,90 @@ const SUBJECTS: &[Subject] = &[
             "marie curie",
             "madame curie",
         ],
-        page_needles: &["curie", "radium", "polonium"],
+        page_needles: &[
+            "curie",
+            "radium",
+            "polonium",
+            "institut curie",
+            "espci",
+            "skłodowska",
+            "sklodowska",
+        ],
         year_min: 1865,
         year_max: 1935,
     },
     Subject {
         wiki_title: "Victor Hugo",
         aliases: &["victor hugo", "hugo"],
-        page_needles: &["victor hugo", "les misérables", "les miserables", "notre-dame de paris"],
+        page_needles: &[
+            "victor hugo",
+            "les misérables",
+            "les miserables",
+            "notre-dame de paris",
+            "hauteville",
+            "hernani",
+            "ruy blas",
+            "toilers of the sea",
+            "the man who laughs",
+        ],
         year_min: 1800,
         year_max: 1885,
     },
     Subject {
         wiki_title: "Leonardo da Vinci",
         aliases: &["leonardo da vinci", "leonardo"],
-        page_needles: &["leonardo", "mona lisa", "last supper", "vitruvian"],
+        page_needles: &[
+            "leonardo",
+            "mona lisa",
+            "last supper",
+            "vitruvian",
+            "codex atlanticus",
+            "clos lucé",
+            "clos luce",
+        ],
         year_min: 1450,
         year_max: 1520,
     },
     Subject {
         wiki_title: "Christopher Columbus",
         aliases: &["christopher columbus", "columbus", "cristoforo colombo"],
-        page_needles: &["columbus", "voyages of christopher"],
+        page_needles: &[
+            "columbus",
+            "voyages of christopher",
+            "palos de la frontera",
+            "santa maría",
+            "santa maria (ship)",
+            "la niña",
+            "la pinta",
+            "hispaniola",
+        ],
         year_min: 1440,
         year_max: 1510,
     },
     Subject {
         wiki_title: "Alan Turing",
         aliases: &["alan turing", "turing"],
-        page_needles: &["turing", "bletchley", "enigma"],
+        page_needles: &[
+            "turing",
+            "bletchley",
+            "enigma",
+            "hut 8",
+            "manchester mark",
+            "automatic computing engine",
+        ],
         year_min: 1910,
         year_max: 1960,
     },
     Subject {
         wiki_title: "Cleopatra",
         aliases: &["cleopatra vii", "cleopatra"],
-        page_needles: &["cleopatra", "ptolemaic", "actium"],
+        page_needles: &[
+            "cleopatra",
+            "ptolemaic",
+            "actium",
+            "caesarion",
+            "donations of alexandria",
+        ],
         year_min: -80,
         year_max: 30,
     },
@@ -144,18 +233,31 @@ const VERB_CUES: &[(&str, &str)] = &[
     ("married", "married"),
     ("studied", "studied"),
     ("educated", "studied"),
+    ("to study", "studied"),
+    ("study in", "studied"),
+    ("study at", "studied"),
+    ("enrolled", "studied"),
+    ("matriculat", "studied"),
     ("fought", "fought"),
     ("battle of", "fought"),
     ("defeated", "fought"),
+    ("captured", "fought"),
+    ("campaign", "fought"),
+    ("retreat", "fought"),
     ("signed", "signed"),
     ("treaty of", "signed"),
     ("crowned", "crowned"),
     ("exiled", "exiled"),
+    ("fled", "exiled"),
     ("lived in", "lived"),
     ("resided", "lived"),
+    ("settled in", "lived"),
     ("moved to", "moved"),
     ("returned to", "moved"),
     ("arrived in", "moved"),
+    ("arrived at", "moved"),
+    ("left for", "moved"),
+    ("departed", "moved"),
     ("visited", "visited"),
     ("travelled", "visited"),
     ("traveled", "visited"),
@@ -163,14 +265,46 @@ const VERB_CUES: &[(&str, &str)] = &[
     ("published", "published"),
     ("wrote ", "published"),
     ("painted", "painted"),
+    ("painting", "painted"),
     ("discovered", "discovered"),
+    ("isolated", "discovered"),
+    ("research at", "discovered"),
     ("awarded", "awarded"),
     ("nobel", "awarded"),
-    ("sailed", "visited"),
-    ("landed", "visited"),
+    ("received the", "awarded"),
+    ("sailed", "sailed"),
+    ("set sail", "sailed"),
+    ("embarked", "sailed"),
+    ("landed", "sailed"),
+    ("voyage", "sailed"),
+    ("expedition", "sailed"),
+    ("founded", "founded"),
+    ("worked at", "worked"),
+    ("worked in", "worked"),
+    ("worked as", "worked"),
+    ("laboratory", "worked"),
+    ("taught", "taught"),
+    ("teaching at", "taught"),
+    ("joined", "joined"),
+    ("appointed", "appointed"),
+    ("elected", "appointed"),
+    ("commissioned", "appointed"),
+    ("imprisoned", "imprisoned"),
+    ("invented", "invented"),
+    ("designed", "invented"),
+    ("decoded", "worked"),
+    ("buried", "died"),
 ];
 
 pub fn mine_sentence(text: &str, page_title: &str) -> Vec<MinedCandidate> {
+    mine_sentence_with_carry(text, page_title, &MineCarry::default())
+}
+
+pub fn mine_sentence_with_carry(
+    text: &str,
+    page_title: &str,
+    carry: &MineCarry,
+) -> Vec<MinedCandidate> {
     let cleaned = text.trim();
     if cleaned.len() < 28 {
         return vec![];
@@ -179,11 +313,20 @@ pub fn mine_sentence(text: &str, page_title: &str) -> Vec<MinedCandidate> {
     let Some(subject) = resolve_subject(&lower, page_title) else {
         return vec![];
     };
-    let Some(year) = find_year_in_window(&lower, subject.year_min, subject.year_max) else {
+    let year = find_year_in_window(&lower, subject.year_min, subject.year_max)
+        .map(|found| found.surface)
+        .or_else(|| {
+            let value = carry.year_value?;
+            if (subject.year_min..=subject.year_max).contains(&value) {
+                carry.year.clone()
+            } else {
+                None
+            }
+        });
+    let Some(year) = year else {
         return vec![];
     };
-    let Some(place) = find_place_in_text(cleaned).or_else(|| place_from_page_title(page_title))
-    else {
+    let Some(place) = resolve_place(cleaned, page_title).or_else(|| carry.place.clone()) else {
         return vec![];
     };
 
@@ -212,6 +355,10 @@ pub fn mine_sentence(text: &str, page_title: &str) -> Vec<MinedCandidate> {
         verb,
         extractor: EXTRACTOR_KEYWORDS,
     }]
+}
+
+fn resolve_place(text: &str, page_title: &str) -> Option<String> {
+    find_place_in_text(text).or_else(|| place_from_page_title(page_title))
 }
 
 fn resolve_subject(lower: &str, page_title: &str) -> Option<&'static Subject> {
@@ -256,11 +403,11 @@ fn find_verb(lower: &str) -> Option<String> {
         .map(|(_, verb)| (*verb).to_string())
 }
 
-fn find_year_in_window(lower: &str, min_year: i32, max_year: i32) -> Option<String> {
+fn find_year_in_window(lower: &str, min_year: i32, max_year: i32) -> Option<FoundYear> {
     let mut last = None;
     for found in extract_years(lower) {
         if (min_year..=max_year).contains(&found.year) {
-            last = Some(found.surface);
+            last = Some(found);
         }
     }
     last
@@ -332,6 +479,13 @@ fn place_from_page_title(page_title: &str) -> Option<String> {
             }
         }
     }
+    let stripped = title.split('(').next()?.trim();
+    let hit = find_place_in_text(stripped)?;
+    let stripped_lower = stripped.to_ascii_lowercase();
+    let hit_lower = hit.to_ascii_lowercase();
+    if stripped_lower == hit_lower || (stripped_lower.starts_with(&hit_lower) && hit.len() >= 8) {
+        return Some(hit);
+    }
     None
 }
 
@@ -390,6 +544,59 @@ mod tests {
     }
 
     #[test]
+    fn mines_study_in_without_studied() {
+        let hits = mine_sentence(
+            "In 1891, Curie followed her sister to study in Paris.",
+            "Marie Curie",
+        );
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].time, "1891");
+        assert_eq!(hits[0].place.to_lowercase(), "paris");
+        assert_eq!(hits[0].verb, "studied");
+    }
+
+    #[test]
+    fn carries_year_into_next_sentence() {
+        let mut carry = MineCarry::default();
+        carry.absorb("In 1891 she left Warsaw for France.", "Marie Curie");
+        assert_eq!(carry.year.as_deref(), Some("1891"));
+        assert_eq!(carry.place.as_deref().map(str::to_lowercase).as_deref(), Some("warsaw"));
+
+        let hits = mine_sentence_with_carry(
+            "She enrolled at the Sorbonne in Paris to continue her research.",
+            "Marie Curie",
+            &carry,
+        );
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].time, "1891");
+        let place = hits[0].place.to_lowercase();
+        assert!(place.contains("paris") || place.contains("sorbonne"));
+        assert_eq!(hits[0].verb, "studied");
+    }
+
+    #[test]
+    fn skips_statue_even_with_carry() {
+        let mut carry = MineCarry::default();
+        carry.absorb("In 1805 Napoleon fought near Austerlitz.", "Napoleon");
+        let hits = mine_sentence_with_carry(
+            "A statue of Napoleon was unveiled in Paris after his death.",
+            "Napoleon",
+            &carry,
+        );
+        assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn page_title_place_does_not_steal_vinci_from_leonardo() {
+        let hits = mine_sentence(
+            "In 1503 Leonardo painted a portrait in Florence.",
+            "Leonardo da Vinci",
+        );
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].place.to_lowercase(), "florence");
+    }
+
+    #[test]
     fn mines_cleopatra_bc_anecdote() {
         let hits = mine_sentence(
             "The story goes that Cleopatra had herself delivered in a carpet to Caesar in Alexandria in 48 BC.",
@@ -403,8 +610,7 @@ mod tests {
 
     #[test]
     fn fixture_bios_yield_anecdotes_and_map_cues() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../fixtures/dumps");
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/dumps");
         let mut anecdotes = 0usize;
         let mut keywords = 0usize;
         for entry in std::fs::read_dir(&root).unwrap() {
@@ -414,18 +620,21 @@ mod tests {
             }
             let title = path.file_stem().unwrap().to_string_lossy().into_owned();
             let text = std::fs::read_to_string(&path).unwrap();
+            let mut carry = MineCarry::default();
             for sentence in text.split(['.', '\n']) {
                 let sentence = sentence.trim();
                 if sentence.len() < 28 {
+                    carry.absorb(sentence, &title);
                     continue;
                 }
-                for hit in mine_sentence(sentence, &title) {
+                for hit in mine_sentence_with_carry(sentence, &title, &carry) {
                     if hit.extractor == EXTRACTOR_ANECDOTE {
                         anecdotes += 1;
                     } else {
                         keywords += 1;
                     }
                 }
+                carry.absorb(sentence, &title);
             }
         }
         assert!(

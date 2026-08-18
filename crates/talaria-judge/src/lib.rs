@@ -6,7 +6,10 @@ mod rules;
 mod time;
 
 pub use claims::{classify_claim_text, ClaimClass};
-pub use dump_mine::{mine_sentence, MinedCandidate, EXTRACTOR_ANECDOTE, EXTRACTOR_KEYWORDS};
+pub use dump_mine::{
+    mine_sentence, mine_sentence_with_carry, MineCarry, MinedCandidate, EXTRACTOR_ANECDOTE,
+    EXTRACTOR_KEYWORDS,
+};
 pub use place::{find_place_in_text, parse_place_surface, ParsedPlace};
 pub use rules::{judge_candidate, CandidateInput, JudgeLabel, JudgeVerdict};
 pub use time::{parse_time_surface, ParsedTime};

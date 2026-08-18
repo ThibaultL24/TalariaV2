@@ -22,6 +22,19 @@ echo "==> migrate"
 cargo build -q -p talaria-api
 cargo run -q -p talaria-api -- migrate
 
+echo "==> reset dump tables for clean density measurement"
+reset_sql=$(cat <<'SQL'
+TRUNCATE phrase_candidates, candidate_judgments, event_evidence, canonical_events,
+         sentences, claims, soft_claims, raw_documents, entities, wiki_pages, dump_runs, place_geocodes
+RESTART IDENTITY CASCADE;
+SQL
+)
+if command -v psql >/dev/null 2>&1; then
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "$reset_sql"
+else
+  sudo docker exec -i workspace-db-1 psql -U postgres -d talaria_engine_development -v ON_ERROR_STOP=1 -c "$reset_sql"
+fi
+
 echo "==> extract-pages"
 cargo run -q -p talaria-api -- extract-pages --dump "$DUMP"
 

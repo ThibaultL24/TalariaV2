@@ -7,6 +7,7 @@ from __future__ import annotations
 import bz2
 import json
 import os
+import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -35,17 +36,57 @@ EXTRA_TITLES = [
     "Battle of Austerlitz",
     "Battle of Waterloo",
     "Battle of Borodino",
+    "Hundred Days",
+    "Coup of 18 Brumaire",
+    "Treaties of Tilsit",
+    "Treaty of Campo Formio",
+    "Peninsular War",
+    "Battle of Marengo",
+    "Battle of Jena–Auerstedt",
+    "Battle of Wagram",
+    "Battle of Leipzig",
+    "Battle of the Pyramids",
+    "Siege of Toulon",
     "Radium",
     "Pierre Curie",
+    "Polonium",
+    "Institut Curie",
+    "ESPCI Paris",
+    "University of Paris",
     "Les Misérables",
     "Notre-Dame de Paris",
+    "Hauteville House",
+    "Guernsey",
+    "Hernani (drama)",
+    "Ruy Blas",
+    "Toilers of the Sea",
+    "The Man Who Laughs",
     "The Last Supper (Leonardo da Vinci)",
     "Mona Lisa",
+    "Vitruvian Man",
+    "Codex Atlanticus",
+    "Clos Lucé",
+    "Ludovico Sforza",
+    "Cesare Borgia",
     "Voyages of Christopher Columbus",
+    "Palos de la Frontera",
+    "La Niña",
+    "La Pinta",
+    "Santa María (ship)",
+    "Hispaniola",
     "Bletchley Park",
     "Enigma machine",
+    "Hut 8",
+    "Turing machine",
+    "Automatic Computing Engine",
+    "Manchester Mark 1",
+    "Joan Clarke",
+    "Sherborne School",
     "Ptolemaic Kingdom",
     "Battle of Actium",
+    "Caesarion",
+    "Mark Antony",
+    "Donations of Alexandria",
 ]
 
 
@@ -119,6 +160,7 @@ def main() -> None:
                 print(f"ok fetch {resolved!r}: {len(extract)} chars")
             else:
                 print(f"no fetch: {title}")
+            time.sleep(0.2)
         fixture = fixtures.get(title, "")
         if fixture:
             extract = (extract + "\n\n" + fixture).strip() if extract else fixture

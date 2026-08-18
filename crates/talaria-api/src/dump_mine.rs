@@ -3,7 +3,7 @@
 
 use talaria_core::AppConfig;
 use talaria_cosmos::combinator_hash;
-use talaria_judge::mine_sentence;
+use talaria_judge::{mine_sentence_with_carry, MineCarry};
 use talaria_store::{
     connect, insert_phrase_candidate, list_sentences_for_dump_mine, run_migrations,
     upsert_entity_surface, PhraseCandidateRecord,
@@ -21,9 +21,16 @@ pub async fn run_dump_mine(config: &AppConfig, limit: i64) -> anyhow::Result<()>
     let mut inserted = 0usize;
     let mut skipped = 0usize;
     let mut anecdotes = 0usize;
+    let mut current_page = String::new();
+    let mut carry = MineCarry::default();
 
     for row in sentences {
-        let mined = mine_sentence(&row.text, &row.page_title);
+        if row.page_title != current_page {
+            carry = MineCarry::default();
+            current_page = row.page_title.clone();
+        }
+        let mined = mine_sentence_with_carry(&row.text, &row.page_title, &carry);
+        carry.absorb(&row.text, &row.page_title);
         if mined.is_empty() {
             skipped += 1;
             continue;
