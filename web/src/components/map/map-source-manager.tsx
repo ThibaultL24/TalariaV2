@@ -26,12 +26,33 @@ function tryAddLayer(map: Map, layer: LayerSpecification): void {
   }
 }
 
+function partitionFeatures(collection: TalariaFeatureCollection): {
+  events: TalariaFeatureCollection;
+  anecdotes: TalariaFeatureCollection;
+} {
+  const anecdotes: TalariaFeatureCollection["features"] = [];
+  const events: TalariaFeatureCollection["features"] = [];
+  for (const feature of collection.features) {
+    if (String(feature.properties?.event_type ?? "") === "anecdote") {
+      anecdotes.push(feature);
+    } else {
+      events.push(feature);
+    }
+  }
+  return {
+    events: { type: "FeatureCollection", features: events },
+    anecdotes: { type: "FeatureCollection", features: anecdotes },
+  };
+}
+
 function ensureEventLayers(map: Map, isDark: boolean): void {
   const L = getExplorerEventLayers(isDark);
   tryAddLayer(map, L.clustersLayer);
   tryAddLayer(map, L.unclusteredEventsLayer);
   tryAddLayer(map, L.selectedEventLayer);
   tryAddLayer(map, L.clusterCountLayer);
+  tryAddLayer(map, L.anecdotesLayer);
+  tryAddLayer(map, L.selectedAnecdoteLayer);
 }
 
 export function MapSourceManager({ map, data }: MapSourceManagerProps) {
@@ -44,22 +65,32 @@ export function MapSourceManager({ map, data }: MapSourceManagerProps) {
       if (!map.isStyleLoaded()) return;
 
       const collection = data ? ensureFeatureIds(data) : EMPTY_COLLECTION;
+      const parts = partitionFeatures(collection);
       const existing = map.getSource("events");
+      const existingAnecdotes = map.getSource("anecdotes");
 
       if (!existing) {
         map.addSource("events", {
           type: "geojson",
-          data: collection,
+          data: parts.events,
           cluster: true,
           clusterMaxZoom: 12,
           clusterRadius: 50,
         });
-        ensureEventLayers(map, isDark);
       } else {
-        const source = existing as GeoJSONSource;
-        source.setData(collection);
-        ensureEventLayers(map, isDark);
+        (existing as GeoJSONSource).setData(parts.events);
       }
+
+      if (!existingAnecdotes) {
+        map.addSource("anecdotes", {
+          type: "geojson",
+          data: parts.anecdotes,
+        });
+      } else {
+        (existingAnecdotes as GeoJSONSource).setData(parts.anecdotes);
+      }
+
+      ensureEventLayers(map, isDark);
     };
 
     if (map.isStyleLoaded()) {

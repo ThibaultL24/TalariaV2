@@ -201,13 +201,27 @@ pub async fn list_sentences_for_claims(
             wp.title AS page_title,
             wp.wiki_lang,
             wp.revision_id,
-            e.id AS entity_id
+            COALESCE(
+              e.id,
+              (
+                SELECT pc.entity_id
+                FROM phrase_candidates pc
+                WHERE pc.sentence_id = s.id AND pc.entity_id IS NOT NULL
+                LIMIT 1
+              )
+            ) AS entity_id
         FROM sentences s
         INNER JOIN wiki_pages wp ON wp.id = s.wiki_page_id
         LEFT JOIN entities e
           ON e.wiki_lang = wp.wiki_lang
          AND e.wikipedia_title = wp.title
-        WHERE e.id IS NOT NULL
+        WHERE (
+            e.id IS NOT NULL
+            OR EXISTS (
+              SELECT 1 FROM phrase_candidates pc
+              WHERE pc.sentence_id = s.id AND pc.entity_id IS NOT NULL
+            )
+          )
           AND NOT EXISTS (
             SELECT 1 FROM soft_claim_evidence ce WHERE ce.sentence_id = s.id
           )
@@ -222,10 +236,11 @@ pub async fn list_sentences_for_claims(
 }
 
 pub async fn backfill_life_event_claims(pool: &PgPool) -> anyhow::Result<usize> {
-    let rows = sqlx::query_as::<_, (Uuid, Uuid, String, Option<chrono::DateTime<chrono::Utc>>, Option<String>, f64)>(
+    let rows = sqlx::query_as::<_, (Uuid, Uuid, String, String, Option<chrono::DateTime<chrono::Utc>>, Option<String>, f64)>(
         r#"
         SELECT ce.id, ce.entity_id,
                COALESCE(ce.summary, ce.title) AS text,
+               ce.event_type,
                ce.start_time, ce.place_label, ce.confidence
         FROM canonical_events ce
         WHERE NOT EXISTS (
@@ -237,12 +252,12 @@ pub async fn backfill_life_event_claims(pool: &PgPool) -> anyhow::Result<usize> 
     .await?;
 
     let mut n = 0;
-    for (event_id, entity_id, text, event_time, place_label, confidence) in rows {
+    for (event_id, entity_id, text, event_type, event_time, place_label, confidence) in rows {
         let claim_id = insert_claim(
             pool,
             &ClaimInsert {
                 entity_id,
-                claim_kind: "life_event".into(),
+                claim_kind: claim_kind_for_event(&event_type).into(),
                 text: text.clone(),
                 epistemic_status: "established".into(),
                 relation_to_subject: "direct".into(),
@@ -308,4 +323,12 @@ pub async fn backfill_life_event_claims(pool: &PgPool) -> anyhow::Result<usize> 
         n += 1;
     }
     Ok(n)
+}
+
+fn claim_kind_for_event(event_type: &str) -> &'static str {
+    match event_type {
+        "anecdote" => "anecdote",
+        "statue" | "museum" | "memorial" | "street_naming" => "fact",
+        _ => "life_event",
+    }
 }

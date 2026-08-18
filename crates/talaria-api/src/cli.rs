@@ -182,6 +182,11 @@ pub enum Commands {
         #[arg(long, default_value = "0", help = "Max sentences (0 = all pending)")]
         limit: i64,
     },
+    /// Mine dump sentences for anecdotes and extra life-event keywords
+    DumpMine {
+        #[arg(long, default_value = "0", help = "Max sentences (0 = all)")]
+        limit: i64,
+    },
 }
 
 pub async fn run_migrate(config: &AppConfig) -> anyhow::Result<()> {

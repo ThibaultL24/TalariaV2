@@ -106,17 +106,25 @@ fn try_structured(text: &str, lower: &str, pattern: &Pattern) -> Option<Extracte
 
 // --- dense Wikipedia prose ------------------------------------------------
 
-const PERSON_ALIASES: &[&str] = &[
-    "napoleon bonaparte",
-    "napoléon bonaparte",
-    "napoleon i",
-    "napoléon ier",
-    "emperor napoleon",
-    "general bonaparte",
-    "first consul",
-    "bonaparte",
-    "napoleon",
-    "napoléon",
+const PERSON_ALIASES: &[(&str, &str)] = &[
+    ("napoleon bonaparte", "Napoleon"),
+    ("napoléon bonaparte", "Napoleon"),
+    ("napoleon i", "Napoleon"),
+    ("emperor napoleon", "Napoleon"),
+    ("general bonaparte", "Napoleon"),
+    ("bonaparte", "Napoleon"),
+    ("napoleon", "Napoleon"),
+    ("napoléon", "Napoleon"),
+    ("marie skłodowska-curie", "Marie Curie"),
+    ("marie sklodowska-curie", "Marie Curie"),
+    ("marie curie", "Marie Curie"),
+    ("madame curie", "Marie Curie"),
+    ("victor hugo", "Victor Hugo"),
+    ("leonardo da vinci", "Leonardo da Vinci"),
+    ("christopher columbus", "Christopher Columbus"),
+    ("alan turing", "Alan Turing"),
+    ("cleopatra vii", "Cleopatra"),
+    ("cleopatra", "Cleopatra"),
 ];
 
 const VERB_CUES: &[(&str, &str)] = &[
@@ -267,42 +275,40 @@ const GAZETTEER: &[&str] = &[
     "bautzen",
     "hanau",
     "kulm",
+    "besançon",
+    "besancon",
+    "guernsey",
+    "jersey",
+    "hauteville house",
+    "amboise",
+    "clos luce",
+    "vinci",
+    "palos",
+    "san salvador",
+    "hispaniola",
+    "valladolid",
+    "barcelona",
+    "stockholm",
+    "sceaux",
+    "passy",
+    "maida vale",
+    "sherborne",
+    "princeton",
+    "manchester",
+    "wilmslow",
+    "hampton",
+    "bletchley park",
+    "bletchley",
+    "tarsus",
+    "actium",
+    "pelusium",
+    "antioch",
 ];
 
 fn try_prose_dense(text: &str, lower: &str, page_title: &str) -> Option<ExtractedTuple> {
     let page_lower = page_title.to_lowercase();
-    let page_is_subject = page_lower.contains("napoleon")
-        || page_lower.contains("napoléon")
-        || matches!(
-            page_lower.as_str(),
-            "french consulate"
-                | "first french empire"
-                | "hundred days"
-                | "french invasion of russia"
-                | "peninsular war"
-                | "continental system"
-                | "napoleonic code"
-                | "concordat of 1801"
-                | "coup of 18 brumaire"
-                | "treaties of tilsit"
-                | "treaty of amiens"
-                | "congress of erfurt"
-        )
-        || page_lower.starts_with("battle of ")
-        || page_lower.starts_with("treaty of ")
-        || page_lower.starts_with("congress of ")
-        || page_lower.starts_with("coup of ");
-
-    let person = find_person_alias(text).or_else(|| {
-        if page_is_subject {
-            Some("Napoleon Bonaparte".into())
-        } else {
-            None
-        }
-    })?;
-
-    // Prefer Napoleonic lifetime / immediate legacy years; drop citation years.
-    let year = find_year_in_window(lower, 1765, 1865)?;
+    let (person, year_min, year_max) = resolve_dense_subject(text, &page_lower)?;
+    let year = find_year_in_window(lower, year_min, year_max)?;
     let place = find_place(lower, page_title)?;
     if !is_clean_place(&place) {
         return None;
@@ -319,7 +325,6 @@ fn try_prose_dense(text: &str, lower: &str, page_title: &str) -> Option<Extracte
         }
     })?;
 
-    // Weak "associated" fallback removed — require a real cue or typed page.
     if verb == "associated" {
         return None;
     }
@@ -330,6 +335,56 @@ fn try_prose_dense(text: &str, lower: &str, page_title: &str) -> Option<Extracte
         place,
         verb: Some(verb),
     })
+}
+
+fn resolve_dense_subject(text: &str, page_lower: &str) -> Option<(String, i32, i32)> {
+    if let Some(person) = find_person_alias(text) {
+        let window = subject_year_window(&person);
+        return Some((person, window.0, window.1));
+    }
+    const PAGE_SUBJECTS: &[(&str, &str, i32, i32)] = &[
+        ("napoleon", "Napoleon", 1765, 1865),
+        ("napoléon", "Napoleon", 1765, 1865),
+        ("marie curie", "Marie Curie", 1865, 1935),
+        ("curie", "Marie Curie", 1865, 1935),
+        ("victor hugo", "Victor Hugo", 1800, 1885),
+        ("leonardo", "Leonardo da Vinci", 1450, 1520),
+        ("columbus", "Christopher Columbus", 1440, 1510),
+        ("turing", "Alan Turing", 1910, 1960),
+        ("bletchley", "Alan Turing", 1910, 1960),
+        ("cleopatra", "Cleopatra", -80, 30),
+        ("french consulate", "Napoleon", 1765, 1865),
+        ("first french empire", "Napoleon", 1765, 1865),
+        ("hundred days", "Napoleon", 1765, 1865),
+        ("peninsular war", "Napoleon", 1765, 1865),
+        ("continental system", "Napoleon", 1765, 1865),
+        ("napoleonic", "Napoleon", 1765, 1865),
+    ];
+    for (needle, title, min, max) in PAGE_SUBJECTS {
+        if page_lower.contains(needle) {
+            return Some(((*title).into(), *min, *max));
+        }
+    }
+    if page_lower.starts_with("battle of ")
+        || page_lower.starts_with("treaty of ")
+        || page_lower.starts_with("congress of ")
+        || page_lower.starts_with("coup of ")
+    {
+        return Some(("Napoleon".into(), 1765, 1865));
+    }
+    None
+}
+
+fn subject_year_window(person: &str) -> (i32, i32) {
+    match person {
+        "Marie Curie" => (1865, 1935),
+        "Victor Hugo" => (1800, 1885),
+        "Leonardo da Vinci" => (1450, 1520),
+        "Christopher Columbus" => (1440, 1510),
+        "Alan Turing" => (1910, 1960),
+        "Cleopatra" => (-80, 30),
+        _ => (1765, 1865),
+    }
 }
 
 fn is_clean_place(place: &str) -> bool {
@@ -378,20 +433,16 @@ fn find_year_in_window(lower: &str, min_year: i32, max_year: i32) -> Option<Stri
 
 fn find_person_alias(text: &str) -> Option<String> {
     let lower = text.to_lowercase();
-    for alias in PERSON_ALIASES {
+    for (alias, wiki_title) in PERSON_ALIASES {
         if let Some(idx) = lower.find(alias) {
-            // Avoid matching inside unrelated words
-            let before_ok = idx == 0
-                || !lower.as_bytes()[idx - 1].is_ascii_alphanumeric();
+            let before_ok = idx == 0 || !lower.as_bytes()[idx - 1].is_ascii_alphanumeric();
             let end = idx + alias.len();
-            let after_ok = end >= lower.len()
-                || !lower.as_bytes()[end].is_ascii_alphanumeric();
+            let after_ok = end >= lower.len() || !lower.as_bytes()[end].is_ascii_alphanumeric();
             if before_ok && after_ok {
-                return Some("Napoleon Bonaparte".into());
+                return Some((*wiki_title).into());
             }
         }
     }
-    // Generic leading proper-name span for non-Napoleon structured cues
     None
 }
 
@@ -575,7 +626,7 @@ mod tests {
         let text = "He rose rapidly through the ranks after winning the siege of Toulon in 1793 and fighting the War of the First Coalition.";
         let tuples = mock_extract_text(text, Some("Napoleon"));
         assert!(!tuples.is_empty());
-        assert_eq!(tuples[0].person, "Napoleon Bonaparte");
+        assert_eq!(tuples[0].person, "Napoleon");
         assert_eq!(tuples[0].time, "1793");
         assert!(tuples[0].place.to_lowercase().contains("toulon"));
     }
@@ -585,7 +636,7 @@ mod tests {
         let text = "The armies clashed on 18 June 1815 near the ridge.";
         let tuples = mock_extract_text(text, Some("Battle of Waterloo"));
         assert_eq!(tuples.len(), 1);
-        assert_eq!(tuples[0].person, "Napoleon Bonaparte");
+        assert_eq!(tuples[0].person, "Napoleon");
         assert_eq!(tuples[0].time, "1815");
         assert!(tuples[0].place.to_lowercase().contains("waterloo"));
         assert_eq!(tuples[0].verb.as_deref(), Some("fought"));
@@ -598,5 +649,15 @@ mod tests {
         assert!(!tuples.is_empty());
         assert_eq!(tuples[0].verb.as_deref(), Some("signed"));
         assert_eq!(tuples[0].time, "1807");
+    }
+
+    #[test]
+    fn dense_prose_curie_warsaw() {
+        let text = "Marie Curie was born in 1867 in Warsaw and later moved to Paris.";
+        let tuples = mock_extract_text(text, Some("Marie Curie"));
+        assert!(!tuples.is_empty());
+        assert_eq!(tuples[0].person, "Marie Curie");
+        assert_eq!(tuples[0].time, "1867");
+        assert!(tuples[0].place.to_lowercase().contains("warsaw"));
     }
 }

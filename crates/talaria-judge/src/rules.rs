@@ -147,6 +147,9 @@ pub fn judge_candidate(input: &CandidateInput) -> JudgeVerdict {
 }
 
 fn classify(verb: &str, sentence_lc: &str) -> Classified {
+    if let Some(c) = classify_anecdote(verb, sentence_lc) {
+        return c;
+    }
     if let Some(c) = classify_commemorative(sentence_lc) {
         return c;
     }
@@ -165,6 +168,34 @@ fn classify(verb: &str, sentence_lc: &str) -> Classified {
         },
         family: "other",
     }
+}
+
+fn classify_anecdote(verb: &str, sentence_lc: &str) -> Option<Classified> {
+    let verb_anecdote = verb == "anecdoted" || verb == "anecdote";
+    let cue = [
+        "anecdote",
+        "according to legend",
+        "legend has it",
+        "the story goes",
+        "popular story",
+        "apocryphal",
+        "once told",
+        "is said to have",
+        "it is said that",
+        "reputed to have",
+        "tradition holds",
+        "an apocryphal",
+    ]
+    .iter()
+    .any(|needle| sentence_lc.contains(needle));
+    if verb_anecdote || cue {
+        return Some(Classified {
+            event_type: "anecdote".into(),
+            verb_label: "anecdote".into(),
+            family: "anecdote",
+        });
+    }
+    None
 }
 
 fn classify_commemorative(sentence_lc: &str) -> Option<Classified> {
@@ -362,6 +393,15 @@ fn infer_epistemic_status(sentence_lc: &str, family: &str) -> String {
         "date unknown",
     ];
 
+    if family == "anecdote" {
+        if RUMOR.iter().any(|c| sentence_lc.contains(c)) {
+            return "rumor".into();
+        }
+        if THEORY.iter().any(|c| sentence_lc.contains(c)) {
+            return "theory".into();
+        }
+        return "attested".into();
+    }
     if RUMOR.iter().any(|c| sentence_lc.contains(c)) {
         return "rumor".into();
     }
@@ -487,6 +527,22 @@ mod tests {
         });
         assert_eq!(verdict.event_type, "education");
         assert_ne!(verdict.event_type, "death");
+    }
+
+    #[test]
+    fn classifies_anecdote_before_statue() {
+        let verdict = judge_candidate(&CandidateInput {
+            person_surface: "Napoleon".into(),
+            time_surface: Some("1805".into()),
+            place_surface: Some("Austerlitz".into()),
+            verb_pivot: Some("anecdoted".into()),
+            sentence_text:
+                "According to legend, Napoleon slept four hours a night near Austerlitz in 1805."
+                    .into(),
+        });
+        assert_eq!(verdict.label, JudgeLabel::Accept);
+        assert_eq!(verdict.event_type, "anecdote");
+        assert!(verdict.map_eligible);
     }
 
     #[test]

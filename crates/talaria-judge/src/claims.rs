@@ -39,8 +39,16 @@ pub fn classify_claim_text(text: &str) -> ClaimClass {
             "anecdote",
             "once told",
             "is said to have",
+            "it is said that",
+            "it is said ",
             "reportedly",
             "apocryphal",
+            "the story goes",
+            "popular story",
+            "reputed to have",
+            "tradition holds",
+            "folklore",
+            "according to a popular",
         ],
     ) {
         return ClaimClass {

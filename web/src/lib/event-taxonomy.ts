@@ -22,6 +22,7 @@ export const EVENT_TYPE_OPTIONS = [
   { key: "publication", label: "Publication", family: "work" },
   { key: "creation", label: "Creation", family: "work" },
   { key: "discovery", label: "Discovery", family: "work" },
+  { key: "anecdote", label: "Anecdote", family: "narrative" },
   { key: "statue", label: "Statue", family: "legacy" },
   { key: "museum", label: "Museum", family: "legacy" },
   { key: "street_naming", label: "Street naming", family: "legacy" },

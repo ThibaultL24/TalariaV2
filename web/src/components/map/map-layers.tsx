@@ -37,8 +37,14 @@ export function MapLayers({ map, data, selectedEventId }: MapLayersProps) {
 
       if (selectedEventId) {
         map.setFilter("selected-event", ["==", ["id"], selectedEventId]);
+        if (map.getLayer("selected-anecdote")) {
+          map.setFilter("selected-anecdote", ["==", ["id"], selectedEventId]);
+        }
       } else {
         map.setFilter("selected-event", ["==", ["id"], ""]);
+        if (map.getLayer("selected-anecdote")) {
+          map.setFilter("selected-anecdote", ["==", ["id"], ""]);
+        }
       }
     };
 

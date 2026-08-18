@@ -136,11 +136,62 @@ export const selectedEventLayerDark: CircleLayerSpecification = {
   },
 };
 
+export const anecdotesLayer: CircleLayerSpecification = {
+  id: "anecdotes",
+  type: "circle",
+  source: "anecdotes",
+  paint: {
+    "circle-radius": 7,
+    "circle-color": "#c9a227",
+    "circle-stroke-width": 1.5,
+    "circle-stroke-color": "#4a3728",
+    "circle-opacity": 0.95,
+  },
+};
+
+export const anecdotesLayerDark: CircleLayerSpecification = {
+  ...anecdotesLayer,
+  paint: {
+    "circle-radius": 7,
+    "circle-color": D.anecdote,
+    "circle-stroke-width": 1.5,
+    "circle-stroke-color": D.pointStroke,
+    "circle-opacity": 0.98,
+  },
+};
+
+export const selectedAnecdoteLayer: CircleLayerSpecification = {
+  id: "selected-anecdote",
+  type: "circle",
+  source: "anecdotes",
+  filter: ["==", ["id"], ""],
+  paint: {
+    "circle-radius": 14,
+    "circle-color": "#c9a227",
+    "circle-stroke-width": 3,
+    "circle-stroke-color": "#2E2A22",
+    "circle-opacity": 0.25,
+  },
+};
+
+export const selectedAnecdoteLayerDark: CircleLayerSpecification = {
+  ...selectedAnecdoteLayer,
+  paint: {
+    "circle-radius": 14,
+    "circle-color": D.anecdote,
+    "circle-stroke-width": 3,
+    "circle-stroke-color": D.marble,
+    "circle-opacity": 0.35,
+  },
+};
+
 export function getExplorerEventLayers(isDark: boolean): {
   clustersLayer: CircleLayerSpecification;
   clusterCountLayer: SymbolLayerSpecification;
   unclusteredEventsLayer: CircleLayerSpecification;
   selectedEventLayer: CircleLayerSpecification;
+  anecdotesLayer: CircleLayerSpecification;
+  selectedAnecdoteLayer: CircleLayerSpecification;
 } {
   if (isDark) {
     return {
@@ -148,6 +199,8 @@ export function getExplorerEventLayers(isDark: boolean): {
       clusterCountLayer: clusterCountLayerDark,
       unclusteredEventsLayer: unclusteredEventsLayerDark,
       selectedEventLayer: selectedEventLayerDark,
+      anecdotesLayer: anecdotesLayerDark,
+      selectedAnecdoteLayer: selectedAnecdoteLayerDark,
     };
   }
   return {
@@ -155,5 +208,7 @@ export function getExplorerEventLayers(isDark: boolean): {
     clusterCountLayer,
     unclusteredEventsLayer,
     selectedEventLayer,
+    anecdotesLayer,
+    selectedAnecdoteLayer,
   };
 }

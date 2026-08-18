@@ -13,6 +13,8 @@ interface MapInteractionsProps {
 /** Top to bottom in the style stack — queryRenderedFeatures returns the topmost hit first. */
 const EVENT_HIT_LAYERS = [
   "cluster-count",
+  "selected-anecdote",
+  "anecdotes",
   "selected-event",
   "unclustered-events",
   "clusters",
@@ -55,10 +57,18 @@ export function MapInteractions({ map, onSelectEvent }: MapInteractionsProps) {
         return;
       }
 
-      if (layerId === "unclustered-events" || layerId === "selected-event") {
+      if (
+        layerId === "unclustered-events" ||
+        layerId === "selected-event" ||
+        layerId === "anecdotes" ||
+        layerId === "selected-anecdote"
+      ) {
         const eventHits = hits.filter(
           (h) =>
-            h.layer.id === "unclustered-events" || h.layer.id === "selected-event"
+            h.layer.id === "unclustered-events" ||
+            h.layer.id === "selected-event" ||
+            h.layer.id === "anecdotes" ||
+            h.layer.id === "selected-anecdote"
         );
         const id = pickBestFeatureIdForEventDetail(
           eventHits.map((h) => h as unknown as TalariaFeature)

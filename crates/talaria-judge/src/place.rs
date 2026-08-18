@@ -33,8 +33,7 @@ impl ParsedPlace {
     }
 }
 
-fn gazetteer_lookup(key: &str) -> Option<(Option<f64>, Option<f64>)> {
-    const PLACES: &[(&str, f64, f64)] = &[
+const GAZETTEER: &[(&str, f64, f64)] = &[
         ("london", 51.5074, -0.1278),
         ("paris", 48.8566, 2.3522),
         ("berlin", 52.52, 13.405),
@@ -170,12 +169,94 @@ fn gazetteer_lookup(key: &str) -> Option<(Option<f64>, Option<f64>)> {
         ("compiègne", 49.4179, 2.8261),
         ("18 brumaire", 48.8566, 2.3522),
         ("erfurt", 50.9848, 11.0299),
-    ];
+        // Multi-profile bios (Curie, Hugo, Leonardo, Columbus, Turing, Cleopatra)
+        ("besançon", 47.2378, 6.0241),
+        ("besancon", 47.2378, 6.0241),
+        ("hauteville house", 49.457, -2.536),
+        ("saint peter port", 49.4557, -2.535),
+        ("guernsey", 49.4657, -2.5853),
+        ("jersey", 49.2138, -2.1358),
+        ("vianden", 49.935, 6.208),
+        ("clos lucé", 47.4103, 0.9922),
+        ("clos luce", 47.4103, 0.9922),
+        ("amboise", 47.4131, 0.9827),
+        ("vinci", 43.7869, 10.9237),
+        ("cesena", 44.1391, 12.2431),
+        ("palos de la frontera", 37.2278, -6.8933),
+        ("palos", 37.2278, -6.8933),
+        ("san salvador island", 24.077, -74.478),
+        ("san salvador", 24.077, -74.478),
+        ("hispaniola", 19.0, -70.6667),
+        ("santo domingo", 18.4861, -69.9312),
+        ("cuba", 23.1136, -82.3666),
+        ("jamaica", 18.1096, -77.2975),
+        ("valladolid", 41.6523, -4.7245),
+        ("barcelona", 41.3851, 2.1734),
+        ("canary islands", 28.2916, -16.6291),
+        ("madeira", 32.7607, -16.9595),
+        ("lisbon", 38.7223, -9.1393),
+        ("stockholm", 59.3293, 18.0686),
+        ("sceaux", 48.778, 2.295),
+        ("passy", 48.8575, 2.2764),
+        ("sorbonne", 48.849, 2.343),
+        ("maida vale", 51.5274, -0.1899),
+        ("sherborne", 50.949, -2.518),
+        ("princeton", 40.3573, -74.6672),
+        ("manchester", 53.4808, -2.2426),
+        ("wilmslow", 53.328, -2.232),
+        ("hampton", 51.415, -0.367),
+        ("bletchley", 51.9973, -0.7406),
+        ("tarsus", 36.9165, 34.8951),
+        ("actium", 38.933, 20.733),
+        ("pelusium", 31.042, 32.548),
+        ("antioch", 36.202, 36.16),
+        ("thebes", 25.7206, 32.6105),
+        ("philae", 24.025, 32.884),
+        ("cyrene", 32.825, 21.858),
+];
 
-    PLACES
+fn gazetteer_lookup(key: &str) -> Option<(Option<f64>, Option<f64>)> {
+    GAZETTEER
         .iter()
         .find(|(name, _, _)| *name == key)
         .map(|(_, lat, lon)| (Some(*lat), Some(*lon)))
+}
+
+/// Longest gazetteer hit in free text (word-boundary aware).
+pub fn find_place_in_text(text: &str) -> Option<String> {
+    let lower = text.to_ascii_lowercase();
+    let bytes = lower.as_bytes();
+    let mut best: Option<(&str, usize)> = None;
+    for (name, _, _) in GAZETTEER {
+        let Some(idx) = lower.find(*name) else {
+            continue;
+        };
+        let before_ok = idx == 0 || !bytes[idx - 1].is_ascii_alphanumeric();
+        let end = idx + name.len();
+        let after_ok = end >= bytes.len() || !bytes[end].is_ascii_alphanumeric();
+        if !before_ok || !after_ok {
+            continue;
+        }
+        if name.len() > best.map(|(_, n)| n).unwrap_or(0) {
+            best = Some((*name, name.len()));
+        }
+    }
+    best.map(|(name, _)| title_case_place(name))
+}
+
+fn title_case_place(place: &str) -> String {
+    let sep = if place.contains('-') { '-' } else { ' ' };
+    place
+        .split(['-', ' '])
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(&sep.to_string())
 }
 
 #[cfg(test)]
@@ -187,5 +268,13 @@ mod tests {
         let place = parse_place_surface("London");
         assert!(place.map_eligible());
         assert_eq!(place.label, "London");
+    }
+
+    #[test]
+    fn finds_longest_place_in_prose() {
+        let hit = find_place_in_text("She worked in a shed in Paris in 1898.").unwrap();
+        assert_eq!(hit.to_lowercase(), "paris");
+        let island = find_place_in_text("He landed at San Salvador in 1492.").unwrap();
+        assert!(island.to_lowercase().contains("san salvador"));
     }
 }

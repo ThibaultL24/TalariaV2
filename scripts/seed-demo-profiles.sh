@@ -35,7 +35,13 @@ WITH mapping(title_pattern, slug, label, kind) AS (
     ('Alan Turing%', 'scientist', 'scientist', 'occupation'),
     ('Alan Turing%', 'computer-scientist', 'computer scientist', 'occupation'),
     ('Victor Hugo%', 'writer', 'writer', 'occupation'),
-    ('Victor Hugo%', 'politician', 'politician', 'occupation')
+    ('Victor Hugo%', 'politician', 'politician', 'occupation'),
+    ('Leonardo%', 'artist', 'artist', 'occupation'),
+    ('Leonardo%', 'engineer', 'engineer', 'occupation'),
+    ('Christopher Columbus%', 'explorer', 'explorer', 'occupation'),
+    ('Columbus%', 'explorer', 'explorer', 'occupation'),
+    ('Cleopatra%', 'head-of-state', 'head of state', 'position'),
+    ('Cleopatra%', 'ruler', 'ruler', 'position')
 )
 INSERT INTO entity_profiles (entity_id, profile_slug, profile_label, kind, confidence, source_system)
 SELECT e.id, m.slug, m.label, m.kind, 0.85, 'seed'
@@ -50,6 +56,15 @@ SELECT DISTINCT e.id, p.id
 FROM entities e
 JOIN canonical_events ce ON ce.entity_id = e.id
 JOIN periods p ON p.kind = 'century'
+  AND EXTRACT(YEAR FROM ce.start_time)::int BETWEEN p.start_year AND p.end_year
+WHERE ce.start_time IS NOT NULL
+ON CONFLICT DO NOTHING;
+
+INSERT INTO entity_periods (entity_id, period_id)
+SELECT DISTINCT e.id, p.id
+FROM entities e
+JOIN canonical_events ce ON ce.entity_id = e.id
+JOIN periods p ON p.kind = 'era'
   AND EXTRACT(YEAR FROM ce.start_time)::int BETWEEN p.start_year AND p.end_year
 WHERE ce.start_time IS NOT NULL
 ON CONFLICT DO NOTHING;

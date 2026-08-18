@@ -19,5 +19,6 @@ declare module "@/components/map/map-colors" {
     eventLow: string;
     eventMid: string;
     eventHigh: string;
+    anecdote: string;
   };
 }

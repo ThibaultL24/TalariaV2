@@ -89,3 +89,27 @@ pub async fn list_sentences_for_extraction(
 
     Ok(rows)
 }
+
+/// All dump sentences, including those already mined by COSMOS/mock.
+pub async fn list_sentences_for_dump_mine(
+    pool: &PgPool,
+    wiki_lang: &str,
+    limit: i64,
+) -> anyhow::Result<Vec<SentenceRow>> {
+    let rows = sqlx::query_as::<_, SentenceRow>(
+        r#"
+        SELECT s.id, s.text, wp.title AS page_title
+        FROM sentences s
+        INNER JOIN wiki_pages wp ON wp.id = s.wiki_page_id
+        WHERE wp.wiki_lang = $1
+        ORDER BY wp.title ASC, s.ordinal ASC
+        LIMIT $2
+        "#,
+    )
+    .bind(wiki_lang)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows)
+}

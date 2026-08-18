@@ -62,7 +62,8 @@ pub use quality::{
     EventCandidateRow, QualityEventInsert, QualityReportCounts, RejectionReasonCount,
 };
 pub use sentences::{
-    list_sentences_for_extraction, replace_sentences_for_page, SentenceRecord, SentenceRow,
+    list_sentences_for_dump_mine, list_sentences_for_extraction, replace_sentences_for_page,
+    SentenceRecord, SentenceRow,
 };
 pub use wiki_pages::{
     list_pages_for_sentence_split, store_extracted_page, WikiPageRecord, WikiPageRow,

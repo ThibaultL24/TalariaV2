@@ -3,7 +3,9 @@ import type { GeoJsonFeatureCollection, TimelineEvent } from "./api";
 
 export function extractYear(startTime?: string | null): number | null {
   if (!startTime) return null;
-  const year = Number.parseInt(startTime.slice(0, 4), 10);
+  const match = startTime.match(/^(-?\d+)/);
+  if (!match) return null;
+  const year = Number.parseInt(match[1], 10);
   return Number.isFinite(year) ? year : null;
 }
 

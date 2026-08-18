@@ -2,6 +2,7 @@
 mod claim_extract;
 mod cli;
 mod cosmos;
+mod dump_mine;
 mod geocode;
 mod ingest;
 mod judge;
@@ -170,6 +171,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::ClaimsExtract { limit } => {
             claim_extract::run_claims_extract(&config, limit).await?
         }
+        Commands::DumpMine { limit } => dump_mine::run_dump_mine(&config, limit).await?,
     }
 
     Ok(())

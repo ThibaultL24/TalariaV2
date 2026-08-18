@@ -13,8 +13,8 @@ set +a
 : "${TALARIA_DATA_ROOT:=/home/ubuntu/wiki-dump}"
 export TALARIA_DATA_ROOT
 
-echo "==> generate Napoleon dump"
-python3 scripts/seed_napoleon_dump.py
+echo "==> generate demo dump (Napoleon + other bios + anecdotes)"
+python3 scripts/seed_demo_dump.py
 
 DUMP="$TALARIA_DATA_ROOT/dumps/enwiki-20250101-pages-articles-multistream.xml.bz2"
 
@@ -26,7 +26,7 @@ echo "==> reset cultural tables for clean density measurement"
 # Prefer docker exec psql when host psql is missing.
 reset_sql=$(cat <<'SQL'
 TRUNCATE phrase_candidates, candidate_judgments, event_evidence, canonical_events,
-         sentences, claims, raw_documents, entities, wiki_pages, dump_runs, place_geocodes
+         sentences, claims, soft_claims, raw_documents, entities, wiki_pages, dump_runs, place_geocodes
 RESTART IDENTITY CASCADE;
 SQL
 )
@@ -45,8 +45,14 @@ cargo run -q -p talaria-api -- split-sentences
 echo "==> cosmos-extract --mock (life_events)"
 cargo run -q -p talaria-api -- cosmos-extract --mock
 
+echo "==> dump-mine"
+cargo run -q -p talaria-api -- dump-mine
+
 echo "==> judge-candidates"
 cargo run -q -p talaria-api -- judge-candidates
+
+echo "==> claims-extract"
+cargo run -q -p talaria-api -- claims-extract
 
 echo "==> seed opinion claims (Intuition lane only — not map facts)"
 claims_sql=$(cat <<'SQL'
