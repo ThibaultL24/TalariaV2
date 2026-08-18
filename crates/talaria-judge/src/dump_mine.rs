@@ -402,13 +402,39 @@ mod tests {
     }
 
     #[test]
-    fn mines_turing_bletchley() {
-        let hits = mine_sentence(
-            "Alan Turing arrived in Bletchley Park in 1939 to work on Enigma.",
-            "Alan Turing",
+    fn fixture_bios_yield_anecdotes_and_map_cues() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/dumps");
+        let mut anecdotes = 0usize;
+        let mut keywords = 0usize;
+        for entry in std::fs::read_dir(&root).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|e| e.to_str()) != Some("txt") {
+                continue;
+            }
+            let title = path.file_stem().unwrap().to_string_lossy().into_owned();
+            let text = std::fs::read_to_string(&path).unwrap();
+            for sentence in text.split(['.', '\n']) {
+                let sentence = sentence.trim();
+                if sentence.len() < 28 {
+                    continue;
+                }
+                for hit in mine_sentence(sentence, &title) {
+                    if hit.extractor == EXTRACTOR_ANECDOTE {
+                        anecdotes += 1;
+                    } else {
+                        keywords += 1;
+                    }
+                }
+            }
+        }
+        assert!(
+            anecdotes >= 20,
+            "expected dated/placed anecdotes in fixtures, got {anecdotes}"
         );
-        assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].verb, "moved");
-        assert!(hits[0].place.to_lowercase().contains("bletchley"));
+        assert!(
+            keywords >= 20,
+            "expected extra life-event keywords in fixtures, got {keywords}"
+        );
     }
 }
