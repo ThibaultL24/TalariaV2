@@ -16,7 +16,7 @@ export function EntitySearchBox({
   onSubmitQuery,
   onSelect,
   isLoading,
-  placeholder = "Search for a person…",
+  placeholder = strings.searchPlaceholder,
 }: EntitySearchBoxProps) {
   const [value, setValue] = useState("");
   const [lastSubmitted, setLastSubmitted] = useState("");
@@ -77,7 +77,7 @@ export function EntitySearchBox({
             event.preventDefault();
             submitQuery();
           }}
-          placeholder={placeholder}
+          placeholder={placeholder ?? strings.searchPlaceholder}
           className="person-filter min-w-0 flex-1"
           aria-label="Entity search"
           aria-autocomplete="list"
@@ -139,11 +139,12 @@ export function EntitySearchBox({
                     <span className="shrink-0 text-[10px]">
                       {item.known_locally ? (
                         <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-emerald-400">
-                          Local · {item.event_count ?? 0}
+                          {strings.searchInLibrary}
+                          {item.event_count != null ? ` · ${item.event_count}` : ""}
                         </span>
                       ) : (
                         <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-sky-300">
-                          {strings.searchIngestBadge}
+                          {strings.searchNew}
                           {item.qid ? ` · ${item.qid}` : ""}
                         </span>
                       )}

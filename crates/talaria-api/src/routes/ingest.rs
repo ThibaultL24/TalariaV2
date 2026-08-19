@@ -1,7 +1,7 @@
 // crates/talaria-api/src/routes/ingest.rs
-//! Two explicit ingest lanes from the explorer search bar:
-//! - **explorer** — quality life-trace events (map + timeline facts)
-//! - **agora** — bibliographic corpus + historiography soft claims (debates, theories)
+//! Two explicit ingest lanes:
+//! - **explorer** — Wikipedia/Wikidata life trace plus catalog-derived dated facts
+//! - **agora** — bibliographic catalogs + historiography (theories, theses, opinions)
 
 use axum::{
     extract::{Path, State},
@@ -247,33 +247,15 @@ async fn start_lane_ingest(
 
         let result = if lane_owned == LANE_EXPLORER {
             let seed_list = seed_list_display.expect("explorer seed list");
-            let targets = DensityTargets {
-                target_timeline_events: 500,
-                target_map_events: 500,
-                max_documents: 400,
-                max_linked_entities: 5_000,
-                max_depth: 3,
-                max_documents_per_source: 2_500,
-            };
-            run_lot_e_density_ingest(
+            run_explorer_lane(
                 &config,
                 &subject_for_job,
                 qid.as_deref(),
                 &seed_list,
-                targets,
                 &wiki_lang,
                 max_titles,
             )
             .await
-            .map(|text| {
-                let report: Value = serde_json::from_str(&text)
-                    .unwrap_or_else(|_| json!({ "raw": text }));
-                json!({
-                    "lane": LANE_EXPLORER,
-                    "purpose": lane_purpose(LANE_EXPLORER),
-                    "explorer": report,
-                })
-            })
         } else {
             run_agora_lane(
                 &config,
@@ -324,6 +306,67 @@ async fn start_lane_ingest(
     Ok(Json(start_body))
 }
 
+async fn run_explorer_lane(
+    config: &talaria_core::AppConfig,
+    subject: &str,
+    qid: Option<&str>,
+    seed_list: &std::path::Path,
+    wiki_lang: &str,
+    max_titles: Option<u32>,
+) -> anyhow::Result<Value> {
+    let targets = DensityTargets {
+        target_timeline_events: 500,
+        target_map_events: 500,
+        max_documents: 400,
+        max_linked_entities: 5_000,
+        max_depth: 3,
+        max_documents_per_source: 2_500,
+    };
+    let lot_e_text = run_lot_e_density_ingest(
+        config,
+        subject,
+        qid,
+        seed_list,
+        targets,
+        wiki_lang,
+        max_titles,
+    )
+    .await?;
+    let wikipedia_wikidata = parse_json_report(&lot_e_text);
+
+    let catalog_facts = match crate::ingest::run_ingest_quality(
+        config,
+        subject,
+        qid,
+        Some(live_corpus_providers()),
+        false,
+        true,
+    )
+    .await
+    {
+        Ok(text) => parse_json_report(&text),
+        Err(error) => {
+            tracing::warn!(error = %error, "explorer catalog fact ingest failed");
+            json!({ "error": error.to_string() })
+        }
+    };
+
+    let entity_id = parse_entity_id_from_report(&wikipedia_wikidata)
+        .or_else(|| parse_entity_id_from_report(&catalog_facts));
+
+    Ok(json!({
+        "lane": LANE_EXPLORER,
+        "purpose": lane_purpose(LANE_EXPLORER),
+        "wikipedia_wikidata": wikipedia_wikidata,
+        "catalog_facts": catalog_facts,
+        "subject": {
+            "entity_id": entity_id.map(|id| id.to_string()),
+            "label": subject,
+            "qid": qid,
+        },
+    }))
+}
+
 async fn run_agora_lane(
     config: &talaria_core::AppConfig,
     subject: &str,
@@ -359,13 +402,17 @@ async fn run_agora_lane(
     }))
 }
 
+fn parse_json_report(text: &str) -> Value {
+    serde_json::from_str(text).unwrap_or_else(|_| json!({ "raw": text }))
+}
+
 fn lane_purpose(lane: &str) -> &'static str {
     match lane {
         LANE_EXPLORER => {
-            "quality life-trace: dated events with places for map and timeline (major and minor facts)"
+            "Dated life facts and anecdotes with places — geographic trace for the map and timeline"
         }
         LANE_AGORA => {
-            "historiography layer: theories, controversies, scholarly works, debates, analyses and opinions"
+            "Theories, controversies, opinions, analyses, and academic works about the person"
         }
         _ => "unknown ingest lane",
     }
@@ -429,5 +476,15 @@ mod tests {
                 "agora missing catalog {name}"
             );
         }
+    }
+
+    #[test]
+    fn explorer_and_agora_purposes_stay_separated() {
+        let explorer = lane_purpose(LANE_EXPLORER).to_lowercase();
+        let agora = lane_purpose(LANE_AGORA).to_lowercase();
+        assert!(explorer.contains("life") || explorer.contains("map"));
+        assert!(agora.contains("theor") || agora.contains("academic"));
+        assert!(!explorer.contains("controvers"));
+        assert!(!agora.contains("timeline"));
     }
 }

@@ -179,11 +179,7 @@ export function AgoraPanel({
   if (empty && !isLoading && !bibliographyLoading) {
     return (
       <div className="space-y-3 p-4 text-center text-sm text-(--color-text-muted)">
-        <p>No agora layer yet for this person.</p>
-        <p className="text-xs leading-relaxed">{strings.laneAgoraHint}</p>
-        <p className="text-xs leading-relaxed">
-          A full search runs explorer (life trace) then agora (sources + debates) automatically.
-        </p>
+        <p>{strings.emptyAgora}</p>
       </div>
     );
   }

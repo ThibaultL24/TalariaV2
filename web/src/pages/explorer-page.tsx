@@ -4,6 +4,7 @@ import type { Map } from "maplibre-gl";
 import { ExplorerEventFilters } from "@/components/filters/explorer-event-filters";
 import { EntityProfile } from "@/components/explorer/entity-profile";
 import { AgoraPanel } from "@/components/explorer/agora-panel";
+import { LaneIngestBar } from "@/components/explorer/lane-ingest-bar";
 import { Navbar } from "@/components/layout/navbar";
 import { EventDetailCard } from "@/components/detail/event-detail-card";
 import { ExplorerMapTimelineBar } from "@/components/map/explorer-map-timeline-bar";
@@ -117,11 +118,13 @@ export function ExplorerPage() {
   const {
     entityId,
     entityLabel,
+    entityQid,
     personFilter,
     selectedEventId,
     filters,
     setEntity,
     setPersonFilter,
+    setEntityQid,
     setSelectedEventId,
     toggleTypeFilter,
     toggleStatusFilter,
@@ -165,9 +168,10 @@ export function ExplorerPage() {
     let cancelled = false;
     fetchEntity(entityId)
       .then((entity) => {
-        if (cancelled || !entity?.profiles) return;
+        if (cancelled || !entity) return;
+        if (entity.qid) setEntityQid(entity.qid);
         setEntityProfiles(
-          entity.profiles.map((profile) => ({ slug: profile.slug, label: profile.label })),
+          (entity.profiles ?? []).map((profile) => ({ slug: profile.slug, label: profile.label })),
         );
       })
       .catch(() => {
@@ -176,7 +180,7 @@ export function ExplorerPage() {
     return () => {
       cancelled = true;
     };
-  }, [entityId]);
+  }, [entityId, setEntityQid]);
 
   useEffect(() => {
     rangeTouched.current = false;
@@ -378,75 +382,63 @@ export function ExplorerPage() {
   }, []);
 
   const handleSelectSuggestion = useCallback(
-    async (item: SearchSuggestion) => {
+    (item: SearchSuggestion) => {
       const chosen = preferDenseLocalAlias(item, suggestions);
+      setIngestStatus(null);
+      setError(null);
       if (chosen.known_locally && chosen.entity_id) {
-        setIngestStatus(null);
-        setEntity(chosen.entity_id, chosen.label);
+        setEntity(chosen.entity_id, chosen.label, chosen.qid);
         return;
       }
+      setPersonFilter(chosen.label, chosen.label, chosen.qid);
+    },
+    [setEntity, setPersonFilter, suggestions],
+  );
 
-      setPersonFilter(chosen.label, chosen.label);
+  const runLaneIngest = useCallback(
+    async (lane: "explorer" | "agora") => {
+      const subject = entityLabel ?? personFilter;
+      if (!subject) return;
       setError(null);
       try {
-        setIngestStatus(strings.ingestQueued);
-        const explorerJob = await startExplorerIngest({
-          subject: chosen.label,
-          qid: chosen.qid,
-          live: true,
-        });
-        setIngestStatus(
-          explorerJob.status === "running" ? strings.ingestRunning : strings.ingestQueued,
-        );
-
-        const explorerResult = await pollIngestJob(explorerJob.job_id, () => {
-          setIngestStatus(strings.ingestRunning);
-        });
-        if (explorerResult.status === "failed") {
+        setIngestStatus(lane === "explorer" ? strings.ingestQueued : strings.agoraQueued);
+        const job =
+          lane === "explorer"
+            ? await startExplorerIngest({
+                subject,
+                qid: entityQid,
+                live: true,
+              })
+            : await startAgoraIngest({
+                subject,
+                qid: entityQid,
+                live: true,
+              });
+        const running =
+          lane === "explorer" ? strings.ingestRunning : strings.agoraRunning;
+        setIngestStatus(job.status === "running" ? running : ingestQueuedLabel(lane));
+        const result = await pollIngestJob(job.job_id, () => setIngestStatus(running));
+        if (result.status === "failed") {
           setIngestStatus(null);
-          setError(`${strings.ingestFailed}: ${explorerResult.error ?? "unknown"}`);
+          setError(`${strings.ingestFailed}: ${result.error ?? "unknown"}`);
           return;
         }
-
-        setIngestStatus(strings.ingestDone);
-        const resolvedEntityId = explorerResult.entity_id;
-        if (resolvedEntityId) {
-          setEntity(resolvedEntityId, chosen.label);
-        } else {
-          setPersonFilter(chosen.label, chosen.label);
+        if (result.entity_id) {
+          setEntity(result.entity_id, subject, entityQid);
         }
-
-        setIngestStatus(strings.agoraQueued);
-        const agoraJob = await startAgoraIngest({
-          subject: chosen.label,
-          qid: chosen.qid,
-          live: true,
-        });
-        setIngestStatus(
-          agoraJob.status === "running" ? strings.agoraRunning : strings.agoraQueued,
-        );
-
-        const agoraResult = await pollIngestJob(agoraJob.job_id, () => {
-          setIngestStatus(strings.agoraRunning);
-        });
-        if (agoraResult.status === "failed") {
-          setIngestStatus(null);
-          setError(`Agora ingest failed: ${agoraResult.error ?? "unknown"}`);
-          return;
-        }
-
-        if (!resolvedEntityId && agoraResult.entity_id) {
-          setEntity(agoraResult.entity_id, chosen.label);
-        }
-        setIngestStatus(strings.agoraDone);
+        setIngestStatus(lane === "explorer" ? strings.ingestDone : strings.agoraDone);
         window.setTimeout(() => setIngestStatus(null), 2500);
       } catch (err) {
         setIngestStatus(null);
         setError(err instanceof Error ? err.message : strings.ingestFailed);
       }
     },
-    [setEntity, setPersonFilter, suggestions],
+    [entityLabel, entityQid, personFilter, setEntity],
   );
+
+  function ingestQueuedLabel(lane: "explorer" | "agora"): string {
+    return lane === "explorer" ? strings.ingestQueued : strings.agoraQueued;
+  }
 
   const handleSelectEvent = useCallback(
     (eventId: string) => {
@@ -484,20 +476,16 @@ export function ExplorerPage() {
               suggestions={suggestions}
               onSubmitQuery={setSearchQuery}
               onSelect={(item) => {
-                void handleSelectSuggestion(item);
+                handleSelectSuggestion(item);
               }}
               isLoading={searchLoading}
             />
-            {ingestStatus ? (
-              <p className="mt-2 text-xs text-sky-300" role="status">
-                {ingestStatus}
-              </p>
-            ) : null}
           </div>
 
           {entityLabel ? (
             <EntityProfile
               name={entityLabel}
+              qid={entityQid}
               eventCount={allEvents.length}
               mapCount={geojson?.features.length ?? 0}
               agoraCount={agoraClaims.length}
@@ -570,6 +558,17 @@ export function ExplorerPage() {
             </p>
           ) : null}
 
+          {hasEntity ? (
+            <LaneIngestBar
+              lane={sidebarTab === "agora" ? "agora" : "explorer"}
+              busy={Boolean(ingestStatus) && ingestStatus !== strings.ingestDone && ingestStatus !== strings.agoraDone}
+              status={ingestStatus}
+              onRun={() => {
+                void runLaneIngest(sidebarTab === "agora" ? "agora" : "explorer");
+              }}
+            />
+          ) : null}
+
           <div className="min-h-0 flex-1 overflow-y-auto">
             {error ? <p className="p-4 text-sm text-red-400">{error}</p> : null}
             {sidebarTab === "agora" && hasEntity ? (
@@ -616,12 +615,11 @@ export function ExplorerPage() {
 
           {!hasEntity ? (
             <div className="surface-nav pointer-events-none absolute bottom-3 left-3 z-10 max-w-sm rounded-lg border border-(--map-panel-border) px-3 py-2 text-xs text-(--color-text-secondary)">
-              Search for a person to load events on the map.
+              {strings.emptySearch}
             </div>
           ) : (
-            <div className="pointer-events-none absolute bottom-3 left-3 z-10 max-w-xs rounded-lg border border-sky-500/30 bg-sky-950/75 px-3 py-2 text-[11px] leading-relaxed text-sky-100/90 backdrop-blur-sm">
-              <strong className="font-semibold">{strings.laneExplorerTitle}</strong> —{" "}
-              {strings.laneExplorerHint}
+            <div className="pointer-events-none absolute bottom-3 left-3 z-10 max-w-xs rounded-lg border border-(--map-panel-border) bg-(--color-bg-elevated)/80 px-3 py-2 text-[11px] leading-relaxed text-(--color-text-secondary) backdrop-blur-sm">
+              {sidebarTab === "agora" ? strings.laneAgoraHint : strings.laneExplorerHint}
             </div>
           )}
 

@@ -18,12 +18,13 @@ export interface ExplorerFilters {
 interface ExplorerState {
   entityId?: string;
   entityLabel?: string;
+  entityQid?: string | null;
   personFilter?: string;
   selectedEventId?: string;
   hoveredEventId?: string;
   filters: ExplorerFilters;
-  setEntity: (entityId?: string, entityLabel?: string) => void;
-  setPersonFilter: (person?: string, entityLabel?: string) => void;
+  setEntity: (entityId?: string, entityLabel?: string, entityQid?: string | null) => void;
+  setPersonFilter: (person?: string, entityLabel?: string, entityQid?: string | null) => void;
   setSelectedEventId: (eventId?: string) => void;
   setHoveredEventId: (eventId?: string) => void;
   setFilters: (patch: Partial<ExplorerFilters>) => void;
@@ -31,6 +32,7 @@ interface ExplorerState {
   toggleStatusFilter: (status: string) => void;
   setProfileFilter: (slug?: string) => void;
   setPeriodFilter: (slug?: string) => void;
+  setEntityQid: (entityQid?: string | null) => void;
   clearFilters: () => void;
   closeDetail: () => void;
   clearEntity: () => void;
@@ -48,19 +50,22 @@ export const useExplorerStore = create<ExplorerState>((set) => ({
   personFilter: undefined,
   selectedEventId: undefined,
   hoveredEventId: undefined,
+  entityQid: undefined,
   filters: DEFAULT_FILTERS,
-  setEntity: (entityId, entityLabel) =>
+  setEntity: (entityId, entityLabel, entityQid) =>
     set({
       entityId,
       entityLabel,
+      entityQid: entityQid ?? undefined,
       personFilter: undefined,
       selectedEventId: undefined,
       filters: DEFAULT_FILTERS,
     }),
-  setPersonFilter: (personFilter, entityLabel) =>
+  setPersonFilter: (personFilter, entityLabel, entityQid) =>
     set({
       personFilter,
       entityLabel,
+      entityQid: entityQid ?? undefined,
       entityId: undefined,
       selectedEventId: undefined,
       filters: DEFAULT_FILTERS,
@@ -90,6 +95,7 @@ export const useExplorerStore = create<ExplorerState>((set) => ({
         periodSlug: state.filters.periodSlug === periodSlug ? undefined : periodSlug,
       },
     })),
+  setEntityQid: (entityQid) => set({ entityQid: entityQid ?? undefined }),
   clearFilters: () =>
     set((state) => ({
       filters: { ...state.filters, types: [], statuses: [], profileSlug: undefined, periodSlug: undefined },
@@ -99,6 +105,7 @@ export const useExplorerStore = create<ExplorerState>((set) => ({
     set({
       entityId: undefined,
       entityLabel: undefined,
+      entityQid: undefined,
       personFilter: undefined,
       selectedEventId: undefined,
       filters: DEFAULT_FILTERS,

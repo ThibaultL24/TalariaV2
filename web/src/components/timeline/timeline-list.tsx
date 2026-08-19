@@ -1,6 +1,7 @@
 // web/src/components/timeline/timeline-list.tsx
 import { useExplorerStore } from "@/stores/explorer-store";
 import type { TimelineItem as TimelineItemType } from "@/features/events/mappers/timeline";
+import { strings } from "@/lib/strings";
 import { TimelineItem } from "./timeline-item";
 
 interface TimelineListProps {
@@ -26,7 +27,7 @@ export function TimelineList({
   if (!hasEntity) {
     return (
       <div className="p-4 text-center text-sm leading-relaxed text-(--color-text-muted)">
-        Search for a person to load events and map points.
+        {strings.emptySearch}
       </div>
     );
   }
@@ -38,7 +39,7 @@ export function TimelineList({
   if (items.length === 0) {
     return (
       <div className="p-4 text-center text-sm text-(--color-text-muted)">
-        No events for this period. Adjust filters or run the pipeline.
+        {strings.emptyTimeline}
       </div>
     );
   }

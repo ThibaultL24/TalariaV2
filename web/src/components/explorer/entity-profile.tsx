@@ -22,13 +22,13 @@ export function EntityProfile({
   return (
     <div className="border-b border-(--color-border-subtle) px-4 py-3">
       <p className="text-[10px] font-semibold uppercase tracking-wide text-(--color-text-secondary)">
-        Entity
+        {strings.productSubtitle}
       </p>
       <h2 className="mt-1 text-lg font-semibold leading-snug">{name}</h2>
+      {qid ? <p className="mt-0.5 font-mono text-[10px] text-(--color-text-muted)">{qid}</p> : null}
       <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-(--color-text-muted)">
-        {qid ? <span>{qid}</span> : null}
-        {eventCount != null ? <span>{eventCount} quality events</span> : null}
-        {mapCount != null ? <span>{mapCount} on map</span> : null}
+        {eventCount != null ? <span>{eventCount} facts</span> : null}
+        {mapCount != null ? <span>{mapCount} mapped</span> : null}
         {agoraCount != null && agoraCount > 0 ? (
           <span className="text-amber-200/80">{agoraCount} agora</span>
         ) : null}
@@ -36,9 +36,6 @@ export function EntityProfile({
           <span>{bibliographyCount} sources</span>
         ) : null}
       </div>
-      <p className="mt-2 text-[10px] leading-relaxed text-(--color-text-muted)">
-        {strings.laneExplorerHint} · {strings.laneAgoraHint}
-      </p>
       {profiles.length > 0 ? (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {profiles.map((profile) => (
