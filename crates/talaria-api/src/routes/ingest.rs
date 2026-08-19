@@ -1,5 +1,5 @@
 // crates/talaria-api/src/routes/ingest.rs
-//! On-demand density ingest triggered from the explorer search bar (Lot E).
+//! On-demand density + catalog ingest triggered from the explorer search bar.
 
 use axum::{
     extract::{Path, State},
@@ -15,8 +15,11 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use super::AppState;
+use crate::corpus_ingest::{live_corpus_providers, run_corpus_ingest};
 use crate::lot_e::{run_lot_e_density_ingest, write_minimal_seed_list};
 use talaria_sources::DensityTargets;
+
+const SEARCH_CORPUS_LIMIT: u32 = 20;
 
 #[derive(Debug, Clone)]
 pub struct IngestJob {
@@ -159,7 +162,7 @@ pub async fn start_ingest(
             max_documents_per_source: 2_500,
         };
 
-        let result = run_lot_e_density_ingest(
+        let result = run_search_linked_ingest(
             &config,
             &subject_for_job,
             qid.as_deref(),
@@ -175,27 +178,8 @@ pub async fn start_ingest(
             return;
         };
         match result {
-            Ok(report_text) => {
-                let report: Value = serde_json::from_str(&report_text)
-                    .unwrap_or_else(|_| json!({ "raw": report_text }));
-                job.entity_id = report
-                    .pointer("/subject/entity_id")
-                    .or_else(|| report.get("entity_id"))
-                    .and_then(|v| v.as_str())
-                    .and_then(|s| Uuid::parse_str(s).ok())
-                    .or_else(|| {
-                        report
-                            .get("entity_id")
-                            .and_then(|v| v.as_str())
-                            .and_then(|s| Uuid::parse_str(s).ok())
-                    });
-                // Lot E report shapes vary — also try nested density subject.
-                if job.entity_id.is_none() {
-                    job.entity_id = report
-                        .pointer("/comparison/entity_id")
-                        .and_then(|v| v.as_str())
-                        .and_then(|s| Uuid::parse_str(s).ok());
-                }
+            Ok((report, entity_id)) => {
+                job.entity_id = entity_id;
                 job.report = Some(report);
                 job.status = "done".into();
             }
@@ -212,9 +196,111 @@ pub async fn start_ingest(
         "subject": subject,
         "qid": body.qid,
         "seed_list": seed_list_display,
-        "mode": "lot_e_density",
+        "mode": "search_linked_density_and_corpus",
         "deduped": false,
     })))
+}
+
+async fn run_search_linked_ingest(
+    config: &talaria_core::AppConfig,
+    subject: &str,
+    qid: Option<&str>,
+    seed_list: &std::path::Path,
+    targets: DensityTargets,
+    wiki_lang: &str,
+    max_titles: Option<u32>,
+) -> anyhow::Result<(Value, Option<Uuid>)> {
+    let lot_e_text = run_lot_e_density_ingest(
+        config,
+        subject,
+        qid,
+        seed_list,
+        targets,
+        wiki_lang,
+        max_titles,
+    )
+    .await?;
+    let lot_e = parse_json_report(&lot_e_text);
+    let mut entity_id = entity_id_from_report(&lot_e);
+
+    let providers = live_corpus_providers();
+    let corpus = match run_corpus_ingest(
+        config,
+        subject,
+        qid,
+        &providers,
+        SEARCH_CORPUS_LIMIT,
+        false,
+        None,
+        true,
+    )
+    .await
+    {
+        Ok(text) => {
+            let parsed = parse_json_report(&text);
+            if entity_id.is_none() {
+                entity_id = parsed
+                    .get("subject_entity_id")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| Uuid::parse_str(s).ok());
+            }
+            parsed
+        }
+        Err(error) => {
+            tracing::warn!(error = %error, "search-linked corpus ingest failed");
+            json!({ "error": error.to_string() })
+        }
+    };
+
+    let quality = match crate::ingest::run_ingest_quality(
+        config,
+        subject,
+        qid,
+        Some(providers),
+        false,
+        true,
+    )
+    .await
+    {
+        Ok(text) => parse_json_report(&text),
+        Err(error) => {
+            tracing::warn!(error = %error, "search-linked catalog quality ingest failed");
+            json!({ "error": error.to_string() })
+        }
+    };
+
+    if entity_id.is_none() {
+        entity_id = entity_id_from_report(&quality);
+    }
+
+    Ok((
+        json!({
+            "mode": "search_linked_density_and_corpus",
+            "lot_e": lot_e,
+            "corpus": corpus,
+            "catalog_quality": quality,
+            "subject": {
+                "entity_id": entity_id,
+                "label": subject,
+                "qid": qid,
+            },
+        }),
+        entity_id,
+    ))
+}
+
+fn parse_json_report(text: &str) -> Value {
+    serde_json::from_str(text).unwrap_or_else(|_| json!({ "raw": text }))
+}
+
+fn entity_id_from_report(report: &Value) -> Option<Uuid> {
+    report
+        .pointer("/subject/entity_id")
+        .or_else(|| report.get("entity_id"))
+        .or_else(|| report.get("subject_entity_id"))
+        .or_else(|| report.pointer("/comparison/entity_id"))
+        .and_then(|value| value.as_str())
+        .and_then(|s| Uuid::parse_str(s).ok())
 }
 
 pub async fn get_ingest_job(
@@ -237,4 +323,28 @@ pub async fn get_ingest_job(
         "error": job.error,
         "report": job.report,
     })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn entity_id_reads_subject_pointer() {
+        let report = json!({
+            "subject": { "entity_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" }
+        });
+        assert_eq!(
+            entity_id_from_report(&report).unwrap().to_string(),
+            "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        );
+    }
+
+    #[test]
+    fn search_corpus_limit_is_modest() {
+        assert_eq!(SEARCH_CORPUS_LIMIT, 20);
+        assert!(live_corpus_providers().contains(&"hal".to_string()));
+        assert!(live_corpus_providers().contains(&"persee".to_string()));
+        assert!(live_corpus_providers().contains(&"gallica".to_string()));
+    }
 }

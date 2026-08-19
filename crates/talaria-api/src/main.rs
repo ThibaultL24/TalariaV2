@@ -276,18 +276,13 @@ async fn main() -> anyhow::Result<()> {
             resume: _,
         } => {
             if live {
-                // Corpus sources (non-Wikimedia) that run_ingest_quality handles.
-                const CORPUS_SOURCES: &[&str] = &[
-                    "hal", "persee", "theses_fr", "gallica", "open_library",
-                    "internet_archive", "europeana", "bnf", "open_alex",
-                ];
-                // Decide which pipeline(s) to run based on the sources filter.
+                let corpus_sources = crate::corpus_ingest::live_corpus_providers();
                 let run_wikimedia = sources.as_ref().map(|s| {
                     s.iter().any(|k| matches!(k.as_str(), "wikidata" | "wikipedia"))
                 }).unwrap_or(true);
                 let corpus_sources_requested: Option<Vec<String>> = sources.as_ref().map(|s| {
                     s.iter()
-                        .filter(|k| CORPUS_SOURCES.contains(&k.as_str()))
+                        .filter(|k| corpus_sources.iter().any(|live| live == *k))
                         .cloned()
                         .collect()
                 });
@@ -296,9 +291,8 @@ async fn main() -> anyhow::Result<()> {
                     .map(|v| !v.is_empty())
                     .unwrap_or(true);
 
-                // Phase 1 — Wikimedia (lot_e seed expansion + dense extraction).
                 if run_wikimedia {
-                    println!("\n📡 Phase 1/2 — Wikipedia / Wikidata (dense extraction)…");
+                    println!("\n📡 Phase 1/3 — Wikipedia / Wikidata (dense extraction)…");
                     let seeds = match seed_list.clone() {
                         Some(path) => path,
                         None => lot_e::write_minimal_seed_list(&subject)?,
@@ -325,19 +319,35 @@ async fn main() -> anyhow::Result<()> {
                     ingest::print_density_snapshot(&config, &subject).await;
                 }
 
-                // Phase 2 — Corpus connectors (HAL, Persée, theses.fr, Gallica…).
                 if run_corpus {
                     let corpus_filter = if sources.is_some() {
-                        corpus_sources_requested
+                        corpus_sources_requested.clone().unwrap_or_default()
                     } else {
-                        None // no filter → all corpus sources
+                        corpus_sources.clone()
                     };
-                    println!("\n📚 Phase 2/2 — Corpus connectors (HAL, Persée, Gallica…)…");
+                    println!("\n📚 Phase 2/3 — Corpus bibliography (HAL, Persée, Gallica…)…");
+                    match corpus_ingest::run_corpus_ingest(
+                        &config,
+                        &subject,
+                        qid.as_deref(),
+                        &corpus_filter,
+                        20,
+                        fixture,
+                        None,
+                        live,
+                    )
+                    .await
+                    {
+                        Ok(report) => println!("{report}"),
+                        Err(error) => tracing::warn!(error = %error, "corpus bibliography ingest failed"),
+                    }
+
+                    println!("\n🔎 Phase 3/3 — Catalog quality extract (no Wikipedia re-crawl)…");
                     let report = ingest::run_ingest_quality(
                         &config,
                         &subject,
                         qid.as_deref(),
-                        corpus_filter,
+                        Some(corpus_filter),
                         fixture,
                         live,
                     )

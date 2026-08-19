@@ -237,7 +237,7 @@ pub enum Commands {
             long,
             value_delimiter = ',',
             default_value = "theses_fr",
-            help = "theses_fr,open_alex,internet_archive,europeana,bnf"
+            help = "theses_fr,hal,persee,gallica,open_alex,internet_archive,europeana,bnf,open_library"
         )]
         providers: Vec<String>,
         #[arg(long, default_value_t = 25)]

@@ -142,7 +142,8 @@ pub async fn run_ingest_quality(
                 Err(e) => tracing::warn!(error = %e, %q, "wikidata occupations unavailable"),
             }
         }
-        if subject.qid.is_some() {
+        let want_wdqs = sources_filter.as_ref().map(filter_includes_wikidata).unwrap_or(true);
+        if want_wdqs && subject.qid.is_some() {
             if let Some(qid) = subject.qid.clone() {
                 match ingest_wdqs_events(&pool, config, &subject, subject_id).await {
                     Ok(wdqs_metrics) => {
@@ -365,6 +366,12 @@ pub async fn run_ingest_quality(
     let report = build_ingest_report(&pool, &subject, subject_id, &metrics).await?;
     print!("{report}");
     Ok(report)
+}
+
+fn filter_includes_wikidata(sources: &[String]) -> bool {
+    sources
+        .iter()
+        .any(|source| SourceKind::parse(source) == SourceKind::Wikidata)
 }
 
 /// WDQS harvest: P710 / P1344 participation plus biography (never P607 war fan-out).

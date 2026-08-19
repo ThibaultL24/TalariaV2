@@ -1677,9 +1677,11 @@ pub fn connector_status_json() -> String {
         "wikisource": "stub",
         "commons": "stub",
         "fixture": "production_ready",
-        "bnf": "stub",
+        "bnf": "extraction_ready",
         "gallica": "extraction_ready",
-        "persee": "stub",
+        "persee": "extraction_ready",
+        "hal": "extraction_ready",
+        "theses_fr": "extraction_ready",
         "idref": "stub",
         "sudoc": "stub",
         "archives_nationales": "stub",
@@ -1691,7 +1693,7 @@ pub fn connector_status_json() -> String {
         "isni": "metadata_only",
         "openalex": "extraction_ready",
         "crossref": "stub",
-        "note": "Executable with --live: wikipedia, wikidata, fixture, open_library, internet_archive, gallica. Europeana needs EUROPEANA_API_KEY. Remaining Lot C/D sources stay stubs until fetch/parse/extract exist."
+        "note": "Executable with --live from explorer search or ingest-quality: wikipedia, wikidata, hal, persee, gallica, theses_fr, open_library, open_alex, internet_archive, bnf. Europeana needs EUROPEANA_API_KEY."
     }))
     .unwrap_or_else(|_| "{}".into())
 }

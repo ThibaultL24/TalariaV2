@@ -139,3 +139,26 @@ fn publication_extractor_reads_year_and_place() {
     }
     assert!(found);
 }
+
+#[test]
+fn live_registry_implements_search_catalogs() {
+    let reg = talaria_sources::connectors::default_registry(None, true)
+        .expect("live registry should build without network");
+    for kind in [
+        talaria_sources::SourceKind::Hal,
+        talaria_sources::SourceKind::Persee,
+        talaria_sources::SourceKind::Gallica,
+        talaria_sources::SourceKind::ThesesFr,
+        talaria_sources::SourceKind::OpenAlex,
+        talaria_sources::SourceKind::Bnf,
+        talaria_sources::SourceKind::OpenLibrary,
+        talaria_sources::SourceKind::InternetArchive,
+    ] {
+        let entry = reg.get(&kind).unwrap_or_else(|| panic!("missing {}", kind.as_str()));
+        assert!(
+            entry.implemented,
+            "{} should be implemented in live registry",
+            kind.as_str()
+        );
+    }
+}

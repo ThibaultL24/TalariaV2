@@ -6,15 +6,15 @@ use std::path::PathBuf;
 
 use talaria_core::AppConfig;
 use talaria_sources::connectors::{
-    default_registry_with_corpus, normalize_hal_doc, BnfConfig,
-    BnfConnector, CorpusConnectors, EuropeanaConfig, EuropeanaConnector,
-    HalConnector, InternetArchiveConfig, InternetArchiveConnector, OpenAlexConfig,
-    OpenAlexConnector, PerseeConnector, ThesesFrConfig, ThesesFrConnector,
+    default_registry_with_corpus, normalize_hal_doc, BnfConfig, BnfConnector, CorpusConnectors,
+    EuropeanaConfig, EuropeanaConnector, HalConnector, InternetArchiveConfig,
+    InternetArchiveConnector, OpenAlexConfig, OpenAlexConnector, PerseeConnector, ThesesFrConfig,
+    ThesesFrConnector,
 };
 use talaria_sources::{
-    match_subject_to_document, match_resolved_subject_to_document, normalize_bnf_notice, normalize_europeana_item, normalize_ia_item,
-    normalize_openalex_work, normalize_these_detail, AccessLevel, DiscoveredDocument,
-    NormalizedCorpusDocument, ResolvedSubject, SourceKind, TypedTimeLite,
+    match_resolved_subject_to_document, normalize_bnf_notice, normalize_europeana_item,
+    normalize_ia_item, normalize_openalex_work, normalize_these_detail, AccessLevel,
+    DiscoveredDocument, NormalizedCorpusDocument, ResolvedSubject, SourceKind, TypedTimeLite,
 };
 use talaria_store::{
     connect, finish_discovery_run, insert_document_snapshot, link_corpus_snapshot,
@@ -28,6 +28,47 @@ use uuid::Uuid;
 
 fn typed_time_json(t: &TypedTimeLite) -> serde_json::Value {
     serde_json::to_value(t).unwrap_or_else(|_| serde_json::json!({"kind":"unknown"}))
+}
+
+/// Catalogs linked from explorer search / live ingest (not Wikipedia identity).
+pub const LIVE_CORPUS_PROVIDERS: &[&str] = &[
+    "hal",
+    "persee",
+    "theses_fr",
+    "gallica",
+    "open_library",
+    "open_alex",
+    "internet_archive",
+    "europeana",
+    "bnf",
+];
+
+pub fn live_corpus_providers() -> Vec<String> {
+    LIVE_CORPUS_PROVIDERS
+        .iter()
+        .map(|name| (*name).to_string())
+        .collect()
+}
+
+/// Empty live list → every catalog. Empty fixture list stays theses.fr (CLI default).
+pub fn resolve_corpus_providers(providers: &[String], live: bool) -> Vec<SourceKind> {
+    let names: Vec<String> = if providers.is_empty() {
+        if live {
+            live_corpus_providers()
+        } else {
+            vec!["theses_fr".into()]
+        }
+    } else {
+        providers.to_vec()
+    };
+    names
+        .iter()
+        .map(|name| SourceKind::parse(name))
+        .collect()
+}
+
+fn wants(kinds: &[SourceKind], kind: SourceKind) -> bool {
+    kinds.iter().any(|candidate| candidate == &kind)
 }
 
 #[derive(Debug, Default, Clone, serde::Serialize)]
@@ -83,31 +124,14 @@ pub async fn run_corpus_ingest(
         }
     }
 
-    let want_theses = providers.is_empty()
-        || providers
-            .iter()
-            .any(|p| SourceKind::parse(p) == SourceKind::ThesesFr);
-    let want_openalex = providers
-        .iter()
-        .any(|p| SourceKind::parse(p) == SourceKind::OpenAlex);
-    let want_ia = providers
-        .iter()
-        .any(|p| SourceKind::parse(p) == SourceKind::InternetArchive);
-    let want_europeana = providers
-        .iter()
-        .any(|p| SourceKind::parse(p) == SourceKind::Europeana);
-    let want_bnf = providers
-        .iter()
-        .any(|p| SourceKind::parse(p) == SourceKind::Bnf);
-    let want_hal = providers
-        .iter()
-        .any(|p| SourceKind::parse(p) == SourceKind::Hal);
-    let want_persee = providers
-        .iter()
-        .any(|p| SourceKind::parse(p) == SourceKind::Persee);
-    let want_gallica = providers
-        .iter()
-        .any(|p| SourceKind::parse(p) == SourceKind::Gallica);
+    let kinds = resolve_corpus_providers(providers, live);
+    let want_theses = wants(&kinds, SourceKind::ThesesFr);
+    let want_openalex = wants(&kinds, SourceKind::OpenAlex);
+    let want_ia = wants(&kinds, SourceKind::InternetArchive);
+    let want_europeana = wants(&kinds, SourceKind::Europeana);
+    let want_bnf = wants(&kinds, SourceKind::Bnf);
+    let want_hal = wants(&kinds, SourceKind::Hal);
+    let want_persee = wants(&kinds, SourceKind::Persee);
 
     let theses = if want_theses {
         if use_fixture {
@@ -207,11 +231,7 @@ pub async fn run_corpus_ingest(
         None
     };
 
-    let _want_gallica = providers
-        .iter()
-        .any(|p| SourceKind::parse(p) == SourceKind::Gallica);
-
-    let mut registry = default_registry_with_corpus(
+    let registry = default_registry_with_corpus(
         None,
         live,
         CorpusConnectors {
@@ -224,11 +244,6 @@ pub async fn run_corpus_ingest(
             persee,
         },
     )?;
-    let kinds: Vec<SourceKind> = if providers.is_empty() {
-        vec![SourceKind::ThesesFr]
-    } else {
-        providers.iter().map(|p| SourceKind::parse(p)).collect()
-    };
 
     let run_id = start_discovery_run(
         &pool,
@@ -299,7 +314,16 @@ pub async fn run_corpus_ingest(
                     }
                 };
 
-                let normalized = extract_normalized(&kind, &fetched.raw_metadata)?;
+                let Some(normalized) = extract_normalized(&kind, &fetched.raw_metadata)? else {
+                    tracing::warn!(
+                        source = kind.as_str(),
+                        id = %doc.external_id,
+                        "no corpus normalizer; skip bibliography persist"
+                    );
+                    mark_discovered_skipped(&pool, discovered_id, "no_normalizer").await?;
+                    metrics.documents_skipped += 1;
+                    continue;
+                };
                 let (corpus_id, snapshot_id, snapshot_new) =
                     persist_normalized(&pool, &kind, &doc, &normalized).await?;
 
@@ -358,9 +382,9 @@ pub async fn run_corpus_ingest(
 fn extract_normalized(
     kind: &SourceKind,
     raw_metadata: &serde_json::Value,
-) -> anyhow::Result<NormalizedCorpusDocument> {
+) -> anyhow::Result<Option<NormalizedCorpusDocument>> {
     if let Some(n) = raw_metadata.get("normalized") {
-        return Ok(serde_json::from_value(n.clone())?);
+        return Ok(Some(serde_json::from_value(n.clone())?));
     }
     match kind {
         SourceKind::ThesesFr => {
@@ -368,44 +392,44 @@ fn extract_normalized(
                 .get("provider")
                 .cloned()
                 .unwrap_or_else(|| raw_metadata.clone());
-            Ok(normalize_these_detail(&provider)?)
+            Ok(Some(normalize_these_detail(&provider)?))
         }
         SourceKind::OpenAlex => {
             let provider = raw_metadata
                 .get("provider")
                 .cloned()
                 .unwrap_or_else(|| raw_metadata.clone());
-            Ok(normalize_openalex_work(&provider)?)
+            Ok(Some(normalize_openalex_work(&provider)?))
         }
         SourceKind::InternetArchive => {
             let provider = raw_metadata
                 .get("provider")
                 .cloned()
                 .unwrap_or_else(|| raw_metadata.clone());
-            Ok(normalize_ia_item(&provider)?)
+            Ok(Some(normalize_ia_item(&provider)?))
         }
         SourceKind::Europeana => {
             let provider = raw_metadata
                 .get("provider")
                 .cloned()
                 .unwrap_or_else(|| raw_metadata.clone());
-            Ok(normalize_europeana_item(&provider)?)
+            Ok(Some(normalize_europeana_item(&provider)?))
         }
         SourceKind::Bnf => {
             let provider = raw_metadata
                 .get("provider")
                 .cloned()
                 .unwrap_or_else(|| raw_metadata.clone());
-            Ok(normalize_bnf_notice(&provider)?)
+            Ok(Some(normalize_bnf_notice(&provider)?))
         }
         SourceKind::Hal => {
             let provider = raw_metadata
                 .get("provider")
                 .cloned()
                 .unwrap_or_else(|| raw_metadata.clone());
-            Ok(normalize_hal_doc(&provider)?)
+            Ok(Some(normalize_hal_doc(&provider)?))
         }
-        other => anyhow::bail!("no normalizer for {}", other.as_str()),
+        _ => Ok(None),
     }
 }
 
@@ -546,5 +570,44 @@ fn to_discovered_insert(run_id: Uuid, doc: &DiscoveredDocument) -> DiscoveredDoc
         relevance_score: doc.relevance_score,
         subject_links: serde_json::to_value(&doc.subject_links).unwrap_or_default(),
         source_metadata: doc.source_metadata.raw.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn live_empty_providers_include_hal_persee_and_gallica() {
+        let kinds = resolve_corpus_providers(&[], true);
+        for expected in [
+            SourceKind::Hal,
+            SourceKind::Persee,
+            SourceKind::Gallica,
+            SourceKind::ThesesFr,
+            SourceKind::OpenAlex,
+            SourceKind::Bnf,
+            SourceKind::OpenLibrary,
+            SourceKind::InternetArchive,
+            SourceKind::Europeana,
+        ] {
+            assert!(
+                wants(&kinds, expected.clone()),
+                "missing {}",
+                expected.as_str()
+            );
+        }
+    }
+
+    #[test]
+    fn fixture_empty_providers_stay_theses_fr() {
+        let kinds = resolve_corpus_providers(&[], false);
+        assert_eq!(kinds, vec![SourceKind::ThesesFr]);
+    }
+
+    #[test]
+    fn explicit_providers_are_respected() {
+        let kinds = resolve_corpus_providers(&["hal".into(), "persee".into()], true);
+        assert_eq!(kinds, vec![SourceKind::Hal, SourceKind::Persee]);
     }
 }
