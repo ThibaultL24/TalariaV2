@@ -17,15 +17,23 @@ impl CandidateExtractor for TravelResidenceExtractor {
         let mut out = Vec::new();
         for (i, line) in input.text.lines().enumerate() {
             let lower = line.to_lowercase();
-            let (etype, pred) = if lower.contains("departed") || lower.contains("left for") {
+            let (etype, pred) = if lower.contains("departed") || lower.contains("left for") || lower.contains("partit")
+            {
                 ("departure", "departed_for")
-            } else if lower.contains("arrived") {
+            } else if lower.contains("arrived") || lower.contains("arriva") {
                 ("arrival", "arrived_in")
-            } else if lower.contains("lived in") || lower.contains("resided") {
+            } else if lower.contains("lived in")
+                || lower.contains("resided")
+                || lower.contains("vécut")
+                || lower.contains("vecut")
+                || lower.contains("habita")
+                || lower.contains("s'installa")
+                || lower.contains("s’installa")
+            {
                 ("residence", "resided_in")
             } else if lower.contains("stayed in") || lower.contains("stayed at") {
                 ("residence", "stayed_at")
-            } else if lower.contains("exiled") {
+            } else if lower.contains("exiled") || lower.contains("s'exila") || lower.contains("exilé") {
                 ("exile", "exiled_to")
             } else {
                 continue;
@@ -72,19 +80,43 @@ pub(crate) fn find_year(s: &str) -> Option<String> {
 
 pub(crate) fn find_place(s: &str) -> Option<String> {
     let lower = s.to_lowercase();
-    for cue in [" in ", " at ", " to ", " for "] {
+    for cue in [" in ", " at ", " to ", " for ", " à ", " au ", " aux ", " en "] {
         if let Some(pos) = lower.rfind(cue) {
             let after = &s[pos + cue.len()..];
-            let token = after
+            let raw = after
                 .split(|c: char| c == '.' || c.is_ascii_digit() || c == ',')
                 .next()?
                 .trim()
-                .trim_matches(|c: char| !c.is_alphabetic() && c != ' ' && c != '-')
+                .trim_matches(|c: char| !c.is_alphabetic() && c != ' ' && c != '-');
+            let token = raw
+                .trim_end_matches(" en")
+                .trim_end_matches(" in")
+                .trim()
                 .to_string();
-            if token.len() >= 2 {
+            if token.len() >= 2 && !token.eq_ignore_ascii_case("en") {
                 return Some(token);
             }
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::extractors::ExtractorInput;
+
+    #[test]
+    fn french_residence_line_yields_place() {
+        let raws = TravelResidenceExtractor.extract(&ExtractorInput {
+            text: "Il vécut à Honfleur en 1859.".into(),
+            page_title: Some("Charles Baudelaire".into()),
+            subject_label: Some("Charles Baudelaire".into()),
+            document_type: "article".into(),
+            subject_death_year: Some(1867),
+        });
+        assert_eq!(raws[0].event_type, "residence");
+        assert_eq!(raws[0].time_surface.as_deref(), Some("1859"));
+        assert_eq!(raws[0].place_surface.as_deref(), Some("Honfleur"));
+    }
 }

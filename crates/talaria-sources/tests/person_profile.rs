@@ -138,3 +138,18 @@ fn scientist_wiki_filter_drops_battles_keeps_labs() {
     assert!(kept.iter().any(|t| t.contains("University")));
     assert!(!kept.iter().any(|t| t.contains("Waterloo")));
 }
+
+#[test]
+fn military_leader_still_ranks_battles_but_also_political_career() {
+    let p = profile_for(PersonClass::MilitaryLeader);
+    assert!(p.enable_wdqs_military);
+    let battle = rank_wikipedia_title("Bataille de Montcornet", &p, None);
+    let presidence = rank_wikipedia_title("Présidence de Charles de Gaulle", &p, None);
+    let gouvernement = rank_wikipedia_title("Gouvernement de Gaulle", &p, None);
+    assert!(battle > 0.8);
+    assert!(
+        presidence >= battle,
+        "political career pages must rank with battles, got {presidence} vs {battle}"
+    );
+    assert!(gouvernement >= battle);
+}

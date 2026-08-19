@@ -9,7 +9,7 @@ use talaria_quality::{
     occurrence_stem_for_event, parse_typed_time, resolve_mentions, should_reinforce_existing_event,
     start_time_from_typed, time_to_json, BuildProjections, DerivedLabelProjections, EntityKind,
     EvidencePtr, ExistingCandidateAction, EXTRACTOR_EPISTEMIC_STATUS, GazetteerResolver,
-    GateContext, Mention, TypedTime, ASSEMBLER_V1,
+    GateContext, Mention, ASSEMBLER_V1,
 };
 use talaria_sources::connectors::{default_registry, FixtureConnector};
 use talaria_sources::extractors::{
@@ -20,16 +20,16 @@ use talaria_sources::wdqs::{
     events_from_fixture_dir, events_to_statement_text, fetch_events_for_person,
 };
 use talaria_sources::{
-    plan_sources, profile_for, BudgetCounters, DiscoveredDocument, IngestBudgets, ResolvedSubject,
+    plan_sources, BudgetCounters, DiscoveredDocument, IngestBudgets, ResolvedSubject,
     SourceKind,
 };
 use talaria_store::{
-    add_claim_support, connect, density_report_counts,
+    add_claim_support, density_report_counts,
     find_active_quality_event_by_occurrence_key, finish_discovery_run,
     get_event_candidate_by_fingerprint, insert_document_fragment, insert_document_snapshot,
     insert_quality_canonical_event, link_claim_to_event, mark_candidate_assembled,
     mark_discovered_skipped, mark_discovered_snapshotted, quality_lifespan_years,
-    reinforce_quality_event, reject_if_singleton_exists, run_migrations, start_discovery_run,
+    reinforce_quality_event, reject_if_singleton_exists, start_discovery_run,
     update_event_candidate_judgment, update_entity_qid, upsert_discovered_document,
     upsert_entity_with_kind, upsert_event_candidate, upsert_quality_claim,
     DiscoveredDocumentInsert, DiscoveryRunInsert, DocumentFragmentInsert, DocumentSnapshotInsert,
@@ -140,7 +140,7 @@ pub async fn run_ingest_quality(
                 Err(e) => tracing::warn!(error = %e, %q, "wikidata occupations unavailable"),
             }
         }
-        if profile_for(subject.person_class()).enable_wdqs_military {
+        if subject.qid.is_some() {
             if let Some(qid) = subject.qid.clone() {
                 match ingest_wdqs_events(&pool, config, &subject, subject_id).await {
                     Ok(wdqs_metrics) => {
@@ -365,7 +365,7 @@ pub async fn run_ingest_quality(
     Ok(report)
 }
 
-/// POC-parity harvest: WDQS P710 / P1344 / P607 → quality canonical events.
+/// WDQS harvest: P710 / P1344 participation plus biography (never P607 war fan-out).
 pub async fn ingest_wdqs_events(
     pool: &sqlx::PgPool,
     config: &AppConfig,
@@ -379,7 +379,7 @@ pub async fn ingest_wdqs_events(
     let events = if let Ok(dir) = std::env::var("TALARIA_WDQS_FIXTURE") {
         events_from_fixture_dir(std::path::Path::new(&dir))?
     } else {
-        tracing::info!(%qid, "fetching WDQS participant/conflict events");
+        tracing::info!(%qid, "fetching WDQS participation and biography events");
         fetch_events_for_person(qid).await?
     };
     tracing::info!(qid, n = events.len(), "WDQS events after merge");
@@ -398,7 +398,7 @@ pub async fn ingest_wdqs_events(
             language: "en".into(),
             title: Some(format!("WDQS events for {qid}")),
             content_hash: hash,
-            revision_id: Some("wdqs:p710+p1344+p607".into()),
+            revision_id: Some("wdqs:p710+p1344+bio".into()),
             wiki_page_id: None,
             raw_document_id: None,
             text: text.clone(),

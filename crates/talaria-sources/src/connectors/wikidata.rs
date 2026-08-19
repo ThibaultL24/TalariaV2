@@ -80,6 +80,7 @@ impl WikidataSourceConnector {
             ("P39", "office", "held_office"),
             ("P551", "residence", "resided_in"),
             ("P69", "education", "studied_at"),
+            ("P800", "publication", "published"),
         ];
         for (pid, etype, pred) in MAP {
             let Some(arr) = claims.get(*pid).and_then(|v| v.as_array()) else {
@@ -87,7 +88,10 @@ impl WikidataSourceConnector {
             };
             for stmt in arr {
                 let time = stmt
-                    .pointer("/mainsnak/datavalue/value/time")
+                    .pointer("/qualifiers/P580/0/datavalue/value/time")
+                    .or_else(|| stmt.pointer("/qualifiers/P585/0/datavalue/value/time"))
+                    .or_else(|| stmt.pointer("/qualifiers/P577/0/datavalue/value/time"))
+                    .or_else(|| stmt.pointer("/mainsnak/datavalue/value/time"))
                     .and_then(|v| v.as_str())
                     .and_then(parse_wikidata_year)
                     .map(|y| y.to_string())

@@ -13,7 +13,7 @@ use talaria_quality::{
     occurrence_stem_for_event, parse_typed_time, resolve_mentions, should_reinforce_existing_event,
     start_time_from_typed, time_to_json, BuildProjections, DerivedLabelProjections, EntityKind,
     EvidencePtr, ExistingCandidateAction, EXTRACTOR_EPISTEMIC_STATUS, GazetteerResolver,
-    GateContext, TypedTime, ASSEMBLER_V1,
+    GateContext, ASSEMBLER_V1,
 };
 use talaria_sources::extractors::{
     claim_fingerprint, extractor_stack_for, CandidateExtractor, ClaimKey, ExtractorInput,
@@ -385,22 +385,20 @@ pub async fn run_lot_e_density_ingest(
         }
     }
 
-    if profile.enable_wdqs_military {
-        if let Some(qid) = subject_res.qid.clone() {
-            match crate::ingest::ingest_wdqs_events(&pool, config, &subject_res, subject_id).await {
-                Ok(wdqs) => {
-                    tracing::info!(
-                        created = wdqs.events_created,
-                        accepted = wdqs.accepted,
-                        %qid,
-                        "WDQS participant/conflict events ingested"
-                    );
-                    metrics.events_created += wdqs.events_created as u32;
-                    metrics.accepted += wdqs.accepted as u32;
-                    metrics.rejected += wdqs.rejected as u32;
-                }
-                Err(e) => tracing::warn!(error = %e, %qid, "WDQS ingest failed"),
+    if let Some(qid) = subject_res.qid.clone() {
+        match crate::ingest::ingest_wdqs_events(&pool, config, &subject_res, subject_id).await {
+            Ok(wdqs) => {
+                tracing::info!(
+                    created = wdqs.events_created,
+                    accepted = wdqs.accepted,
+                    %qid,
+                    "WDQS participation and biography events ingested"
+                );
+                metrics.events_created += wdqs.events_created as u32;
+                metrics.accepted += wdqs.accepted as u32;
+                metrics.rejected += wdqs.rejected as u32;
             }
+            Err(e) => tracing::warn!(error = %e, %qid, "WDQS ingest failed"),
         }
     }
 

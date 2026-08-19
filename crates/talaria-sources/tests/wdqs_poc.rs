@@ -3,8 +3,8 @@ use std::path::PathBuf;
 
 use talaria_sources::extractors::{CandidateExtractor, ExtractorInput, StructuredStatementExtractor};
 use talaria_sources::wdqs::{
-    events_from_fixture_dir, events_to_statement_text, merge_events_for_person,
-    parse_sparql_bindings,
+    events_for_person_query, events_from_fixture_dir, events_to_statement_text,
+    merge_events_for_person, parse_sparql_bindings,
 };
 
 fn fixture_dir() -> PathBuf {
@@ -32,16 +32,64 @@ fn parse_drops_undated_and_keeps_battle_coords() {
 }
 
 #[test]
-fn merge_dedupes_by_qid_and_unions_p710_p1344_p607() {
+fn merge_keeps_direct_participation_and_drops_p607_war_fanout() {
     let p710 = parse_sparql_bindings(&load("participant.json"), None);
     let p1344 = parse_sparql_bindings(&load("participant_in.json"), None);
     let wars = parse_sparql_bindings(&load("battles.json"), Some("battle"));
     let merged = merge_events_for_person(&p710, &p1344, &wars);
     let qids: Vec<_> = merged.iter().map(|e| e.event_qid.as_str()).collect();
-    assert_eq!(qids, ["Q179250", "Q6882", "Q151851", "Q48314"]);
-    let waterloo = merged.iter().find(|e| e.event_qid == "Q48314").unwrap();
-    assert_eq!(waterloo.event_type, "battle");
-    assert!((waterloo.lat.unwrap() - 50.68).abs() < 0.01);
+    assert_eq!(qids, ["Q179250", "Q6882", "Q151851"]);
+    assert!(
+        merged.iter().all(|e| e.event_qid != "Q48314"),
+        "Waterloo via P607→P361+ must not be attributed without P710/P1344"
+    );
+}
+
+#[test]
+fn query_does_not_fan_out_conflict_into_every_battle() {
+    let q = events_for_person_query("Q2042", 200);
+    assert!(q.contains("wdt:P710"));
+    assert!(q.contains("wdt:P1344"));
+    assert!(
+        !q.contains("P361+"),
+        "P607 war must not explode into every P361 battle"
+    );
+    assert!(
+        !q.contains("wdt:P607 ?war"),
+        "conflict membership is not participation"
+    );
+}
+
+#[test]
+fn query_fetches_coordinates_and_life_trajectory() {
+    let q = events_for_person_query("Q501", 200);
+    assert!(q.contains("wdt:P625"), "need event or place coords for the map");
+    assert!(q.contains("wdt:P19"), "birth place");
+    assert!(q.contains("P551"), "residences");
+    assert!(q.contains("P39"), "offices");
+    assert!(q.contains("wdt:P800"), "notable works / publications");
+    assert!(q.contains("P69"), "education");
+}
+
+#[test]
+fn parse_keeps_synthetic_biography_ids_and_coords() {
+    let payload = serde_json::json!({
+        "results": { "bindings": [{
+            "event": { "type": "uri", "value": "http://www.wikidata.org/entity/Q501-BIRTH" },
+            "eventLabel": { "type": "literal", "value": "birth" },
+            "date": { "type": "literal", "value": "1821-04-09T00:00:00Z" },
+            "place": { "type": "uri", "value": "http://www.wikidata.org/entity/Q90" },
+            "placeLabel": { "type": "literal", "value": "Paris" },
+            "evType": { "type": "literal", "value": "birth" },
+            "pgeo": { "type": "literal", "value": "Point(2.3522 48.8566)" }
+        }]}
+    });
+    let events = parse_sparql_bindings(&payload, None);
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].event_qid, "Q501-BIRTH");
+    assert_eq!(events[0].event_type, "birth");
+    assert_eq!(events[0].place_label.as_deref(), Some("Paris"));
+    assert!((events[0].lat.unwrap() - 48.8566).abs() < 0.001);
 }
 
 #[test]
