@@ -1,10 +1,10 @@
 // crates/talaria-sources/tests/lot_e_density.rs
 //! Lot E density / occurrence / place tests (no network).
 
-use talaria_quality::{occurrence_key, parse_typed_time, TypedTime};
-use talaria_sources::extractors::{
-    default_extractor_stack, CandidateExtractor, ExtractorInput,
+use talaria_quality::{
+    competing_places, occurrence_key, occurrence_stem_for_event, parse_typed_time, TypedTime,
 };
+use talaria_sources::extractors::{default_extractor_stack, ExtractorInput};
 use talaria_sources::{
     is_plausible_place_label, place_hint_from_title, resolve_place_offline, DensityProgress,
     DensityTargets,
@@ -86,6 +86,74 @@ fn distinct_battles_same_day_differ() {
         None,
     );
     assert_ne!(a, b);
+}
+
+#[test]
+fn two_extractors_must_not_split_occurrence() {
+    let t = parse_typed_time(Some("1815-06-18"));
+    // Historical key ignores extractor — same fact from dense vs military = one occurrence.
+    let dense = occurrence_key(
+        "Napoleon",
+        "battle",
+        "fought_at",
+        &t,
+        Some("Waterloo"),
+        Some("Battle of Waterloo"),
+        None,
+        None,
+    );
+    let military = occurrence_key(
+        "Napoleon",
+        "battle",
+        "fought_at",
+        &t,
+        Some("Waterloo"),
+        Some("Battle of Waterloo"),
+        None,
+        None,
+    );
+    assert_eq!(dense, military);
+    let with_extractor = occurrence_key(
+        "Napoleon",
+        "battle",
+        "fought_at",
+        &t,
+        Some("Waterloo"),
+        Some("Battle of Waterloo"),
+        Some("dense_clause"),
+        None,
+    );
+    assert_ne!(dense, with_extractor);
+}
+
+#[test]
+fn competing_places_share_stem_not_occurrence() {
+    let t = parse_typed_time(Some("1814-05-18"));
+    let stem_paris = occurrence_stem_for_event("Napoleon", "residence", "located_at", &t, None);
+    let stem_font = occurrence_stem_for_event("Napoleon", "residence", "located_at", &t, None);
+    assert_eq!(stem_paris, stem_font);
+    let occ_paris = occurrence_key(
+        "Napoleon",
+        "residence",
+        "located_at",
+        &t,
+        Some("Paris"),
+        None,
+        None,
+        None,
+    );
+    let occ_font = occurrence_key(
+        "Napoleon",
+        "residence",
+        "located_at",
+        &t,
+        Some("Fontainebleau"),
+        None,
+        None,
+        None,
+    );
+    assert_ne!(occ_paris, occ_font);
+    assert!(competing_places(Some("Paris"), &[Some("Fontainebleau")]).is_some());
 }
 
 #[test]
@@ -182,4 +250,21 @@ fn density_targets_signal_not_reached() {
     .evaluate(&targets);
     assert!(!progress.target_reached);
     assert_eq!(progress.status, "target_not_reached");
+}
+
+#[test]
+fn generic_seed_merge_does_not_use_napoleon_year_window() {
+    use talaria_sources::{first_year_in_window, lifespan_year_window, merge_seed_titles};
+    let (lo, hi) = lifespan_year_window(Some(1867), Some(1934));
+    assert!(first_year_in_window("awarded in 1903 in Stockholm", lo, hi).is_some());
+    assert!(first_year_in_window("cited in 2006", lo, hi).is_none());
+    let seeds = merge_seed_titles(
+        "Marie Curie",
+        ["Marie Curie".into()],
+        ["University of Paris".into(), "1867".into()],
+        8,
+    );
+    assert_eq!(seeds[0], "Marie Curie");
+    assert!(seeds.contains(&"University of Paris".into()));
+    assert!(!seeds.iter().any(|t| t == "1867"));
 }

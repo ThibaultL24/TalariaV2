@@ -1,0 +1,22 @@
+{
+  "results": {
+    "bindings": [
+      {
+        "battle": { "type": "uri", "value": "http://www.wikidata.org/entity/Q179250" },
+        "battleLabel": { "xml:lang": "en", "type": "literal", "value": "Battle of Austerlitz" },
+        "date": { "datatype": "http://www.w3.org/2001/XMLSchema#dateTime", "type": "literal", "value": "1805-12-02T00:00:00Z" },
+        "place": { "type": "uri", "value": "http://www.wikidata.org/entity/Q26844" },
+        "placeLabel": { "xml:lang": "en", "type": "literal", "value": "Austerlitz" },
+        "geo": { "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral", "type": "literal", "value": "Point(16.7622 49.1281)" }
+      },
+      {
+        "battle": { "type": "uri", "value": "http://www.wikidata.org/entity/Q48314" },
+        "battleLabel": { "xml:lang": "en", "type": "literal", "value": "Battle of Waterloo" },
+        "date": { "datatype": "http://www.w3.org/2001/XMLSchema#dateTime", "type": "literal", "value": "1815-06-18T00:00:00Z" },
+        "place": { "type": "uri", "value": "http://www.wikidata.org/entity/Q179251" },
+        "placeLabel": { "xml:lang": "en", "type": "literal", "value": "Waterloo" },
+        "pgeo": { "datatype": "http://www.opengis.net/ont/geosparql#wktLiteral", "type": "literal", "value": "Point(4.4 50.68)" }
+      }
+    ]
+  }
+}

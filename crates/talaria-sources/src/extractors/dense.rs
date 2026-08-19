@@ -47,6 +47,8 @@ impl CandidateExtractor for DenseClauseExtractor {
                     cross_clause_join: x.cross_clause_join,
                     extractor_id: self.extractor_id().into(),
                     is_posthumous: false,
+                    lat: None,
+                    lon: None,
                 });
             }
             offset += sentence.len() as i32 + 1;

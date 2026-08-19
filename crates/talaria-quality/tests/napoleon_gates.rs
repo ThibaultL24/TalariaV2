@@ -5,7 +5,7 @@
 use talaria_quality::{
     apply_gates, candidate_fingerprint, event_fingerprint, resolve_mentions, split_clauses,
     CandidateStatus, ClauseAnalyzeInput, ClauseAnalyzer, DeterministicClauseAnalyzer, EntityKind,
-    EvidencePtr, GazetteerResolver, GateContext, GateDecision, Mention, ParticipantRole, TypedTime,
+    EvidencePtr, GateContext, GateDecision, GazetteerResolver, Mention, ParticipantRole, TypedTime,
     EXTRACTOR_DETERMINISTIC_V1,
 };
 use uuid::Uuid;

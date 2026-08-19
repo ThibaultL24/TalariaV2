@@ -1,34 +1,42 @@
 // crates/talaria-api/src/lot_e.rs
 //! Lot E: dense seed-driven quality ingest toward density targets.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 use sha2::{Digest, Sha256};
 use talaria_core::AppConfig;
 use talaria_judge::parse_time_surface;
 use talaria_quality::{
-    apply_gates, occurrence_key, parse_typed_time, resolve_mentions, BuildProjections,
-    DerivedLabelProjections, EntityKind, EvidencePtr, GazetteerResolver, GateContext, TypedTime,
-    ASSEMBLER_V1,
+    apply_gates, candidate_fingerprint, existing_candidate_action, occurrence_key_for_event,
+    occurrence_stem_for_event, parse_typed_time, resolve_mentions, should_reinforce_existing_event,
+    BuildProjections, DerivedLabelProjections, EntityKind, EvidencePtr, ExistingCandidateAction,
+    EXTRACTOR_EPISTEMIC_STATUS, GazetteerResolver, GateContext, TypedTime, ASSEMBLER_V1,
 };
 use talaria_sources::extractors::{
-    claim_fingerprint, default_extractor_stack, CandidateExtractor, ClaimKey, ExtractorInput,
+    claim_fingerprint, extractor_stack_for, CandidateExtractor, ClaimKey, ExtractorInput,
 };
 use talaria_sources::{
-    is_plausible_place_label, load_seed_titles, place_hint_from_title, resolve_place_offline,
-    DensityProgress, DensityTargets, ResolvedSubject,
+    filter_wiki_titles_for_profile, first_year_in_window, is_plausible_place_label,
+    lifespan_year_window, load_seed_titles, merge_seed_titles, place_hint_from_title,
+    profile_for, rank_wikipedia_title, resolve_place_offline, DensityProgress, DensityTargets,
+    ResolvedSubject,
 };
 use talaria_store::{
     add_claim_support, apply_place_to_quality_event, connect, density_report_counts,
-    find_active_quality_event_by_fingerprint, find_active_singleton, insert_document_fragment,
-    insert_document_snapshot, insert_quality_canonical_event, link_claim_to_event,
-    mark_candidate_assembled, quality_lifespan_years, reinforce_quality_event, run_migrations,
+    find_active_quality_event_by_occurrence_key, find_active_singleton,
+    get_event_candidate_by_fingerprint, insert_document_fragment, insert_document_snapshot,
+    insert_quality_canonical_event, link_claim_to_event, mark_candidate_assembled,
+    quality_lifespan_years, reinforce_quality_event, run_migrations,
     update_event_candidate_judgment, upsert_entity_with_kind, upsert_event_candidate,
     upsert_quality_claim, DocumentFragmentInsert, DocumentSnapshotInsert, EventCandidateInsert,
     QualityClaimInsert, QualityEventInsert,
 };
 use uuid::Uuid;
+
+use crate::place_conflict::{abstain_if_competing_place, competing_place_codes};
 
 fn content_hash(text: &str) -> String {
     let mut hasher = Sha256::new();
@@ -43,10 +51,7 @@ fn time_to_json(time: &TypedTime) -> serde_json::Value {
 fn start_time_from_typed(time: &TypedTime) -> Option<chrono::DateTime<chrono::Utc>> {
     match time {
         TypedTime::Exact {
-            year,
-            month,
-            day,
-            ..
+            year, month, day, ..
         } => {
             let m = month.unwrap_or(6);
             let d = day.unwrap_or(15);
@@ -60,88 +65,159 @@ fn start_time_from_typed(time: &TypedTime) -> Option<chrono::DateTime<chrono::Ut
     }
 }
 
+fn html_to_rough_text(html: &str) -> String {
+    let mut out = String::with_capacity(html.len() / 2);
+    let mut in_tag = false;
+    let mut prev_space = false;
+    for ch in html.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => {
+                in_tag = false;
+                if !prev_space {
+                    out.push(' ');
+                    prev_space = true;
+                }
+            }
+            _ if in_tag => {}
+            c if c.is_whitespace() => {
+                if !prev_space {
+                    out.push(' ');
+                    prev_space = true;
+                }
+            }
+            c => {
+                out.push(c);
+                prev_space = false;
+            }
+        }
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+async fn fetch_wikipedia_extract_rest(
+    client: &reqwest::Client,
+    lang: &str,
+    title: &str,
+) -> anyhow::Result<(String, String, Option<String>, Option<(f64, f64)>)> {
+    let title_path = title.replace(' ', "_");
+    let mut html_url = reqwest::Url::parse(&format!("https://{lang}.wikipedia.org"))?;
+    {
+        let mut segs = html_url
+            .path_segments_mut()
+            .map_err(|_| anyhow::anyhow!("bad wikipedia base url"))?;
+        segs.extend(["api", "rest_v1", "page", "html", &title_path]);
+    }
+    let html_resp = send_retrying(client.get(html_url)).await?.error_for_status()?;
+    let html = html_resp.text().await?;
+    let extract = html_to_rough_text(&html);
+    if extract.len() < 80 {
+        anyhow::bail!("rest html too short for {title}");
+    }
+
+    let mut resolved = title.to_string();
+    let mut coords = None;
+    let mut summary_url = reqwest::Url::parse(&format!("https://{lang}.wikipedia.org"))?;
+    {
+        let mut segs = summary_url
+            .path_segments_mut()
+            .map_err(|_| anyhow::anyhow!("bad wikipedia base url"))?;
+        segs.extend(["api", "rest_v1", "page", "summary", &title_path]);
+    }
+    if let Ok(sum) = client.get(summary_url).send().await {
+        if sum.status().is_success() {
+            if let Ok(v) = sum.json::<serde_json::Value>().await {
+                if let Some(t) = v.get("title").and_then(|x| x.as_str()) {
+                    resolved = t.to_string();
+                }
+                coords = v.get("coordinates").and_then(|c| {
+                    let lat = c.get("lat")?.as_f64()?;
+                    let lon = c.get("lon")?.as_f64()?;
+                    Some((lat, lon))
+                });
+            }
+        }
+    }
+    Ok((resolved, extract, None, coords))
+}
+
 async fn fetch_wikipedia_extract(
     lang: &str,
     title: &str,
 ) -> anyhow::Result<(String, String, Option<String>, Option<(f64, f64)>)> {
-    let client = reqwest::Client::builder()
-        .user_agent("TalariaEngine/0.1 (lot-e density; research; contact: talaria-dev)")
-        .timeout(Duration::from_secs(45))
-        .build()?;
+    let client = wiki_http_client()?;
     let api = format!("https://{lang}.wikipedia.org/w/api.php");
-    let mut attempt = 0u32;
-    let response = loop {
-        attempt += 1;
-        let resp = client
-            .get(&api)
-            .query(&[
-                ("action", "query"),
-                ("prop", "extracts|info|coordinates"),
-                ("explaintext", "1"),
-                ("exlimit", "1"),
-                ("titles", title),
-                ("format", "json"),
-                ("redirects", "1"),
-                ("colimit", "1"),
-            ])
-            .send()
-            .await?;
-        if resp.status().as_u16() == 429 {
-            let wait = resp
-                .headers()
-                .get("retry-after")
-                .and_then(|v| v.to_str().ok())
-                .and_then(|s| s.parse::<u64>().ok())
-                .unwrap_or(5u64 * attempt as u64)
-                .min(60);
-            if attempt >= 6 {
-                anyhow::bail!("HTTP 429 after retries for {title}");
+    let action = send_retrying(
+        client.get(&api).query(&[
+            ("action", "query"),
+            ("prop", "extracts|info|coordinates"),
+            ("explaintext", "1"),
+            ("exlimit", "1"),
+            ("titles", title),
+            ("format", "json"),
+            ("redirects", "1"),
+            ("colimit", "1"),
+        ]),
+    )
+    .await;
+
+    match action {
+        Ok(resp) if resp.status().is_success() => {
+            let response = resp.json::<serde_json::Value>().await?;
+            let pages = response
+                .pointer("/query/pages")
+                .and_then(|v| v.as_object())
+                .ok_or_else(|| anyhow::anyhow!("no pages"))?;
+            let page = pages
+                .values()
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("empty pages"))?;
+            if page.get("missing").is_some() {
+                anyhow::bail!("missing page {title}");
             }
-            tracing::warn!(%title, wait, attempt, "wikipedia 429 — backing off");
-            tokio::time::sleep(Duration::from_secs(wait)).await;
-            continue;
+            let extract = page
+                .get("extract")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let resolved = page
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or(title)
+                .to_string();
+            let revid = page
+                .get("lastrevid")
+                .and_then(|v| v.as_u64())
+                .map(|n| n.to_string());
+            let coords = page
+                .get("coordinates")
+                .and_then(|v| v.as_array())
+                .and_then(|a| a.first())
+                .and_then(|c| {
+                    let lat = c.get("lat")?.as_f64()?;
+                    let lon = c.get("lon")?.as_f64()?;
+                    Some((lat, lon))
+                });
+            if !extract.is_empty() {
+                return Ok((resolved, extract, revid, coords));
+            }
         }
-        break resp.error_for_status()?;
-    };
-    let response = response.json::<serde_json::Value>().await?;
-    let pages = response
-        .pointer("/query/pages")
-        .and_then(|v| v.as_object())
-        .ok_or_else(|| anyhow::anyhow!("no pages"))?;
-    let page = pages
-        .values()
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("empty pages"))?;
-    if page.get("missing").is_some() {
-        anyhow::bail!("missing page {title}");
+        Ok(resp) if resp.status().as_u16() == 429 || resp.status().as_u16() == 503 => {
+            anyhow::bail!("wikipedia still rate-limited for {title}");
+        }
+        Ok(resp) => {
+            tracing::warn!(
+                %title,
+                status = %resp.status(),
+                "wikipedia action API failed — trying REST html fallback"
+            );
+        }
+        Err(err) => {
+            tracing::warn!(%title, error = %err, "wikipedia action API error — trying REST html fallback");
+        }
     }
-    let extract = page
-        .get("extract")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let resolved = page
-        .get("title")
-        .and_then(|v| v.as_str())
-        .unwrap_or(title)
-        .to_string();
-    let revid = page
-        .get("lastrevid")
-        .and_then(|v| v.as_u64())
-        .map(|n| n.to_string());
-    let coords = page
-        .get("coordinates")
-        .and_then(|v| v.as_array())
-        .and_then(|a| a.first())
-        .and_then(|c| {
-            let lat = c.get("lat")?.as_f64()?;
-            let lon = c.get("lon")?.as_f64()?;
-            Some((lat, lon))
-        });
-    if extract.is_empty() {
-        anyhow::bail!("empty extract for {title}");
-    }
-    Ok((resolved, extract, revid, coords))
+
+    fetch_wikipedia_extract_rest(&client, lang, title).await
 }
 
 #[derive(Debug, Default)]
@@ -176,44 +252,174 @@ pub async fn run_lot_e_density_ingest(
     let pool = connect(config).await?;
     run_migrations(&pool).await?;
 
-    let subject_id =
-        upsert_entity_with_kind(&pool, &config.wiki_lang, subject, "person").await?;
+    let subject_id = upsert_entity_with_kind(&pool, &config.wiki_lang, subject, "person").await?;
+    if let Some(qid) = qid {
+        talaria_store::update_entity_qid(&pool, subject_id, qid).await?;
+    }
     let (by, dy, _, _) = quality_lifespan_years(&pool, subject_id).await?;
+    let wd_meta = match qid {
+        Some(q) => match fetch_wikidata_subject_meta(q, lang).await {
+            Ok(meta) => meta,
+            Err(e) => {
+                tracing::warn!(error = %e, %q, "wikidata subject meta failed — continuing without it");
+                WikidataSubjectMeta::default()
+            }
+        },
+        None => WikidataSubjectMeta::default(),
+    };
+    // Wikidata P569/P570 is the lifespan source of truth when present.
+    // Never keep a noisy quality birth/death that contradicts it (gates would reject the life).
+    if wd_meta.birth_year.is_some() || wd_meta.death_year.is_some() {
+        let n = deactivate_mismatched_lifespan(
+            &pool,
+            subject_id,
+            wd_meta.birth_year,
+            wd_meta.death_year,
+        )
+        .await
+        .unwrap_or(0);
+        if n > 0 {
+            tracing::info!(n, "deactivated quality birth/death that disagree with Wikidata");
+        }
+    }
     let mut subject_res = ResolvedSubject {
         entity_id: Some(subject_id),
         qid: qid.map(str::to_string),
         label: subject.into(),
         languages: vec![lang.into(), "en".into(), "fr".into()],
-        birth_year: by.or(Some(1769)),
-        death_year: dy.or(Some(1821)),
-        countries: vec!["France".into()],
-        occupations: vec!["military".into()],
-        known_identifiers: vec![],
+        birth_year: wd_meta.birth_year.or(by),
+        death_year: wd_meta.death_year.or(dy),
+        countries: vec![],
+        occupations: wd_meta.occupations.clone(),
+        known_identifiers: qid
+            .map(|q| vec![("wikidata".into(), q.to_string())])
+            .unwrap_or_default(),
     };
 
-    let mut titles = load_seed_titles(seed_list)?;
+    let person_class = subject_res.person_class();
+    let profile = profile_for(person_class);
+    tracing::info!(
+        class = person_class.as_str(),
+        occupations = ?subject_res.occupations,
+        "resolved person ingest class"
+    );
+
+    let mut titles = load_seed_titles(seed_list).unwrap_or_default();
+    if titles.is_empty() {
+        titles.push(subject.to_string());
+    }
+    if let Some(wiki_title) = &wd_meta.wiki_title {
+        if !titles.iter().any(|t| t.eq_ignore_ascii_case(wiki_title)) {
+            titles.insert(0, wiki_title.clone());
+        }
+    }
+    let expand_cap = max_titles
+        .filter(|n| *n > 0)
+        .unwrap_or(targets.max_documents.min(400)) as usize;
+    let start_title = wd_meta
+        .wiki_title
+        .clone()
+        .unwrap_or_else(|| subject.to_string());
+    let wiki_links = fetch_wikipedia_article_links(lang, &start_title, expand_cap)
+        .await
+        .unwrap_or_default();
+    let cap = expand_cap.max(titles.len());
+    titles = merge_seed_titles(
+        subject,
+        titles,
+        wiki_links
+            .into_iter()
+            .chain(wd_meta.related_titles.clone()),
+        cap,
+    );
+    titles = filter_wiki_titles_for_profile(
+        subject,
+        titles,
+        &profile,
+        subject_res.death_year,
+    );
+    tracing::info!(
+        seeds = titles.len(),
+        class = person_class.as_str(),
+        birth = ?subject_res.birth_year,
+        death = ?subject_res.death_year,
+        occupations = ?subject_res.occupations,
+        "expanded Wikipedia/Wikidata seeds ranked by person class"
+    );
     if let Some(max) = max_titles {
         titles.truncate(max as usize);
     }
 
     // Soft-clean implausible place noise from earlier extractor versions before counting.
-    let cleaned = deactivate_implausible_place_events(config, subject).await.unwrap_or(0);
+    let cleaned = deactivate_implausible_place_events(config, subject)
+        .await
+        .unwrap_or(0);
     if cleaned > 0 {
-        tracing::info!(cleaned, "deactivated quality events with implausible place labels");
+        tracing::info!(
+            cleaned,
+            "deactivated quality events with implausible place labels"
+        );
     }
 
-    let extractors = default_extractor_stack();
+    let extractors = extractor_stack_for(person_class);
     let extractor_refs: Vec<&dyn CandidateExtractor> =
         extractors.iter().map(|e| e.as_ref()).collect();
     let resolver = GazetteerResolver;
     let projections = DerivedLabelProjections;
     let mut metrics = LotEMetrics::default();
 
+    if !wd_meta.statements_text.is_empty() {
+        if let Err(e) = ingest_memory_document(
+            &pool,
+            config,
+            &subject_res,
+            subject_id,
+            subject,
+            "wikidata",
+            &format!("https://www.wikidata.org/wiki/{}", qid.unwrap_or("")),
+            "structured_statement",
+            &wd_meta.statements_text,
+            None,
+            &extractor_refs,
+            &resolver,
+            &projections,
+            &mut metrics,
+        )
+        .await
+        {
+            tracing::warn!(error = %e, "wikidata structured statements ingest failed");
+        }
+        let (by2, dy2, _, _) = quality_lifespan_years(&pool, subject_id).await?;
+        if subject_res.birth_year.is_none() {
+            subject_res.birth_year = by2;
+        }
+        if subject_res.death_year.is_none() {
+            subject_res.death_year = dy2;
+        }
+    }
+
+    if profile.enable_wdqs_military {
+        if let Some(qid) = subject_res.qid.clone() {
+            match crate::ingest::ingest_wdqs_events(&pool, config, &subject_res, subject_id).await {
+                Ok(wdqs) => {
+                    tracing::info!(
+                        created = wdqs.events_created,
+                        accepted = wdqs.accepted,
+                        %qid,
+                        "WDQS participant/conflict events ingested"
+                    );
+                    metrics.events_created += wdqs.events_created as u32;
+                    metrics.accepted += wdqs.accepted as u32;
+                    metrics.rejected += wdqs.rejected as u32;
+                }
+                Err(e) => tracing::warn!(error = %e, %qid, "WDQS ingest failed"),
+            }
+        }
+    }
+
     let original_seeds: Vec<String> = titles.clone();
-    let mut title_queue: std::collections::VecDeque<String> =
-        titles.into_iter().collect();
-    let mut seen_titles: std::collections::HashSet<String> =
-        title_queue.iter().cloned().collect();
+    let mut title_queue: std::collections::VecDeque<String> = titles.into_iter().collect();
+    let mut seen_titles: std::collections::HashSet<String> = title_queue.iter().cloned().collect();
     let langs = vec![lang.to_string()]; // one language per run; re-run with --wiki-lang fr to densify further
 
     for current_lang in &langs {
@@ -238,56 +444,71 @@ pub async fn run_lot_e_density_ingest(
         // Snapshot queue length at language start; discoveries append for later processing.
         let mut processed_in_lang = 0u32;
         while let Some(title) = title_queue.pop_front() {
-        processed_in_lang += 1;
-        if processed_in_lang > targets.max_documents_per_source {
-            metrics.bump("budget_per_source");
-            break;
-        }
-        // Check density progress
-        let density = density_report_counts(&pool, Some(subject_id)).await?;
-        let progress = DensityProgress {
-            timeline_events: density.timeline_eligible as u32,
-            map_events: density.map_eligible as u32,
-            documents_processed: metrics.titles_fetched,
-            target_reached: false,
-            status: String::new(),
-        }
-        .evaluate(&targets);
-        if progress.target_reached {
-            tracing::info!(?progress, "density target reached — stopping exploration");
-            break;
-        }
-        if metrics.titles_fetched as u32 >= targets.max_documents {
-            metrics.bump("budget_documents");
-            break;
-        }
-
-        metrics.titles_attempted += 1;
-        let (resolved_title, text, revid, page_coords) =
-            match fetch_wikipedia_extract(current_lang, &title).await {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::warn!(%title, lang=%current_lang, error=%e, "fetch failed");
-                metrics.titles_failed += 1;
-                metrics.bump("fetch_failed");
-                tokio::time::sleep(Duration::from_millis(200)).await;
-                continue;
+            processed_in_lang += 1;
+            if processed_in_lang > targets.max_documents_per_source {
+                metrics.bump("budget_per_source");
+                break;
             }
-        };
-        metrics.titles_fetched += 1;
-        tokio::time::sleep(Duration::from_millis(750)).await;
-
-        // Grow exploration queue from high-value linked titles mentioned in the extract.
-        for linked in discover_linked_titles(&text) {
-            if seen_titles.len() < targets.max_linked_entities as usize
-                && seen_titles.insert(linked.clone())
-            {
-                title_queue.push_back(linked);
+            // Check density progress
+            let density = density_report_counts(&pool, Some(subject_id)).await?;
+            let progress = DensityProgress {
+                timeline_events: density.timeline_eligible as u32,
+                map_events: density.map_eligible as u32,
+                documents_processed: metrics.titles_fetched,
+                target_reached: false,
+                status: String::new(),
             }
-        }
+            .evaluate(&targets);
+            if progress.target_reached {
+                tracing::info!(?progress, "density target reached — stopping exploration");
+                break;
+            }
+            if metrics.titles_fetched as u32 >= targets.max_documents {
+                metrics.bump("budget_documents");
+                break;
+            }
 
-        let hash = content_hash(&text);
-        let snapshot_id = insert_document_snapshot(
+            metrics.titles_attempted += 1;
+            let (resolved_title, text, revid, page_coords) =
+                match fetch_wikipedia_extract(current_lang, &title).await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::warn!(%title, lang=%current_lang, error=%e, "fetch failed");
+                        metrics.titles_failed += 1;
+                        metrics.bump("fetch_failed");
+                        tokio::time::sleep(Duration::from_millis(200)).await;
+                        continue;
+                    }
+                };
+            metrics.titles_fetched += 1;
+            // Be polite to Wikimedia — search-triggered density must not stampede.
+            tokio::time::sleep(Duration::from_millis(2000)).await;
+
+            // Battle/treaty regex expansion only for military-class subjects.
+            if profile.enable_military_extractor {
+                for linked in discover_linked_titles(&text) {
+                    if rank_wikipedia_title(&linked, &profile, subject_res.death_year) < 0.30 {
+                        continue;
+                    }
+                    enqueue_discovered_title(
+                        &mut title_queue,
+                        &mut seen_titles,
+                        linked,
+                        targets.max_linked_entities as usize,
+                    );
+                }
+            }
+            for linked in discover_generic_linked_titles(subject, &text) {
+                enqueue_discovered_title(
+                    &mut title_queue,
+                    &mut seen_titles,
+                    linked,
+                    targets.max_linked_entities as usize,
+                );
+            }
+
+            let hash = content_hash(&text);
+            let snapshot_id = insert_document_snapshot(
             &pool,
             &DocumentSnapshotInsert {
                 source_type: "wikipedia".into(),
@@ -317,93 +538,101 @@ pub async fn run_lot_e_density_ingest(
         )
         .await?;
 
-        let frag_id = insert_document_fragment(
-            &pool,
-            &DocumentFragmentInsert {
-                snapshot_id,
-                fragment_kind: "sentence".into(),
-                parent_fragment_id: None,
-                sentence_id: None,
-                text: text.clone(),
-                start_offset: 0,
-                end_offset: text.len() as i32,
-                clause_index: None,
-                ordinal: 0,
-            },
-        )
-        .await?;
-
-        // Refresh lifespan after birth/death accepted
-        let (by2, dy2, _, _) = quality_lifespan_years(&pool, subject_id).await?;
-        subject_res.birth_year = by2.or(subject_res.birth_year);
-        subject_res.death_year = dy2.or(subject_res.death_year);
-
-        let input = ExtractorInput {
-            text: text.clone(),
-            page_title: Some(resolved_title.clone()),
-            subject_label: Some(subject.to_string()),
-            document_type: "article".into(),
-            subject_death_year: subject_res.death_year,
-        };
-
-        let mut raws = Vec::new();
-        for ex in &extractor_refs {
-            raws.extend(ex.extract(&input));
-        }
-
-        // Ensure battle/siege pages produce at least a page-level candidate if extractors missed.
-        if !raws.iter().any(|r| {
-            r.extractor_id == "military_campaign"
-                && r.object_surface.as_deref() == Some(resolved_title.as_str())
-        }) {
-            if let Some(place) = place_hint_from_title(&resolved_title) {
-                if let Some(year) = first_year_in(&text) {
-                    raws.push(talaria_sources::extractors::RawCandidate {
-                        event_type: if resolved_title.to_lowercase().starts_with("siege")
-                            || resolved_title.to_lowercase().starts_with("siège")
-                        {
-                            "siege".into()
-                        } else if resolved_title.to_lowercase().starts_with("treaty")
-                            || resolved_title.to_lowercase().starts_with("traité")
-                        {
-                            "treaty".into()
-                        } else {
-                            "battle".into()
-                        },
-                        predicate: "fought_at".into(),
-                        subject_surface: subject.into(),
-                        time_surface: Some(year),
-                        place_surface: Some(place),
-                        object_surface: Some(resolved_title.clone()),
-                        participant_surfaces: vec![],
-                        clause_text: resolved_title.clone(),
-                        clause_index: 0,
-                        start_offset: 0,
-                        end_offset: 20,
-                        cross_clause_join: false,
-                        extractor_id: "page_fallback".into(),
-                        is_posthumous: false,
-                    });
-                }
-            }
-        }
-
-        for raw in raws {
-            process_one(
+            let frag_id = insert_document_fragment(
                 &pool,
-                config,
-                &subject_res,
-                subject_id,
-                snapshot_id,
-                frag_id,
-                &raw,
-                &resolver,
-                &projections,
-                page_coords,
-                &mut metrics,
+                &DocumentFragmentInsert {
+                    snapshot_id,
+                    fragment_kind: "sentence".into(),
+                    parent_fragment_id: None,
+                    sentence_id: None,
+                    text: text.clone(),
+                    start_offset: 0,
+                    end_offset: text.len() as i32,
+                    clause_index: None,
+                    ordinal: 0,
+                },
             )
             .await?;
-        }
+
+            // Keep Wikidata lifespan sticky — quality refresh may still be the noisy singleton.
+            let (by2, dy2, _, _) = quality_lifespan_years(&pool, subject_id).await?;
+            if subject_res.birth_year.is_none() {
+                subject_res.birth_year = by2;
+            }
+            if subject_res.death_year.is_none() {
+                subject_res.death_year = dy2;
+            }
+
+            let input = ExtractorInput {
+                text: text.clone(),
+                page_title: Some(resolved_title.clone()),
+                subject_label: Some(subject.to_string()),
+                document_type: "article".into(),
+                subject_death_year: subject_res.death_year,
+            };
+
+            let mut raws = Vec::new();
+            for ex in &extractor_refs {
+                raws.extend(ex.extract(&input));
+            }
+
+            // Ensure battle/siege pages produce at least a page-level candidate if extractors missed.
+            if !raws.iter().any(|r| {
+                r.extractor_id == "military_campaign"
+                    && r.object_surface.as_deref() == Some(resolved_title.as_str())
+            }) {
+                if let Some(place) = place_hint_from_title(&resolved_title) {
+                    if let Some(year) =
+                        first_year_in(&text, subject_res.birth_year, subject_res.death_year)
+                    {
+                        raws.push(talaria_sources::extractors::RawCandidate {
+                            event_type: if resolved_title.to_lowercase().starts_with("siege")
+                                || resolved_title.to_lowercase().starts_with("siège")
+                            {
+                                "siege".into()
+                            } else if resolved_title.to_lowercase().starts_with("treaty")
+                                || resolved_title.to_lowercase().starts_with("traité")
+                            {
+                                "treaty".into()
+                            } else {
+                                "battle".into()
+                            },
+                            predicate: "fought_at".into(),
+                            subject_surface: subject.into(),
+                            time_surface: Some(year),
+                            place_surface: Some(place),
+                            object_surface: Some(resolved_title.clone()),
+                            participant_surfaces: vec![],
+                            clause_text: resolved_title.clone(),
+                            clause_index: 0,
+                            start_offset: 0,
+                            end_offset: 20,
+                            cross_clause_join: false,
+                            extractor_id: "page_fallback".into(),
+                            is_posthumous: false,
+                            lat: None,
+                            lon: None,
+                        });
+                    }
+                }
+            }
+
+            for raw in raws {
+                process_one(
+                    &pool,
+                    config,
+                    &subject_res,
+                    subject_id,
+                    snapshot_id,
+                    frag_id,
+                    &raw,
+                    &resolver,
+                    &projections,
+                    page_coords,
+                    &mut metrics,
+                )
+                .await?;
+            }
         } // end queue while
     } // end langs
 
@@ -511,17 +740,32 @@ pub async fn run_lot_e_density_ingest(
     Ok(s)
 }
 
-fn first_year_in(text: &str) -> Option<String> {
-    for w in text.split(|c: char| !c.is_ascii_digit()) {
-        if w.len() == 4 {
-            if let Ok(y) = w.parse::<i32>() {
-                if (1700..=1900).contains(&y) {
-                    return Some(y.to_string());
-                }
-            }
-        }
+fn first_year_in(text: &str, birth: Option<i32>, death: Option<i32>) -> Option<String> {
+    let (lo, hi) = lifespan_year_window(birth, death);
+    first_year_in_window(text, lo, hi)
+}
+
+fn enqueue_discovered_title(
+    queue: &mut std::collections::VecDeque<String>,
+    seen: &mut std::collections::HashSet<String>,
+    title: String,
+    cap: usize,
+) {
+    if seen.len() >= cap {
+        return;
     }
-    None
+    if talaria_sources::is_noise_wiki_title(&title) {
+        return;
+    }
+    if seen.insert(title.clone()) {
+        queue.push_back(title);
+    }
+}
+
+fn discover_generic_linked_titles(_subject: &str, _text: &str) -> Vec<String> {
+    // Exploration growth is Wikipedia `prop=links` at ingest start.
+    // Mining prose fragments as titles floods the queue with non-pages.
+    Vec::new()
 }
 
 fn discover_linked_titles(text: &str) -> Vec<String> {
@@ -636,15 +880,28 @@ async fn process_one(
     let mut lon = None;
     let mut location_precision = None;
     let mut uncertainty = None;
-    if let Some(ref pl) = shell.place_label {
+    if raw.lat.is_some() && raw.lon.is_some() {
+        lat = raw.lat;
+        lon = raw.lon;
+        location_precision = Some("wikidata_p625".into());
+        if let Some(pl) = shell
+            .place_label
+            .clone()
+            .or_else(|| raw.place_surface.clone())
+            .filter(|s| !s.is_empty())
+        {
+            shell.place_label = Some(pl.clone());
+            shell.place_entity_id =
+                Some(upsert_entity_with_kind(pool, &config.wiki_lang, &pl, "place").await?);
+        }
+    } else if let Some(ref pl) = shell.place_label {
         if let Some(pres) = resolve_place_offline(pl) {
             lat = Some(pres.lat);
             lon = Some(pres.lon);
             location_precision = Some(pres.precision.clone());
             uncertainty = pres.uncertainty_radius_m;
-            shell.place_entity_id = Some(
-                upsert_entity_with_kind(pool, &config.wiki_lang, pl, "place").await?,
-            );
+            shell.place_entity_id =
+                Some(upsert_entity_with_kind(pool, &config.wiki_lang, pl, "place").await?);
         } else if let Some((pla, plo)) = page_coords {
             // Wikipedia page coordinates — only for page-level / title-tied occurrences
             if raw.extractor_id == "military_campaign"
@@ -656,9 +913,8 @@ async fn process_one(
                 lon = Some(plo);
                 location_precision = Some("wikipedia_page_coordinates".into());
                 uncertainty = Some(5000.0);
-                shell.place_entity_id = Some(
-                    upsert_entity_with_kind(pool, &config.wiki_lang, pl, "place").await?,
-                );
+                shell.place_entity_id =
+                    Some(upsert_entity_with_kind(pool, &config.wiki_lang, pl, "place").await?);
             }
         }
     } else if let Some((pla, plo)) = page_coords {
@@ -672,24 +928,41 @@ async fn process_one(
                 lon = Some(plo);
                 location_precision = Some("wikipedia_page_coordinates".into());
                 uncertainty = Some(5000.0);
-                shell.place_entity_id = Some(
-                    upsert_entity_with_kind(pool, &config.wiki_lang, &hint, "place").await?,
-                );
+                shell.place_entity_id =
+                    Some(upsert_entity_with_kind(pool, &config.wiki_lang, &hint, "place").await?);
             }
         }
     }
 
-    let occ = occurrence_key(
+    let primary_object = raw.object_surface.clone();
+    let occ = occurrence_key_for_event(
         &subject.label,
         &shell.event_type,
         &shell.predicate,
         &shell.time,
         shell.place_label.as_deref(),
-        raw.object_surface.as_deref(),
-        Some(&raw.extractor_id),
-        None,
+        primary_object.as_deref(),
     );
-    shell.fingerprint = occ.clone();
+    let stem = occurrence_stem_for_event(
+        &subject.label,
+        &shell.event_type,
+        &shell.predicate,
+        &shell.time,
+        primary_object.as_deref(),
+    );
+    shell.fingerprint = candidate_fingerprint(
+        &raw.extractor_id,
+        &shell.subject_surface,
+        &shell.event_type,
+        &shell.predicate,
+        &shell.time,
+        shell.place_label.as_deref(),
+        &snapshot_id.to_string(),
+        shell.clause_index,
+        raw.start_offset,
+        raw.end_offset,
+        &shell.participant_mentions,
+    );
 
     let (cand_id, inserted) = upsert_event_candidate(
         pool,
@@ -710,61 +983,81 @@ async fn process_one(
             evidence_ptrs: serde_json::to_value(&shell.evidence_ptrs)?,
             extractor_version: shell.extractor_version.clone(),
             fingerprint: shell.fingerprint.clone(),
+            occurrence_key: Some(occ.clone()),
+            primary_object: primary_object.clone(),
+            action_role: Some(shell.predicate.clone()),
             status: "pending".into(),
             rejection_codes: vec![],
-            judgment_json: serde_json::json!({"occurrence_key": occ, "primary_object": raw.object_surface}),
+            judgment_json: serde_json::json!({
+                "occurrence_key": occ,
+                "primary_object": primary_object
+            }),
         },
     )
     .await?;
-    if !inserted {
-        return Ok(());
-    }
-    metrics.candidates += 1;
-
-    let (birth_year, death_year, has_birth, has_death) =
-        quality_lifespan_years(pool, subject_id).await?;
-    let ctx = GateContext {
-        subject_birth_year: birth_year.or(subject.birth_year),
-        subject_death_year: death_year.or(subject.death_year),
-        has_active_birth: has_birth,
-        has_active_death: has_death,
-        fingerprint_exists: false,
-        cross_clause_join_detected: raw.cross_clause_join,
-        place_entity_kind: if shell.place_entity_id.is_some() {
-            Some(EntityKind::Place)
-        } else {
-            None
-        },
-    };
-    let decision = apply_gates(&shell, &ctx);
-    let status = decision.status().as_str();
-    let codes = decision.codes();
-    for c in &codes {
-        metrics.bump(c);
-    }
-    update_event_candidate_judgment(
-        pool,
-        cand_id,
-        status,
-        &codes,
-        &serde_json::json!({"codes": codes}),
-        shell.subject_entity_id,
-        shell.place_entity_id,
-        shell.place_label.as_deref(),
-        &serde_json::to_value(&shell.place_mentions)?,
-        &serde_json::json!([]),
-        &serde_json::to_value(&shell.participant_mentions)?,
-    )
-    .await?;
-
-    match status {
-        "accepted" => metrics.accepted += 1,
-        "rejected" => {
-            metrics.rejected += 1;
-            return Ok(());
+    let is_new_candidate = inserted;
+    let mut skip_gates = false;
+    if inserted {
+        metrics.candidates += 1;
+    } else {
+        let existing = get_event_candidate_by_fingerprint(pool, &shell.fingerprint)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("fingerprint conflict without existing row"))?;
+        match existing_candidate_action(&existing.status) {
+            ExistingCandidateAction::SkipTerminal => return Ok(()),
+            ExistingCandidateAction::ResumeAssembleOnly => {
+                skip_gates = true;
+            }
+            ExistingCandidateAction::ResumeFromGates => {}
         }
-        "needs_review" => return Ok(()),
-        _ => {}
+    }
+
+    if !skip_gates {
+        let (birth_year, death_year, has_birth, has_death) =
+            quality_lifespan_years(pool, subject_id).await?;
+        let ctx = GateContext {
+            subject_birth_year: subject.birth_year.or(birth_year),
+            subject_death_year: subject.death_year.or(death_year),
+            has_active_birth: has_birth,
+            has_active_death: has_death,
+            fingerprint_exists: false,
+            cross_clause_join_detected: raw.cross_clause_join,
+            place_entity_kind: if shell.place_entity_id.is_some() {
+                Some(EntityKind::Place)
+            } else {
+                None
+            },
+        };
+        let decision = apply_gates(&shell, &ctx);
+        let status = decision.status().as_str();
+        let codes = decision.codes();
+        for c in &codes {
+            metrics.bump(c);
+        }
+        update_event_candidate_judgment(
+            pool,
+            cand_id,
+            status,
+            &codes,
+            &serde_json::json!({"codes": codes}),
+            shell.subject_entity_id,
+            shell.place_entity_id,
+            shell.place_label.as_deref(),
+            &serde_json::to_value(&shell.place_mentions)?,
+            &serde_json::json!([]),
+            &serde_json::to_value(&shell.participant_mentions)?,
+        )
+        .await?;
+
+        match status {
+            "accepted" => metrics.accepted += 1,
+            "rejected" => {
+                metrics.rejected += 1;
+                return Ok(());
+            }
+            "needs_review" => return Ok(()),
+            _ => {}
+        }
     }
 
     let claim_fp = claim_fingerprint(&ClaimKey {
@@ -785,6 +1078,7 @@ async fn process_one(
             time_json: time_to_json(&shell.time),
             place_entity_id: shell.place_entity_id,
             place_label: shell.place_label.clone(),
+            occurrence_stem: Some(stem.clone()),
         },
     )
     .await?;
@@ -798,11 +1092,38 @@ async fn process_one(
     )
     .await?;
 
-    if let Some(existing) = find_active_quality_event_by_fingerprint(pool, &occ).await? {
-        reinforce_quality_event(pool, existing).await?;
+    if let Some(places) =
+        abstain_if_competing_place(pool, subject_id, &stem, shell.place_label.as_deref()).await?
+    {
+        let codes = competing_place_codes();
+        update_event_candidate_judgment(
+            pool,
+            cand_id,
+            "needs_review",
+            &codes,
+            &serde_json::json!({"abstain": true, "places": places}),
+            shell.subject_entity_id,
+            shell.place_entity_id,
+            shell.place_label.as_deref(),
+            &serde_json::to_value(&shell.place_mentions)?,
+            &serde_json::json!([]),
+            &serde_json::to_value(&shell.participant_mentions)?,
+        )
+        .await?;
+        metrics.accepted = metrics.accepted.saturating_sub(1);
+        metrics.bump("competing_place");
+        return Ok(());
+    }
+
+    if let Some(existing) =
+        find_active_quality_event_by_occurrence_key(pool, subject_id, &occ).await?
+    {
+        if should_reinforce_existing_event(is_new_candidate) {
+            reinforce_quality_event(pool, existing).await?;
+            metrics.events_reinforced += 1;
+        }
         mark_candidate_assembled(pool, cand_id, existing).await?;
         link_claim_to_event(pool, claim_id, existing).await?;
-        metrics.events_reinforced += 1;
         return Ok(());
     }
 
@@ -841,7 +1162,7 @@ async fn process_one(
         &QualityEventInsert {
             entity_id: subject_id,
             event_type: shell.event_type.clone(),
-            epistemic_status: "attested".into(),
+            epistemic_status: EXTRACTOR_EPISTEMIC_STATUS.into(),
             title: title_derived,
             summary: Some(raw.clause_text.clone()),
             start_time: start_time_from_typed(&shell.time),
@@ -854,7 +1175,10 @@ async fn process_one(
             map_eligible,
             historically_valid: true,
             timeline_eligible: true,
-            fingerprint: occ,
+            fingerprint: occ.clone(),
+            occurrence_key: Some(occ),
+            occurrence_stem: Some(stem),
+            primary_object,
             predicate: shell.predicate.clone(),
             assembler_version: ASSEMBLER_V1.into(),
             event_candidate_id: cand_id,
@@ -887,6 +1211,494 @@ async fn process_one(
     Ok(())
 }
 
+#[derive(Debug, Default, Clone)]
+pub(crate) struct WikidataSubjectMeta {
+    pub(crate) birth_year: Option<i32>,
+    pub(crate) death_year: Option<i32>,
+    pub(crate) occupations: Vec<String>,
+    pub(crate) wiki_title: Option<String>,
+    pub(crate) related_titles: Vec<String>,
+    pub(crate) statements_text: String,
+}
+
+fn wiki_http_client() -> anyhow::Result<reqwest::Client> {
+    Ok(reqwest::Client::builder()
+        .user_agent("TalariaEngine/0.1 (lot-e density; research; contact: talaria-dev)")
+        .timeout(Duration::from_secs(45))
+        .build()?)
+}
+
+async fn send_retrying(builder: reqwest::RequestBuilder) -> anyhow::Result<reqwest::Response> {
+    let mut backoff = Duration::from_secs(4);
+    for attempt in 1..=8 {
+        let req = builder
+            .try_clone()
+            .ok_or_else(|| anyhow::anyhow!("cannot clone request for retry"))?;
+        let resp = req.send().await?;
+        if matches!(resp.status().as_u16(), 429 | 503) {
+            tracing::warn!(
+                attempt,
+                status = %resp.status(),
+                secs = backoff.as_secs(),
+                "rate limited — backing off"
+            );
+            tokio::time::sleep(backoff).await;
+            backoff = (backoff * 2).min(Duration::from_secs(90));
+            continue;
+        }
+        return Ok(resp);
+    }
+    anyhow::bail!("still rate-limited after retries")
+}
+
+async fn deactivate_mismatched_lifespan(
+    pool: &sqlx::PgPool,
+    subject_id: Uuid,
+    birth_year: Option<i32>,
+    death_year: Option<i32>,
+) -> anyhow::Result<u64> {
+    let mut n = 0u64;
+    if let Some(y) = birth_year {
+        let r = sqlx::query(
+            r#"
+            UPDATE canonical_events SET is_active = false
+            WHERE entity_id = $1 AND pipeline = 'quality' AND is_active
+              AND event_type = 'birth'
+              AND EXTRACT(YEAR FROM start_time) IS DISTINCT FROM $2
+            "#,
+        )
+        .bind(subject_id)
+        .bind(y)
+        .execute(pool)
+        .await?;
+        n += r.rows_affected();
+    }
+    if let Some(y) = death_year {
+        let r = sqlx::query(
+            r#"
+            UPDATE canonical_events SET is_active = false
+            WHERE entity_id = $1 AND pipeline = 'quality' AND is_active
+              AND event_type = 'death'
+              AND EXTRACT(YEAR FROM start_time) IS DISTINCT FROM $2
+            "#,
+        )
+        .bind(subject_id)
+        .bind(y)
+        .execute(pool)
+        .await?;
+        n += r.rows_affected();
+    }
+    Ok(n)
+}
+
+fn parse_wd_year(time: &str) -> Option<i32> {
+    let t = time.trim();
+    let negative = t.starts_with('-');
+    let rest = t.trim_start_matches(['+', '-']);
+    let year: i32 = rest.split('-').next()?.parse().ok()?;
+    Some(if negative { -year } else { year })
+}
+
+#[cfg(test)]
+mod parse_wd_year_tests {
+    use super::parse_wd_year;
+
+    #[test]
+    fn ce_and_bce_wikidata_timestamps() {
+        assert_eq!(parse_wd_year("+1769-08-15T00:00:00Z"), Some(1769));
+        assert_eq!(parse_wd_year("-0069-01-01T00:00:00Z"), Some(-69));
+        assert_eq!(parse_wd_year("+0001-01-01T00:00:00Z"), Some(1));
+    }
+}
+
+fn snak_qid(snak: &serde_json::Value) -> Option<String> {
+    snak.pointer("/datavalue/value/id")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+}
+
+fn snak_time_year(snak: &serde_json::Value) -> Option<i32> {
+    snak.pointer("/datavalue/value/time")
+        .and_then(|v| v.as_str())
+        .and_then(parse_wd_year)
+}
+
+fn claim_year(claim: &serde_json::Value) -> Option<i32> {
+    snak_time_year(claim.get("mainsnak")?)
+        .or_else(|| {
+            claim
+                .pointer("/qualifiers/P580/0/datavalue/value/time")
+                .and_then(|v| v.as_str())
+                .and_then(parse_wd_year)
+        })
+        .or_else(|| {
+            claim
+                .pointer("/qualifiers/P585/0/datavalue/value/time")
+                .and_then(|v| v.as_str())
+                .and_then(parse_wd_year)
+        })
+}
+
+fn is_military_occupation_qid(qid: &str) -> bool {
+    matches!(
+        qid,
+        "Q47064"
+            | "Q189290"
+            | "Q4991371"
+            | "Q11545923"
+            | "Q1402561"
+            | "Q11900058"
+            | "Q380782"
+            | "Q1892901"
+            | "Q83307"
+            | "Q2304859"
+            | "Q1892909"
+    )
+}
+
+pub(crate) async fn fetch_wikidata_subject_meta(
+    qid: &str,
+    lang: &str,
+) -> anyhow::Result<WikidataSubjectMeta> {
+    let client = wiki_http_client()?;
+    let resp = send_retrying(
+        client.get("https://www.wikidata.org/w/api.php").query(&[
+            ("action", "wbgetentities"),
+            ("ids", qid),
+            ("props", "claims|labels|sitelinks"),
+            ("languages", "en"),
+            ("format", "json"),
+        ]),
+    )
+    .await?
+    .error_for_status()?
+    .json::<serde_json::Value>()
+    .await?;
+    let entity = resp
+        .pointer(&format!("/entities/{qid}"))
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("missing wikidata entity {qid}"))?;
+
+    let sitelink_key = format!("{lang}wiki");
+    let wiki_title = entity
+        .pointer(&format!("/sitelinks/{sitelink_key}/title"))
+        .or_else(|| entity.pointer("/sitelinks/enwiki/title"))
+        .or_else(|| entity.pointer("/sitelinks/frwiki/title"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+
+    let claims = entity.get("claims").cloned().unwrap_or(serde_json::json!({}));
+    let birth_year = claims
+        .get("P569")
+        .and_then(|a| a.as_array())
+        .and_then(|a| a.first())
+        .and_then(claim_year);
+    let death_year = claims
+        .get("P570")
+        .and_then(|a| a.as_array())
+        .and_then(|a| a.first())
+        .and_then(claim_year);
+
+    let mut related_qids: Vec<String> = Vec::new();
+    let mut occupation_qids: Vec<String> = Vec::new();
+    for pid in ["P106", "P39", "P101"] {
+        if let Some(arr) = claims.get(pid).and_then(|v| v.as_array()) {
+            for stmt in arr {
+                if let Some(q) = stmt.get("mainsnak").and_then(snak_qid) {
+                    occupation_qids.push(q);
+                }
+            }
+        }
+    }
+    for pid in [
+        "P19", "P20", "P69", "P108", "P551", "P937", "P166", "P800", "P463", "P119", "P27", "P106",
+        "P39", "P101",
+    ] {
+        if let Some(arr) = claims.get(pid).and_then(|v| v.as_array()) {
+            for stmt in arr {
+                if let Some(q) = stmt.get("mainsnak").and_then(snak_qid) {
+                    related_qids.push(q);
+                }
+            }
+        }
+    }
+    related_qids.sort();
+    related_qids.dedup();
+    occupation_qids.sort();
+    occupation_qids.dedup();
+
+    let mut labels: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut related_titles = Vec::new();
+    let mut occupations: Vec<String> = Vec::new();
+    if occupation_qids.iter().any(|q| is_military_occupation_qid(q)) {
+        occupations.push("military".to_string());
+    }
+
+    let mut fetch_ids = related_qids.clone();
+    fetch_ids.extend(occupation_qids.iter().cloned());
+    fetch_ids.sort();
+    fetch_ids.dedup();
+    for chunk in fetch_ids.chunks(40) {
+        let ids = chunk.join("|");
+        let extra = match send_retrying(
+            client.get("https://www.wikidata.org/w/api.php").query(&[
+                ("action", "wbgetentities"),
+                ("ids", ids.as_str()),
+                ("props", "labels|sitelinks"),
+                ("languages", "en"),
+                ("format", "json"),
+            ]),
+        )
+        .await
+        {
+            Ok(resp) => match resp.error_for_status() {
+                Ok(ok) => ok.json::<serde_json::Value>().await.ok(),
+                Err(e) => {
+                    tracing::warn!(error = %e, "wikidata related labels request failed");
+                    None
+                }
+            },
+            Err(e) => {
+                tracing::warn!(error = %e, "wikidata related labels retry exhausted");
+                None
+            }
+        };
+        let Some(extra) = extra else {
+            continue;
+        };
+        if let Some(ents) = extra.get("entities").and_then(|v| v.as_object()) {
+            for (id, ent) in ents {
+                if let Some(lab) = ent
+                    .pointer(&format!("/labels/{lang}/value"))
+                    .or_else(|| ent.pointer("/labels/en/value"))
+                    .and_then(|v| v.as_str())
+                {
+                    labels.insert(id.clone(), lab.to_string());
+                    if occupation_qids.iter().any(|q| q == id)
+                        && !occupations
+                            .iter()
+                            .any(|o: &String| o.eq_ignore_ascii_case(lab))
+                    {
+                        occupations.push(lab.to_string());
+                    }
+                }
+                if let Some(t) = ent
+                    .pointer(&format!("/sitelinks/{sitelink_key}/title"))
+                    .or_else(|| ent.pointer("/sitelinks/enwiki/title"))
+                    .or_else(|| ent.pointer("/sitelinks/frwiki/title"))
+                    .and_then(|v| v.as_str())
+                {
+                    related_titles.push(t.to_string());
+                }
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(150)).await;
+    }
+
+    let label_of = |pid: &str| -> Option<String> {
+        claims
+            .get(pid)
+            .and_then(|a| a.as_array())
+            .and_then(|a| a.first())
+            .and_then(|s| s.get("mainsnak"))
+            .and_then(snak_qid)
+            .and_then(|q| labels.get(&q).cloned())
+    };
+
+    let mut lines = Vec::new();
+    if let Some(y) = birth_year {
+        let place = label_of("P19").unwrap_or_default();
+        lines.push(format!("STATEMENT\tbirth\tborn_in\t{y}\t{place}"));
+    }
+    if let Some(y) = death_year {
+        let place = label_of("P20").unwrap_or_default();
+        lines.push(format!("STATEMENT\tdeath\tdied_in\t{y}\t{place}"));
+    }
+    const MAP: &[(&str, &str, &str)] = &[
+        ("P26", "marriage", "married"),
+        ("P39", "office", "held_office"),
+        ("P69", "education", "studied_at"),
+        ("P108", "office", "worked_at"),
+        ("P551", "residence", "resided_in"),
+        ("P937", "residence", "worked_in"),
+        ("P166", "award", "awarded"),
+        ("P800", "publication", "created"),
+        ("P101", "office", "field_of_work"),
+        ("P119", "burial", "buried_at"),
+    ];
+    for (pid, etype, pred) in MAP {
+        let Some(arr) = claims.get(*pid).and_then(|v| v.as_array()) else {
+            continue;
+        };
+        for stmt in arr.iter().take(12) {
+            let q = stmt.get("mainsnak").and_then(snak_qid);
+            let place = q.as_ref().and_then(|id| labels.get(id)).cloned().unwrap_or_default();
+            let year = claim_year(stmt)
+                .map(|y| y.to_string())
+                .unwrap_or_default();
+            if year.is_empty() && place.is_empty() {
+                continue;
+            }
+            lines.push(format!("STATEMENT\t{etype}\t{pred}\t{year}\t{place}"));
+        }
+    }
+
+    Ok(WikidataSubjectMeta {
+        birth_year,
+        death_year,
+        occupations,
+        wiki_title,
+        related_titles,
+        statements_text: lines.join("\n"),
+    })
+}
+
+async fn fetch_wikipedia_article_links(
+    lang: &str,
+    title: &str,
+    limit: usize,
+) -> anyhow::Result<Vec<String>> {
+    let client = wiki_http_client()?;
+    let api = format!("https://{lang}.wikipedia.org/w/api.php");
+    let mut out = Vec::new();
+    let mut plcontinue: Option<String> = None;
+    for _ in 0..8 {
+        let mut req = client.get(&api).query(&[
+            ("action", "query"),
+            ("prop", "links"),
+            ("titles", title),
+            ("plnamespace", "0"),
+            ("pllimit", "500"),
+            ("format", "json"),
+            ("redirects", "1"),
+        ]);
+        if let Some(c) = &plcontinue {
+            req = req.query(&[("plcontinue", c.as_str())]);
+        }
+        let resp = send_retrying(req).await?.error_for_status()?.json::<serde_json::Value>().await?;
+        if let Some(pages) = resp.pointer("/query/pages").and_then(|v| v.as_object()) {
+            for page in pages.values() {
+                if let Some(links) = page.get("links").and_then(|v| v.as_array()) {
+                    for link in links {
+                        if let Some(t) = link.get("title").and_then(|v| v.as_str()) {
+                            out.push(t.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        plcontinue = resp
+            .pointer("/continue/plcontinue")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        if plcontinue.is_none() || out.len() >= limit {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+    out.truncate(limit);
+    Ok(out)
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn ingest_memory_document(
+    pool: &sqlx::PgPool,
+    config: &AppConfig,
+    subject_res: &ResolvedSubject,
+    subject_id: Uuid,
+    subject: &str,
+    source_type: &str,
+    source_uri: &str,
+    document_type: &str,
+    text: &str,
+    page_coords: Option<(f64, f64)>,
+    extractor_refs: &[&dyn CandidateExtractor],
+    resolver: &GazetteerResolver,
+    projections: &DerivedLabelProjections,
+    metrics: &mut LotEMetrics,
+) -> anyhow::Result<()> {
+    let hash = content_hash(text);
+    let snapshot_id = insert_document_snapshot(
+        pool,
+        &DocumentSnapshotInsert {
+            source_type: source_type.into(),
+            source_uri: source_uri.into(),
+            source_identifier: Some(source_uri.into()),
+            language: config.wiki_lang.clone(),
+            title: Some(subject.into()),
+            content_hash: hash,
+            revision_id: None,
+            wiki_page_id: None,
+            raw_document_id: None,
+            text: text.to_string(),
+            metadata: serde_json::json!({ "lot": "E", "memory": true }),
+        },
+    )
+    .await?;
+    let frag_id = insert_document_fragment(
+        pool,
+        &DocumentFragmentInsert {
+            snapshot_id,
+            fragment_kind: "sentence".into(),
+            parent_fragment_id: None,
+            sentence_id: None,
+            text: text.to_string(),
+            start_offset: 0,
+            end_offset: text.len() as i32,
+            clause_index: None,
+            ordinal: 0,
+        },
+    )
+    .await?;
+    let input = ExtractorInput {
+        text: text.to_string(),
+        page_title: Some(subject.into()),
+        subject_label: Some(subject.into()),
+        document_type: document_type.into(),
+        subject_death_year: subject_res.death_year,
+    };
+    let mut raws = Vec::new();
+    for ex in extractor_refs {
+        raws.extend(ex.extract(&input));
+    }
+    for raw in raws {
+        process_one(
+            pool,
+            config,
+            subject_res,
+            subject_id,
+            snapshot_id,
+            frag_id,
+            &raw,
+            resolver,
+            projections,
+            page_coords,
+            metrics,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+pub fn write_minimal_seed_list(subject: &str) -> anyhow::Result<PathBuf> {
+    let slug: String = subject
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let slug = slug.trim_matches('_');
+    let dir = Path::new("/tmp/talaria_seeds");
+    std::fs::create_dir_all(dir)?;
+    let path = dir.join(format!("{slug}_wiki_titles.txt"));
+    std::fs::write(&path, format!("# auto seed for {subject}\n{subject}\n"))?;
+    Ok(path)
+}
+
 pub fn default_napoleon_seed() -> PathBuf {
     PathBuf::from("fixtures/seeds/napoleon_wiki_titles.txt")
 }
@@ -915,7 +1727,7 @@ pub fn connector_status_json() -> String {
         "loc": "stub",
         "viaf": "metadata_only",
         "isni": "metadata_only",
-        "openalex": "stub",
+        "openalex": "extraction_ready",
         "crossref": "stub",
         "note": "Executable with --live: wikipedia, wikidata, fixture, open_library, internet_archive, gallica. Europeana needs EUROPEANA_API_KEY. Remaining Lot C/D sources stay stubs until fetch/parse/extract exist."
     }))
@@ -929,8 +1741,7 @@ pub async fn run_resolve_places(
 ) -> anyhow::Result<String> {
     let pool = connect(config).await?;
     run_migrations(&pool).await?;
-    let subject_id =
-        upsert_entity_with_kind(&pool, &config.wiki_lang, subject, "person").await?;
+    let subject_id = upsert_entity_with_kind(&pool, &config.wiki_lang, subject, "person").await?;
 
     let unresolved: Vec<(Uuid, Option<String>)> = sqlx::query_as(
         r#"
@@ -943,44 +1754,58 @@ pub async fn run_resolve_places(
     .fetch_all(&pool)
     .await?;
 
+    let mut by_label: HashMap<String, Vec<Uuid>> = HashMap::new();
+    for (eid, label) in unresolved {
+        let Some(label) = label.filter(|s| !s.trim().is_empty()) else {
+            continue;
+        };
+        by_label.entry(label).or_default().push(eid);
+    }
+
+    let unique_labels: Vec<String> = by_label.keys().cloned().collect();
+    let unique_n = unique_labels.len();
+    // Wikidata rate-limits aggressive parallelism (HTTP 429). One inflight lookup.
+    let sem = Arc::new(tokio::sync::Semaphore::new(1));
+    let mut join = tokio::task::JoinSet::new();
+    for label in unique_labels {
+        let sem = sem.clone();
+        join.spawn(async move {
+            let _permit = sem.acquire_owned().await.ok();
+            let hit = resolve_label_coords(&label).await;
+            (label, hit)
+        });
+    }
+
     let mut resolved = 0u32;
     let mut failed = 0u32;
     let mut samples = Vec::new();
-    for (eid, label) in &unresolved {
-        let Some(label) = label else {
+    while let Some(joined) = join.join_next().await {
+        let Ok((label, hit)) = joined else {
+            failed += 1;
             continue;
         };
-        if let Some(res) = resolve_place_offline(label) {
-            apply_place_to_quality_event(
-                &pool,
-                *eid,
-                label,
-                None,
-                res.lat,
-                res.lon,
-                &res.precision,
-                res.uncertainty_radius_m,
-            )
-            .await?;
-            resolved += 1;
-        } else if let Some(res) = fetch_wikidata_coords_for_label(label).await {
-            apply_place_to_quality_event(
-                &pool,
-                *eid,
-                label,
-                None,
-                res.0,
-                res.1,
-                "wikidata_p625",
-                Some(5000.0),
-            )
-            .await?;
-            resolved += 1;
-            tokio::time::sleep(Duration::from_millis(200)).await;
+        let Some(ids) = by_label.get(&label) else {
+            continue;
+        };
+        if let Some(hit) = hit {
+            for eid in ids {
+                apply_place_to_quality_event(
+                    &pool,
+                    *eid,
+                    &label,
+                    None,
+                    hit.lat,
+                    hit.lon,
+                    &hit.precision,
+                    hit.uncertainty,
+                )
+                .await?;
+                resolved += 1;
+            }
         } else {
-            failed += 1;
+            failed += ids.len() as u32;
             if samples.len() < 25 {
-                samples.push(label.clone());
+                samples.push(label);
             }
         }
     }
@@ -988,7 +1813,8 @@ pub async fn run_resolve_places(
     let density = density_report_counts(&pool, Some(subject_id)).await?;
     Ok(serde_json::to_string_pretty(&serde_json::json!({
         "subject": subject,
-        "attempted": unresolved.len(),
+        "attempted": resolved + failed,
+        "unique_labels": unique_n,
         "resolved": resolved,
         "still_unresolved": failed,
         "unresolved_samples": samples,
@@ -998,13 +1824,64 @@ pub async fn run_resolve_places(
     }))?)
 }
 
+struct PlaceHit {
+    lat: f64,
+    lon: f64,
+    precision: String,
+    uncertainty: Option<f64>,
+}
+
+async fn resolve_label_coords(label: &str) -> Option<PlaceHit> {
+    if let Some(res) = resolve_place_offline(label) {
+        return Some(PlaceHit {
+            lat: res.lat,
+            lon: res.lon,
+            precision: res.precision,
+            uncertainty: res.uncertainty_radius_m,
+        });
+    }
+    if let Some(hint) = place_hint_from_title(label) {
+        if let Some(res) = resolve_place_offline(&hint) {
+            return Some(PlaceHit {
+                lat: res.lat,
+                lon: res.lon,
+                precision: res.precision,
+                uncertainty: res.uncertainty_radius_m,
+            });
+        }
+    }
+    if let Some((lat, lon)) = fetch_wikidata_coords_for_label(label).await {
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        return Some(PlaceHit {
+            lat,
+            lon,
+            precision: "wikidata_p625".into(),
+            uncertainty: Some(5000.0),
+        });
+    }
+    if let Some(hint) = place_hint_from_title(label) {
+        if hint != label {
+            if let Some((lat, lon)) = fetch_wikidata_coords_for_label(&hint).await {
+                tokio::time::sleep(Duration::from_millis(250)).await;
+                return Some(PlaceHit {
+                    lat,
+                    lon,
+                    precision: "wikidata_p625".into(),
+                    uncertainty: Some(5000.0),
+                });
+            }
+        }
+    }
+    None
+}
+
 async fn fetch_wikidata_coords_for_label(label: &str) -> Option<(f64, f64)> {
     if !is_plausible_place_label(label) {
         return None;
     }
     let client = reqwest::Client::builder()
-        .user_agent("TalariaEngine/0.1 (lot-e resolve-places)")
-        .timeout(Duration::from_secs(30))
+        .user_agent("TalariaEngine/0.1 (resolve-places; https://www.wikidata.org/wiki/Wikidata:Data_access)")
+        .timeout(Duration::from_secs(12))
         .build()
         .ok()?;
     let search = client
@@ -1049,10 +1926,14 @@ async fn fetch_wikidata_coords_for_label(label: &str) -> Option<(f64, f64)> {
         .ok()?;
     for qid in &ids {
         let lat = entity
-            .pointer(&format!("/entities/{qid}/claims/P625/0/mainsnak/datavalue/value/latitude"))
+            .pointer(&format!(
+                "/entities/{qid}/claims/P625/0/mainsnak/datavalue/value/latitude"
+            ))
             .and_then(|v| v.as_f64());
         let lon = entity
-            .pointer(&format!("/entities/{qid}/claims/P625/0/mainsnak/datavalue/value/longitude"))
+            .pointer(&format!(
+                "/entities/{qid}/claims/P625/0/mainsnak/datavalue/value/longitude"
+            ))
             .and_then(|v| v.as_f64());
         if let (Some(lat), Some(lon)) = (lat, lon) {
             return Some((lat, lon));
@@ -1067,8 +1948,7 @@ pub async fn deactivate_implausible_place_events(
     subject: &str,
 ) -> anyhow::Result<u64> {
     let pool = connect(config).await?;
-    let subject_id =
-        upsert_entity_with_kind(&pool, &config.wiki_lang, subject, "person").await?;
+    let subject_id = upsert_entity_with_kind(&pool, &config.wiki_lang, subject, "person").await?;
     let rows: Vec<(Uuid, Option<String>)> = sqlx::query_as(
         r#"
         SELECT id, place_label FROM canonical_events
@@ -1181,9 +2061,10 @@ pub async fn run_density_report(
         .fetch_all(&pool)
         .await
         .unwrap_or_default();
-        report["snapshots_by_source"] = serde_json::json!(
-            by_source.iter().map(|(s,n)| serde_json::json!({"source": s, "n": n})).collect::<Vec<_>>()
-        );
+        report["snapshots_by_source"] = serde_json::json!(by_source
+            .iter()
+            .map(|(s, n)| serde_json::json!({"source": s, "n": n}))
+            .collect::<Vec<_>>());
     }
 
     if show_unresolved_places {
@@ -1204,9 +2085,10 @@ pub async fn run_density_report(
         } else {
             Vec::new()
         };
-        report["unresolved_places"] = serde_json::json!(
-            places.iter().map(|(l,n)| serde_json::json!({"label": l, "n": n})).collect::<Vec<_>>()
-        );
+        report["unresolved_places"] = serde_json::json!(places
+            .iter()
+            .map(|(l, n)| serde_json::json!({"label": l, "n": n}))
+            .collect::<Vec<_>>());
     }
 
     Ok(serde_json::to_string_pretty(&report)?)
@@ -1215,8 +2097,7 @@ pub async fn run_density_report(
 pub async fn run_exploration_report(config: &AppConfig, subject: &str) -> anyhow::Result<String> {
     let pool = connect(config).await?;
     run_migrations(&pool).await?;
-    let subject_id =
-        upsert_entity_with_kind(&pool, &config.wiki_lang, subject, "person").await?;
+    let subject_id = upsert_entity_with_kind(&pool, &config.wiki_lang, subject, "person").await?;
     let queue: Vec<(String, i64)> = sqlx::query_as(
         r#"
         SELECT status, COUNT(*)::bigint FROM exploration_targets

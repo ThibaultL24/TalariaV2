@@ -3,10 +3,17 @@ interface EntityProfileProps {
   name: string;
   qid?: string | null;
   eventCount?: number;
+  mapCount?: number;
   profiles?: Array<{ slug: string; label: string }>;
 }
 
-export function EntityProfile({ name, qid, eventCount, profiles = [] }: EntityProfileProps) {
+export function EntityProfile({
+  name,
+  qid,
+  eventCount,
+  mapCount,
+  profiles = [],
+}: EntityProfileProps) {
   return (
     <div className="border-b border-(--color-border-subtle) px-4 py-3">
       <p className="text-[10px] font-semibold uppercase tracking-wide text-(--color-text-secondary)">
@@ -16,6 +23,7 @@ export function EntityProfile({ name, qid, eventCount, profiles = [] }: EntityPr
       <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-(--color-text-muted)">
         {qid ? <span>{qid}</span> : null}
         {eventCount != null ? <span>{eventCount} events</span> : null}
+        {mapCount != null ? <span>{mapCount} on map</span> : null}
       </div>
       {profiles.length > 0 ? (
         <div className="mt-2 flex flex-wrap gap-1.5">

@@ -25,7 +25,9 @@ pub async fn run_judge_candidates(config: &AppConfig, limit: i64) -> anyhow::Res
     for candidate in candidates {
         let entity_id = match candidate.entity_id {
             Some(id) => id,
-            None => upsert_entity_surface(&pool, &config.wiki_lang, &candidate.person_surface).await?,
+            None => {
+                upsert_entity_surface(&pool, &config.wiki_lang, &candidate.person_surface).await?
+            }
         };
 
         let input = CandidateInput {

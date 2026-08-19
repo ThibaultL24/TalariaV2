@@ -2,7 +2,9 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use talaria_core::AppConfig;
-use talaria_dump::{build_extract_job, content_hash, read_multistream_index, run_page_extraction, write_index_jsonl};
+use talaria_dump::{
+    build_extract_job, content_hash, read_multistream_index, run_page_extraction, write_index_jsonl,
+};
 use talaria_store::{
     connect, finish_dump_run, list_pages_for_sentence_split, replace_sentences_for_page,
     run_migrations, start_dump_run, store_extracted_page, SentenceRecord, WikiPageRecord,
@@ -29,6 +31,11 @@ pub enum Commands {
         #[arg(long, default_value = "0", help = "Max entries (0 = all)")]
         limit: usize,
     },
+    /// Generic corpus dump → snapshots + sentence fragments (not Wikipedia extract-pages)
+    Dump {
+        #[command(subcommand)]
+        action: DumpAction,
+    },
     /// Extract wiki pages from multistream XML bz2 into DB + raw files
     ExtractPages {
         #[arg(long, help = "Path to *-pages-articles-multistream.xml.bz2")]
@@ -37,7 +44,11 @@ pub enum Commands {
         index: Option<PathBuf>,
         #[arg(long, default_value = "0", help = "Max pages (0 = all indexed)")]
         limit: usize,
-        #[arg(long, default_value_t = true, help = "Only namespace 0 (main articles)")]
+        #[arg(
+            long,
+            default_value_t = true,
+            help = "Only namespace 0 (main articles)"
+        )]
         main_namespace: bool,
         #[arg(long, help = "Skip pages already stored with same content hash")]
         skip_existing: bool,
@@ -46,7 +57,11 @@ pub enum Commands {
     DataInit,
     /// Split stored wiki pages into sentences
     SplitSentences {
-        #[arg(long, default_value = "0", help = "Max pages to process (0 = all pending)")]
+        #[arg(
+            long,
+            default_value = "0",
+            help = "Max pages to process (0 = all pending)"
+        )]
         limit: i64,
         #[arg(long, help = "Skip pages that already have sentences")]
         skip_existing: bool,
@@ -112,14 +127,21 @@ pub enum Commands {
         subject: String,
         #[arg(long)]
         qid: Option<String>,
-        #[arg(long, value_delimiter = ',', help = "Optional source filter, e.g. wikidata,wikipedia,open_library,gallica,europeana")]
+        #[arg(
+            long,
+            value_delimiter = ',',
+            help = "Optional source filter, e.g. wikidata,wikipedia,open_library,gallica,europeana,fixture"
+        )]
         sources: Option<Vec<String>>,
         #[arg(long, default_value_t = true, action = clap::ArgAction::Set, help = "Use deterministic fixture corpus")]
         fixture: bool,
         #[arg(long, help = "Call live Wikimedia + catalog APIs (Open Library, Internet Archive, Gallica; Europeana if EUROPEANA_API_KEY)")]
         live: bool,
         /// Lot E: seed-driven dense Wikipedia exploration toward density targets
-        #[arg(long, help = "Path to seed title list (enables Lot E density ingest when --live)")]
+        #[arg(
+            long,
+            help = "Path to seed title list (enables Lot E density ingest when --live)"
+        )]
         seed_list: Option<PathBuf>,
         #[arg(long, default_value_t = 500)]
         target_timeline_events: u32,
@@ -133,16 +155,27 @@ pub enum Commands {
         max_documents_per_source: u32,
         #[arg(long, help = "Cap seed titles processed (0 = all)")]
         max_titles: Option<u32>,
-        #[arg(long, default_value = "en", help = "Wikipedia language for Lot E seed fetch")]
+        #[arg(
+            long,
+            default_value = "en",
+            help = "Wikipedia language for Lot E seed fetch"
+        )]
         wiki_lang: String,
-        #[arg(long, help = "Resume flag reserved for exploration queue (accepted, Lot E uses seed cursor)")]
+        #[arg(
+            long,
+            help = "Resume flag reserved for exploration queue (accepted, Lot E uses seed cursor)"
+        )]
         resume: bool,
     },
     /// Resolve unresolved quality places (offline gazetteer / aliases)
     ResolvePlaces {
         #[arg(long)]
         subject: String,
-        #[arg(long, default_value_t = true, help = "Resolve all unresolved timeline-eligible events")]
+        #[arg(
+            long,
+            default_value_t = true,
+            help = "Resolve all unresolved timeline-eligible events"
+        )]
         all_unresolved: bool,
         #[arg(long, help = "Allow live Wikidata P625 (optional; offline used first)")]
         live: bool,
@@ -186,6 +219,161 @@ pub enum Commands {
     DumpMine {
         #[arg(long, default_value = "0", help = "Max sentences (0 = all)")]
         limit: i64,
+    },
+    /// Extract debates/theories from wiki historiography sections + corpus titles
+    HistoriographyExtract {
+        #[arg(long)]
+        subject: String,
+        #[arg(long, help = "Optional prose fixture (no wiki dump required)")]
+        file: Option<PathBuf>,
+    },
+    /// Corpus bibliographic ingest (theses.fr / OpenAlex; no claims/events)
+    CorpusIngest {
+        #[arg(long)]
+        subject: String,
+        #[arg(long)]
+        qid: Option<String>,
+        #[arg(
+            long,
+            value_delimiter = ',',
+            default_value = "theses_fr",
+            help = "theses_fr,open_alex,internet_archive,europeana,bnf"
+        )]
+        providers: Vec<String>,
+        #[arg(long, default_value_t = 25)]
+        limit: u32,
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set, help = "Use frozen fixtures (no network)")]
+        fixture: bool,
+        #[arg(long, help = "Fixture directory (default fixtures/theses_fr)")]
+        fixture_dir: Option<PathBuf>,
+        #[arg(long, help = "Call live provider APIs")]
+        live: bool,
+    },
+    /// List situated debates for a subject (conflicts + theory/controversy claims)
+    IntuitionPlan {
+        #[arg(long)]
+        subject: String,
+    },
+    /// Write talaria.intuition_canon.v2 JSON via Alpha packages (no RPC)
+    IntuitionExport {
+        #[arg(long)]
+        subject: String,
+    },
+    /// Export, then optionally write vote-target triples on Intuition testnet
+    IntuitionPublish {
+        #[arg(long)]
+        subject: String,
+        #[arg(long, help = "Broadcast to Intuition testnet (needs INTUITION_PRIVATE_KEY)")]
+        live: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum DumpAction {
+    /// Read a dump and print planned snapshot/fragment counts (no Postgres writes)
+    Plan {
+        #[arg(long)]
+        file: PathBuf,
+        #[arg(long)]
+        subject: Option<String>,
+        #[arg(long)]
+        language: Option<String>,
+        #[arg(long, default_value = "jsonl")]
+        source_kind: String,
+        #[arg(long, default_value = "0", help = "Max documents (0 = all)")]
+        limit: usize,
+    },
+    /// Persist dump records as document_snapshots + sentence fragments
+    Ingest {
+        #[arg(long)]
+        file: PathBuf,
+        #[arg(long, help = "Read and count only; do not write Postgres")]
+        dry_run: bool,
+        #[arg(long)]
+        subject: Option<String>,
+        #[arg(long)]
+        language: Option<String>,
+        #[arg(long, help = "Skip documents already terminal on this run")]
+        skip_existing: bool,
+        #[arg(long, default_value = "jsonl")]
+        source_kind: String,
+        #[arg(long, default_value = "0", help = "Max documents this invocation (0 = all)")]
+        limit: usize,
+        #[arg(long, help = "Resume an existing corpus dump run")]
+        run: Option<String>,
+    },
+    /// Restore dump cursor and continue a run
+    Resume {
+        #[arg(long)]
+        run: String,
+        #[arg(
+            long,
+            default_value_t = true,
+            action = clap::ArgAction::Set,
+            help = "Skip documents already terminal on this run"
+        )]
+        skip_existing: bool,
+    },
+    /// Print corpus dump run status as JSON
+    Status {
+        #[arg(long)]
+        run: Option<String>,
+    },
+    /// Score dump sentence fragments with Cosmos (writes no canonical_events)
+    ExtractCandidates {
+        #[arg(long, help = "Limit to snapshots from this corpus dump run")]
+        run: Option<String>,
+        #[arg(long)]
+        source_kind: Option<String>,
+        #[arg(long, default_value_t = 0.45)]
+        min_score: f32,
+        #[arg(long, default_value = "heuristic", help = "heuristic | live")]
+        cosmos: String,
+        #[arg(
+            long,
+            default_value_t = true,
+            action = clap::ArgAction::Set,
+            help = "Skip fragments already judged for this analyzer+version"
+        )]
+        skip_existing: bool,
+        #[arg(long, default_value = "0", help = "Max fragments (0 = all)")]
+        limit: usize,
+        #[arg(long, help = "Override analyzer version (new version recalculates)")]
+        version: Option<String>,
+    },
+    /// Cosmos-accepted phrases → extractors → event_candidates (no assemble)
+    ExtractEvents {
+        #[arg(long)]
+        run: Option<String>,
+        #[arg(long)]
+        source_kind: Option<String>,
+        #[arg(long)]
+        subject: String,
+        #[arg(long, value_delimiter = ',', help = "Extractor ids (default: all)")]
+        extractors: Option<Vec<String>>,
+        #[arg(long, default_value = "cosmos-heuristic")]
+        analyzer_id: String,
+        #[arg(long, default_value = "heuristic:v1")]
+        version: String,
+        #[arg(long, default_value = "0")]
+        limit: usize,
+    },
+    /// Assemble accepted dump candidates into pipeline=quality events
+    Canonicalize {
+        #[arg(long)]
+        run: Option<String>,
+        #[arg(long)]
+        source_kind: Option<String>,
+        #[arg(long)]
+        subject: String,
+        #[arg(long, value_delimiter = ',')]
+        extractors: Option<Vec<String>>,
+        #[arg(long, default_value = "cosmos-heuristic")]
+        analyzer_id: String,
+        #[arg(long, default_value = "heuristic:v1")]
+        version: String,
+        #[arg(long, default_value = "0")]
+        limit: usize,
     },
 }
 
@@ -351,9 +539,10 @@ pub async fn run_split_sentences(
 
         let count = replace_sentences_for_page(&pool, page.id, &records).await?;
 
-        let section_spans =
-            tokio::task::spawn_blocking(move || talaria_text::split_wiki_sections(&wikitext_for_sections))
-                .await?;
+        let section_spans = tokio::task::spawn_blocking(move || {
+            talaria_text::split_wiki_sections(&wikitext_for_sections)
+        })
+        .await?;
         let section_records: Vec<talaria_store::WikiSectionRecord> = section_spans
             .into_iter()
             .map(|section| {
@@ -367,7 +556,8 @@ pub async fn run_split_sentences(
             .filter(|section| !section.text.trim().is_empty())
             .collect();
         if !section_records.is_empty() {
-            let _ = talaria_store::replace_sections_for_page(&pool, page.id, &section_records).await?;
+            let _ =
+                talaria_store::replace_sections_for_page(&pool, page.id, &section_records).await?;
         }
 
         pages_processed += 1;

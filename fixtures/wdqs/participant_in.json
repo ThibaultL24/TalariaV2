@@ -1,0 +1,14 @@
+{
+  "results": {
+    "bindings": [
+      {
+        "event": { "type": "uri", "value": "http://www.wikidata.org/entity/Q151851" },
+        "eventLabel": { "xml:lang": "en", "type": "literal", "value": "Congress of Erfurt" },
+        "date": { "datatype": "http://www.w3.org/2001/XMLSchema#dateTime", "type": "literal", "value": "1808-09-27T00:00:00Z" },
+        "place": { "type": "uri", "value": "http://www.wikidata.org/entity/Q1729" },
+        "placeLabel": { "xml:lang": "en", "type": "literal", "value": "Erfurt" },
+        "evType": { "type": "literal", "value": "diplomatic" }
+      }
+    ]
+  }
+}

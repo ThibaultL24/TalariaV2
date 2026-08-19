@@ -1,8 +1,9 @@
 // web/src/pages/explorer-page.tsx
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Map } from "maplibre-gl";
 import { ExplorerEventFilters } from "@/components/filters/explorer-event-filters";
 import { EntityProfile } from "@/components/explorer/entity-profile";
+import { DebatesPanel } from "@/components/explorer/debates-panel";
 import { Navbar } from "@/components/layout/navbar";
 import { EventDetailCard } from "@/components/detail/event-detail-card";
 import { ExplorerMapTimelineBar } from "@/components/map/explorer-map-timeline-bar";
@@ -15,12 +16,16 @@ import { TimelineList } from "@/components/timeline/timeline-list";
 import { mapTimelineEventToItem } from "@/features/events/mappers/timeline";
 import {
   fetchEntity,
+  fetchEntityClaims,
   fetchGeoJson,
+  fetchIngestJob,
   fetchPeriods,
   fetchProfiles,
   fetchStatus,
   fetchTimeline,
   searchEntities,
+  startPersonIngest,
+  type EntityClaim,
   type GeoJsonFeatureCollection,
   type StatusResponse,
   type TimelineEvent,
@@ -34,7 +39,37 @@ import {
   filterTimelineByTaxonomy,
   filterTimelineByYearRange,
 } from "@/lib/geo";
+import { strings } from "@/lib/strings";
 import { useExplorerStore } from "@/stores/explorer-store";
+
+const POLL_MS = 5000;
+const LIVE_LIMIT = 2000;
+const INGEST_POLL_MS = 3000;
+
+function namesOverlap(left: string, right: string): boolean {
+  const a = left.trim().toLowerCase();
+  const b = right.trim().toLowerCase();
+  return a.includes(b) || b.includes(a);
+}
+
+/** Prefer the dense local entity when aliases split (Napoleon vs Napoleon Bonaparte). */
+function preferDenseLocalAlias(
+  item: SearchSuggestion,
+  items: SearchSuggestion[],
+): SearchSuggestion {
+  if (!item.known_locally || !item.label) return item;
+  const denser = items
+    .filter(
+      (row) =>
+        row.known_locally &&
+        row.entity_id &&
+        row.label &&
+        namesOverlap(row.label, item.label) &&
+        (row.event_count ?? 0) > (item.event_count ?? 0),
+    )
+    .sort((a, b) => (b.event_count ?? 0) - (a.event_count ?? 0))[0];
+  return denser ?? item;
+}
 
 export function ExplorerPage() {
   const [map, setMap] = useState<Map | null>(null);
@@ -50,6 +85,11 @@ export function ExplorerPage() {
   const [periods, setPeriods] = useState<PeriodFacet[]>([]);
   const [profiles, setProfiles] = useState<ProfileFacet[]>([]);
   const [entityProfiles, setEntityProfiles] = useState<Array<{ slug: string; label: string }>>([]);
+  const [sidebarTab, setSidebarTab] = useState<"timeline" | "debates">("timeline");
+  const [debates, setDebates] = useState<EntityClaim[]>([]);
+  const [debatesLoading, setDebatesLoading] = useState(false);
+  const [ingestStatus, setIngestStatus] = useState<string | null>(null);
+  const rangeTouched = useRef(false);
 
   const {
     entityId,
@@ -71,15 +111,27 @@ export function ExplorerPage() {
   const hasEntity = Boolean(entityId || personFilter);
 
   useEffect(() => {
-    fetchStatus()
-      .then(setStatus)
-      .catch(() => undefined);
+    let cancelled = false;
+    function loadStatus() {
+      fetchStatus()
+        .then((row) => {
+          if (!cancelled) setStatus(row);
+        })
+        .catch(() => undefined);
+    }
+    loadStatus();
+    const tick = window.setInterval(loadStatus, POLL_MS);
     Promise.all([fetchPeriods(), fetchProfiles()])
       .then(([periodRows, profileRows]) => {
+        if (cancelled) return;
         setPeriods(periodRows);
         setProfiles(profileRows);
       })
       .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      window.clearInterval(tick);
+    };
   }, []);
 
   useEffect(() => {
@@ -100,6 +152,33 @@ export function ExplorerPage() {
       });
     return () => {
       cancelled = true;
+    };
+  }, [entityId]);
+
+  useEffect(() => {
+    rangeTouched.current = false;
+    if (!entityId) {
+      setDebates([]);
+      return;
+    }
+    const id = entityId;
+    let cancelled = false;
+    setDebatesLoading(true);
+    async function loadDebates() {
+      try {
+        const items = await fetchEntityClaims(id);
+        if (!cancelled) setDebates(items);
+      } catch {
+        if (!cancelled) setDebates([]);
+      } finally {
+        if (!cancelled) setDebatesLoading(false);
+      }
+    }
+    loadDebates();
+    const tick = window.setInterval(loadDebates, POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(tick);
     };
   }, [entityId]);
 
@@ -133,11 +212,13 @@ export function ExplorerPage() {
       setAllEvents([]);
       setGeojson(null);
       setYearRange(null);
+      rangeTouched.current = false;
       return;
     }
 
     let cancelled = false;
-    setLoading(true);
+    let inFlight = false;
+    let first = true;
     setError(null);
 
     const query = {
@@ -145,24 +226,46 @@ export function ExplorerPage() {
       person: personFilter ?? undefined,
       profileSlug: filters.profileSlug,
       periodSlug: filters.periodSlug,
+      limit: LIVE_LIMIT,
     };
 
-    Promise.all([fetchTimeline(query), fetchGeoJson(query)])
-      .then(([timeline, mapData]) => {
+    async function load() {
+      if (inFlight) return;
+      inFlight = true;
+      if (first) setLoading(true);
+      try {
+        const [timeline, mapData] = await Promise.all([
+          fetchTimeline(query),
+          fetchGeoJson(query),
+        ]);
         if (cancelled) return;
         setAllEvents(timeline.events);
         setGeojson(mapData);
-        setYearRange(buildYearBounds(timeline.events));
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "load failed");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+        const bounds = buildYearBounds(timeline.events);
+        setYearRange((prev) => {
+          if (!bounds) return prev;
+          if (!prev || !rangeTouched.current) return bounds;
+          return prev;
+        });
+        setError(null);
+      } catch (err) {
+        if (!cancelled && first) {
+          setError(err instanceof Error ? err.message : "load failed");
+        }
+      } finally {
+        inFlight = false;
+        if (!cancelled && first) {
+          setLoading(false);
+          first = false;
+        }
+      }
+    }
 
+    load();
+    const tick = window.setInterval(load, POLL_MS);
     return () => {
       cancelled = true;
+      window.clearInterval(tick);
     };
   }, [entityId, personFilter, hasEntity, filters.profileSlug, filters.periodSlug]);
 
@@ -202,20 +305,95 @@ export function ExplorerPage() {
     [filteredEvents],
   );
 
-  const selectedEvent = useMemo(
-    () => allEvents.find((event) => event.id === selectedEventId) ?? null,
-    [allEvents, selectedEventId],
-  );
+  const selectedEvent = useMemo(() => {
+    if (!selectedEventId) return null;
+    const fromTimeline = allEvents.find((event) => event.id === selectedEventId);
+    if (fromTimeline) return fromTimeline;
+    const feature = geojson?.features.find((row) => {
+      const props = row.properties ?? {};
+      return String(props.id ?? props.event_id ?? row.id ?? "") === selectedEventId;
+    });
+    if (!feature) return null;
+    const props = feature.properties ?? {};
+    const coords = feature.geometry?.coordinates;
+    return {
+      id: selectedEventId,
+      entity_id: String(props.entity_id ?? entityId ?? ""),
+      person: String(props.person ?? entityLabel ?? ""),
+      event_type: String(props.event_type ?? "unknown"),
+      epistemic_status: String(props.epistemic_status ?? "attested"),
+      title: String(props.title ?? "Event"),
+      summary: (props.summary as string | null | undefined) ?? null,
+      start_time: (props.start_time as string | null | undefined) ?? null,
+      place_label: (props.place_label as string | null | undefined) ?? null,
+      confidence: Number(props.confidence ?? 0.5),
+      map_eligible: true,
+      coordinates:
+        Array.isArray(coords) && coords.length >= 2
+          ? { lon: Number(coords[0]), lat: Number(coords[1]) }
+          : null,
+    };
+  }, [allEvents, selectedEventId, geojson, entityId, entityLabel]);
+
+  const handleYearRange = useCallback((range: { min: number; max: number }) => {
+    rangeTouched.current = true;
+    setYearRange(range);
+  }, []);
 
   const handleSelectSuggestion = useCallback(
-    (item: SearchSuggestion) => {
-      if (item.known_locally && item.entity_id) {
-        setEntity(item.entity_id, item.label);
+    async (item: SearchSuggestion) => {
+      const chosen = preferDenseLocalAlias(item, suggestions);
+      if (chosen.known_locally && chosen.entity_id) {
+        setIngestStatus(null);
+        setEntity(chosen.entity_id, chosen.label);
         return;
       }
-      setPersonFilter(item.label, item.label);
+
+      setPersonFilter(chosen.label, chosen.label);
+      setIngestStatus(strings.ingestQueued);
+      setError(null);
+      try {
+        const started = await startPersonIngest({
+          subject: chosen.label,
+          qid: chosen.qid,
+          live: true,
+        });
+        setIngestStatus(
+          started.status === "running" ? strings.ingestRunning : strings.ingestQueued,
+        );
+
+        const deadline = Date.now() + 45 * 60 * 1000;
+        while (Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, INGEST_POLL_MS));
+          const job = await fetchIngestJob(started.job_id);
+          if (job.status === "running" || job.status === "queued") {
+            setIngestStatus(strings.ingestRunning);
+            continue;
+          }
+          if (job.status === "failed") {
+            setIngestStatus(null);
+            setError(`${strings.ingestFailed}: ${job.error ?? "unknown"}`);
+            return;
+          }
+          if (job.status === "done") {
+            setIngestStatus(strings.ingestDone);
+            if (job.entity_id) {
+              setEntity(job.entity_id, chosen.label);
+            } else {
+              setPersonFilter(chosen.label, chosen.label);
+            }
+            setIngestStatus(null);
+            return;
+          }
+        }
+        setIngestStatus(null);
+        setError(`${strings.ingestFailed}: timeout`);
+      } catch (err) {
+        setIngestStatus(null);
+        setError(err instanceof Error ? err.message : strings.ingestFailed);
+      }
     },
-    [setEntity, setPersonFilter],
+    [setEntity, setPersonFilter, suggestions],
   );
 
   const handleSelectEvent = useCallback(
@@ -253,15 +431,23 @@ export function ExplorerPage() {
             <EntitySearchBox
               suggestions={suggestions}
               onSubmitQuery={setSearchQuery}
-              onSelect={handleSelectSuggestion}
+              onSelect={(item) => {
+                void handleSelectSuggestion(item);
+              }}
               isLoading={searchLoading}
             />
+            {ingestStatus ? (
+              <p className="mt-2 text-xs text-sky-300" role="status">
+                {ingestStatus}
+              </p>
+            ) : null}
           </div>
 
           {entityLabel ? (
             <EntityProfile
               name={entityLabel}
               eventCount={allEvents.length}
+              mapCount={geojson?.features.length ?? 0}
               profiles={entityProfiles}
             />
           ) : null}
@@ -292,14 +478,49 @@ export function ExplorerPage() {
             />
           ) : null}
 
+          {hasEntity ? (
+            <div className="flex border-b border-(--color-border-subtle)">
+              <button
+                type="button"
+                className={`flex-1 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide ${
+                  sidebarTab === "timeline"
+                    ? "text-(--color-text-primary)"
+                    : "text-(--color-text-muted)"
+                }`}
+                onClick={() => setSidebarTab("timeline")}
+              >
+                Timeline
+              </button>
+              <button
+                type="button"
+                className={`flex-1 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide ${
+                  sidebarTab === "debates"
+                    ? "text-(--color-text-primary)"
+                    : "text-(--color-text-muted)"
+                }`}
+                onClick={() => setSidebarTab("debates")}
+              >
+                Debates{debates.length > 0 ? ` (${debates.length})` : ""}
+              </button>
+            </div>
+          ) : null}
+
           <div className="min-h-0 flex-1 overflow-y-auto">
             {error ? <p className="p-4 text-sm text-red-400">{error}</p> : null}
-            <TimelineList
-              items={timelineItems}
-              hasEntity={hasEntity}
-              isLoading={loading}
-              onSelectEvent={handleSelectEvent}
-            />
+            {sidebarTab === "debates" && hasEntity ? (
+              <DebatesPanel
+                claims={debates}
+                isLoading={debatesLoading}
+                onOpenEvent={handleSelectEvent}
+              />
+            ) : (
+              <TimelineList
+                items={timelineItems}
+                hasEntity={hasEntity}
+                isLoading={loading}
+                onSelectEvent={handleSelectEvent}
+              />
+            )}
           </div>
         </aside>
 
@@ -319,7 +540,7 @@ export function ExplorerPage() {
             <ExplorerMapTimelineBar
               bounds={dataBounds}
               range={activeRange}
-              onRangeChange={setYearRange}
+              onRangeChange={handleYearRange}
               visibleCount={filteredEvents.length}
               totalCount={taxonomyEvents.length}
               yearHistogram={histogram}
@@ -344,12 +565,16 @@ export function ExplorerPage() {
                 onClick={closeDetail}
               />
               <div
-                className="nebula-event-detail relative flex max-h-[min(90vh,820px)] w-full max-w-lg flex-col overflow-hidden rounded-xl"
+                className="nebula-event-detail relative flex max-h-[min(90vh,860px)] w-full max-w-xl flex-col overflow-hidden rounded-xl"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="event-detail-card-title"
               >
-                <EventDetailCard event={selectedEvent} onClose={closeDetail} />
+                <EventDetailCard
+                  event={selectedEvent}
+                  onClose={closeDetail}
+                  offlineOnly={Boolean(status?.offline_only)}
+                />
               </div>
             </div>
           ) : null}

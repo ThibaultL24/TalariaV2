@@ -1,0 +1,27 @@
+{
+  "meta": {
+    "count": 2,
+    "page": 1,
+    "per_page": 25
+  },
+  "results": [
+    {
+      "id": "https://openalex.org/W4210000001",
+      "doi": "https://doi.org/10.0000/columbus.origins",
+      "title": "Origin theories of Christopher Columbus",
+      "display_name": "Origin theories of Christopher Columbus",
+      "publication_year": 2006,
+      "type": "article",
+      "language": "en"
+    },
+    {
+      "id": "https://openalex.org/W4210000002",
+      "doi": "https://doi.org/10.0000/polymer.chemistry",
+      "title": "Advances in polymer chemistry",
+      "display_name": "Advances in polymer chemistry",
+      "publication_year": 2019,
+      "type": "article",
+      "language": "en"
+    }
+  ]
+}

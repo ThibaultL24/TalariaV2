@@ -33,7 +33,7 @@ pub struct GeoJsonQuery {
 }
 
 fn default_limit() -> i64 {
-    100
+    2000
 }
 
 fn default_true() -> bool {
@@ -88,10 +88,7 @@ pub async fn geojson(
     }))
 }
 
-pub async fn evidence(
-    State(state): State<AppState>,
-    Path(event_id): Path<Uuid>,
-) -> Json<Value> {
+pub async fn evidence(State(state): State<AppState>, Path(event_id): Path<Uuid>) -> Json<Value> {
     let rows = talaria_store::list_event_evidence(&state.pool, event_id)
         .await
         .unwrap_or_default();
@@ -102,10 +99,7 @@ pub async fn evidence(
     }))
 }
 
-pub async fn detail(
-    State(state): State<AppState>,
-    Path(event_id): Path<Uuid>,
-) -> Json<Value> {
+pub async fn detail(State(state): State<AppState>, Path(event_id): Path<Uuid>) -> Json<Value> {
     let Some(event) = talaria_store::get_canonical_event(&state.pool, event_id)
         .await
         .ok()
@@ -254,9 +248,7 @@ fn source_ref_from_evidence(row: &talaria_store::EventEvidenceRow) -> Option<Val
             page_title.replace(' ', "_")
         )
     });
-    let citation_url = revision_url
-        .clone()
-        .unwrap_or_else(|| page_url.clone());
+    let citation_url = revision_url.clone().unwrap_or_else(|| page_url.clone());
     let label = format!("Wikipedia — {page_title}");
     let section_title = row
         .sentence_ordinal

@@ -1,7 +1,7 @@
 // crates/talaria-sources/tests/lot_a_foundations.rs
 use talaria_sources::connectors::FixtureConnector;
 use talaria_sources::extractors::{
-    claim_fingerprint, default_extractor_stack, CandidateExtractor, ClaimKey, ExtractorInput,
+    claim_fingerprint, default_extractor_stack, ClaimKey, ExtractorInput,
 };
 use talaria_sources::{
     plan_sources, BudgetCounters, DiscoveryCursor, IngestBudgets, ResolvedSubject, SourceConnector,
@@ -146,6 +146,7 @@ fn plan_sources_for_french_military() {
     assert!(plan.sources.iter().any(|s| s.kind == SourceKind::Wikidata));
     assert!(plan.sources.iter().any(|s| s.kind == SourceKind::Bnf));
     assert!(plan.sources.iter().any(|s| s.kind == SourceKind::Gallica));
+    assert!(plan.sources.iter().any(|s| s.kind == SourceKind::OpenAlex));
 }
 
 #[test]

@@ -82,6 +82,45 @@ impl WikipediaConnector {
             .to_string();
         Ok((extract, page.clone()))
     }
+
+    async fn search_titles(
+        &self,
+        lang: &str,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<String>, ConnectorError> {
+        if limit == 0 || query.trim().is_empty() {
+            return Ok(vec![]);
+        }
+        let response = self
+            .http
+            .get(Self::api(lang))
+            .query(&[
+                ("action", "query"),
+                ("list", "search"),
+                ("srsearch", query),
+                ("srlimit", &limit.min(20).to_string()),
+                ("srnamespace", "0"),
+                ("format", "json"),
+            ])
+            .send()
+            .await
+            .map_err(|e| ConnectorError::Http(e.to_string()))?
+            .error_for_status()
+            .map_err(|e| ConnectorError::Http(e.to_string()))?
+            .json::<Value>()
+            .await
+            .map_err(|e| ConnectorError::Parse(e.to_string()))?;
+        let hits = response
+            .pointer("/query/search")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        Ok(hits
+            .iter()
+            .filter_map(|h| h.get("title").and_then(|t| t.as_str()).map(str::to_string))
+            .collect())
+    }
 }
 
 #[async_trait]
@@ -106,6 +145,8 @@ impl SourceConnector for WikipediaConnector {
                 next_cursor: None,
             });
         }
+        let profile = crate::profile_for(subject.person_class());
+        let search_q = subject.catalog_query(SourceKind::Wikipedia);
         let mut docs = Vec::new();
         for lang in &self.config.languages {
             let title = subject.label.clone();
@@ -122,7 +163,7 @@ impl SourceConnector for WikipediaConnector {
                 subject_links: vec![ExternalEntityRef {
                     system: "wikipedia".into(),
                     id: format!("{lang}:{title}"),
-                    label: Some(title),
+                    label: Some(title.clone()),
                 }],
                 publication_time: None,
                 discovery_method: DiscoveryMethod::SubjectSearch,
@@ -131,6 +172,41 @@ impl SourceConnector for WikipediaConnector {
                     raw: serde_json::json!({"lang": lang}),
                 },
             });
+            let extra = self
+                .search_titles(lang, &search_q, self.config.max_linked_pages as usize)
+                .await
+                .unwrap_or_default();
+            for hit in extra {
+                if hit.eq_ignore_ascii_case(&subject.label) {
+                    continue;
+                }
+                let score = crate::rank_wikipedia_title(&hit, &profile, subject.death_year);
+                if score < 0.30 {
+                    continue;
+                }
+                docs.push(DiscoveredDocument {
+                    source_kind: SourceKind::Wikipedia,
+                    external_id: format!("{lang}:{hit}"),
+                    canonical_url: Some(format!(
+                        "https://{lang}.wikipedia.org/wiki/{}",
+                        hit.replace(' ', "_")
+                    )),
+                    title: hit.clone(),
+                    language: Some(lang.clone()),
+                    document_type: DocumentType::Article,
+                    subject_links: vec![ExternalEntityRef {
+                        system: "wikipedia".into(),
+                        id: format!("{lang}:{hit}"),
+                        label: Some(hit),
+                    }],
+                    publication_time: None,
+                    discovery_method: DiscoveryMethod::LinkedEntity,
+                    relevance_score: score,
+                    source_metadata: SourceMetadata {
+                        raw: serde_json::json!({"lang": lang, "via": "class_search"}),
+                    },
+                });
+            }
         }
         Ok(DiscoveryPage {
             documents: docs,

@@ -1,0 +1,29 @@
+{
+  "id": "https://openalex.org/W4210000002",
+  "doi": "https://doi.org/10.0000/polymer.chemistry",
+  "title": "Advances in polymer chemistry",
+  "display_name": "Advances in polymer chemistry",
+  "publication_year": 2019,
+  "type": "article",
+  "language": "en",
+  "open_access": {
+    "is_oa": false,
+    "oa_status": "closed"
+  },
+  "primary_location": {
+    "source": { "display_name": "Macromolecules" }
+  },
+  "authorships": [
+    {
+      "author_position": "first",
+      "author": { "display_name": "Minh Nguyen" }
+    }
+  ],
+  "abstract_inverted_index": {
+    "This": [0],
+    "review": [1],
+    "covers": [2],
+    "polymer": [3],
+    "synthesis": [4]
+  }
+}

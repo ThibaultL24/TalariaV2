@@ -21,6 +21,8 @@ fn lookup_alias(key: &str) -> Option<PlaceResolution> {
         ("paris", 48.8566, 2.3522, "exact"),
         ("waterloo", 50.6794, 4.4047, "exact"),
         ("austerlitz", 49.1533, 16.875, "exact"),
+        ("slavkov u brna", 49.1533, 16.875, "exact"),
+        ("waterloo battlefield", 50.6794, 4.4047, "exact"),
         ("leipzig", 51.3397, 12.3731, "exact"),
         ("borodino", 55.526, 35.821, "exact"),
         ("moscow", 55.7558, 37.6173, "exact"),

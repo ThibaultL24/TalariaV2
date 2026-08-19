@@ -68,7 +68,11 @@ pub async fn search(
 
     let local_qids: std::collections::HashSet<String> = items
         .iter()
-        .filter_map(|item| item.get("qid").and_then(|value| value.as_str()).map(str::to_string))
+        .filter_map(|item| {
+            item.get("qid")
+                .and_then(|value| value.as_str())
+                .map(str::to_string)
+        })
         .collect();
 
     if !state.offline_only && items.len() < query.limit as usize {
@@ -162,10 +166,16 @@ pub async fn get_entity(
 pub struct EntityClaimsQuery {
     #[serde(default = "default_claims_limit")]
     pub limit: i64,
+    #[serde(default = "default_true")]
+    pub debates_only: bool,
 }
 
 fn default_claims_limit() -> i64 {
     50
+}
+
+fn default_true() -> bool {
+    true
 }
 
 pub async fn list_claims(
@@ -173,9 +183,14 @@ pub async fn list_claims(
     Path(entity_id): Path<Uuid>,
     Query(query): Query<EntityClaimsQuery>,
 ) -> Json<Value> {
-    let claims = talaria_store::list_claims_for_entity(&state.pool, entity_id, query.limit)
-        .await
-        .unwrap_or_default();
+    let claims = talaria_store::list_claims_for_entity(
+        &state.pool,
+        entity_id,
+        query.limit,
+        query.debates_only,
+    )
+    .await
+    .unwrap_or_default();
 
     let mut items = Vec::with_capacity(claims.len());
     for claim in claims {
@@ -192,6 +207,8 @@ pub async fn list_claims(
             "place_label": claim.place_label,
             "confidence": claim.confidence,
             "canonical_event_id": claim.canonical_event_id,
+            "debate_type": claim.debate_type,
+            "evidence_layer": claim.evidence_layer,
             "evidence": evidence.iter().map(|row| json!({
                 "id": row.id,
                 "source_system": row.source_system,

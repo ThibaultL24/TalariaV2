@@ -1,110 +1,121 @@
 // crates/talaria-sources/src/connectors/internet_archive.rs
-use async_trait::async_trait;
-use serde_json::Value;
+//! Internet Archive advancedsearch + metadata — notices only, never file bytes.
 
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+use async_trait::async_trait;
+use serde_json::json;
+
+use super::net::{
+    build_client, first_str, get_json, load_search_details, urlencoding_encode, year_from,
+};
 use crate::connector::{
     ConnectorError, ConnectorHealth, DiscoveryCursor, DiscoveryPage, FetchedDocument,
     SourceConnector,
 };
-use crate::connectors::catalog::{
-    bibliographic_notice, catalog_place, http_client, json_first_string, names_match, parse_year,
-    year_in_life, NoticeRelation,
+use crate::corpus::{
+    NormalizedContribution, NormalizedCorpusDocument, NormalizedIdentifier, NormalizedSubject,
 };
-use crate::kinds::{DiscoveryMethod, DocumentType, SourceKind};
+use crate::identifiers::normalize_person_name;
+use crate::kinds::{
+    AcademicStatus, AccessLevel, ContributionRole, DiscoveryMethod, DocumentType, IdentifierScheme,
+    SourceKind,
+};
 use crate::plan::ResolvedSubject;
-use crate::types::{DiscoveredDocument, ExternalEntityRef, SourceMetadata};
+use crate::types::{DiscoveredDocument, SourceMetadata, TypedTimeLite};
 
-const SEARCH: &str = "https://archive.org/advancedsearch.php";
+pub const CONNECTOR_VERSION: &str = "internet_archive:v1";
+pub const DEFAULT_BASE_URL: &str = "https://archive.org";
+
+#[derive(Debug, Clone)]
+pub struct InternetArchiveConfig {
+    pub base_url: String,
+    pub page_size: u32,
+    pub fixture_dir: Option<PathBuf>,
+    pub timeout: Duration,
+}
+
+impl Default for InternetArchiveConfig {
+    fn default() -> Self {
+        Self {
+            base_url: DEFAULT_BASE_URL.into(),
+            page_size: 25,
+            fixture_dir: None,
+            timeout: Duration::from_secs(30),
+        }
+    }
+}
 
 pub struct InternetArchiveConnector {
-    http: reqwest::Client,
-    max_docs: u32,
+    config: InternetArchiveConfig,
+    client: Option<reqwest::Client>,
+    fixture_details: HashMap<String, serde_json::Value>,
+    fixture_search: Option<serde_json::Value>,
+}
+
+pub fn ia_id(v: &serde_json::Value) -> Option<String> {
+    first_str(v, &["identifier"])
+        .or_else(|| v.get("metadata").and_then(|m| first_str(m, &["identifier"])))
+}
+
+pub fn normalize_ia_item(raw: &serde_json::Value) -> Result<NormalizedCorpusDocument, ConnectorError> {
+    let meta = raw.get("metadata").unwrap_or(raw);
+    let external_id = ia_id(raw)
+        .or_else(|| ia_id(meta))
+        .ok_or_else(|| ConnectorError::Parse("internet archive missing identifier".into()))?;
+    let title = first_str(meta, &["title"])
+        .ok_or_else(|| ConnectorError::Parse("internet archive missing title".into()))?;
+    let description = first_str(meta, &["description"]);
+    let creator = first_str(meta, &["creator"]);
+    let year_s = first_str(meta, &["year", "date"]);
+    let language = first_str(meta, &["language"]);
+    catalog_notice(
+        SourceKind::InternetArchive,
+        external_id.clone(),
+        Some(format!("https://archive.org/details/{external_id}")),
+        title,
+        description,
+        creator,
+        year_s,
+        language,
+        first_str(meta, &["mediatype"]),
+        None,
+        CONNECTOR_VERSION,
+        raw.clone(),
+    )
 }
 
 impl InternetArchiveConnector {
-    pub fn new() -> anyhow::Result<Self> {
+    pub fn new(config: InternetArchiveConfig) -> Result<Self, ConnectorError> {
+        if let Some(dir) = &config.fixture_dir {
+            return Self::from_fixtures(config.clone(), dir);
+        }
         Ok(Self {
-            http: http_client()?,
-            max_docs: 20,
+            client: Some(build_client(config.timeout)?),
+            config,
+            fixture_details: HashMap::new(),
+            fixture_search: None,
         })
     }
 
-    pub fn parse_search(subject: &ResolvedSubject, payload: &Value) -> Vec<DiscoveredDocument> {
-        let Some(docs) = payload
-            .pointer("/response/docs")
-            .and_then(|v| v.as_array())
-        else {
-            return vec![];
+    pub fn from_fixture_dir(dir: impl AsRef<Path>) -> Result<Self, ConnectorError> {
+        let config = InternetArchiveConfig {
+            fixture_dir: Some(dir.as_ref().to_path_buf()),
+            ..InternetArchiveConfig::default()
         };
-        let mut out = Vec::new();
-        for doc in docs {
-            let identifier = doc
-                .get("identifier")
-                .and_then(json_first_string)
-                .unwrap_or_default();
-            if identifier.is_empty() {
-                continue;
-            }
-            let title = doc
-                .get("title")
-                .and_then(json_first_string)
-                .unwrap_or_else(|| identifier.clone());
-            let year = doc
-                .get("year")
-                .and_then(json_first_string)
-                .and_then(|s| parse_year(&s));
-            let creator = doc.get("creator").and_then(json_first_string);
-            let authored = creator
-                .as_deref()
-                .map(|name| names_match(&subject.label, name))
-                .unwrap_or(false);
-            if authored {
-                if let Some(year) = year {
-                    if !year_in_life(year, subject) {
-                        continue;
-                    }
-                }
-            }
-            let description = doc.get("description").and_then(json_first_string);
-            let place = catalog_place(doc.get("place").and_then(json_first_string).as_deref())
-                .or_else(|| catalog_place(description.as_deref()));
-            let relation = if authored {
-                NoticeRelation::Authored
-            } else {
-                NoticeRelation::About
-            };
-            let text = bibliographic_notice(
-                &subject.label,
-                &title,
-                year,
-                place.as_deref(),
-                description.as_deref(),
-                relation,
-            );
-            out.push(DiscoveredDocument {
-                source_kind: SourceKind::InternetArchive,
-                external_id: identifier.clone(),
-                canonical_url: Some(format!("https://archive.org/details/{identifier}")),
-                title,
-                language: doc.get("language").and_then(json_first_string),
-                document_type: DocumentType::BibliographicNotice,
-                subject_links: vec![ExternalEntityRef {
-                    system: "internet_archive".into(),
-                    id: identifier,
-                    label: Some(subject.label.clone()),
-                }],
-                publication_time: year.map(|y| crate::types::TypedTimeLite::Exact {
-                    year: y,
-                    surface: Some(y.to_string()),
-                }),
-                discovery_method: DiscoveryMethod::CatalogSearch,
-                relevance_score: if authored { 0.8 } else { 0.52 },
-                source_metadata: SourceMetadata {
-                    raw: serde_json::json!({ "notice": text, "creator": creator, "place": place }),
-                },
-            });
-        }
-        out
+        Self::from_fixtures(config, dir.as_ref())
+    }
+
+    fn from_fixtures(config: InternetArchiveConfig, dir: &Path) -> Result<Self, ConnectorError> {
+        let (search, details) = load_search_details(dir, ia_id)?;
+        Ok(Self {
+            config,
+            client: None,
+            fixture_details: details,
+            fixture_search: Some(search),
+        })
     }
 }
 
@@ -113,9 +124,8 @@ impl SourceConnector for InternetArchiveConnector {
     fn source_kind(&self) -> SourceKind {
         SourceKind::InternetArchive
     }
-
     fn connector_version(&self) -> &str {
-        "internet_archive:search_v1"
+        CONNECTOR_VERSION
     }
 
     async fn discover(
@@ -123,71 +133,222 @@ impl SourceConnector for InternetArchiveConnector {
         subject: &ResolvedSubject,
         cursor: Option<DiscoveryCursor>,
     ) -> Result<DiscoveryPage, ConnectorError> {
-        if cursor.map(|c| c.offset).unwrap_or(0) > 0 {
-            return Ok(DiscoveryPage {
-                documents: vec![],
-                next_cursor: None,
-            });
-        }
-        let query = format!(
-            "(creator:(\"{label}\") OR title:(\"{label}\")) AND mediatype:texts",
-            label = subject.label
-        );
-        let rows = self.max_docs.to_string();
-        let response = self
-            .http
-            .get(SEARCH)
-            .query(&[
-                ("q", query.as_str()),
-                ("fl[]", "identifier"),
-                ("fl[]", "title"),
-                ("fl[]", "year"),
-                ("fl[]", "creator"),
-                ("fl[]", "description"),
-                ("fl[]", "language"),
-                ("output", "json"),
-                ("rows", rows.as_str()),
-            ])
-            .send()
-            .await
-            .map_err(|e| ConnectorError::Http(e.to_string()))?
-            .error_for_status()
-            .map_err(|e| ConnectorError::Http(e.to_string()))?
-            .json::<Value>()
-            .await
-            .map_err(|e| ConnectorError::Parse(e.to_string()))?;
-        Ok(DiscoveryPage {
-            documents: Self::parse_search(subject, &response),
-            next_cursor: None,
-        })
+        let debut = cursor.map(|c| c.offset).unwrap_or(0);
+        let nombre = self.config.page_size.max(1);
+        let payload = if let Some(search) = &self.fixture_search {
+            search.clone()
+        } else {
+            let client = self.client.as_ref().ok_or_else(|| {
+                ConnectorError::NotConfigured("live HTTP client missing".into())
+            })?;
+            let q = subject.catalog_query(SourceKind::InternetArchive);
+            let url = format!(
+                "{}/advancedsearch.php?q={}&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=year&fl[]=description&fl[]=mediatype&output=json&rows={nombre}&page={}",
+                self.config.base_url.trim_end_matches('/'),
+                urlencoding_encode(&q),
+                (debut / nombre) + 1
+            );
+            get_json(client, &url).await?
+        };
+        let docs = payload
+            .pointer("/response/docs")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let total = payload
+            .pointer("/response/numFound")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(docs.len() as u64);
+        page_from_list(docs, debut, nombre, total, self.fixture_search.is_some(), lite_ia)
     }
 
     async fn fetch(
         &self,
         document: &DiscoveredDocument,
     ) -> Result<FetchedDocument, ConnectorError> {
-        let text = document
-            .source_metadata
-            .raw
-            .get("notice")
-            .and_then(|v| v.as_str())
-            .unwrap_or(&document.title)
-            .to_string();
-        Ok(FetchedDocument {
-            discovered: document.clone(),
-            revision_id: None,
-            content_type: "text/plain".into(),
-            content_bytes: text.len() as u64,
-            raw_metadata: document.source_metadata.raw.clone(),
-            license: Some("Internet Archive metadata".into()),
-            text,
-        })
+        let detail = if let Some(v) = self.fixture_details.get(&document.external_id) {
+            v.clone()
+        } else {
+            let client = self.client.as_ref().ok_or_else(|| {
+                ConnectorError::NotConfigured("live HTTP client missing".into())
+            })?;
+            let url = format!(
+                "{}/metadata/{}",
+                self.config.base_url.trim_end_matches('/'),
+                urlencoding_encode(&document.external_id)
+            );
+            get_json(client, &url).await?
+        };
+        fetched(document, normalize_ia_item(&detail)?, detail)
     }
 
     async fn healthcheck(&self) -> Result<ConnectorHealth, ConnectorError> {
         Ok(ConnectorHealth {
             ok: true,
-            detail: "public advancedsearch.php".into(),
+            detail: if self.fixture_search.is_some() {
+                "fixture mode".into()
+            } else {
+                "internet archive metadata API".into()
+            },
         })
     }
+}
+
+fn lite_ia(item: &serde_json::Value) -> Option<DiscoveredDocument> {
+    let external_id = ia_id(item)?;
+    let title = first_str(item, &["title"])?;
+    Some(DiscoveredDocument {
+        source_kind: SourceKind::InternetArchive,
+        external_id: external_id.clone(),
+        canonical_url: Some(format!("https://archive.org/details/{external_id}")),
+        title,
+        language: first_str(item, &["language"]),
+        document_type: DocumentType::BibliographicNotice,
+        subject_links: vec![],
+        publication_time: first_str(item, &["year"]).and_then(|s| {
+            year_from(&s).map(|y| TypedTimeLite::Exact {
+                year: y,
+                surface: Some(s),
+            })
+        }),
+        discovery_method: DiscoveryMethod::CatalogSearch,
+        relevance_score: 0.6,
+        source_metadata: SourceMetadata { raw: item.clone() },
+    })
+}
+
+pub(crate) fn catalog_notice(
+    kind: SourceKind,
+    external_id: String,
+    canonical_url: Option<String>,
+    title: String,
+    description: Option<String>,
+    creator: Option<String>,
+    year_s: Option<String>,
+    language: Option<String>,
+    extra_subject: Option<String>,
+    publisher: Option<String>,
+    connector_version: &str,
+    raw: serde_json::Value,
+) -> Result<NormalizedCorpusDocument, ConnectorError> {
+    let mut contributions = Vec::new();
+    if let Some(name) = creator.filter(|s| !s.is_empty()) {
+        contributions.push(NormalizedContribution {
+            role: ContributionRole::Author,
+            agent_name: name.clone(),
+            name_normalized: normalize_person_name(&name, None),
+            identifier_scheme: None,
+            identifier_value: None,
+            ordinal: 0,
+        });
+    }
+    let mut subjects = Vec::new();
+    if let Some(s) = extra_subject {
+        subjects.push(NormalizedSubject {
+            scheme: "mediatype".into(),
+            label: s,
+            identifier: None,
+        });
+    }
+    let snapshot_text = match &description {
+        Some(d) if !d.is_empty() => format!("{title}\n\n{d}"),
+        _ => title.clone(),
+    };
+    let publication_time = match year_s.as_deref().and_then(year_from) {
+        Some(y) => TypedTimeLite::Exact {
+            year: y,
+            surface: year_s,
+        },
+        None => TypedTimeLite::Unknown { surface: year_s },
+    };
+    let identifiers = vec![NormalizedIdentifier {
+        scheme: IdentifierScheme::Other,
+        value_raw: external_id.clone(),
+        value_normalized: external_id.to_ascii_lowercase(),
+    }];
+    Ok(NormalizedCorpusDocument {
+        source_kind: kind,
+        external_id,
+        canonical_url,
+        document_type: DocumentType::BibliographicNotice,
+        title,
+        language,
+        abstract_text: description,
+        academic_status: AcademicStatus::CatalogRecord,
+        access_level: AccessLevel::MetadataOnly,
+        full_text_available: false,
+        rights_uri: None,
+        rights_holder: None,
+        rights_normalized: AccessLevel::MetadataOnly,
+        publisher_or_institution: publisher,
+        publication_time,
+        identifiers,
+        contributions,
+        subjects,
+        connector_version: connector_version.into(),
+        snapshot_text,
+        revision_token: None,
+        raw_metadata: raw,
+    })
+}
+
+pub(crate) fn page_from_list(
+    docs: Vec<serde_json::Value>,
+    debut: u32,
+    nombre: u32,
+    total: u64,
+    is_fixture: bool,
+    lite: fn(&serde_json::Value) -> Option<DiscoveredDocument>,
+) -> Result<DiscoveryPage, ConnectorError> {
+    let slice: Vec<&serde_json::Value> = if is_fixture {
+        docs.iter()
+            .skip(debut as usize)
+            .take(nombre as usize)
+            .collect()
+    } else {
+        docs.iter().take(nombre as usize).collect()
+    };
+    let mut documents = Vec::new();
+    for item in slice {
+        if let Some(doc) = lite(item) {
+            documents.push(doc);
+        }
+    }
+    let next_off = debut + documents.len() as u32;
+    let total_cap = if is_fixture {
+        total.min(docs.len() as u64)
+    } else {
+        total
+    };
+    let next = if (next_off as u64) < total_cap && !documents.is_empty() {
+        Some(DiscoveryCursor {
+            token: None,
+            offset: next_off,
+        })
+    } else {
+        None
+    };
+    Ok(DiscoveryPage {
+        documents,
+        next_cursor: next,
+    })
+}
+
+pub(crate) fn fetched(
+    document: &DiscoveredDocument,
+    normalized: NormalizedCorpusDocument,
+    detail: serde_json::Value,
+) -> Result<FetchedDocument, ConnectorError> {
+    Ok(FetchedDocument {
+        discovered: document.clone(),
+        revision_id: normalized.revision_token.clone(),
+        content_type: "application/json".into(),
+        text: normalized.snapshot_text.clone(),
+        raw_metadata: json!({
+            "normalized": normalized,
+            "provider": detail,
+        }),
+        license: None,
+        content_bytes: normalized.snapshot_text.len() as u64,
+    })
 }

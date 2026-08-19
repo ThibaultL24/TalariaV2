@@ -67,8 +67,7 @@ pub async fn run_cosmos_extract(
             .await??
         };
 
-        let (inserted, skipped) =
-            persist_batch(&pool, &config.wiki_lang, mock, &outputs).await?;
+        let (inserted, skipped) = persist_batch(&pool, &config.wiki_lang, mock, &outputs).await?;
         candidates_inserted += inserted;
         candidates_skipped += skipped;
         sentences_processed += chunk.len();
@@ -111,8 +110,7 @@ async fn persist_batch(
         let sentence_id = Uuid::parse_str(&output.id)?;
 
         for tuple in &output.tuples {
-            let entity_id =
-                upsert_entity_surface(pool, wiki_lang, &tuple.person).await?;
+            let entity_id = upsert_entity_surface(pool, wiki_lang, &tuple.person).await?;
             let hash = combinator_hash(
                 sentence_id,
                 &tuple.person,

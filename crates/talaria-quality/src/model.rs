@@ -124,7 +124,9 @@ impl TypedTime {
 
     pub fn canonical_key(&self) -> String {
         match self {
-            Self::Exact { year, month, day, .. } => {
+            Self::Exact {
+                year, month, day, ..
+            } => {
                 format!("exact:{year}:{}:{}", month.unwrap_or(0), day.unwrap_or(0))
             }
             Self::Range {

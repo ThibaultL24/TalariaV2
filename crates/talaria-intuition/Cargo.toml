@@ -1,0 +1,17 @@
+[package]
+name = "talaria-intuition"
+version.workspace = true
+edition.workspace = true
+description = "Canonical debate bundles for Intuition export (opinions only)"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+deunicode = "1"
+
+[dev-dependencies]
+pretty_assertions = "1"

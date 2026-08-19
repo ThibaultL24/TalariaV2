@@ -7,29 +7,42 @@ import {
   eventTypeLabel,
 } from "@/lib/event-taxonomy";
 import {
+  fetchEntityClaims,
   fetchEventDetail,
+  type EntityClaim,
   type EventDetailResponse,
   type EventSourceRef,
   type TimelineEvent,
 } from "@/lib/api";
 import { SourceRefsList } from "@/components/detail/source-refs-list";
-import { CitedParagraph } from "@/components/detail/cited-paragraph";
+import { HowItHappened } from "@/components/detail/how-it-happened";
+import { EventImageHero } from "@/components/detail/event-image-hero";
+import { DebatesPanel } from "@/components/explorer/debates-panel";
+import {
+  resolveEventImage,
+  type ResolvedEventImage,
+} from "@/lib/resolve-event-image";
 
 interface EventDetailCardProps {
   event: TimelineEvent;
   onClose: () => void;
+  offlineOnly?: boolean;
 }
 
-export function EventDetailCard({ event, onClose }: EventDetailCardProps) {
+export function EventDetailCard({ event, onClose, offlineOnly = false }: EventDetailCardProps) {
   const [detail, setDetail] = useState<EventDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [relatedDebates, setRelatedDebates] = useState<EntityClaim[]>([]);
   const [activeCite, setActiveCite] = useState<number | null>(null);
+  const [image, setImage] = useState<ResolvedEventImage | null>(null);
+  const [imageLoading, setImageLoading] = useState(false);
   const sourcesRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setActiveCite(null);
+    setRelatedDebates([]);
 
     fetchEventDetail(event.id)
       .then((payload) => {
@@ -42,10 +55,57 @@ export function EventDetailCard({ event, onClose }: EventDetailCardProps) {
         if (!cancelled) setLoading(false);
       });
 
+    fetchEntityClaims(event.entity_id)
+      .then((items) => {
+        if (!cancelled) {
+          setRelatedDebates(
+            items.filter((claim) => claim.canonical_event_id === event.id),
+          );
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setRelatedDebates([]);
+      });
+
     return () => {
       cancelled = true;
     };
   }, [event.id]);
+
+  useEffect(() => {
+    if (!detail?.event || offlineOnly) {
+      setImage(null);
+      setImageLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setImageLoading(true);
+    const wikiLang =
+      detail.source_refs?.find((ref) => ref.language)?.language ??
+      detail.evidence?.find((item) => item.wiki_lang)?.wiki_lang ??
+      "en";
+    resolveEventImage({
+      eventType: detail.event.event_type,
+      personLabel: detail.event.person,
+      placeLabel: detail.event.place_label,
+      sourcePageTitles: detail.source_page_titles,
+      sourceRefs: detail.source_refs,
+      wikipediaUrl: detail.links?.wikipedia_url,
+      defaultLang: wikiLang,
+    })
+      .then((resolved) => {
+        if (!cancelled) setImage(resolved);
+      })
+      .catch(() => {
+        if (!cancelled) setImage(null);
+      })
+      .finally(() => {
+        if (!cancelled) setImageLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [detail, offlineOnly]);
 
   const resolved = detail?.event ?? event;
   const howItHappened =
@@ -104,18 +164,10 @@ export function EventDetailCard({ event, onClose }: EventDetailCardProps) {
           <p className="text-sm text-(--color-text-muted)">Loading sources…</p>
         ) : null}
 
+        <EventImageHero image={image} loading={imageLoading} />
+
         {howItHappened ? (
-          <section className="rounded-lg border border-(--color-border-subtle) bg-(--color-bg-primary)/25 p-3">
-            <h4 className="text-[10px] font-semibold uppercase tracking-wide text-(--color-text-secondary)">
-              How it happened
-            </h4>
-            <div className="mt-2">
-              <CitedParagraph text={howItHappened} onCiteClick={focusCitation} />
-            </div>
-            <p className="mt-2 text-[10px] text-(--color-text-muted)">
-              Dossier synthèse des sources de cet événement — citations complètes ci-dessous.
-            </p>
-          </section>
+          <HowItHappened text={howItHappened} onCiteClick={focusCitation} />
         ) : null}
 
         <dl className="grid gap-2 text-sm">
@@ -194,6 +246,18 @@ export function EventDetailCard({ event, onClose }: EventDetailCardProps) {
             </ul>
           </section>
         )}
+
+        {relatedDebates.length > 0 ? (
+          <section className="border-t border-(--color-border-subtle) pt-4">
+            <h4 className="mb-2 text-sm font-semibold text-(--color-text-primary)">
+              Historians’ debates
+            </h4>
+            <p className="mb-2 text-xs text-(--color-text-secondary)">
+              Theories and controversies linked to this event — not map facts.
+            </p>
+            <DebatesPanel claims={relatedDebates} />
+          </section>
+        ) : null}
 
         <section ref={sourcesRef} className="border-t border-(--color-border-subtle) pt-4">
           <h4 className="mb-2 text-sm font-semibold text-(--color-text-primary)">

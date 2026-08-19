@@ -142,7 +142,10 @@ export function EntitySearchBox({
                           Local · {item.event_count ?? 0}
                         </span>
                       ) : (
-                        <span className="opacity-50">{item.qid ?? "Wikidata"}</span>
+                        <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-sky-300">
+                          {strings.searchIngestBadge}
+                          {item.qid ? ` · ${item.qid}` : ""}
+                        </span>
                       )}
                     </span>
                   </div>

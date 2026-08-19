@@ -1,0 +1,12 @@
+{
+  "object": {
+    "id": "/123/columbus_origins",
+    "title": ["Origin theories of Christopher Columbus"],
+    "dcDescription": ["Several theories exist about the true origins of Columbus."],
+    "dataProvider": ["Bibliothèque nationale de France"],
+    "edmIsShownAt": ["https://www.europeana.eu/item/123/columbus_origins"],
+    "guid": "https://www.europeana.eu/item/123/columbus_origins",
+    "type": "TEXT",
+    "year": ["2006"]
+  }
+}

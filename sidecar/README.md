@@ -44,3 +44,13 @@ cargo run -p talaria-api -- cosmos-extract --batch-size 32 --skip-existing
 
 Each batch spawns Python, loads COSMOS models, processes sentences, returns JSON.
 For large dumps, consider a long-running sidecar HTTP service (future).
+
+## Intuition testnet writer
+
+Opinions only (`question —has-proposition→ proposition`). Install once:
+
+```bash
+cd sidecar/intuition && npm install
+```
+
+`talaria intuition-publish --subject Napoleon --live` spawns `npx tsx writeOnChain.ts` with `INTUITION_PRIVATE_KEY`. Dry-run (`intuition-plan` / `intuition-export`) does not need Node.

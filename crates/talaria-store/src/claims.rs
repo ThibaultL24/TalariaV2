@@ -14,6 +14,8 @@ pub struct ClaimRow {
     pub place_label: Option<String>,
     pub confidence: f64,
     pub canonical_event_id: Option<Uuid>,
+    pub debate_type: Option<String>,
+    pub evidence_layer: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -27,6 +29,8 @@ pub struct ClaimInsert {
     pub place_label: Option<String>,
     pub confidence: f64,
     pub canonical_event_id: Option<Uuid>,
+    pub debate_type: Option<String>,
+    pub evidence_layer: Option<String>,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
@@ -45,9 +49,10 @@ pub async fn insert_claim(pool: &PgPool, claim: &ClaimInsert) -> anyhow::Result<
         r#"
         INSERT INTO soft_claims (
             entity_id, claim_kind, text, epistemic_status, relation_to_subject,
-            event_time, place_label, confidence, canonical_event_id
+            event_time, place_label, confidence, canonical_event_id,
+            debate_type, evidence_layer
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
         RETURNING id
         "#,
     )
@@ -60,6 +65,8 @@ pub async fn insert_claim(pool: &PgPool, claim: &ClaimInsert) -> anyhow::Result<
     .bind(&claim.place_label)
     .bind(claim.confidence)
     .bind(claim.canonical_event_id)
+    .bind(&claim.debate_type)
+    .bind(&claim.evidence_layer)
     .fetch_one(pool)
     .await?;
     Ok(id)
@@ -140,19 +147,27 @@ pub async fn list_claims_for_entity(
     pool: &PgPool,
     entity_id: Uuid,
     limit: i64,
+    debates_only: bool,
 ) -> anyhow::Result<Vec<ClaimRow>> {
     let rows = sqlx::query_as::<_, ClaimRow>(
         r#"
         SELECT id, entity_id, claim_kind, text, epistemic_status, relation_to_subject,
-               event_time, place_label, confidence, canonical_event_id
+               event_time, place_label, confidence, canonical_event_id,
+               debate_type, evidence_layer
         FROM soft_claims
         WHERE entity_id = $1
+          AND (
+            NOT $3
+            OR claim_kind IN ('theory', 'controversy', 'debate_stance')
+            OR relation_to_subject = 'historiography'
+          )
         ORDER BY confidence DESC, created_at ASC
         LIMIT $2
         "#,
     )
     .bind(entity_id)
     .bind(limit)
+    .bind(debates_only)
     .fetch_all(pool)
     .await?;
     Ok(rows)
@@ -236,7 +251,18 @@ pub async fn list_sentences_for_claims(
 }
 
 pub async fn backfill_life_event_claims(pool: &PgPool) -> anyhow::Result<usize> {
-    let rows = sqlx::query_as::<_, (Uuid, Uuid, String, String, Option<chrono::DateTime<chrono::Utc>>, Option<String>, f64)>(
+    let rows = sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            Uuid,
+            String,
+            String,
+            Option<chrono::DateTime<chrono::Utc>>,
+            Option<String>,
+            f64,
+        ),
+    >(
         r#"
         SELECT ce.id, ce.entity_id,
                COALESCE(ce.summary, ce.title) AS text,
@@ -259,12 +285,14 @@ pub async fn backfill_life_event_claims(pool: &PgPool) -> anyhow::Result<usize> 
                 entity_id,
                 claim_kind: claim_kind_for_event(&event_type).into(),
                 text: text.clone(),
-                epistemic_status: "established".into(),
+                epistemic_status: "attested".into(),
                 relation_to_subject: "direct".into(),
                 event_time,
                 place_label,
                 confidence,
                 canonical_event_id: Some(event_id),
+                debate_type: None,
+                evidence_layer: None,
             },
         )
         .await?;

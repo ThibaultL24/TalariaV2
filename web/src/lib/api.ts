@@ -130,7 +130,7 @@ export interface TimelineQuery {
 }
 
 export async function fetchTimeline(query: TimelineQuery = {}): Promise<TimelineResponse> {
-  const params = new URLSearchParams({ limit: String(query.limit ?? 500) });
+  const params = new URLSearchParams({ limit: String(query.limit ?? 2000) });
   if (query.entityId) params.set("entity_id", query.entityId);
   if (query.person?.trim()) params.set("person", query.person.trim());
   if (query.profileSlug) params.set("profile_slug", query.profileSlug);
@@ -141,7 +141,7 @@ export async function fetchTimeline(query: TimelineQuery = {}): Promise<Timeline
 }
 
 export async function fetchGeoJson(query: TimelineQuery = {}): Promise<GeoJsonFeatureCollection> {
-  const params = new URLSearchParams({ limit: String(query.limit ?? 500) });
+  const params = new URLSearchParams({ limit: String(query.limit ?? 2000) });
   if (query.entityId) params.set("entity_id", query.entityId);
   if (query.person?.trim()) params.set("person", query.person.trim());
   if (query.profileSlug) params.set("profile_slug", query.profileSlug);
@@ -185,6 +185,42 @@ export async function fetchEventDetail(eventId: string): Promise<EventDetailResp
   return response.json();
 }
 
+export interface ClaimEvidence {
+  id: string;
+  source_system: string;
+  locator?: string | null;
+  quote?: string | null;
+  sentence_id?: string | null;
+  confidence: number;
+}
+
+export interface EntityClaim {
+  id: string;
+  claim_kind: string;
+  text: string;
+  epistemic_status: string;
+  relation_to_subject: string;
+  confidence: number;
+  canonical_event_id?: string | null;
+  debate_type?: string | null;
+  evidence_layer?: string | null;
+  evidence: ClaimEvidence[];
+}
+
+export async function fetchEntityClaims(
+  entityId: string,
+  opts: { limit?: number; debatesOnly?: boolean } = {},
+): Promise<EntityClaim[]> {
+  const params = new URLSearchParams({
+    limit: String(opts.limit ?? 50),
+    debates_only: String(opts.debatesOnly ?? true),
+  });
+  const response = await fetch(`/api/v1/entities/${entityId}/claims?${params}`);
+  if (!response.ok) throw new Error("claims fetch failed");
+  const data = (await response.json()) as { claims?: EntityClaim[] };
+  return data.claims ?? [];
+}
+
 export async function fetchPeriods(): Promise<import("@/lib/schemas/entity").PeriodFacet[]> {
   const response = await fetch("/api/v1/periods");
   if (!response.ok) throw new Error("periods fetch failed");
@@ -197,4 +233,42 @@ export async function fetchProfiles(): Promise<import("@/lib/schemas/entity").Pr
   if (!response.ok) throw new Error("profiles fetch failed");
   const data = (await response.json()) as { profiles: import("@/lib/schemas/entity").ProfileFacet[] };
   return data.profiles ?? [];
+}
+
+export interface IngestJobResponse {
+  job_id: string;
+  status: "queued" | "running" | "done" | "failed" | string;
+  subject: string;
+  qid?: string | null;
+  entity_id?: string | null;
+  error?: string | null;
+  report?: unknown;
+  deduped?: boolean;
+}
+
+export async function startPersonIngest(input: {
+  subject: string;
+  qid?: string | null;
+  live?: boolean;
+}): Promise<IngestJobResponse> {
+  const response = await fetch("/api/v1/ingest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      subject: input.subject,
+      qid: input.qid ?? undefined,
+      live: input.live ?? true,
+    }),
+  });
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(body?.error ?? "ingest start failed");
+  }
+  return response.json();
+}
+
+export async function fetchIngestJob(jobId: string): Promise<IngestJobResponse> {
+  const response = await fetch(`/api/v1/ingest/${jobId}`);
+  if (!response.ok) throw new Error("ingest job fetch failed");
+  return response.json();
 }

@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use crate::budgets::IngestBudgets;
 use crate::kinds::SourceKind;
+use crate::person_profile::{infer_person_class, profile_for, PersonClass};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResolvedSubject {
@@ -16,6 +17,16 @@ pub struct ResolvedSubject {
     pub countries: Vec<String>,
     pub occupations: Vec<String>,
     pub known_identifiers: Vec<(String, String)>,
+}
+
+impl ResolvedSubject {
+    pub fn person_class(&self) -> PersonClass {
+        infer_person_class(&self.occupations, None)
+    }
+
+    pub fn catalog_query(&self, kind: SourceKind) -> String {
+        crate::catalog_search_query(&self.label, &profile_for(self.person_class()), kind)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,36 +45,42 @@ pub struct SourcePlan {
     pub planner_version: String,
 }
 
-pub const PLANNER_V1: &str = "plan_sources:v1";
+pub const PLANNER_V1: &str = "plan_sources:v2_person_class";
 
-/// Deterministic planner — no subject-specific hardcoding.
+/// Deterministic planner keyed by person class (POC presets), not a single military net.
+#[allow(clippy::vec_init_then_push)]
 pub fn plan_sources(subject: &ResolvedSubject, budgets: IngestBudgets) -> SourcePlan {
+    let class = subject.person_class();
+    let profile = profile_for(class);
     let mut sources = Vec::new();
 
     sources.push(PlannedSource {
         kind: SourceKind::Wikidata,
-        reason: "identity, vital dates, structured statements, place coordinates".into(),
+        reason: format!(
+            "identity + structured statements for {}",
+            class.as_str()
+        ),
         priority: 10,
         max_documents: budgets.max_documents_per_source.min(20),
     });
 
     sources.push(PlannedSource {
         kind: SourceKind::Wikipedia,
-        reason: "biographical prose, chronologies, linked event/place pages".into(),
+        reason: format!("biography pages ranked for {}", class.as_str()),
         priority: 20,
         max_documents: budgets.max_documents_per_source,
     });
 
     sources.push(PlannedSource {
         kind: SourceKind::Wikisource,
-        reason: "transcribed historical texts and correspondence".into(),
+        reason: format!("transcriptions / correspondence ({})", class.as_str()),
         priority: 40,
         max_documents: budgets.max_documents_per_source.min(15),
     });
 
     sources.push(PlannedSource {
         kind: SourceKind::WikimediaCommons,
-        reason: "media captions and geotags (not events by themselves)".into(),
+        reason: format!("media captions/geotags ({})", class.as_str()),
         priority: 50,
         max_documents: budgets.max_documents_per_source.min(10),
     });
@@ -76,18 +93,63 @@ pub fn plan_sources(subject: &ResolvedSubject, budgets: IngestBudgets) -> Source
             let c = c.to_lowercase();
             c.contains("france") || c.contains("french")
         });
+    let scholarly = matches!(
+        class,
+        PersonClass::Scientist
+            | PersonClass::InventorEngineer
+            | PersonClass::Philosopher
+            | PersonClass::ArtistWriter
+    );
 
-    if is_french {
-        sources.push(PlannedSource {
-            kind: SourceKind::Bnf,
-            reason: "French authority records and alignments".into(),
-            priority: 60,
-            max_documents: 10,
-        });
+    sources.push(PlannedSource {
+        kind: SourceKind::OpenAlex,
+        reason: format!("scholarly works query for {}", class.as_str()),
+        priority: if scholarly { 55 } else { 62 },
+        max_documents: budgets.max_documents_per_source.min(25),
+    });
+
+    sources.push(PlannedSource {
+        kind: SourceKind::Bnf,
+        reason: format!("BnF catalogue ({})", class.as_str()),
+        priority: 60,
+        max_documents: 15,
+    });
+    sources.push(PlannedSource {
+        kind: SourceKind::Europeana,
+        reason: format!("Europeana heritage ({})", class.as_str()),
+        priority: 72,
+        max_documents: 15,
+    });
+    sources.push(PlannedSource {
+        kind: SourceKind::InternetArchive,
+        reason: format!("Internet Archive texts ({})", class.as_str()),
+        priority: 85,
+        max_documents: 10,
+    });
+    sources.push(PlannedSource {
+        kind: SourceKind::OpenLibrary,
+        reason: format!("bibliographic editions ({})", class.as_str()),
+        priority: 80,
+        max_documents: 10,
+    });
+
+    if is_french || scholarly {
         sources.push(PlannedSource {
             kind: SourceKind::Gallica,
             reason: "digitized books, press, correspondence".into(),
             priority: 70,
+            max_documents: 15,
+        });
+        sources.push(PlannedSource {
+            kind: SourceKind::ThesesFr,
+            reason: format!("French theses about {}", class.as_str()),
+            priority: 65,
+            max_documents: budgets.max_documents_per_source.min(25),
+        });
+        sources.push(PlannedSource {
+            kind: SourceKind::Hal,
+            reason: "French open archive scholarly works".into(),
+            priority: 68,
             max_documents: 15,
         });
         sources.push(PlannedSource {
@@ -98,12 +160,7 @@ pub fn plan_sources(subject: &ResolvedSubject, budgets: IngestBudgets) -> Source
         });
     }
 
-    let military = subject.occupations.iter().any(|o| {
-        let o = o.to_lowercase();
-        o.contains("military") || o.contains("soldier") || o.contains("general") || o.contains("officer")
-    });
-    if military {
-        // Linked Wikipedia battle/campaign pages are discovered via Wikipedia connector depth.
+    if profile.enable_military_extractor {
         sources.push(PlannedSource {
             kind: SourceKind::Wikipedia,
             reason: "military subject: expand battle/campaign/treaty linked pages".into(),
@@ -111,25 +168,6 @@ pub fn plan_sources(subject: &ResolvedSubject, budgets: IngestBudgets) -> Source
             max_documents: budgets.max_documents_per_source,
         });
     }
-
-    sources.push(PlannedSource {
-        kind: SourceKind::OpenLibrary,
-        reason: "bibliographic works and editions".into(),
-        priority: 80,
-        max_documents: 10,
-    });
-    sources.push(PlannedSource {
-        kind: SourceKind::InternetArchive,
-        reason: "scans/OCR for published works".into(),
-        priority: 85,
-        max_documents: 10,
-    });
-    sources.push(PlannedSource {
-        kind: SourceKind::Europeana,
-        reason: "heritage objects and institutional provenance".into(),
-        priority: 95,
-        max_documents: 10,
-    });
 
     // Deduplicate by kind keeping highest priority (lowest number).
     sources.sort_by_key(|s| s.priority);

@@ -12,10 +12,7 @@ pub struct DiscoveryRunInsert {
     pub connector_versions: serde_json::Value,
 }
 
-pub async fn start_discovery_run(
-    pool: &PgPool,
-    run: &DiscoveryRunInsert,
-) -> anyhow::Result<Uuid> {
+pub async fn start_discovery_run(pool: &PgPool, run: &DiscoveryRunInsert) -> anyhow::Result<Uuid> {
     let id: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO source_discovery_runs (
@@ -173,22 +170,24 @@ pub struct QualityClaimInsert {
     pub time_json: serde_json::Value,
     pub place_entity_id: Option<Uuid>,
     pub place_label: Option<String>,
+    pub occurrence_stem: Option<String>,
 }
 
 pub async fn upsert_quality_claim(
     pool: &PgPool,
     claim: &QualityClaimInsert,
 ) -> anyhow::Result<(Uuid, bool)> {
-    let id: Uuid = sqlx::query_scalar(
+    // support_count starts at 0; add_claim_support increments only when a
+    // new support row is actually inserted (retry-safe).
+    let inserted: Option<(Uuid,)> = sqlx::query_as(
         r#"
         INSERT INTO quality_claims (
             subject_entity_id, fingerprint, predicate, event_type,
-            object_json, time_json, place_entity_id, place_label, status, support_count
+            object_json, time_json, place_entity_id, place_label, occurrence_stem,
+            status, support_count
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'open',1)
-        ON CONFLICT (fingerprint) DO UPDATE SET
-            support_count = quality_claims.support_count + 1,
-            updated_at = NOW()
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'open',0)
+        ON CONFLICT (fingerprint) DO NOTHING
         RETURNING id
         "#,
     )
@@ -200,15 +199,17 @@ pub async fn upsert_quality_claim(
     .bind(&claim.time_json)
     .bind(claim.place_entity_id)
     .bind(&claim.place_label)
-    .fetch_one(pool)
+    .bind(&claim.occurrence_stem)
+    .fetch_optional(pool)
     .await?;
-
-    let support: i32 =
-        sqlx::query_scalar(r#"SELECT support_count FROM quality_claims WHERE id = $1"#)
-            .bind(id)
-            .fetch_one(pool)
-            .await?;
-    Ok((id, support <= 1))
+    if let Some((id,)) = inserted {
+        return Ok((id, true));
+    }
+    let id: Uuid = sqlx::query_scalar(r#"SELECT id FROM quality_claims WHERE fingerprint = $1"#)
+        .bind(&claim.fingerprint)
+        .fetch_one(pool)
+        .await?;
+    Ok((id, false))
 }
 
 pub async fn add_claim_support(
@@ -218,14 +219,15 @@ pub async fn add_claim_support(
     snapshot_id: Option<Uuid>,
     source_kind: &str,
     evidence_ptr: &serde_json::Value,
-) -> anyhow::Result<()> {
-    sqlx::query(
+) -> anyhow::Result<bool> {
+    let inserted: Option<(Uuid,)> = sqlx::query_as(
         r#"
         INSERT INTO quality_claim_supports (
             claim_id, event_candidate_id, snapshot_id, source_kind, evidence_ptr
         )
         VALUES ($1,$2,$3,$4,$5)
         ON CONFLICT (claim_id, event_candidate_id) DO NOTHING
+        RETURNING id
         "#,
     )
     .bind(claim_id)
@@ -233,6 +235,96 @@ pub async fn add_claim_support(
     .bind(snapshot_id)
     .bind(source_kind)
     .bind(evidence_ptr)
+    .fetch_optional(pool)
+    .await?;
+    if inserted.is_some() {
+        sqlx::query(
+            r#"
+            UPDATE quality_claims SET
+                support_count = support_count + 1,
+                updated_at = NOW()
+            WHERE id = $1
+            "#,
+        )
+        .bind(claim_id)
+        .execute(pool)
+        .await?;
+        return Ok(true);
+    }
+    Ok(false)
+}
+
+pub async fn list_place_labels_for_occurrence_stem(
+    pool: &PgPool,
+    subject_entity_id: Uuid,
+    stem: &str,
+) -> anyhow::Result<Vec<String>> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        r#"
+        SELECT DISTINCT place_label FROM (
+            SELECT place_label FROM quality_claims
+            WHERE subject_entity_id = $1
+              AND occurrence_stem = $2
+              AND place_label IS NOT NULL
+              AND btrim(place_label) <> ''
+            UNION
+            SELECT place_label FROM canonical_events
+            WHERE entity_id = $1
+              AND occurrence_stem = $2
+              AND pipeline = 'quality'
+              AND is_active
+              AND place_label IS NOT NULL
+              AND btrim(place_label) <> ''
+        ) s
+        "#,
+    )
+    .bind(subject_entity_id)
+    .bind(stem)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|(s,)| s).collect())
+}
+
+pub async fn mark_quality_claims_conflict_by_stem(
+    pool: &PgPool,
+    subject_entity_id: Uuid,
+    stem: &str,
+    conflict_json: &serde_json::Value,
+) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"
+        UPDATE quality_claims SET
+            status = 'conflict',
+            conflict_json = $3,
+            updated_at = NOW()
+        WHERE subject_entity_id = $1 AND occurrence_stem = $2
+        "#,
+    )
+    .bind(subject_entity_id)
+    .bind(stem)
+    .bind(conflict_json)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn mark_quality_events_uncertain_by_stem(
+    pool: &PgPool,
+    subject_entity_id: Uuid,
+    stem: &str,
+) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"
+        UPDATE canonical_events SET
+            epistemic_status = 'uncertain'
+        WHERE entity_id = $1
+          AND occurrence_stem = $2
+          AND pipeline = 'quality'
+          AND is_active
+        "#,
+    )
+    .bind(subject_entity_id)
+    .bind(stem)
     .execute(pool)
     .await?;
     Ok(())
@@ -296,21 +388,18 @@ pub async fn density_report_counts(
             .await?
     };
 
-    let documents_snapshotted: i64 = sqlx::query_scalar(
-        r#"SELECT COUNT(*)::bigint FROM document_snapshots"#,
-    )
-    .fetch_one(pool)
-    .await?;
-
-    let fragments: i64 =
-        sqlx::query_scalar(r#"SELECT COUNT(*)::bigint FROM document_fragments"#)
+    let documents_snapshotted: i64 =
+        sqlx::query_scalar(r#"SELECT COUNT(*)::bigint FROM document_snapshots"#)
             .fetch_one(pool)
             .await?;
 
-    let candidates: i64 =
-        sqlx::query_scalar(r#"SELECT COUNT(*)::bigint FROM event_candidates"#)
-            .fetch_one(pool)
-            .await?;
+    let fragments: i64 = sqlx::query_scalar(r#"SELECT COUNT(*)::bigint FROM document_fragments"#)
+        .fetch_one(pool)
+        .await?;
+
+    let candidates: i64 = sqlx::query_scalar(r#"SELECT COUNT(*)::bigint FROM event_candidates"#)
+        .fetch_one(pool)
+        .await?;
     let rejected: i64 = sqlx::query_scalar(
         r#"SELECT COUNT(*)::bigint FROM event_candidates WHERE status = 'rejected'"#,
     )

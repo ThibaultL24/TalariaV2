@@ -1,0 +1,24 @@
+{
+  "response": {
+    "numFound": 2,
+    "start": 0,
+    "docs": [
+      {
+        "identifier": "columbusorigins00harr",
+        "title": "Christophe Colomb : son origine et ses voyages",
+        "creator": "Harrisse, Henry",
+        "year": "1884",
+        "description": "Examen des théories sur les origines de Christophe Colomb.",
+        "mediatype": "texts"
+      },
+      {
+        "identifier": "polymerchem00nguy",
+        "title": "Advances in polymer chemistry",
+        "creator": "Nguyen, Minh",
+        "year": "2019",
+        "description": "A review of polymer synthesis.",
+        "mediatype": "texts"
+      }
+    ]
+  }
+}

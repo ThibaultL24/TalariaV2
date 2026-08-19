@@ -1,0 +1,30 @@
+{
+  "titrePrincipal": "Relectures historiographiques de Napoléon",
+  "numSujet": "s98765",
+  "datePremiereInscriptionDoctorat": "2024-01-10",
+  "discipline": "Histoire contemporaine",
+  "titres": { "fr": "Relectures historiographiques de Napoléon" },
+  "resumes": {
+    "fr": "Projet de thèse sur les débats historiographiques autour de Napoléon au XXIe siècle."
+  },
+  "etabSoutenance": { "ppn": "026403552", "nom": "Université Paris 1 Panthéon-Sorbonne", "type": "etab" },
+  "mapSujets": {
+    "rameau": [
+      {
+        "keyword": "Napoléon I (empereur des Français ; 1769-1821)",
+        "type": "sujetsRameau",
+        "query": "027248840"
+      }
+    ]
+  },
+  "auteurs": [{ "nom": "Bernard", "prenom": "Claire" }],
+  "directeurs": [{ "nom": "Leroy", "prenom": "Paul" }],
+  "membresJury": [],
+  "rapporteurs": [],
+  "langues": ["fr"],
+  "accessible": "non",
+  "ecolesDoctorales": [],
+  "source": "step",
+  "status": "enCours",
+  "isSoutenue": false
+}

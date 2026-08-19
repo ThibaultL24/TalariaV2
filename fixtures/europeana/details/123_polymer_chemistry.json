@@ -1,0 +1,10 @@
+{
+  "object": {
+    "id": "/123/polymer_chemistry",
+    "title": ["Advances in polymer chemistry"],
+    "dcDescription": ["This review covers polymer synthesis."],
+    "dataProvider": ["Example Museum"],
+    "type": "TEXT",
+    "year": ["2019"]
+  }
+}

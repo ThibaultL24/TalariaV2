@@ -96,10 +96,7 @@ pub fn fingerprint_from_candidate(c: &EventCandidate) -> String {
         c.place_label.as_deref(),
         &c.snapshot_id.to_string(),
         c.clause_index,
-        c.evidence_ptrs
-            .first()
-            .map(|e| e.start_offset)
-            .unwrap_or(0),
+        c.evidence_ptrs.first().map(|e| e.start_offset).unwrap_or(0),
         c.evidence_ptrs.first().map(|e| e.end_offset).unwrap_or(0),
         &c.participant_mentions,
     )

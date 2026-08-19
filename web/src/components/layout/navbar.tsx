@@ -18,7 +18,10 @@ export function Navbar({ status }: NavbarProps) {
       </a>
       <div className="navbar__actions">
         {status ? (
-          <span className="navbar__stat">{events} canonical events</span>
+          <span className="navbar__stat">
+            {events} canonical events
+            <span className="ml-2 text-(--color-text-muted)">live 5s</span>
+          </span>
         ) : null}
       </div>
     </header>

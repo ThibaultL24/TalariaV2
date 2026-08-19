@@ -1,125 +1,128 @@
 // crates/talaria-sources/src/connectors/europeana.rs
-use async_trait::async_trait;
-use serde_json::Value;
+//! Europeana Search API v2 — metadata notices, never media bytes.
 
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+use async_trait::async_trait;
+
+use super::internet_archive::{catalog_notice, fetched, page_from_list};
+use super::net::{
+    build_client, first_str, get_json, load_search_details, urlencoding_encode,
+};
 use crate::connector::{
     ConnectorError, ConnectorHealth, DiscoveryCursor, DiscoveryPage, FetchedDocument,
     SourceConnector,
 };
-use crate::connectors::catalog::{
-    bibliographic_notice, catalog_place, http_client, json_first_string, names_match, parse_year,
-    year_in_life, NoticeRelation,
-};
+use crate::corpus::NormalizedCorpusDocument;
 use crate::kinds::{DiscoveryMethod, DocumentType, SourceKind};
 use crate::plan::ResolvedSubject;
-use crate::types::{DiscoveredDocument, ExternalEntityRef, SourceMetadata};
+use crate::types::{DiscoveredDocument, SourceMetadata, TypedTimeLite};
 
-const SEARCH: &str = "https://api.europeana.eu/record/v2/search.json";
+pub const CONNECTOR_VERSION: &str = "europeana:v1";
+pub const DEFAULT_BASE_URL: &str = "https://api.europeana.eu/record/v2";
+
+#[derive(Debug, Clone)]
+pub struct EuropeanaConfig {
+    pub base_url: String,
+    pub page_size: u32,
+    pub fixture_dir: Option<PathBuf>,
+    pub timeout: Duration,
+    pub api_key: Option<String>,
+}
+
+impl Default for EuropeanaConfig {
+    fn default() -> Self {
+        Self {
+            base_url: DEFAULT_BASE_URL.into(),
+            page_size: 25,
+            fixture_dir: None,
+            timeout: Duration::from_secs(30),
+            api_key: None,
+        }
+    }
+}
 
 pub struct EuropeanaConnector {
-    http: reqwest::Client,
-    api_key: String,
-    max_docs: u32,
+    config: EuropeanaConfig,
+    client: Option<reqwest::Client>,
+    fixture_details: HashMap<String, serde_json::Value>,
+    fixture_search: Option<serde_json::Value>,
+}
+
+pub fn europeana_id(v: &serde_json::Value) -> Option<String> {
+    first_str(v, &["id"]).or_else(|| v.get("object").and_then(|o| first_str(o, &["id"])))
+}
+
+pub fn normalize_europeana_item(
+    raw: &serde_json::Value,
+) -> Result<NormalizedCorpusDocument, ConnectorError> {
+    let item = raw.get("object").unwrap_or(raw);
+    let external_id = first_str(item, &["id"])
+        .ok_or_else(|| ConnectorError::Parse("europeana missing id".into()))?;
+    let title = first_str(item, &["title", "dcTitle"])
+        .ok_or_else(|| ConnectorError::Parse("europeana missing title".into()))?;
+    let description = first_str(item, &["dcDescription", "description"]);
+    let provider = first_str(item, &["dataProvider", "provider"]);
+    let url = first_str(item, &["edmIsShownAt", "guid", "edmIsShownBy"])
+        .or_else(|| Some(format!("https://www.europeana.eu/item{external_id}")));
+    catalog_notice(
+        SourceKind::Europeana,
+        external_id,
+        url,
+        title,
+        description,
+        first_str(item, &["dcCreator", "creator"]),
+        first_str(item, &["year"]),
+        first_str(item, &["language", "dcLanguage"]),
+        first_str(item, &["type"]),
+        provider,
+        CONNECTOR_VERSION,
+        raw.clone(),
+    )
 }
 
 impl EuropeanaConnector {
-    pub fn from_env() -> Result<Self, ConnectorError> {
-        let api_key = std::env::var("EUROPEANA_API_KEY")
-            .map_err(|_| ConnectorError::NotConfigured("EUROPEANA_API_KEY".into()))?;
-        if api_key.trim().is_empty() {
-            return Err(ConnectorError::NotConfigured("EUROPEANA_API_KEY".into()));
+    pub fn new(config: EuropeanaConfig) -> Result<Self, ConnectorError> {
+        if let Some(dir) = &config.fixture_dir {
+            return Self::from_fixtures(config.clone(), dir);
+        }
+        if config
+            .api_key
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .is_none()
+        {
+            return Err(ConnectorError::NotConfigured(
+                "EUROPEANA_API_KEY required for live Europeana".into(),
+            ));
         }
         Ok(Self {
-            http: http_client()?,
-            api_key,
-            max_docs: 20,
+            client: Some(build_client(config.timeout)?),
+            config,
+            fixture_details: HashMap::new(),
+            fixture_search: None,
         })
     }
 
-    pub fn parse_search(subject: &ResolvedSubject, payload: &Value) -> Vec<DiscoveredDocument> {
-        let Some(items) = payload.get("items").and_then(|v| v.as_array()) else {
-            return vec![];
+    pub fn from_fixture_dir(dir: impl AsRef<Path>) -> Result<Self, ConnectorError> {
+        let config = EuropeanaConfig {
+            fixture_dir: Some(dir.as_ref().to_path_buf()),
+            ..EuropeanaConfig::default()
         };
-        let mut out = Vec::new();
-        for item in items {
-            let id = item
-                .get("id")
-                .and_then(json_first_string)
-                .unwrap_or_default();
-            if id.is_empty() {
-                continue;
-            }
-            let title = item
-                .get("title")
-                .and_then(json_first_string)
-                .unwrap_or_else(|| "Untitled".into());
-            let year = item
-                .get("year")
-                .and_then(json_first_string)
-                .and_then(|s| parse_year(&s));
-            let who = item.get("dcCreator").and_then(json_first_string);
-            let authored = who
-                .as_deref()
-                .map(|name| names_match(&subject.label, name))
-                .unwrap_or(false);
-            if authored {
-                if let Some(year) = year {
-                    if !year_in_life(year, subject) {
-                        continue;
-                    }
-                }
-            }
-            let description = item
-                .get("dcDescription")
-                .and_then(json_first_string)
-                .or_else(|| item.get("description").and_then(json_first_string));
-            let place = catalog_place(
-                item.get("edmPlaceLabel")
-                    .and_then(json_first_string)
-                    .or_else(|| item.get("country").and_then(json_first_string))
-                    .as_deref(),
-            )
-            .or_else(|| catalog_place(description.as_deref()));
-            let shown_at = item.get("edmIsShownAt").and_then(json_first_string);
-            let relation = if authored {
-                NoticeRelation::Authored
-            } else {
-                NoticeRelation::About
-            };
-            let text = bibliographic_notice(
-                &subject.label,
-                &title,
-                year,
-                place.as_deref(),
-                description.as_deref(),
-                relation,
-            );
-            out.push(DiscoveredDocument {
-                source_kind: SourceKind::Europeana,
-                external_id: id.clone(),
-                canonical_url: shown_at.or_else(|| {
-                    Some(format!("https://www.europeana.eu/item{id}"))
-                }),
-                title,
-                language: item.get("language").and_then(json_first_string),
-                document_type: DocumentType::BibliographicNotice,
-                subject_links: vec![ExternalEntityRef {
-                    system: "europeana".into(),
-                    id,
-                    label: Some(subject.label.clone()),
-                }],
-                publication_time: year.map(|y| crate::types::TypedTimeLite::Exact {
-                    year: y,
-                    surface: Some(y.to_string()),
-                }),
-                discovery_method: DiscoveryMethod::CatalogSearch,
-                relevance_score: if authored { 0.78 } else { 0.5 },
-                source_metadata: SourceMetadata {
-                    raw: serde_json::json!({ "notice": text, "who": who, "place": place }),
-                },
-            });
-        }
-        out
+        Self::from_fixtures(config, dir.as_ref())
+    }
+
+    fn from_fixtures(config: EuropeanaConfig, dir: &Path) -> Result<Self, ConnectorError> {
+        let (search, details) = load_search_details(dir, europeana_id)?;
+        Ok(Self {
+            config,
+            client: None,
+            fixture_details: details,
+            fixture_search: Some(search),
+        })
     }
 }
 
@@ -128,9 +131,8 @@ impl SourceConnector for EuropeanaConnector {
     fn source_kind(&self) -> SourceKind {
         SourceKind::Europeana
     }
-
     fn connector_version(&self) -> &str {
-        "europeana:search_v2"
+        CONNECTOR_VERSION
     }
 
     async fn discover(
@@ -138,68 +140,106 @@ impl SourceConnector for EuropeanaConnector {
         subject: &ResolvedSubject,
         cursor: Option<DiscoveryCursor>,
     ) -> Result<DiscoveryPage, ConnectorError> {
-        if cursor.map(|c| c.offset).unwrap_or(0) > 0 {
-            return Ok(DiscoveryPage {
-                documents: vec![],
-                next_cursor: None,
-            });
-        }
-        let query = format!("\"{}\"", subject.label);
-        let rows = self.max_docs.to_string();
-        let response = self
-            .http
-            .get(SEARCH)
-            .query(&[
-                ("wskey", self.api_key.as_str()),
-                ("query", query.as_str()),
-                ("rows", rows.as_str()),
-                ("profile", "rich"),
-            ])
-            .send()
-            .await
-            .map_err(|e| ConnectorError::Http(e.to_string()))?
-            .error_for_status()
-            .map_err(|e| ConnectorError::Http(e.to_string()))?
-            .json::<Value>()
-            .await
-            .map_err(|e| ConnectorError::Parse(e.to_string()))?;
-        if response.get("success").and_then(|v| v.as_bool()) == Some(false) {
-            return Err(ConnectorError::Http(
-                json_first_string(&response).unwrap_or_else(|| "europeana search failed".into()),
-            ));
-        }
-        Ok(DiscoveryPage {
-            documents: Self::parse_search(subject, &response),
-            next_cursor: None,
-        })
+        let debut = cursor.map(|c| c.offset).unwrap_or(0);
+        let nombre = self.config.page_size.max(1);
+        let payload = if let Some(search) = &self.fixture_search {
+            search.clone()
+        } else {
+            let client = self.client.as_ref().ok_or_else(|| {
+                ConnectorError::NotConfigured("live HTTP client missing".into())
+            })?;
+            let key = self
+                .config
+                .api_key
+                .as_deref()
+                .ok_or_else(|| ConnectorError::NotConfigured("EUROPEANA_API_KEY".into()))?;
+            let q = subject.catalog_query(SourceKind::Europeana);
+            let url = format!(
+                "{}/search.json?wskey={}&query={}&qf=TYPE:TEXT&rows={nombre}&start={}",
+                self.config.base_url.trim_end_matches('/'),
+                urlencoding_encode(key),
+                urlencoding_encode(&q),
+                debut + 1
+            );
+            get_json(client, &url).await?
+        };
+        let docs = payload
+            .get("items")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let total = payload
+            .get("totalResults")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(docs.len() as u64);
+        page_from_list(
+            docs,
+            debut,
+            nombre,
+            total,
+            self.fixture_search.is_some(),
+            lite_eu,
+        )
     }
 
     async fn fetch(
         &self,
         document: &DiscoveredDocument,
     ) -> Result<FetchedDocument, ConnectorError> {
-        let text = document
-            .source_metadata
-            .raw
-            .get("notice")
-            .and_then(|v| v.as_str())
-            .unwrap_or(&document.title)
-            .to_string();
-        Ok(FetchedDocument {
-            discovered: document.clone(),
-            revision_id: None,
-            content_type: "text/plain".into(),
-            content_bytes: text.len() as u64,
-            raw_metadata: document.source_metadata.raw.clone(),
-            license: Some("Europeana item rights as provided".into()),
-            text,
-        })
+        let detail = if let Some(v) = self.fixture_details.get(&document.external_id) {
+            v.clone()
+        } else {
+            let client = self.client.as_ref().ok_or_else(|| {
+                ConnectorError::NotConfigured("live HTTP client missing".into())
+            })?;
+            let key = self
+                .config
+                .api_key
+                .as_deref()
+                .ok_or_else(|| ConnectorError::NotConfigured("EUROPEANA_API_KEY".into()))?;
+            let id = document.external_id.trim_start_matches('/');
+            let url = format!(
+                "{}/{}.json?wskey={}",
+                self.config.base_url.trim_end_matches('/'),
+                id,
+                urlencoding_encode(key)
+            );
+            get_json(client, &url).await?
+        };
+        fetched(document, normalize_europeana_item(&detail)?, detail)
     }
 
     async fn healthcheck(&self) -> Result<ConnectorHealth, ConnectorError> {
         Ok(ConnectorHealth {
             ok: true,
-            detail: "search.json with EUROPEANA_API_KEY".into(),
+            detail: if self.fixture_search.is_some() {
+                "fixture mode".into()
+            } else {
+                "europeana search API".into()
+            },
         })
     }
+}
+
+fn lite_eu(item: &serde_json::Value) -> Option<DiscoveredDocument> {
+    let external_id = europeana_id(item)?;
+    let title = first_str(item, &["title"])?;
+    Some(DiscoveredDocument {
+        source_kind: SourceKind::Europeana,
+        external_id,
+        canonical_url: first_str(item, &["edmIsShownAt", "guid"]),
+        title,
+        language: first_str(item, &["language"]),
+        document_type: DocumentType::BibliographicNotice,
+        subject_links: vec![],
+        publication_time: first_str(item, &["year"]).and_then(|s| {
+            s.parse::<i32>().ok().map(|y| TypedTimeLite::Exact {
+                year: y,
+                surface: Some(s),
+            })
+        }),
+        discovery_method: DiscoveryMethod::CatalogSearch,
+        relevance_score: 0.6,
+        source_metadata: SourceMetadata { raw: item.clone() },
+    })
 }

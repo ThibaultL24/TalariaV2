@@ -38,7 +38,6 @@ pub fn is_plausible_place_label(raw: &str) -> bool {
         || lower.starts_with("have ")
         || lower.starts_with("fight")
         || lower.starts_with("chapter")
-        || lower.contains("napoleon")
         || lower.contains("coalition")
         || lower.contains("claim")
     {

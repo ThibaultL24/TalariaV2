@@ -56,6 +56,8 @@ impl CandidateExtractor for PosthumousEventExtractor {
                 cross_clause_join: false,
                 extractor_id: self.extractor_id().into(),
                 is_posthumous: true,
+                lat: None,
+                lon: None,
             });
         }
         out

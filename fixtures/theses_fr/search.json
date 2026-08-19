@@ -1,0 +1,47 @@
+{
+  "totalHits": 3,
+  "took": 1,
+  "theses": [
+    {
+      "id": "2020AIXM0123",
+      "titrePrincipal": "Napoléon Bonaparte et la construction de l'État moderne",
+      "titreEN": "Napoleon Bonaparte and the making of the modern state",
+      "etabSoutenanceN": "Aix-Marseille Université",
+      "etabSoutenancePpn": "026403715",
+      "dateSoutenance": "2020-06-15",
+      "auteurs": [{ "ppn": "123456789", "nom": "Dupont", "prenom": "Alice" }],
+      "directeurs": [{ "ppn": "987654321", "nom": "Martin", "prenom": "Jean" }],
+      "nnt": "2020AIXM0123",
+      "doi": "10.1234/theses.napoleon.state",
+      "discipline": "Histoire",
+      "status": "soutenue",
+      "sujets": [{ "libelle": "Empire" }],
+      "sujetsRameau": [
+        { "ppn": "027248840", "libelle": "Napoléon I (empereur des Français ; 1769-1821)" }
+      ]
+    },
+    {
+      "id": "s98765",
+      "titrePrincipal": "Relectures historiographiques de Napoléon",
+      "datePremiereInscriptionDoctorat": "2024-01-10",
+      "auteurs": [{ "nom": "Bernard", "prenom": "Claire" }],
+      "directeurs": [{ "nom": "Leroy", "prenom": "Paul" }],
+      "numSujet": "s98765",
+      "discipline": "Histoire contemporaine",
+      "status": "enCours",
+      "sujetsRameau": [
+        { "ppn": "027248840", "libelle": "Napoléon I (empereur des Français ; 1769-1821)" }
+      ]
+    },
+    {
+      "id": "2015PA010999",
+      "titrePrincipal": "La chimie des polymères au XXIe siècle",
+      "dateSoutenance": "2015-11-02",
+      "auteurs": [{ "nom": "Nguyen", "prenom": "Minh" }],
+      "nnt": "2015PA010999",
+      "discipline": "Chimie",
+      "status": "soutenue",
+      "sujets": [{ "libelle": "Polymères" }]
+    }
+  ]
+}

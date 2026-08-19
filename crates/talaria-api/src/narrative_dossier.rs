@@ -104,13 +104,21 @@ pub async fn build_event_dossier(
         .map(str::trim)
         .filter(|text| !text.is_empty())
         .map(str::to_string)
-        .unwrap_or_else(|| weave_claims.first().map(|c| c.text.clone()).unwrap_or_default());
+        .unwrap_or_else(|| {
+            weave_claims
+                .first()
+                .map(|c| c.text.clone())
+                .unwrap_or_default()
+        });
 
     // Keep the full claim pool in source_refs (local + section), numbered as woven first.
     let mut ordered = weave_claims.clone();
     for claim in claims {
         let norm = normalize_key(&claim.text);
-        if ordered.iter().any(|existing| normalize_key(&existing.text) == norm) {
+        if ordered
+            .iter()
+            .any(|existing| normalize_key(&existing.text) == norm)
+        {
             continue;
         }
         ordered.push(claim);
@@ -332,7 +340,9 @@ async fn fetch_section_claims(
         .timeout(std::time::Duration::from_secs(12))
         .build()?;
 
-    let resolved = resolve_title(&client, lang, title).await.unwrap_or_else(|| title.to_string());
+    let resolved = resolve_title(&client, lang, title)
+        .await
+        .unwrap_or_else(|| title.to_string());
     let section = find_best_section(&client, lang, &resolved, event).await?;
     let Some((section_index, section_title)) = section else {
         return Ok(Vec::new());
@@ -452,7 +462,11 @@ async fn find_best_section(
             .to_ascii_lowercase();
         let index = section
             .get("index")
-            .and_then(|v| v.as_str().map(|s| s.to_string()).or_else(|| v.as_i64().map(|n| n.to_string())))
+            .and_then(|v| {
+                v.as_str()
+                    .map(|s| s.to_string())
+                    .or_else(|| v.as_i64().map(|n| n.to_string()))
+            })
             .unwrap_or_default();
         let title_line = section
             .get("line")
@@ -462,7 +476,11 @@ async fn find_best_section(
         for (score, needle) in needles.iter().enumerate() {
             if line.contains(needle) {
                 let rank = score as i32;
-                if best.as_ref().map(|(best_rank, _, _)| rank < *best_rank).unwrap_or(true) {
+                if best
+                    .as_ref()
+                    .map(|(best_rank, _, _)| rank < *best_rank)
+                    .unwrap_or(true)
+                {
                     best = Some((rank, index.clone(), title_line.clone()));
                 }
                 break;
@@ -535,32 +553,58 @@ fn relevance_keywords(event: &CanonicalEventRow) -> Vec<String> {
     match event.event_type.as_str() {
         "birth" => keys.extend(
             [
-                "naît", "nait", "born", "birth", "bapt", "ondoy", "mère", "mère", "mother",
-                "father", "père", "famille", "family", "ajaccio", "buonaparte",
+                "naît",
+                "nait",
+                "born",
+                "birth",
+                "bapt",
+                "ondoy",
+                "mère",
+                "mère",
+                "mother",
+                "father",
+                "père",
+                "famille",
+                "family",
+                "ajaccio",
+                "buonaparte",
             ]
             .into_iter()
             .map(str::to_string),
         ),
         "death" => keys.extend(
-            ["mort", "died", "death", "décès", "expire", "sainte-hélène", "st helena"]
-                .into_iter()
-                .map(str::to_string),
+            [
+                "mort",
+                "died",
+                "death",
+                "décès",
+                "expire",
+                "sainte-hélène",
+                "st helena",
+            ]
+            .into_iter()
+            .map(str::to_string),
         ),
         "battle" => keys.extend(
-            ["bataille", "battle", "fought", "combat", "victoire", "defeat"]
-                .into_iter()
-                .map(str::to_string),
+            [
+                "bataille", "battle", "fought", "combat", "victoire", "defeat",
+            ]
+            .into_iter()
+            .map(str::to_string),
         ),
         "education" => keys.extend(
-            ["étudi", "school", "école", "studied", "formation", "brienne"]
-                .into_iter()
-                .map(str::to_string),
+            [
+                "étudi",
+                "school",
+                "école",
+                "studied",
+                "formation",
+                "brienne",
+            ]
+            .into_iter()
+            .map(str::to_string),
         ),
-        _ => keys.extend(
-            ["en ", "à ", "in ", "at "]
-                .into_iter()
-                .map(str::to_string),
-        ),
+        _ => keys.extend(["en ", "à ", "in ", "at "].into_iter().map(str::to_string)),
     }
     keys
 }
@@ -593,7 +637,10 @@ fn is_relevant(text: &str, keywords: &[String]) -> bool {
 fn merge_claims(into: &mut Vec<DossierClaim>, extra: Vec<DossierClaim>) {
     for claim in extra {
         let norm = normalize_key(&claim.text);
-        if into.iter().any(|existing| normalize_key(&existing.text) == norm) {
+        if into
+            .iter()
+            .any(|existing| normalize_key(&existing.text) == norm)
+        {
             continue;
         }
         // Prefer FR biographical density: insert after local evidence.
@@ -723,7 +770,9 @@ fn compact_claim(text: &str, event: &CanonicalEventRow, section_title: Option<&s
     // Drop accidental section heading leftovers.
     for heading in ["Naissance", "Birth", "Early life", "Mort", "Death"] {
         if text.starts_with(heading) {
-            text = text[heading.len()..].trim_start_matches([' ', ':', '—', '-']).to_string();
+            text = text[heading.len()..]
+                .trim_start_matches([' ', ':', '—', '-'])
+                .to_string();
         }
     }
 
@@ -872,21 +921,33 @@ fn decode_basic_entities(text: &str) -> String {
     // Numeric decimal entities: &#123;
     while let Some(start) = out.find("&#") {
         let after = &out[start + 2..];
-        let (digits, is_hex) = if let Some(rest) = after.strip_prefix('x').or_else(|| after.strip_prefix('X')) {
-            (
-                rest.chars().take_while(|c| c.is_ascii_hexdigit()).collect::<String>(),
-                true,
-            )
-        } else {
-            (
-                after.chars().take_while(|c| c.is_ascii_digit()).collect::<String>(),
-                false,
-            )
-        };
+        let (digits, is_hex) =
+            if let Some(rest) = after.strip_prefix('x').or_else(|| after.strip_prefix('X')) {
+                (
+                    rest.chars()
+                        .take_while(|c| c.is_ascii_hexdigit())
+                        .collect::<String>(),
+                    true,
+                )
+            } else {
+                (
+                    after
+                        .chars()
+                        .take_while(|c| c.is_ascii_digit())
+                        .collect::<String>(),
+                    false,
+                )
+            };
         if digits.is_empty() {
             break;
         }
-        let end_offset = start + 2 + if is_hex { 1 + digits.len() } else { digits.len() };
+        let end_offset = start
+            + 2
+            + if is_hex {
+                1 + digits.len()
+            } else {
+                digits.len()
+            };
         if out.as_bytes().get(end_offset) != Some(&b';') {
             // skip malformed
             out = format!("{}{}", &out[..start + 2], &out[start + 2..]);

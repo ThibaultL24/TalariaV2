@@ -1,15 +1,23 @@
 // web/src/lib/geo/feature-ids.ts
 import type { TalariaFeature } from "@/lib/schemas/geojson";
 
+function asId(value: unknown): string | null {
+  if (value == null) return null;
+  const text = String(value).trim();
+  return text ? text : null;
+}
+
+/**
+ * Event identity for detail / selection.
+ * Prefer `properties.id` — MapLibre clustering does not preserve GeoJSON feature ids
+ * and may replace them with ephemeral integers.
+ */
 export function getFeatureId(feature: TalariaFeature): string {
-  if (feature.id != null && String(feature.id).trim()) {
-    return String(feature.id);
-  }
   const props = feature.properties ?? {};
-  const pid = props.id ?? props.event_id;
-  if (pid != null && String(pid).trim()) {
-    return String(pid);
-  }
+  const fromProps = asId(props.id) ?? asId(props.event_id);
+  if (fromProps) return fromProps;
+  const fromFeature = asId(feature.id);
+  if (fromFeature) return fromFeature;
   return crypto.randomUUID();
 }
 
