@@ -36,6 +36,8 @@ WITH mapping(title_pattern, slug, label, kind) AS (
     ('Alan Turing%', 'computer-scientist', 'computer scientist', 'occupation'),
     ('Victor Hugo%', 'writer', 'writer', 'occupation'),
     ('Victor Hugo%', 'politician', 'politician', 'occupation'),
+    ('Honoré de Balzac%', 'writer', 'writer', 'occupation'),
+    ('Honore de Balzac%', 'writer', 'writer', 'occupation'),
     ('Leonardo%', 'artist', 'artist', 'occupation'),
     ('Leonardo%', 'engineer', 'engineer', 'occupation'),
     ('Christopher Columbus%', 'explorer', 'explorer', 'occupation'),

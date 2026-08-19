@@ -29,6 +29,7 @@ BIO_TITLES = [
     "Christopher Columbus",
     "Alan Turing",
     "Cleopatra",
+    "Honoré de Balzac",
 ]
 
 EXTRA_TITLES = [
@@ -87,6 +88,13 @@ EXTRA_TITLES = [
     "Caesarion",
     "Mark Antony",
     "Donations of Alexandria",
+    "La Comédie humaine",
+    "Le Père Goriot",
+    "Eugénie Grandet",
+    "Lost Illusions",
+    "Cousin Bette",
+    "Château de Saché",
+    "Ewelina Hańska",
 ]
 
 

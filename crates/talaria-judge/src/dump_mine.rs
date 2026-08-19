@@ -194,6 +194,34 @@ const SUBJECTS: &[Subject] = &[
         year_min: -80,
         year_max: 30,
     },
+    Subject {
+        wiki_title: "Honoré de Balzac",
+        aliases: &[
+            "honoré de balzac",
+            "honore de balzac",
+            "honoré balzac",
+            "honore balzac",
+            "de balzac",
+            "balzac",
+        ],
+        page_needles: &[
+            "balzac",
+            "comédie humaine",
+            "comedie humaine",
+            "père goriot",
+            "pere goriot",
+            "eugénie grandet",
+            "eugenie grandet",
+            "illusions perdues",
+            "lost illusions",
+            "cousine bette",
+            "cousin bette",
+            "château de saché",
+            "chateau de sache",
+        ],
+        year_min: 1795,
+        year_max: 1860,
+    },
 ];
 
 const ANECDOTE_CUES: &[&str] = &[
@@ -626,6 +654,18 @@ mod tests {
         );
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].place.to_lowercase(), "florence");
+    }
+
+    #[test]
+    fn mines_balzac_birth() {
+        let hits = mine_sentence(
+            "Honoré de Balzac was born in 1799 in Tours.",
+            "Honoré de Balzac",
+        );
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].person, "Honoré de Balzac");
+        assert_eq!(hits[0].time, "1799");
+        assert_eq!(hits[0].place.to_lowercase(), "tours");
     }
 
     #[test]

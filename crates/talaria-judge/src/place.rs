@@ -266,6 +266,16 @@ const GAZETTEER: &[(&str, f64, f64)] = &[
         ("rhodes", 36.4349, 28.2176),
         ("athens", 37.9838, 23.7275),
         ("memphis", 29.8496, 31.2535),
+        ("tours", 47.3941, 0.6848),
+        ("saché", 47.247, 0.545),
+        ("sache", 47.247, 0.545),
+        ("vendôme", 47.793, 1.066),
+        ("vendome", 47.793, 1.066),
+        ("château de saché", 47.247, 0.545),
+        ("chateau de sache", 47.247, 0.545),
+        ("geneva", 46.2044, 6.1432),
+        ("berdychiv", 49.907, 28.591),
+        ("berdichev", 49.907, 28.591),
 ];
 
 fn gazetteer_lookup(key: &str) -> Option<(Option<f64>, Option<f64>)> {

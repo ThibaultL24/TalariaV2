@@ -191,6 +191,10 @@ const PERSON_ALIASES: &[(&str, &str)] = &[
     ("alan turing", "Alan Turing"),
     ("cleopatra vii", "Cleopatra"),
     ("cleopatra", "Cleopatra"),
+    ("honoré de balzac", "Honoré de Balzac"),
+    ("honore de balzac", "Honoré de Balzac"),
+    ("de balzac", "Honoré de Balzac"),
+    ("balzac", "Honoré de Balzac"),
 ];
 
 const VERB_CUES: &[(&str, &str)] = &[
@@ -435,6 +439,16 @@ const GAZETTEER: &[&str] = &[
     "athens",
     "memphis",
     "oslo",
+    "tours",
+    "saché",
+    "sache",
+    "vendôme",
+    "vendome",
+    "château de saché",
+    "chateau de sache",
+    "geneva",
+    "berdychiv",
+    "berdichev",
 ];
 
 fn try_prose_dense(
@@ -506,6 +520,15 @@ fn resolve_dense_subject(text: &str, page_lower: &str) -> Option<(String, i32, i
         ("turing", "Alan Turing", 1910, 1960),
         ("bletchley", "Alan Turing", 1910, 1960),
         ("cleopatra", "Cleopatra", -80, 30),
+        ("balzac", "Honoré de Balzac", 1795, 1860),
+        ("comédie humaine", "Honoré de Balzac", 1795, 1860),
+        ("comedie humaine", "Honoré de Balzac", 1795, 1860),
+        ("père goriot", "Honoré de Balzac", 1795, 1860),
+        ("pere goriot", "Honoré de Balzac", 1795, 1860),
+        ("eugénie grandet", "Honoré de Balzac", 1795, 1860),
+        ("lost illusions", "Honoré de Balzac", 1795, 1860),
+        ("illusions perdues", "Honoré de Balzac", 1795, 1860),
+        ("cousin bette", "Honoré de Balzac", 1795, 1860),
         ("french consulate", "Napoleon", 1765, 1865),
         ("first french empire", "Napoleon", 1765, 1865),
         ("hundred days", "Napoleon", 1765, 1865),
@@ -565,6 +588,7 @@ fn subject_year_window(person: &str) -> (i32, i32) {
         "Christopher Columbus" => (1440, 1510),
         "Alan Turing" => (1910, 1960),
         "Cleopatra" => (-80, 30),
+        "Honoré de Balzac" => (1795, 1860),
         _ => (1765, 1865),
     }
 }
