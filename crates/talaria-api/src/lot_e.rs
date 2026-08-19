@@ -18,6 +18,7 @@ use talaria_quality::{
 use talaria_sources::extractors::{
     claim_fingerprint, extractor_stack_for, CandidateExtractor, ClaimKey, ExtractorInput,
 };
+use talaria_sources::connectors::net::send_retrying;
 use talaria_sources::{
     filter_wiki_titles_for_profile, first_year_in_window, is_plausible_place_label,
     lifespan_year_window, load_seed_titles, merge_seed_titles, place_hint_from_title,
@@ -83,7 +84,7 @@ async fn fetch_wikipedia_extract_rest(
             .map_err(|_| anyhow::anyhow!("bad wikipedia base url"))?;
         segs.extend(["api", "rest_v1", "page", "html", &title_path]);
     }
-    let html_resp = send_retrying(client.get(html_url)).await?.error_for_status()?;
+    let html_resp = send_retrying(client.get(html_url), 8, Duration::from_secs(4)).await.map_err(|e| anyhow::anyhow!("{e}"))?.error_for_status()?;
     let html = html_resp.text().await?;
     let extract = html_to_rough_text(&html);
     if extract.len() < 80 {
@@ -133,8 +134,11 @@ async fn fetch_wikipedia_extract(
             ("redirects", "1"),
             ("colimit", "1"),
         ]),
+        8,
+        Duration::from_secs(4),
     )
-    .await;
+    .await
+    .map_err(|e| anyhow::anyhow!("{e}"));
 
     match action {
         Ok(resp) if resp.status().is_success() => {
@@ -1193,28 +1197,6 @@ fn wiki_http_client() -> anyhow::Result<reqwest::Client> {
         .build()?)
 }
 
-async fn send_retrying(builder: reqwest::RequestBuilder) -> anyhow::Result<reqwest::Response> {
-    let mut backoff = Duration::from_secs(4);
-    for attempt in 1..=8 {
-        let req = builder
-            .try_clone()
-            .ok_or_else(|| anyhow::anyhow!("cannot clone request for retry"))?;
-        let resp = req.send().await?;
-        if matches!(resp.status().as_u16(), 429 | 503) {
-            tracing::warn!(
-                attempt,
-                status = %resp.status(),
-                secs = backoff.as_secs(),
-                "rate limited — backing off"
-            );
-            tokio::time::sleep(backoff).await;
-            backoff = (backoff * 2).min(Duration::from_secs(90));
-            continue;
-        }
-        return Ok(resp);
-    }
-    anyhow::bail!("still rate-limited after retries")
-}
 
 async fn deactivate_mismatched_lifespan(
     pool: &sqlx::PgPool,
@@ -1334,8 +1316,11 @@ pub(crate) async fn fetch_wikidata_subject_meta(
             ("languages", "en"),
             ("format", "json"),
         ]),
+        8,
+        Duration::from_secs(4),
     )
-    .await?
+    .await
+    .map_err(|e| anyhow::anyhow!("{e}"))?
     .error_for_status()?
     .json::<serde_json::Value>()
     .await?;
@@ -1413,8 +1398,11 @@ pub(crate) async fn fetch_wikidata_subject_meta(
                 ("languages", "en"),
                 ("format", "json"),
             ]),
+            8,
+            Duration::from_secs(4),
         )
         .await
+        .map_err(|e| anyhow::Error::msg(e.to_string()))
         {
             Ok(resp) => match resp.error_for_status() {
                 Ok(ok) => ok.json::<serde_json::Value>().await.ok(),
@@ -1540,7 +1528,12 @@ async fn fetch_wikipedia_article_links(
         if let Some(c) = &plcontinue {
             req = req.query(&[("plcontinue", c.as_str())]);
         }
-        let resp = send_retrying(req).await?.error_for_status()?.json::<serde_json::Value>().await?;
+        let resp = send_retrying(req, 8, Duration::from_secs(4))
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?
+            .error_for_status()?
+            .json::<serde_json::Value>()
+            .await?;
         if let Some(pages) = resp.pointer("/query/pages").and_then(|v| v.as_object()) {
             for page in pages.values() {
                 if let Some(links) = page.get("links").and_then(|v| v.as_array()) {

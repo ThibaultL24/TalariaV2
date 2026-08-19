@@ -56,6 +56,41 @@ pub fn load_search_details(
     Ok((search, details))
 }
 
+/// Retry a prepared `RequestBuilder` up to `max_attempts` times on 429/503 responses,
+/// using exponential backoff starting at `initial_backoff`.
+pub async fn send_retrying(
+    builder: reqwest::RequestBuilder,
+    max_attempts: u32,
+    initial_backoff: Duration,
+) -> Result<reqwest::Response, ConnectorError> {
+    let mut backoff = initial_backoff;
+    for attempt in 1..=max_attempts {
+        let req = builder
+            .try_clone()
+            .ok_or_else(|| ConnectorError::Other(anyhow::anyhow!("cannot clone request for retry")))?;
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| ConnectorError::Http(e.to_string()))?;
+        if matches!(resp.status().as_u16(), 429 | 503) {
+            if attempt == max_attempts {
+                return Err(ConnectorError::RateLimited);
+            }
+            tracing::warn!(
+                attempt,
+                status = %resp.status(),
+                secs = backoff.as_secs(),
+                "rate limited — backing off"
+            );
+            tokio::time::sleep(backoff).await;
+            backoff = (backoff * 2).min(Duration::from_secs(90));
+            continue;
+        }
+        return Ok(resp);
+    }
+    Err(ConnectorError::RateLimited)
+}
+
 pub async fn get_json(
     client: &reqwest::Client,
     url: &str,

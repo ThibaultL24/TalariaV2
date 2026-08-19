@@ -6,7 +6,7 @@ mod gallica;
 mod internet_archive;
 mod open_library;
 mod bnf;
-mod net;
+pub mod net;
 mod openalex;
 mod stub;
 mod theses_fr;
