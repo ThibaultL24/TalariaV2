@@ -39,7 +39,6 @@ pub fn mock_extract(items: &[BatchInputItem]) -> Vec<BatchOutputItem> {
         .collect()
 }
 
-#[allow(dead_code)]
 fn mock_extract_text(text: &str, page_title: Option<&str>) -> Vec<ExtractedTuple> {
     mock_extract_text_with_carry(text, page_title, None, None)
 }

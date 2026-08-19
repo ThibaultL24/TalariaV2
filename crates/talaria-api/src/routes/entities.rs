@@ -20,11 +20,7 @@ pub struct EntitySearchQuery {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct EntityGetQuery {
-    #[serde(default = "default_lang")]
-    #[allow(dead_code)]
-    pub lang: String,
-}
+pub struct EntityGetQuery {}
 
 fn default_lang() -> String {
     "en".into()

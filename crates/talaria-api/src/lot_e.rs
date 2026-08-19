@@ -37,6 +37,17 @@ use talaria_store::{
 };
 
 use crate::cli_helpers::open_db_for_subject;
+
+fn event_type_from_page_title(title: &str) -> &'static str {
+    let lower = title.to_lowercase();
+    if lower.starts_with("siege") || lower.starts_with("siège") {
+        "siege"
+    } else if lower.starts_with("treaty") || lower.starts_with("traité") {
+        "treaty"
+    } else {
+        "battle"
+    }
+}
 use uuid::Uuid;
 
 use crate::place_conflict::{abstain_if_competing_place, competing_place_codes};
@@ -474,7 +485,9 @@ pub async fn run_lot_e_density_ingest(
                     );
                 }
             }
-            for linked in discover_generic_linked_titles(subject, &text) {
+            // Prose-fragment title mining is disabled: it floods the queue with non-pages.
+            // Growth comes from Wikipedia `prop=links` at ingest start instead.
+            for linked in ([] as [String; 0]) {
                 enqueue_discovered_title(
                     &mut title_queue,
                     &mut seen_titles,
@@ -562,17 +575,7 @@ pub async fn run_lot_e_density_ingest(
                         first_year_in(&text, subject_res.birth_year, subject_res.death_year)
                     {
                         raws.push(talaria_sources::extractors::RawCandidate {
-                            event_type: if resolved_title.to_lowercase().starts_with("siege")
-                                || resolved_title.to_lowercase().starts_with("siège")
-                            {
-                                "siege".into()
-                            } else if resolved_title.to_lowercase().starts_with("treaty")
-                                || resolved_title.to_lowercase().starts_with("traité")
-                            {
-                                "treaty".into()
-                            } else {
-                                "battle".into()
-                            },
+                            event_type: event_type_from_page_title(&resolved_title).into(),
                             predicate: "fought_at".into(),
                             subject_surface: subject.into(),
                             time_surface: Some(year),
@@ -736,12 +739,6 @@ fn enqueue_discovered_title(
     if seen.insert(title.clone()) {
         queue.push_back(title);
     }
-}
-
-fn discover_generic_linked_titles(_subject: &str, _text: &str) -> Vec<String> {
-    // Exploration growth is Wikipedia `prop=links` at ingest start.
-    // Mining prose fragments as titles floods the queue with non-pages.
-    Vec::new()
 }
 
 fn discover_linked_titles(text: &str) -> Vec<String> {

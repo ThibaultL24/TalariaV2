@@ -801,10 +801,3 @@ fn urlencoding_encode(s: &str) -> String {
     out
 }
 
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct SearchEnvelope {
-    #[serde(rename = "totalHits")]
-    total_hits: Option<u64>,
-    theses: Option<Vec<serde_json::Value>>,
-}
