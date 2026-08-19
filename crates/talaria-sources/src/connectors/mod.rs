@@ -420,6 +420,53 @@ pub fn default_registry_with_corpus(
         register_stub(&mut reg, kind, notes);
     }
 
+    // Register corpus connectors supplied by the caller (override stubs when present).
+    if let Some(ia) = internet_archive {
+        reg.register(ConnectorRegistration {
+            kind: SourceKind::InternetArchive,
+            implemented: true,
+            capabilities: stub_capabilities(SourceKind::InternetArchive),
+            connector: Some(Arc::new(ia)),
+            config_notes: "Internet Archive (corpus fixture)".into(),
+        });
+    }
+    if let Some(eu) = europeana {
+        reg.register(ConnectorRegistration {
+            kind: SourceKind::Europeana,
+            implemented: true,
+            capabilities: stub_capabilities(SourceKind::Europeana),
+            connector: Some(Arc::new(eu)),
+            config_notes: "Europeana (corpus fixture)".into(),
+        });
+    }
+    if let Some(bnf) = bnf {
+        reg.register(ConnectorRegistration {
+            kind: SourceKind::Bnf,
+            implemented: true,
+            capabilities: stub_capabilities(SourceKind::Bnf),
+            connector: Some(Arc::new(bnf)),
+            config_notes: "BnF (corpus fixture)".into(),
+        });
+    }
+    if let Some(theses) = theses_fr {
+        reg.register(ConnectorRegistration {
+            kind: SourceKind::ThesesFr,
+            implemented: true,
+            capabilities: stub_capabilities(SourceKind::ThesesFr),
+            connector: Some(Arc::new(theses)),
+            config_notes: "theses.fr (corpus fixture)".into(),
+        });
+    }
+    if let Some(oa) = open_alex {
+        reg.register(ConnectorRegistration {
+            kind: SourceKind::OpenAlex,
+            implemented: true,
+            capabilities: stub_capabilities(SourceKind::OpenAlex),
+            connector: Some(Arc::new(oa)),
+            config_notes: "OpenAlex (corpus fixture)".into(),
+        });
+    }
+
     Ok(reg)
 }
 

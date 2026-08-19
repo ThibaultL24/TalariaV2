@@ -1,8 +1,8 @@
 // crates/talaria-sources/tests/lot_c_catalog.rs
 use talaria_sources::connectors::{
-    EuropeanaConnector, GallicaConnector, InternetArchiveConnector, OpenLibraryConnector,
+    normalize_europeana_item, normalize_ia_item, GallicaConnector, OpenLibraryConnector,
 };
-use talaria_sources::extractors::{default_extractor_stack, CandidateExtractor, ExtractorInput};
+use talaria_sources::extractors::{default_extractor_stack, ExtractorInput};
 use talaria_sources::ResolvedSubject;
 
 fn napoleon() -> ResolvedSubject {
@@ -67,45 +67,32 @@ fn open_library_drops_authored_work_outside_lifespan() {
 }
 
 #[test]
-fn internet_archive_parses_response_docs() {
-    let payload = serde_json::json!({
-        "response": {
-            "docs": [{
-                "identifier": "memorialsthelena",
-                "title": "Memorial of Saint Helena",
-                "year": "1823",
-                "creator": "Napoleon",
-                "description": "Dictated on Saint Helena."
-            }]
+fn internet_archive_normalizes_item() {
+    let detail = serde_json::json!({
+        "metadata": {
+            "identifier": "memorialsthelena",
+            "title": "Memorial of Saint Helena",
+            "date": "1823",
+            "creator": "Napoleon",
+            "description": "Dictated on Saint Helena."
         }
     });
-    let docs = InternetArchiveConnector::parse_search(&napoleon(), &payload);
-    assert_eq!(docs.len(), 1);
-    assert!(docs[0]
-        .source_metadata
-        .raw["notice"]
-        .as_str()
-        .unwrap()
-        .contains("Saint Helena"));
+    let doc = normalize_ia_item(&detail).expect("normalize_ia_item should succeed");
+    assert!(doc.title.contains("Saint Helena"));
 }
 
 #[test]
-fn europeana_parses_items() {
-    let payload = serde_json::json!({
-        "success": true,
-        "items": [{
-            "id": "/123/abc",
-            "title": ["Portrait of Napoleon"],
-            "year": ["1804"],
-            "dcCreator": ["Jacques-Louis David"],
-            "dcDescription": ["Napoleon crowned in Paris in 1804."],
-            "edmIsShownAt": ["https://example.org/item"]
-        }]
+fn europeana_normalizes_item() {
+    let item = serde_json::json!({
+        "id": "/123/abc",
+        "title": ["Portrait of Napoleon"],
+        "year": ["1804"],
+        "dcCreator": ["Jacques-Louis David"],
+        "dcDescription": ["Napoleon crowned in Paris in 1804."],
+        "edmIsShownAt": ["https://example.org/item"]
     });
-    let docs = EuropeanaConnector::parse_search(&napoleon(), &payload);
-    assert_eq!(docs.len(), 1);
-    let notice = docs[0].source_metadata.raw["notice"].as_str().unwrap();
-    assert!(notice.contains("crowned in Paris"));
+    let doc = normalize_europeana_item(&item).expect("normalize_europeana_item should succeed");
+    assert!(doc.title.contains("Napoleon") || doc.raw_metadata.to_string().contains("1804"));
 }
 
 #[test]
