@@ -4,6 +4,8 @@ interface EntityProfileProps {
   qid?: string | null;
   eventCount?: number;
   mapCount?: number;
+  agoraCount?: number;
+  bibliographyCount?: number;
   profiles?: Array<{ slug: string; label: string }>;
 }
 
@@ -12,6 +14,8 @@ export function EntityProfile({
   qid,
   eventCount,
   mapCount,
+  agoraCount,
+  bibliographyCount,
   profiles = [],
 }: EntityProfileProps) {
   return (
@@ -22,9 +26,18 @@ export function EntityProfile({
       <h2 className="mt-1 text-lg font-semibold leading-snug">{name}</h2>
       <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-(--color-text-muted)">
         {qid ? <span>{qid}</span> : null}
-        {eventCount != null ? <span>{eventCount} events</span> : null}
+        {eventCount != null ? <span>{eventCount} quality events</span> : null}
         {mapCount != null ? <span>{mapCount} on map</span> : null}
+        {agoraCount != null && agoraCount > 0 ? (
+          <span className="text-amber-200/80">{agoraCount} agora</span>
+        ) : null}
+        {bibliographyCount != null && bibliographyCount > 0 ? (
+          <span>{bibliographyCount} sources</span>
+        ) : null}
       </div>
+      <p className="mt-2 text-[10px] leading-relaxed text-(--color-text-muted)">
+        Map & timeline = validated facts. Agora = debates & bibliographic sources.
+      </p>
       {profiles.length > 0 ? (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {profiles.map((profile) => (

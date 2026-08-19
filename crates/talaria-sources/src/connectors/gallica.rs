@@ -9,6 +9,7 @@ use crate::connectors::catalog::{
     bibliographic_notice, catalog_place, http_client, names_match, parse_year, xml_texts,
     year_in_life, NoticeRelation,
 };
+use crate::corpus::NormalizedCorpusDocument;
 use crate::kinds::{DiscoveryMethod, DocumentType, SourceKind};
 use crate::plan::ResolvedSubject;
 use crate::types::{DiscoveredDocument, ExternalEntityRef, SourceMetadata};
@@ -131,27 +132,42 @@ impl SourceConnector for GallicaConnector {
                 next_cursor: None,
             });
         }
-        let query = format!("gallica all \"{}\"", subject.label);
-        let max = self.max_docs.to_string();
-        let xml = self
-            .http
-            .get(SRU)
-            .query(&[
-                ("version", "1.2"),
-                ("operation", "searchRetrieve"),
-                ("query", query.as_str()),
-                ("maximumRecords", max.as_str()),
-            ])
-            .send()
-            .await
-            .map_err(|e| ConnectorError::Http(e.to_string()))?
-            .error_for_status()
-            .map_err(|e| ConnectorError::Http(e.to_string()))?
-            .text()
-            .await
-            .map_err(|e| ConnectorError::Http(e.to_string()))?;
+
+        let queries = subject.catalog_query_buckets(SourceKind::Gallica);
+        let mut documents = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        let per_query = (self.max_docs / queries.len().max(1) as u32).max(5);
+        let max = per_query.to_string();
+
+        for query in queries {
+            let xml = self
+                .http
+                .get(SRU)
+                .query(&[
+                    ("version", "1.2"),
+                    ("operation", "searchRetrieve"),
+                    ("query", query.as_str()),
+                    ("maximumRecords", max.as_str()),
+                ])
+                .send()
+                .await
+                .map_err(|e| ConnectorError::Http(e.to_string()))?
+                .error_for_status()
+                .map_err(|e| ConnectorError::Http(e.to_string()))?
+                .text()
+                .await
+                .map_err(|e| ConnectorError::Http(e.to_string()))?;
+
+            for doc in Self::parse_sru(subject, &xml) {
+                if seen.insert(doc.external_id.clone()) {
+                    documents.push(doc);
+                }
+            }
+        }
+
+        documents.truncate(self.max_docs as usize);
         Ok(DiscoveryPage {
-            documents: Self::parse_sru(subject, &xml),
+            documents,
             next_cursor: None,
         })
     }
@@ -167,12 +183,13 @@ impl SourceConnector for GallicaConnector {
             .and_then(|v| v.as_str())
             .unwrap_or(&document.title)
             .to_string();
+        let normalized = normalize_gallica_notice(document, &text)?;
         Ok(FetchedDocument {
             discovered: document.clone(),
-            revision_id: None,
+            revision_id: normalized.revision_token.clone(),
             content_type: "text/plain".into(),
             content_bytes: text.len() as u64,
-            raw_metadata: document.source_metadata.raw.clone(),
+            raw_metadata: serde_json::json!({ "normalized": normalized, "notice": text }),
             license: Some("BnF / Gallica terms".into()),
             text,
         })
@@ -184,4 +201,57 @@ impl SourceConnector for GallicaConnector {
             detail: "public SRU".into(),
         })
     }
+}
+
+pub fn normalize_gallica_notice(
+    document: &DiscoveredDocument,
+    notice_text: &str,
+) -> Result<NormalizedCorpusDocument, ConnectorError> {
+    use crate::corpus::NormalizedIdentifier;
+    use crate::kinds::{AcademicStatus, AccessLevel, IdentifierScheme};
+    use crate::types::TypedTimeLite;
+
+    let year = document.publication_time.as_ref().and_then(|t| match t {
+        TypedTimeLite::Exact { year, .. } => Some(*year),
+        _ => None,
+    });
+
+    let publication_time = year
+        .map(|y| TypedTimeLite::Exact {
+            year: y,
+            surface: Some(y.to_string()),
+        })
+        .unwrap_or(TypedTimeLite::Unknown { surface: None });
+
+    let mut doc = NormalizedCorpusDocument {
+        source_kind: SourceKind::Gallica,
+        external_id: document.external_id.clone(),
+        canonical_url: document.canonical_url.clone(),
+        document_type: DocumentType::BibliographicNotice,
+        title: document.title.clone(),
+        language: document.language.clone(),
+        abstract_text: Some(notice_text.to_string()),
+        academic_status: AcademicStatus::PrimarySource,
+        access_level: AccessLevel::Open,
+        full_text_available: true,
+        rights_uri: Some("https://gallica.bnf.fr/html/und/conditions-dutilisation".into()),
+        rights_holder: Some("BnF / Gallica".into()),
+        rights_normalized: AccessLevel::Open,
+        publisher_or_institution: None,
+        publication_time,
+        identifiers: vec![NormalizedIdentifier {
+            scheme: IdentifierScheme::Ark,
+            value_raw: document.external_id.clone(),
+            value_normalized: document.external_id.clone(),
+        }],
+        contributions: vec![],
+        subjects: vec![],
+        connector_version: "gallica:sru_v1".into(),
+        snapshot_text: notice_text.to_string(),
+        revision_token: None,
+        raw_metadata: document.source_metadata.raw.clone(),
+    };
+    let fp = doc.content_fingerprint();
+    doc.revision_token = Some(fp);
+    Ok(doc)
 }

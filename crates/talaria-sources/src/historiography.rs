@@ -159,69 +159,118 @@ pub fn scan_bibliographic(title: &str, abstract_text: Option<&str>) -> Vec<Histo
         blob.push_str(a);
     }
     let mut hits = scan_passage(&blob);
-    if hits.is_empty() && bibliographic_looks_historiographic(title) {
-        let origin_title = has_any(
-            &title.to_lowercase(),
-            &[
-                "origines",
-                "origins of",
-                "origin of",
-                "origin theor",
-                "identité de",
-                "identity of",
-                "birthplace",
-            ],
-        );
-        hits.push(HistoriographyHit {
-            debate_type: if origin_title {
-                DebateType::IdentityOriginDispute
-            } else {
-                DebateType::InterpretationDispute
-            },
-            evidence_layer: if origin_title {
-                EvidenceLayer::TheoryOrLegend
-            } else {
-                EvidenceLayer::Interpretation
-            },
-            claim_kind: if origin_title { "theory" } else { "debate_stance" },
-            epistemic_status: "contested",
-            quote: title.trim().to_string(),
-            event_hint: if origin_title {
-                Some(EventHint::Birth)
-            } else {
-                None
-            },
-        });
+    if hits.is_empty() {
+        if let Some(hit) = historiographic_title_hit(title) {
+            hits.push(hit);
+        }
     }
     hits
 }
 
-fn bibliographic_looks_historiographic(title: &str) -> bool {
+fn historiographic_title_hit(title: &str) -> Option<HistoriographyHit> {
     let t = title.to_lowercase();
-    [
-        "historiograph",
-        "relecture",
-        "révision",
-        "revision",
-        "controverse",
-        "controversy",
-        "débat",
-        "debat",
-        "myth",
-        "légende",
-        "memory of",
-        "mémoire de",
-        "reception of",
-        "postérité",
-        "origines",
-        "origins of",
-        "origin of",
-        "origin theor",
-        "identité de",
-        "identity of",
-    ]
-    .iter()
-    .any(|m| t.contains(m))
+    if t.trim().len() < 8 {
+        return None;
+    }
+
+    if has_any(
+        &t,
+        &[
+            "birth-date",
+            "birth date",
+            "date de naissance",
+            "birthplace",
+            "lieu de naissance",
+            "real birth",
+            "vraie date",
+            "vrai lieu",
+            "dating remains",
+            "chronology of",
+            "chronologie de",
+        ],
+    ) {
+        return Some(HistoriographyHit {
+            debate_type: DebateType::ChronologyDispute,
+            evidence_layer: EvidenceLayer::CompetingReading,
+            claim_kind: "controversy",
+            epistemic_status: "disputed",
+            quote: title.trim().to_string(),
+            event_hint: Some(EventHint::Birth),
+        });
+    }
+
+    if has_any(
+        &t,
+        &[
+            "nationality",
+            "nationalité",
+            "nationalite",
+            "origines de",
+            "origins of",
+            "origin of",
+            "origin theor",
+            "identité de",
+            "identity of",
+            "was he genoese",
+            "génois",
+            "genoese",
+            "catalan",
+            "portugais",
+            "portuguese",
+        ],
+    ) {
+        return Some(HistoriographyHit {
+            debate_type: DebateType::IdentityOriginDispute,
+            evidence_layer: EvidenceLayer::TheoryOrLegend,
+            claim_kind: "theory",
+            epistemic_status: "hypothesized",
+            quote: title.trim().to_string(),
+            event_hint: Some(EventHint::Birth),
+        });
+    }
+
+    if has_any(
+        &t,
+        &[
+            "hero or villain",
+            "héros ou",
+            "heros ou",
+            "revisionist",
+            "révisionniste",
+            "revisionniste",
+            "relecture",
+            "historiograph",
+            "controverse",
+            "controversy",
+            "débat",
+            "debat",
+            "myth",
+            "légende",
+            "legende",
+            "memory of",
+            "mémoire de",
+            "memoire de",
+            "reception of",
+            "postérité",
+            "posterite",
+            "modern controvers",
+        ],
+    ) {
+        return Some(HistoriographyHit {
+            debate_type: DebateType::InterpretationDispute,
+            evidence_layer: EvidenceLayer::Interpretation,
+            claim_kind: "debate_stance",
+            epistemic_status: "contested",
+            quote: title.trim().to_string(),
+            event_hint: None,
+        });
+    }
+
+    None
+}
+
+fn bibliographic_looks_historiographic(title: &str) -> bool {
+    historiographic_title_hit(title).is_some()
 }
 
 fn split_loose_sentences(text: &str) -> Vec<String> {
@@ -416,6 +465,10 @@ fn detect(lower: &str) -> Option<(DebateType, EvidenceLayer, &'static str, &'sta
             "chronology",
             "dating remains",
             "date controvers",
+            "birth-date",
+            "birth date",
+            "date de naissance",
+            "real birth",
         ],
     ) {
         return Some((

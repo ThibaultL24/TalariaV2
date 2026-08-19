@@ -105,6 +105,8 @@ pub async fn run_ingest_quality(
     use_fixture: bool,
     live: bool,
 ) -> anyhow::Result<String> {
+    // Fixture mode is for offline tests; --live must hit real provider APIs.
+    let use_fixture = use_fixture && !live;
     let (pool, subject_id) = open_db_for_subject(config, label, "person").await?;
     if let Some(qid) = qid {
         update_entity_qid(&pool, subject_id, qid).await?;
@@ -931,4 +933,23 @@ async fn build_ingest_report(
         }
     });
     Ok(serde_json::to_string_pretty(&report)?)
+}
+
+/// Print a quick inline density snapshot — called between pipeline phases.
+pub async fn print_density_snapshot(config: &AppConfig, subject: &str) {
+    use talaria_store::density_report_counts;
+    let Ok(pool) = talaria_store::connect(config).await else {
+        return;
+    };
+    let subject_id = match talaria_store::find_entity_by_wikipedia_title(&pool, "en", subject).await {
+        Ok(Some(row)) => row.id,
+        _ => return,
+    };
+    let Ok(counts) = density_report_counts(&pool, Some(subject_id)).await else {
+        return;
+    };
+    println!(
+        "  ↳ {subject}: {} quality events  ({} map_eligible / {} timeline_eligible)",
+        counts.accepted_events, counts.map_eligible, counts.timeline_eligible,
+    );
 }

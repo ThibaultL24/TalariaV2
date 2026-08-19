@@ -6,12 +6,13 @@ use std::path::PathBuf;
 
 use talaria_core::AppConfig;
 use talaria_sources::connectors::{
-    default_registry_with_corpus, BnfConfig, BnfConnector, CorpusConnectors, EuropeanaConfig,
-    EuropeanaConnector, InternetArchiveConfig, InternetArchiveConnector, OpenAlexConfig,
-    OpenAlexConnector, ThesesFrConfig, ThesesFrConnector,
+    default_registry_with_corpus, normalize_hal_doc, BnfConfig,
+    BnfConnector, CorpusConnectors, EuropeanaConfig, EuropeanaConnector,
+    HalConnector, InternetArchiveConfig, InternetArchiveConnector, OpenAlexConfig,
+    OpenAlexConnector, PerseeConnector, ThesesFrConfig, ThesesFrConnector,
 };
 use talaria_sources::{
-    match_subject_to_document, normalize_bnf_notice, normalize_europeana_item, normalize_ia_item,
+    match_subject_to_document, match_resolved_subject_to_document, normalize_bnf_notice, normalize_europeana_item, normalize_ia_item,
     normalize_openalex_work, normalize_these_detail, AccessLevel, DiscoveredDocument,
     NormalizedCorpusDocument, ResolvedSubject, SourceKind, TypedTimeLite,
 };
@@ -50,22 +51,37 @@ pub async fn run_corpus_ingest(
     fixture_dir: Option<PathBuf>,
     live: bool,
 ) -> anyhow::Result<String> {
+    let use_fixture = use_fixture && !live;
     let pool = connect(config).await?;
     run_migrations(&pool).await?;
 
     let subject_id =
         upsert_entity_with_kind(&pool, &config.wiki_lang, subject_label, "person").await?;
-    let subject = ResolvedSubject {
+    let mut subject = ResolvedSubject {
         entity_id: Some(subject_id),
         qid: qid.map(str::to_string),
         label: subject_label.into(),
         languages: vec!["fr".into(), "en".into()],
         birth_year: None,
         death_year: None,
-        countries: vec!["France".into()],
+        countries: vec![],
         occupations: vec![],
-        known_identifiers: vec![],
+        known_identifiers: qid
+            .map(|q| vec![("wikidata".into(), q.to_string())])
+            .unwrap_or_default(),
     };
+    if live {
+        if let Some(q) = subject.qid.clone() {
+            if let Ok(meta) = crate::lot_e::fetch_wikidata_subject_meta(&q, &config.wiki_lang).await
+            {
+                if !meta.occupations.is_empty() {
+                    subject.occupations = meta.occupations;
+                }
+                subject.birth_year = meta.birth_year;
+                subject.death_year = meta.death_year;
+            }
+        }
+    }
 
     let want_theses = providers.is_empty()
         || providers
@@ -83,6 +99,15 @@ pub async fn run_corpus_ingest(
     let want_bnf = providers
         .iter()
         .any(|p| SourceKind::parse(p) == SourceKind::Bnf);
+    let want_hal = providers
+        .iter()
+        .any(|p| SourceKind::parse(p) == SourceKind::Hal);
+    let want_persee = providers
+        .iter()
+        .any(|p| SourceKind::parse(p) == SourceKind::Persee);
+    let want_gallica = providers
+        .iter()
+        .any(|p| SourceKind::parse(p) == SourceKind::Gallica);
 
     let theses = if want_theses {
         if use_fixture {
@@ -162,15 +187,41 @@ pub async fn run_corpus_ingest(
         None
     };
 
-    let registry = default_registry_with_corpus(
+    let hal = if want_hal {
+        if live {
+            Some(HalConnector::new()?)
+        } else {
+            anyhow::bail!("corpus-ingest hal requires --live");
+        }
+    } else {
+        None
+    };
+
+    let persee = if want_persee {
+        if live {
+            Some(PerseeConnector::new()?)
+        } else {
+            anyhow::bail!("corpus-ingest persee requires --live");
+        }
+    } else {
+        None
+    };
+
+    let _want_gallica = providers
+        .iter()
+        .any(|p| SourceKind::parse(p) == SourceKind::Gallica);
+
+    let mut registry = default_registry_with_corpus(
         None,
-        false,
+        live,
         CorpusConnectors {
             theses_fr: theses,
             open_alex,
             internet_archive,
             europeana,
             bnf,
+            hal,
+            persee,
         },
     )?;
     let kinds: Vec<SourceKind> = if providers.is_empty() {
@@ -261,7 +312,7 @@ pub async fn run_corpus_ingest(
                     metrics.snapshots_reused += 1;
                 }
 
-                if let Some(m) = match_subject_to_document(subject_label, &normalized) {
+                if let Some(m) = match_resolved_subject_to_document(&subject, &normalized) {
                     let components = serde_json::to_value(&m.components)?;
                     upsert_entity_document_link(
                         &pool,
@@ -346,6 +397,13 @@ fn extract_normalized(
                 .cloned()
                 .unwrap_or_else(|| raw_metadata.clone());
             Ok(normalize_bnf_notice(&provider)?)
+        }
+        SourceKind::Hal => {
+            let provider = raw_metadata
+                .get("provider")
+                .cloned()
+                .unwrap_or_else(|| raw_metadata.clone());
+            Ok(normalize_hal_doc(&provider)?)
         }
         other => anyhow::bail!("no normalizer for {}", other.as_str()),
     }

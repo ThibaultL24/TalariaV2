@@ -193,6 +193,33 @@ pub async fn list_claims(
         let evidence = talaria_store::list_claim_evidence(&state.pool, claim.id)
             .await
             .unwrap_or_default();
+        let mut evidence_items = Vec::with_capacity(evidence.len());
+        for row in &evidence {
+            let mut item = json!({
+                "id": row.id,
+                "source_system": row.source_system,
+                "locator": row.locator,
+                "quote": row.quote,
+                "sentence_id": row.sentence_id,
+                "confidence": row.confidence,
+            });
+            if let Some(locator) = row.locator.as_deref() {
+                if let Ok(Some(doc)) = talaria_store::find_corpus_document_by_locator(
+                    &state.pool,
+                    locator,
+                    Some(row.source_system.as_str()),
+                )
+                .await
+                {
+                    item["document_id"] = json!(doc.id);
+                    item["document_title"] = json!(doc.title);
+                    item["document_url"] = json!(doc.canonical_url);
+                    item["document_type"] = json!(doc.document_type);
+                    item["source_kind"] = json!(doc.source_kind);
+                }
+            }
+            evidence_items.push(item);
+        }
         items.push(json!({
             "id": claim.id,
             "claim_kind": claim.claim_kind,
@@ -205,16 +232,14 @@ pub async fn list_claims(
             "canonical_event_id": claim.canonical_event_id,
             "debate_type": claim.debate_type,
             "evidence_layer": claim.evidence_layer,
-            "evidence": evidence.iter().map(|row| json!({
-                "id": row.id,
-                "source_system": row.source_system,
-                "locator": row.locator,
-                "quote": row.quote,
-                "sentence_id": row.sentence_id,
-                "confidence": row.confidence,
-            })).collect::<Vec<_>>(),
+            "evidence": evidence_items,
         }));
     }
 
-    Json(json!({ "claims": items, "count": items.len() }))
+    Json(json!({
+        "claims": items,
+        "count": items.len(),
+        "epistemic": "historiographic_opinion",
+        "epistemic_note": "Soft claims are theories, debates, and historiographic interpretations — not quality map/timeline facts.",
+    }))
 }

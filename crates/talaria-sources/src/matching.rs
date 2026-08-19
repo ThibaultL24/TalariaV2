@@ -5,6 +5,7 @@ use crate::corpus::{
     EntityDocumentMatch, MatchComponent, NormalizedCorpusDocument, SUBJECT_MATCH_V1,
 };
 use crate::kinds::ContributionRole;
+use crate::plan::ResolvedSubject;
 
 fn fold(s: &str) -> String {
     s.chars()
@@ -30,6 +31,81 @@ fn contains_token(hay: &str, needle: &str) -> bool {
     h.contains(&n)
 }
 
+/// Bilingual / catalog variants for matching FR theses and EN subject labels.
+pub fn subject_match_aliases(label: &str) -> Vec<String> {
+    let mut out = vec![label.trim().to_string()];
+    let folded = fold(label);
+
+    if folded.contains("christopher") && folded.contains("columbus") {
+        out.push("Christophe Colomb".into());
+        out.push("Christopher Columbus".into());
+        out.push("Colomb, Christophe".into());
+        out.push("Columbus, Christopher".into());
+        out.push("Colomb".into());
+    }
+    if folded.contains("christophe") && folded.contains("colomb") {
+        out.push("Christopher Columbus".into());
+        out.push("Christophe Colomb".into());
+        out.push("Colomb, Christophe".into());
+        out.push("Colomb".into());
+    }
+    if folded.contains("napoleon") {
+        out.push("Napoléon".into());
+        out.push("Napoleon Bonaparte".into());
+        out.push("Bonaparte, Napoléon".into());
+    }
+    if folded.contains("marie") && folded.contains("curie") {
+        out.push("Marie Curie".into());
+        out.push("Curie, Marie".into());
+    }
+
+    let words: Vec<&str> = label.split_whitespace().filter(|w| !w.is_empty()).collect();
+    if words.len() >= 2 {
+        let first = words[0];
+        let last = words[words.len() - 1];
+        out.push(format!("{last}, {first}"));
+        if last.len() >= 6 {
+            out.push(last.to_string());
+        }
+    }
+
+    out.sort();
+    out.dedup();
+    out.retain(|s| s.len() >= 3);
+    out
+}
+
+fn distinctive_surname_in_text(text: &str, aliases: &[String]) -> Option<String> {
+    for alias in aliases {
+        let last = alias.rsplit(' ').next().unwrap_or("");
+        if last.len() >= 5 && contains_token(text, last) {
+            return Some(last.to_string());
+        }
+    }
+    None
+}
+
+fn text_mentions_alias(text: &str, aliases: &[String]) -> Option<String> {
+    for alias in aliases {
+        if contains_token(text, alias) {
+            return Some(alias.clone());
+        }
+        let words: Vec<&str> = alias.split_whitespace().collect();
+        if words.len() >= 2 {
+            let first = words[0];
+            let last = words[words.len() - 1];
+            if contains_token(text, first) && contains_token(text, last) {
+                return Some(format!("{first} … {last}"));
+            }
+            let inverted = format!("{last}, {first}");
+            if contains_token(text, &inverted) {
+                return Some(inverted);
+            }
+        }
+    }
+    distinctive_surname_in_text(text, aliases).map(|s| format!("surname {s}"))
+}
+
 /// Score how a historical subject relates to a bibliographic document.
 /// Default relation is `about` (title/abstract/subjects). `by` only when an
 /// author name clearly equals the subject label (rare for historical figures).
@@ -37,33 +113,78 @@ pub fn match_subject_to_document(
     subject_label: &str,
     doc: &NormalizedCorpusDocument,
 ) -> Option<EntityDocumentMatch> {
+    let aliases = subject_match_aliases(subject_label);
+    match_subject_with_aliases(subject_label, &aliases, doc)
+}
+
+pub fn match_resolved_subject_to_document(
+    subject: &ResolvedSubject,
+    doc: &NormalizedCorpusDocument,
+) -> Option<EntityDocumentMatch> {
+    let mut aliases = subject_match_aliases(&subject.label);
+    for (scheme, value) in &subject.known_identifiers {
+        if scheme == "wikidata" && !value.is_empty() {
+            aliases.push(value.clone());
+        }
+    }
+    aliases.sort();
+    aliases.dedup();
+    match_subject_with_aliases(&subject.label, &aliases, doc)
+}
+
+fn match_subject_with_aliases(
+    subject_label: &str,
+    aliases: &[String],
+    doc: &NormalizedCorpusDocument,
+) -> Option<EntityDocumentMatch> {
     let mut components = Vec::new();
     let mut score = 0.0_f32;
 
-    if contains_token(&doc.title, subject_label) {
+    if let Some(hit) = text_mentions_alias(&doc.title, aliases) {
+        let weight = if hit.starts_with("surname ") {
+            0.40
+        } else {
+            0.45
+        };
         components.push(MatchComponent {
             key: "title_overlap".into(),
-            weight: 0.45,
-            detail: format!("title contains `{subject_label}`"),
+            weight,
+            detail: format!("title mentions `{hit}`"),
         });
-        score += 0.45;
+        score += weight;
     }
 
     if let Some(abs) = &doc.abstract_text {
-        if contains_token(abs, subject_label) {
+        if let Some(hit) = text_mentions_alias(abs, aliases) {
+            let weight = if hit.starts_with("surname ") || !hit.contains(' ') {
+                0.35
+            } else {
+                0.25
+            };
             components.push(MatchComponent {
                 key: "abstract_overlap".into(),
-                weight: 0.25,
-                detail: format!("abstract contains `{subject_label}`"),
+                weight,
+                detail: format!("abstract mentions `{hit}`"),
             });
-            score += 0.25;
+            score += weight;
+        }
+    }
+
+    if let Some(hit) = text_mentions_alias(&doc.snapshot_text, aliases) {
+        if !components.iter().any(|c| c.key == "title_overlap" || c.key == "abstract_overlap") {
+            components.push(MatchComponent {
+                key: "snapshot_overlap".into(),
+                weight: 0.20,
+                detail: format!("snapshot mentions `{hit}`"),
+            });
+            score += 0.20;
         }
     }
 
     let mut rameau_hit = false;
     let mut keyword_hit = false;
     for subj in &doc.subjects {
-        if contains_token(&subj.label, subject_label) {
+        if text_mentions_alias(&subj.label, aliases).is_some() {
             if subj.scheme == "rameau" {
                 rameau_hit = true;
             } else {
@@ -89,7 +210,8 @@ pub fn match_subject_to_document(
 
     let mut relation = "about".to_string();
     let author_hit = doc.contributions.iter().any(|c| {
-        c.role == ContributionRole::Author && contains_token(&c.agent_name, subject_label)
+        c.role == ContributionRole::Author
+            && text_mentions_alias(&c.agent_name, aliases).is_some()
     });
     if author_hit {
         components.push(MatchComponent {
@@ -148,7 +270,7 @@ mod tests {
             contributions: vec![],
             subjects: vec![],
             connector_version: "test".into(),
-            snapshot_text: title.into(),
+            snapshot_text: abstract_text.unwrap_or(title).into(),
             revision_token: None,
             raw_metadata: serde_json::json!({}),
         }
@@ -167,5 +289,33 @@ mod tests {
     fn unrelated_title_rejected() {
         let doc = sample_doc("Histoire de la chimie organique", None);
         assert!(match_subject_to_document("Napoleon", &doc).is_none());
+    }
+
+    #[test]
+    fn columbus_matches_french_thesis_title() {
+        let doc = sample_doc(
+            "Christophe Colomb et la découverte de l'Amérique : historiographie et débat",
+            Some("Cette thèse examine les origines génoises de Colomb."),
+        );
+        let m = match_subject_to_document("Christopher Columbus", &doc).unwrap();
+        assert_eq!(m.relation, "about");
+        assert!(m.components.iter().any(|c| c.key == "title_overlap"));
+    }
+
+    #[test]
+    fn columbus_matches_surname_and_first_in_abstract() {
+        let doc = sample_doc(
+            "La navigation atlantique au XVe siècle",
+            Some("L'itinéraire de Colomb reste disputé par les historiens."),
+        );
+        let m = match_subject_to_document("Christopher Columbus", &doc).unwrap();
+        assert!(m.components.iter().any(|c| c.key == "abstract_overlap"));
+    }
+
+    #[test]
+    fn aliases_include_bilingual_forms() {
+        let aliases = subject_match_aliases("Christopher Columbus");
+        assert!(aliases.iter().any(|a| a.contains("Christophe")));
+        assert!(aliases.iter().any(|a| a.contains("Colomb")));
     }
 }

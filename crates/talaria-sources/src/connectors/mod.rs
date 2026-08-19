@@ -3,11 +3,13 @@ mod catalog;
 mod europeana;
 mod fixture;
 mod gallica;
+mod hal;
 mod internet_archive;
 mod open_library;
 mod bnf;
 pub mod net;
 mod openalex;
+mod persee;
 mod stub;
 mod theses_fr;
 mod wikidata;
@@ -15,6 +17,8 @@ mod wikipedia;
 
 pub use fixture::FixtureConnector;
 pub use gallica::GallicaConnector;
+pub use hal::{normalize_hal_doc, HalConnector, CONNECTOR_VERSION as HAL_VERSION};
+pub use persee::{normalize_persee_record, PerseeConnector, CONNECTOR_VERSION as PERSEE_VERSION};
 pub use open_library::OpenLibraryConnector;
 pub use bnf::{normalize_bnf_notice, BnfConfig, BnfConnector};
 pub use europeana::{normalize_europeana_item, EuropeanaConfig, EuropeanaConnector};
@@ -45,6 +49,8 @@ pub struct CorpusConnectors {
     pub internet_archive: Option<InternetArchiveConnector>,
     pub europeana: Option<EuropeanaConnector>,
     pub bnf: Option<BnfConnector>,
+    pub hal: Option<HalConnector>,
+    pub persee: Option<PerseeConnector>,
 }
 
 fn caps_wikidata() -> SourceCapabilities {
@@ -182,6 +188,48 @@ fn caps_theses_fr() -> SourceCapabilities {
     }
 }
 
+fn caps_hal() -> SourceCapabilities {
+    SourceCapabilities {
+        access_mode: SourceAccessMode::Api,
+        authority_tier: AuthorityTier::Institutional,
+        provides_text: true,
+        provides_structured_statements: true,
+        provides_coordinates: false,
+        provides_identifiers: true,
+        provides_full_text: false,
+        provides_ocr: false,
+        provides_iiif: false,
+        provides_audiovisual: false,
+        provides_authority_alignment: false,
+        license_notes: "HAL open archive (CC BY)".into(),
+        default_confidence_structured: 0.80,
+        default_confidence_ocr: 0.0,
+        identifiers: vec!["hal_id".into(), "doi".into()],
+        document_types: vec![DocumentType::AcademicArticle, DocumentType::Thesis],
+    }
+}
+
+fn caps_persee() -> SourceCapabilities {
+    SourceCapabilities {
+        access_mode: SourceAccessMode::Api,
+        authority_tier: AuthorityTier::AcademicPublisher,
+        provides_text: true,
+        provides_structured_statements: true,
+        provides_coordinates: false,
+        provides_identifiers: true,
+        provides_full_text: false,
+        provides_ocr: false,
+        provides_iiif: false,
+        provides_audiovisual: false,
+        provides_authority_alignment: false,
+        license_notes: "Persée open access journals".into(),
+        default_confidence_structured: 0.80,
+        default_confidence_ocr: 0.0,
+        identifiers: vec!["doi".into()],
+        document_types: vec![DocumentType::AcademicArticle],
+    }
+}
+
 fn caps_stub(kind: &SourceKind) -> SourceCapabilities {
     let (tier, idents, types) = match kind {
         SourceKind::Hal => (
@@ -304,6 +352,8 @@ pub fn default_registry_with_corpus(
         internet_archive,
         europeana,
         bnf,
+        hal,
+        persee,
     } = corpus;
     let mut reg = SourceRegistry::new();
 
@@ -359,6 +409,22 @@ pub fn default_registry_with_corpus(
             connector: Some(Arc::new(gallica)),
             config_notes: "Gallica SRU (public)".into(),
         });
+        let hal_conn = HalConnector::new()?;
+        reg.register(ConnectorRegistration {
+            kind: SourceKind::Hal,
+            implemented: true,
+            capabilities: caps_hal(),
+            connector: Some(Arc::new(hal_conn)),
+            config_notes: "HAL open archive Solr API (public)".into(),
+        });
+        let persee_conn = PerseeConnector::new()?;
+        reg.register(ConnectorRegistration {
+            kind: SourceKind::Persee,
+            implemented: true,
+            capabilities: caps_persee(),
+            connector: Some(Arc::new(persee_conn)),
+            config_notes: "Persée OAI-PMH Dublin Core (public)".into(),
+        });
         let eu_config = EuropeanaConfig {
             api_key: std::env::var("EUROPEANA_API_KEY").ok(),
             ..EuropeanaConfig::default()
@@ -390,6 +456,8 @@ pub fn default_registry_with_corpus(
         register_stub(&mut reg, SourceKind::OpenLibrary, "enable with --live");
         register_stub(&mut reg, SourceKind::InternetArchive, "enable with --live");
         register_stub(&mut reg, SourceKind::Gallica, "enable with --live");
+        register_stub(&mut reg, SourceKind::Hal, "enable with --live");
+        register_stub(&mut reg, SourceKind::Persee, "enable with --live");
         register_stub(
             &mut reg,
             SourceKind::Europeana,
@@ -402,18 +470,15 @@ pub fn default_registry_with_corpus(
         SourceKind::Wikisource,
         SourceKind::WikimediaCommons,
         SourceKind::Bnf,
-        SourceKind::Persee,
         SourceKind::Viaf,
         SourceKind::Isni,
         SourceKind::IdRef,
-        SourceKind::Hal,
         SourceKind::Crossref,
         SourceKind::OpenEdition,
         SourceKind::Sudoc,
     ] {
         let notes = match kind {
             SourceKind::Bnf => "requires BnF SPARQL/API access config",
-            SourceKind::Persee => "OAI-PMH / API — not yet wired",
             SourceKind::Wikisource | SourceKind::WikimediaCommons => "Wikimedia remainder",
             _ => "alignment layer — not yet wired",
         };
@@ -464,6 +529,24 @@ pub fn default_registry_with_corpus(
             capabilities: stub_capabilities(SourceKind::OpenAlex),
             connector: Some(Arc::new(oa)),
             config_notes: "OpenAlex (corpus fixture)".into(),
+        });
+    }
+    if let Some(h) = hal {
+        reg.register(ConnectorRegistration {
+            kind: SourceKind::Hal,
+            implemented: true,
+            capabilities: caps_hal(),
+            connector: Some(Arc::new(h)),
+            config_notes: "HAL (corpus override)".into(),
+        });
+    }
+    if let Some(p) = persee {
+        reg.register(ConnectorRegistration {
+            kind: SourceKind::Persee,
+            implemented: true,
+            capabilities: caps_persee(),
+            connector: Some(Arc::new(p)),
+            config_notes: "Persée (corpus override)".into(),
         });
     }
 

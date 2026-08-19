@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Map } from "maplibre-gl";
 import { ExplorerEventFilters } from "@/components/filters/explorer-event-filters";
 import { EntityProfile } from "@/components/explorer/entity-profile";
-import { DebatesPanel } from "@/components/explorer/debates-panel";
+import { AgoraPanel } from "@/components/explorer/agora-panel";
 import { Navbar } from "@/components/layout/navbar";
 import { EventDetailCard } from "@/components/detail/event-detail-card";
 import { ExplorerMapTimelineBar } from "@/components/map/explorer-map-timeline-bar";
@@ -16,6 +16,7 @@ import { TimelineList } from "@/components/timeline/timeline-list";
 import { mapTimelineEventToItem } from "@/features/events/mappers/timeline";
 import {
   fetchEntity,
+  fetchEntityBibliography,
   fetchEntityClaims,
   fetchGeoJson,
   fetchIngestJob,
@@ -25,6 +26,7 @@ import {
   fetchTimeline,
   searchEntities,
   startPersonIngest,
+  type BibliographyItem,
   type EntityClaim,
   type GeoJsonFeatureCollection,
   type StatusResponse,
@@ -85,9 +87,11 @@ export function ExplorerPage() {
   const [periods, setPeriods] = useState<PeriodFacet[]>([]);
   const [profiles, setProfiles] = useState<ProfileFacet[]>([]);
   const [entityProfiles, setEntityProfiles] = useState<Array<{ slug: string; label: string }>>([]);
-  const [sidebarTab, setSidebarTab] = useState<"timeline" | "debates">("timeline");
-  const [debates, setDebates] = useState<EntityClaim[]>([]);
-  const [debatesLoading, setDebatesLoading] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState<"timeline" | "agora">("timeline");
+  const [agoraClaims, setAgoraClaims] = useState<EntityClaim[]>([]);
+  const [bibliography, setBibliography] = useState<BibliographyItem[]>([]);
+  const [agoraLoading, setAgoraLoading] = useState(false);
+  const [bibliographyLoading, setBibliographyLoading] = useState(false);
   const [ingestStatus, setIngestStatus] = useState<string | null>(null);
   const rangeTouched = useRef(false);
 
@@ -158,24 +162,38 @@ export function ExplorerPage() {
   useEffect(() => {
     rangeTouched.current = false;
     if (!entityId) {
-      setDebates([]);
+      setAgoraClaims([]);
+      setBibliography([]);
       return;
     }
     const id = entityId;
     let cancelled = false;
-    setDebatesLoading(true);
-    async function loadDebates() {
+    setAgoraLoading(true);
+    setBibliographyLoading(true);
+    async function loadAgora() {
       try {
-        const items = await fetchEntityClaims(id);
-        if (!cancelled) setDebates(items);
+        const [claims, bib] = await Promise.all([
+          fetchEntityClaims(id),
+          fetchEntityBibliography(id, { limit: 40 }),
+        ]);
+        if (!cancelled) {
+          setAgoraClaims(claims);
+          setBibliography(bib.items ?? []);
+        }
       } catch {
-        if (!cancelled) setDebates([]);
+        if (!cancelled) {
+          setAgoraClaims([]);
+          setBibliography([]);
+        }
       } finally {
-        if (!cancelled) setDebatesLoading(false);
+        if (!cancelled) {
+          setAgoraLoading(false);
+          setBibliographyLoading(false);
+        }
       }
     }
-    loadDebates();
-    const tick = window.setInterval(loadDebates, POLL_MS);
+    loadAgora();
+    const tick = window.setInterval(loadAgora, POLL_MS);
     return () => {
       cancelled = true;
       window.clearInterval(tick);
@@ -448,6 +466,8 @@ export function ExplorerPage() {
               name={entityLabel}
               eventCount={allEvents.length}
               mapCount={geojson?.features.length ?? 0}
+              agoraCount={agoraClaims.length}
+              bibliographyCount={bibliography.length}
               profiles={entityProfiles}
             />
           ) : null}
@@ -489,28 +509,33 @@ export function ExplorerPage() {
                 }`}
                 onClick={() => setSidebarTab("timeline")}
               >
-                Timeline
+                Facts
               </button>
               <button
                 type="button"
                 className={`flex-1 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide ${
-                  sidebarTab === "debates"
+                  sidebarTab === "agora"
                     ? "text-(--color-text-primary)"
                     : "text-(--color-text-muted)"
                 }`}
-                onClick={() => setSidebarTab("debates")}
+                onClick={() => setSidebarTab("agora")}
               >
-                Debates{debates.length > 0 ? ` (${debates.length})` : ""}
+                Agora
+                {agoraClaims.length + bibliography.length > 0
+                  ? ` (${agoraClaims.length + bibliography.length})`
+                  : ""}
               </button>
             </div>
           ) : null}
 
           <div className="min-h-0 flex-1 overflow-y-auto">
             {error ? <p className="p-4 text-sm text-red-400">{error}</p> : null}
-            {sidebarTab === "debates" && hasEntity ? (
-              <DebatesPanel
-                claims={debates}
-                isLoading={debatesLoading}
+            {sidebarTab === "agora" && hasEntity ? (
+              <AgoraPanel
+                claims={agoraClaims}
+                bibliography={bibliography}
+                isLoading={agoraLoading}
+                bibliographyLoading={bibliographyLoading}
                 onOpenEvent={handleSelectEvent}
               />
             ) : (
@@ -551,7 +576,12 @@ export function ExplorerPage() {
             <div className="surface-nav pointer-events-none absolute bottom-3 left-3 z-10 max-w-sm rounded-lg border border-(--map-panel-border) px-3 py-2 text-xs text-(--color-text-secondary)">
               Search for a person to load events on the map.
             </div>
-          ) : null}
+          ) : (
+            <div className="pointer-events-none absolute bottom-3 left-3 z-10 max-w-xs rounded-lg border border-sky-500/30 bg-sky-950/75 px-3 py-2 text-[11px] leading-relaxed text-sky-100/90 backdrop-blur-sm">
+              <strong className="font-semibold">Quality facts</strong> — map points and timeline
+              events only. Historiography lives in the Agora tab.
+            </div>
+          )}
 
           {selectedEventId && selectedEvent ? (
             <div

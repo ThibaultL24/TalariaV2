@@ -33,11 +33,13 @@ pub use claims::{
 };
 pub use corpus::{
     count_corpus_snapshots, get_corpus_document, link_corpus_snapshot, list_document_contributions,
-    list_document_identifiers, list_entity_corpus_passages, list_entity_documents,
+    find_corpus_document_by_locator, list_document_identifiers, list_entity_corpus_passages,
+    list_entity_documents,
     mark_discovered_corpus_document,
     replace_document_contributions, replace_document_identifiers, replace_document_subjects,
     upsert_corpus_document, upsert_entity_document_link, ContributionInsert, CorpusDocumentInsert,
-    CorpusDocumentRow, CorpusPassageRow, DocumentContributionRow, DocumentIdentifierRow,
+    CorpusDocumentRow, CorpusLocatorMatchRow, CorpusPassageRow, DocumentContributionRow,
+    DocumentIdentifierRow,
     EntityDocumentLinkInsert, EntityDocumentsFilter, EntityLinkedDocumentRow, SubjectInsert,
 };
 pub use corpus_dump::{
