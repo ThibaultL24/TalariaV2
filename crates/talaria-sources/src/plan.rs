@@ -27,6 +27,10 @@ impl ResolvedSubject {
     pub fn catalog_query(&self, kind: SourceKind) -> String {
         crate::catalog_search_query(&self.label, &profile_for(self.person_class()), kind)
     }
+
+    pub fn catalog_query_buckets(&self, kind: SourceKind) -> Vec<String> {
+        crate::catalog_search_buckets(&self.label, &profile_for(self.person_class()), kind)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,12 +97,16 @@ pub fn plan_sources(subject: &ResolvedSubject, budgets: IngestBudgets) -> Source
             let c = c.to_lowercase();
             c.contains("france") || c.contains("french")
         });
+    // Art historians, musicologists and visual artists use Gallica, Persee, ThesesFr
+    // as extensively as writers/scientists — include them in the scholarly source plan.
     let scholarly = matches!(
         class,
         PersonClass::Scientist
             | PersonClass::InventorEngineer
             | PersonClass::Philosopher
             | PersonClass::ArtistWriter
+            | PersonClass::ArtistVisual
+            | PersonClass::MusicianComposer
     );
 
     sources.push(PlannedSource {

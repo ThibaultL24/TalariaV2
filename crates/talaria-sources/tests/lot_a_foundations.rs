@@ -195,3 +195,122 @@ async fn cursor_offset_zero_default() {
     let c = DiscoveryCursor::default();
     assert_eq!(c.offset, 0);
 }
+
+// --- Fix 1: page_fallback must NOT fire for non-military subjects ----------------
+
+#[test]
+fn military_class_has_page_fallback_extractor_flag() {
+    use talaria_sources::{profile_for, PersonClass};
+    assert!(profile_for(PersonClass::MilitaryLeader).enable_military_extractor);
+    assert!(!profile_for(PersonClass::Scientist).enable_military_extractor);
+    assert!(!profile_for(PersonClass::ArtistWriter).enable_military_extractor);
+    assert!(!profile_for(PersonClass::ArtistVisual).enable_military_extractor);
+    assert!(!profile_for(PersonClass::Ruler).enable_military_extractor);
+}
+
+// --- Fix 2: Gallica query must include class terms, not bare label ---------------
+
+#[test]
+fn gallica_query_scientist_has_class_terms() {
+    let subject = ResolvedSubject {
+        entity_id: None,
+        qid: None,
+        label: "Marie Curie".into(),
+        languages: vec!["fr".into()],
+        birth_year: Some(1867),
+        death_year: Some(1934),
+        countries: vec!["France".into()],
+        occupations: vec!["physicist".into(), "chemist".into()],
+        known_identifiers: vec![],
+    };
+    let q = subject.catalog_query(SourceKind::Gallica);
+    assert!(q.contains("Marie Curie"), "must contain label: {q}");
+    let lower = q.to_lowercase();
+    assert!(
+        lower.contains("laborato")
+            || lower.contains("nobel")
+            || lower.contains("radioactiv")
+            || lower.contains("physique")
+            || lower.contains("chimie"),
+        "scientist Gallica query must include class terms, got: {q}"
+    );
+}
+
+#[test]
+fn gallica_query_writer_has_class_terms() {
+    let subject = ResolvedSubject {
+        entity_id: None,
+        qid: None,
+        label: "Victor Hugo".into(),
+        languages: vec!["fr".into()],
+        birth_year: Some(1802),
+        death_year: Some(1885),
+        countries: vec!["France".into()],
+        occupations: vec!["writer".into(), "poet".into()],
+        known_identifiers: vec![],
+    };
+    let q = subject.catalog_query(SourceKind::Gallica);
+    assert!(q.contains("Victor Hugo"), "must contain label: {q}");
+    let lower = q.to_lowercase();
+    assert!(
+        lower.contains("roman")
+            || lower.contains("correspondance")
+            || lower.contains("théâtre")
+            || lower.contains("theatre"),
+        "writer Gallica query must include class terms, got: {q}"
+    );
+}
+
+// --- Fix 3: ArtistVisual + MusicianComposer get scholarly sources ----------------
+
+#[test]
+fn artist_visual_gets_scholarly_sources() {
+    let subject = ResolvedSubject {
+        entity_id: None,
+        qid: None,
+        label: "Leonardo da Vinci".into(),
+        languages: vec!["it".into()],
+        birth_year: Some(1452),
+        death_year: Some(1519),
+        countries: vec!["Italy".into()],
+        occupations: vec!["painter".into(), "sculptor".into()],
+        known_identifiers: vec![],
+    };
+    let plan = plan_sources(&subject, IngestBudgets::default());
+    assert!(
+        plan.sources.iter().any(|s| s.kind == SourceKind::ThesesFr),
+        "ArtistVisual should get ThesesFr"
+    );
+    assert!(
+        plan.sources.iter().any(|s| s.kind == SourceKind::Hal),
+        "ArtistVisual should get HAL"
+    );
+    assert!(
+        plan.sources.iter().any(|s| s.kind == SourceKind::Persee),
+        "ArtistVisual should get Persee"
+    );
+}
+
+#[test]
+fn musician_composer_gets_scholarly_sources() {
+    let subject = ResolvedSubject {
+        entity_id: None,
+        qid: None,
+        label: "Wolfgang Amadeus Mozart".into(),
+        languages: vec!["de".into()],
+        birth_year: Some(1756),
+        death_year: Some(1791),
+        countries: vec!["Austria".into()],
+        occupations: vec!["composer".into()],
+        known_identifiers: vec![],
+    };
+    let plan = plan_sources(&subject, IngestBudgets::default());
+    assert!(
+        plan.sources.iter().any(|s| s.kind == SourceKind::ThesesFr),
+        "MusicianComposer should get ThesesFr"
+    );
+    assert!(
+        plan.sources.iter().any(|s| s.kind == SourceKind::Persee),
+        "MusicianComposer should get Persee"
+    );
+}

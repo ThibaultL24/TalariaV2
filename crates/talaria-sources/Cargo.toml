@@ -19,6 +19,7 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 url = "2"
+quick-xml = { version = "0.37", features = ["encoding"] }
 uuid = { workspace = true }
 
 [dev-dependencies]

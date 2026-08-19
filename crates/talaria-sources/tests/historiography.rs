@@ -105,3 +105,30 @@ fn columbus_origins_title_is_identity_theory() {
     assert_eq!(hits[0].claim_kind, "theory");
     assert_eq!(hits[0].event_hint, Some(EventHint::Birth));
 }
+
+#[test]
+fn persee_birth_date_title_is_chronology_dispute() {
+    let hits = scan_bibliographic(
+        "Henry Vignaud: The real Birth-Date of Columbus. A critical Study",
+        None,
+    );
+    assert!(!hits.is_empty());
+    assert_eq!(hits[0].debate_type, DebateType::ChronologyDispute);
+    assert_eq!(hits[0].event_hint, Some(EventHint::Birth));
+}
+
+#[test]
+fn nationality_title_is_identity_dispute() {
+    let hits = scan_bibliographic("Christophe Colomb portugais", None);
+    assert_eq!(hits[0].debate_type, DebateType::IdentityOriginDispute);
+}
+
+#[test]
+fn hero_or_villain_title_is_interpretation() {
+    let hits = scan_bibliographic(
+        "Elite Revisionists and Popular Beliefs: Christopher Columbus, Hero or Villain?",
+        None,
+    );
+    assert_eq!(hits[0].debate_type, DebateType::InterpretationDispute);
+    assert_eq!(hits[0].claim_kind, "debate_stance");
+}

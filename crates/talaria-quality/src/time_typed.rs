@@ -86,14 +86,22 @@ fn parse_calendar_date(raw: &str) -> Option<TypedTime> {
 }
 
 fn scan_iso_date(text: &str) -> Option<String> {
-    let bytes = text.as_bytes();
-    let mut i = 0;
-    while i + 10 <= bytes.len() {
-        let slice = &text[i..i + 10];
+    // Iterate by char boundary to avoid splitting multi-byte characters.
+    let chars: Vec<(usize, char)> = text.char_indices().collect();
+    for &(byte_pos, _) in &chars {
+        let remaining = &text[byte_pos..];
+        if remaining.len() < 10 {
+            break;
+        }
+        // Take exactly 10 bytes — valid only if that lands on a char boundary.
+        let end = byte_pos + 10;
+        if end > text.len() || !text.is_char_boundary(end) {
+            continue;
+        }
+        let slice = &text[byte_pos..end];
         if parse_iso_ymd(slice).is_some() {
             return Some(slice.to_string());
         }
-        i += 1;
     }
     None
 }

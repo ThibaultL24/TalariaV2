@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::kinds::SourceKind;
+use crate::matching::subject_match_aliases;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -397,12 +398,13 @@ pub fn rank_wikipedia_title(title: &str, profile: &IngestProfile, death_year: Op
     score.clamp(0.0, 1.0)
 }
 
-pub fn catalog_search_query(label: &str, profile: &IngestProfile, kind: SourceKind) -> String {
-    let label = label.replace('"', "").trim().to_string();
-    let terms = match kind {
-        SourceKind::OpenAlex | SourceKind::ThesesFr | SourceKind::Hal | SourceKind::Crossref => {
-            profile.scholarly_terms
-        }
+fn profile_terms(profile: &IngestProfile, kind: &SourceKind) -> &'static [&'static str] {
+    match kind {
+        SourceKind::OpenAlex
+        | SourceKind::ThesesFr
+        | SourceKind::Hal
+        | SourceKind::Crossref
+        | SourceKind::Persee => profile.scholarly_terms,
         _ => {
             if profile.catalog_terms.is_empty() {
                 profile.scholarly_terms
@@ -410,7 +412,75 @@ pub fn catalog_search_query(label: &str, profile: &IngestProfile, kind: SourceKi
                 profile.catalog_terms
             }
         }
-    };
+    }
+}
+
+fn escape_cql_phrase(label: &str) -> String {
+    label.replace('"', "").trim().to_string()
+}
+
+fn or_cql_subject_clauses(terms: &[&str]) -> String {
+    terms
+        .iter()
+        .map(|t| format!("dc.subject all \"{t}\""))
+        .collect::<Vec<_>>()
+        .join(" or ")
+}
+
+fn or_hal_field_clauses(terms: &[&str]) -> String {
+    terms
+        .iter()
+        .flat_map(|t| [format!("title_t:{t}"), format!("keyword_s:{t}")])
+        .collect::<Vec<_>>()
+        .join(" OR ")
+}
+
+/// Profile-aware search buckets for connectors that benefit from multi-query discovery.
+pub fn catalog_search_buckets(label: &str, profile: &IngestProfile, kind: SourceKind) -> Vec<String> {
+    let label = escape_cql_phrase(label);
+    if label.len() < 3 {
+        return vec![];
+    }
+    let terms = profile_terms(profile, &kind);
+    match kind {
+        SourceKind::Gallica => {
+            let mut buckets = vec![format!("dc.title all \"{label}\"")];
+            if !terms.is_empty() {
+                buckets.push(format!(
+                    "gallica all \"{label}\" and ({})",
+                    or_cql_subject_clauses(terms)
+                ));
+            }
+            buckets.push(format!(
+                "(dc.creator all \"{label}\" or dc.contributor all \"{label}\")"
+            ));
+            buckets
+        }
+        SourceKind::Hal => {
+            let mut buckets = vec![format!("text:\"{label}\"")];
+            if !terms.is_empty() {
+                buckets.push(format!(
+                    "text:\"{label}\" AND ({})",
+                    or_hal_field_clauses(terms)
+                ));
+            }
+            buckets.push(format!("authFullName_s:\"{label}\""));
+            buckets
+        }
+        SourceKind::Persee => {
+            let mut buckets = vec![label.clone()];
+            for term in terms.iter().take(3) {
+                buckets.push(format!("{label} {term}"));
+            }
+            buckets
+        }
+        _ => vec![catalog_search_query(&label, profile, kind)],
+    }
+}
+
+pub fn catalog_search_query(label: &str, profile: &IngestProfile, kind: SourceKind) -> String {
+    let label = escape_cql_phrase(label);
+    let terms = profile_terms(profile, &kind);
     let or_terms = terms.join(" OR ");
     match kind {
         SourceKind::Bnf => {
@@ -420,7 +490,34 @@ pub fn catalog_search_query(label: &str, profile: &IngestProfile, kind: SourceKi
                 format!("bib.anywhere all \"{label}\" and bib.anywhere all \"{or_terms}\"")
             }
         }
-        SourceKind::Europeana | SourceKind::Gallica => {
+        SourceKind::Gallica => {
+            if terms.is_empty() {
+                format!("dc.title all \"{label}\"")
+            } else {
+                format!(
+                    "gallica all \"{label}\" and ({})",
+                    or_cql_subject_clauses(terms)
+                )
+            }
+        }
+        SourceKind::Hal => {
+            if terms.is_empty() {
+                format!("text:\"{label}\"")
+            } else {
+                format!(
+                    "text:\"{label}\" AND ({})",
+                    or_hal_field_clauses(terms)
+                )
+            }
+        }
+        SourceKind::Persee => {
+            if terms.is_empty() {
+                label
+            } else {
+                format!("{label} {}", terms[0])
+            }
+        }
+        SourceKind::Europeana => {
             if or_terms.is_empty() {
                 format!("\"{label}\"")
             } else {
@@ -442,13 +539,16 @@ pub fn catalog_search_query(label: &str, profile: &IngestProfile, kind: SourceKi
             }
         }
         SourceKind::ThesesFr => {
-            if or_terms.is_empty() {
-                format!("(titrePrincipal:({label}) OR sujetsRameauLibelle:({label}))")
-            } else {
-                format!(
-                    "(titrePrincipal:({label}) OR sujetsRameauLibelle:({label}) OR resumes.fr:({or_terms}))"
-                )
-            }
+            let clauses: Vec<String> = subject_match_aliases(&label)
+                .into_iter()
+                .flat_map(|n| {
+                    [
+                        format!("titrePrincipal:({n})"),
+                        format!("sujetsRameauLibelle:({n})"),
+                    ]
+                })
+                .collect();
+            format!("({})", clauses.join(" OR "))
         }
         SourceKind::WikimediaCommons | SourceKind::Wikisource => {
             if or_terms.is_empty() {

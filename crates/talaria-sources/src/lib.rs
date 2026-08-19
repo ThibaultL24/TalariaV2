@@ -45,9 +45,10 @@ pub use kinds::{
     AcademicStatus, AccessLevel, AuthorityTier, ContributionRole, DiscoveryMethod, DocumentType,
     IdentifierScheme, SourceAccessMode, SourceCapabilities, SourceKind,
 };
-pub use matching::match_subject_to_document;
+pub use matching::{match_resolved_subject_to_document, match_subject_to_document, subject_match_aliases};
 pub use person_profile::{
-    catalog_search_query, filter_wiki_titles_for_profile, infer_person_class, profile_for,
+    catalog_search_buckets, catalog_search_query, filter_wiki_titles_for_profile,
+    infer_person_class, profile_for,
     rank_wikipedia_title, IngestProfile, PersonClass,
 };
 pub use place_quality::is_plausible_place_label;

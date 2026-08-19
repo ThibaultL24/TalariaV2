@@ -192,6 +192,11 @@ export interface ClaimEvidence {
   quote?: string | null;
   sentence_id?: string | null;
   confidence: number;
+  document_id?: string | null;
+  document_title?: string | null;
+  document_url?: string | null;
+  document_type?: string | null;
+  source_kind?: string | null;
 }
 
 export interface EntityClaim {
@@ -219,6 +224,49 @@ export async function fetchEntityClaims(
   if (!response.ok) throw new Error("claims fetch failed");
   const data = (await response.json()) as { claims?: EntityClaim[] };
   return data.claims ?? [];
+}
+
+export interface BibliographyLink {
+  relation: string;
+  score: number;
+  match_version?: string | null;
+  evidence_summary?: string | null;
+}
+
+export interface BibliographyItem {
+  id: string;
+  title: string;
+  document_type: string;
+  source_kind: string;
+  external_id: string;
+  canonical_url?: string | null;
+  academic_status: string;
+  language?: string | null;
+  publication_time?: unknown;
+  epistemic: string;
+  link: BibliographyLink;
+}
+
+export interface BibliographyResponse {
+  entity_id: string;
+  relation: string;
+  epistemic: string;
+  epistemic_note: string;
+  items: BibliographyItem[];
+  next_cursor?: string | null;
+}
+
+export async function fetchEntityBibliography(
+  entityId: string,
+  opts: { limit?: number; relation?: string } = {},
+): Promise<BibliographyResponse> {
+  const params = new URLSearchParams({
+    limit: String(opts.limit ?? 40),
+    relation: opts.relation ?? "about",
+  });
+  const response = await fetch(`/api/v1/entities/${entityId}/bibliography?${params}`);
+  if (!response.ok) throw new Error("bibliography fetch failed");
+  return response.json();
 }
 
 export async function fetchPeriods(): Promise<import("@/lib/schemas/entity").PeriodFacet[]> {

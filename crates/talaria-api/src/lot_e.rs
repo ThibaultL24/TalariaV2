@@ -563,18 +563,27 @@ pub async fn run_lot_e_density_ingest(
                 raws.extend(ex.extract(&input));
             }
 
-            // Ensure battle/siege pages produce at least a page-level candidate if extractors missed.
-            if !raws.iter().any(|r| {
-                r.extractor_id == "military_campaign"
-                    && r.object_surface.as_deref() == Some(resolved_title.as_str())
-            }) {
+            // For military subjects only: ensure battle/siege pages produce at least a
+            // page-level candidate when the military_campaign extractor fired nothing.
+            if profile.enable_military_extractor
+                && !raws.iter().any(|r| {
+                    r.extractor_id == "military_campaign"
+                        && r.object_surface.as_deref() == Some(resolved_title.as_str())
+                })
+            {
                 if let Some(place) = place_hint_from_title(&resolved_title) {
                     if let Some(year) =
                         first_year_in(&text, subject_res.birth_year, subject_res.death_year)
                     {
+                        let event_type = event_type_from_page_title(&resolved_title);
+                        let predicate = match event_type {
+                            "treaty" | "diplomatic" => "signed",
+                            "siege" => "besieged",
+                            _ => "fought_at",
+                        };
                         raws.push(talaria_sources::extractors::RawCandidate {
-                            event_type: event_type_from_page_title(&resolved_title).into(),
-                            predicate: "fought_at".into(),
+                            event_type: event_type.into(),
+                            predicate: predicate.into(),
                             subject_surface: subject.into(),
                             time_surface: Some(year),
                             place_surface: Some(place),

@@ -17,7 +17,7 @@ import {
 import { SourceRefsList } from "@/components/detail/source-refs-list";
 import { HowItHappened } from "@/components/detail/how-it-happened";
 import { EventImageHero } from "@/components/detail/event-image-hero";
-import { DebatesPanel } from "@/components/explorer/debates-panel";
+import { AgoraPanel } from "@/components/explorer/agora-panel";
 import {
   resolveEventImage,
   type ResolvedEventImage,
@@ -250,12 +250,12 @@ export function EventDetailCard({ event, onClose, offlineOnly = false }: EventDe
         {relatedDebates.length > 0 ? (
           <section className="border-t border-(--color-border-subtle) pt-4">
             <h4 className="mb-2 text-sm font-semibold text-(--color-text-primary)">
-              Historians’ debates
+              Agora — linked debates
             </h4>
             <p className="mb-2 text-xs text-(--color-text-secondary)">
-              Theories and controversies linked to this event — not map facts.
+              Historiographic interpretations for this event — not quality map facts.
             </p>
-            <DebatesPanel claims={relatedDebates} />
+            <AgoraPanel claims={relatedDebates} claimsOnly />
           </section>
         ) : null}
 

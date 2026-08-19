@@ -489,6 +489,80 @@ pub struct CorpusPassageRow {
     pub academic_status: String,
 }
 
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct CorpusLocatorMatchRow {
+    pub id: Uuid,
+    pub title: String,
+    pub source_kind: String,
+    pub canonical_url: Option<String>,
+    pub document_type: String,
+}
+
+/// Resolve corpus metadata for a soft-claim evidence locator (URL or `{kind}:{id}`).
+pub async fn find_corpus_document_by_locator(
+    pool: &PgPool,
+    locator: &str,
+    source_kind_hint: Option<&str>,
+) -> anyhow::Result<Option<CorpusLocatorMatchRow>> {
+    let trimmed = locator.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    if let Some(row) = sqlx::query_as::<_, CorpusLocatorMatchRow>(
+        r#"
+        SELECT id, title, source_kind, canonical_url, document_type
+        FROM corpus_documents
+        WHERE canonical_url = $1
+        LIMIT 1
+        "#,
+    )
+    .bind(trimmed)
+    .fetch_optional(pool)
+    .await?
+    {
+        return Ok(Some(row));
+    }
+
+    if let Some((kind, external_id)) = trimmed.split_once(':') {
+        if let Some(row) = sqlx::query_as::<_, CorpusLocatorMatchRow>(
+            r#"
+            SELECT id, title, source_kind, canonical_url, document_type
+            FROM corpus_documents
+            WHERE source_kind = $1 AND external_id = $2
+            LIMIT 1
+            "#,
+        )
+        .bind(kind)
+        .bind(external_id)
+        .fetch_optional(pool)
+        .await?
+        {
+            return Ok(Some(row));
+        }
+    }
+
+    if let Some(kind) = source_kind_hint.filter(|k| !k.is_empty()) {
+        if let Some(row) = sqlx::query_as::<_, CorpusLocatorMatchRow>(
+            r#"
+            SELECT id, title, source_kind, canonical_url, document_type
+            FROM corpus_documents
+            WHERE source_kind = $1 AND external_id = $2
+            LIMIT 1
+            "#,
+        )
+        .bind(kind)
+        .bind(trimmed)
+        .fetch_optional(pool)
+        .await?
+        {
+            return Ok(Some(row));
+        }
+    }
+
+    Ok(None)
+}
+
 pub async fn list_entity_corpus_passages(
     pool: &PgPool,
     entity_id: Uuid,

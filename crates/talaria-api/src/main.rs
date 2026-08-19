@@ -276,28 +276,75 @@ async fn main() -> anyhow::Result<()> {
             resume: _,
         } => {
             if live {
-                let seeds = match seed_list {
-                    Some(path) => path,
-                    None => lot_e::write_minimal_seed_list(&subject)?,
-                };
-                let targets = talaria_sources::DensityTargets {
-                    target_timeline_events,
-                    target_map_events,
-                    max_documents,
-                    max_linked_entities: 5_000,
-                    max_depth,
-                    max_documents_per_source,
-                };
-                let _ = lot_e::run_lot_e_density_ingest(
-                    &config,
-                    &subject,
-                    qid.as_deref(),
-                    &seeds,
-                    targets,
-                    &wiki_lang,
-                    max_titles.filter(|n| *n > 0),
-                )
-                .await?;
+                // Corpus sources (non-Wikimedia) that run_ingest_quality handles.
+                const CORPUS_SOURCES: &[&str] = &[
+                    "hal", "persee", "theses_fr", "gallica", "open_library",
+                    "internet_archive", "europeana", "bnf", "open_alex",
+                ];
+                // Decide which pipeline(s) to run based on the sources filter.
+                let run_wikimedia = sources.as_ref().map(|s| {
+                    s.iter().any(|k| matches!(k.as_str(), "wikidata" | "wikipedia"))
+                }).unwrap_or(true);
+                let corpus_sources_requested: Option<Vec<String>> = sources.as_ref().map(|s| {
+                    s.iter()
+                        .filter(|k| CORPUS_SOURCES.contains(&k.as_str()))
+                        .cloned()
+                        .collect()
+                });
+                let run_corpus = corpus_sources_requested
+                    .as_ref()
+                    .map(|v| !v.is_empty())
+                    .unwrap_or(true);
+
+                // Phase 1 — Wikimedia (lot_e seed expansion + dense extraction).
+                if run_wikimedia {
+                    println!("\n📡 Phase 1/2 — Wikipedia / Wikidata (dense extraction)…");
+                    let seeds = match seed_list.clone() {
+                        Some(path) => path,
+                        None => lot_e::write_minimal_seed_list(&subject)?,
+                    };
+                    let targets = talaria_sources::DensityTargets {
+                        target_timeline_events,
+                        target_map_events,
+                        max_documents,
+                        max_linked_entities: 5_000,
+                        max_depth,
+                        max_documents_per_source,
+                    };
+                    let lot_e_report = lot_e::run_lot_e_density_ingest(
+                        &config,
+                        &subject,
+                        qid.as_deref(),
+                        &seeds,
+                        targets,
+                        &wiki_lang,
+                        max_titles.filter(|n| *n > 0),
+                    )
+                    .await?;
+                    println!("{lot_e_report}");
+                    ingest::print_density_snapshot(&config, &subject).await;
+                }
+
+                // Phase 2 — Corpus connectors (HAL, Persée, theses.fr, Gallica…).
+                if run_corpus {
+                    let corpus_filter = if sources.is_some() {
+                        corpus_sources_requested
+                    } else {
+                        None // no filter → all corpus sources
+                    };
+                    println!("\n📚 Phase 2/2 — Corpus connectors (HAL, Persée, Gallica…)…");
+                    let report = ingest::run_ingest_quality(
+                        &config,
+                        &subject,
+                        qid.as_deref(),
+                        corpus_filter,
+                        fixture,
+                        live,
+                    )
+                    .await?;
+                    println!("{report}");
+                    ingest::print_density_snapshot(&config, &subject).await;
+                }
             } else {
                 let report = ingest::run_ingest_quality(
                     &config,

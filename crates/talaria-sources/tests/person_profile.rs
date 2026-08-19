@@ -1,8 +1,8 @@
 // crates/talaria-sources/tests/person_profile.rs
 use talaria_sources::extractors::{extractor_stack_for, ExtractorInput};
 use talaria_sources::{
-    catalog_search_query, infer_person_class, plan_sources, profile_for, rank_wikipedia_title,
-    IngestBudgets, PersonClass, ResolvedSubject, SourceKind,
+    catalog_search_buckets, catalog_search_query, infer_person_class, plan_sources, profile_for,
+    rank_wikipedia_title, IngestBudgets, PersonClass, ResolvedSubject, SourceKind,
 };
 
 #[test]
@@ -77,6 +77,31 @@ fn explorer_europeana_asks_voyage_not_only_controversy() {
     assert!(q.contains("Christophe Colomb"));
     let low = q.to_lowercase();
     assert!(low.contains("voyage") || low.contains("expedition") || low.contains("navigation"));
+}
+
+#[test]
+fn explorer_hal_uses_solr_profile_fields() {
+    let p = profile_for(PersonClass::Explorer);
+    let q = catalog_search_query("Christophe Colomb", &p, SourceKind::Hal);
+    assert!(q.contains("text:\"Christophe Colomb\""));
+    let low = q.to_lowercase();
+    assert!(low.contains("title_t:voyage") || low.contains("keyword_s:navigation"));
+}
+
+#[test]
+fn explorer_gallica_uses_valid_cql() {
+    let p = profile_for(PersonClass::Explorer);
+    let q = catalog_search_query("Christophe Colomb", &p, SourceKind::Gallica);
+    assert!(q.contains("gallica all \"Christophe Colomb\""));
+    assert!(q.contains("dc.subject all"));
+}
+
+#[test]
+fn explorer_persee_buckets_add_profile_terms() {
+    let p = profile_for(PersonClass::Explorer);
+    let buckets = catalog_search_buckets("Christophe Colomb", &p, SourceKind::Persee);
+    assert!(buckets.iter().any(|b| b == "Christophe Colomb"));
+    assert!(buckets.iter().any(|b| b.contains("voyage")));
 }
 
 #[test]
