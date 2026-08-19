@@ -16,13 +16,13 @@ use talaria_quality::{
     GateContext, TypedTime, ASSEMBLER_V1,
 };
 use talaria_sources::extractors::{
-    claim_fingerprint, extractor_stack_for, CandidateExtractor, ClaimKey, ExtractorInput,
+    claim_fingerprint, extractor_stack_for_classes, CandidateExtractor, ClaimKey, ExtractorInput,
 };
 use talaria_sources::connectors::net::send_retrying;
 use talaria_sources::{
-    filter_wiki_titles_for_profile, first_year_in_window, is_plausible_place_label,
-    lifespan_year_window, load_seed_titles, merge_seed_titles, place_hint_from_title,
-    profile_for, rank_wikipedia_title, resolve_place_offline, DensityProgress, DensityTargets,
+    filter_wiki_titles_for_classes, first_year_in_window, is_plausible_place_label,
+    lifespan_year_window, load_seed_titles, merge_seed_titles_for, place_hint_from_title,
+    rank_wikipedia_title_for_classes, resolve_place_offline, DensityProgress, DensityTargets,
     ResolvedSubject,
 };
 use talaria_store::{
@@ -283,12 +283,15 @@ pub async fn run_lot_e_density_ingest(
             .unwrap_or_default(),
     };
 
+    let person_classes = subject_res.person_classes();
     let person_class = subject_res.person_class();
-    let profile = profile_for(person_class);
+    let military_signal = subject_res.has_military_signal();
     tracing::info!(
         class = person_class.as_str(),
+        facets = ?person_classes.iter().map(|c| c.as_str()).collect::<Vec<_>>(),
         occupations = ?subject_res.occupations,
-        "resolved person ingest class"
+        military_signal,
+        "resolved person ingest classes"
     );
 
     let mut titles = load_seed_titles(seed_list).unwrap_or_default();
@@ -311,19 +314,21 @@ pub async fn run_lot_e_density_ingest(
         .await
         .unwrap_or_default();
     let cap = expand_cap.max(titles.len());
-    titles = merge_seed_titles(
+    titles = merge_seed_titles_for(
         subject,
         titles,
         wiki_links
             .into_iter()
             .chain(wd_meta.related_titles.clone()),
         cap,
+        military_signal,
     );
-    titles = filter_wiki_titles_for_profile(
+    titles = filter_wiki_titles_for_classes(
         subject,
         titles,
-        &profile,
+        &person_classes,
         subject_res.death_year,
+        military_signal,
     );
     tracing::info!(
         seeds = titles.len(),
@@ -331,7 +336,8 @@ pub async fn run_lot_e_density_ingest(
         birth = ?subject_res.birth_year,
         death = ?subject_res.death_year,
         occupations = ?subject_res.occupations,
-        "expanded Wikipedia/Wikidata seeds ranked by person class"
+        military_signal,
+        "expanded Wikipedia/Wikidata seeds ranked by person facets"
     );
     if let Some(max) = max_titles {
         titles.truncate(max as usize);
@@ -348,7 +354,7 @@ pub async fn run_lot_e_density_ingest(
         );
     }
 
-    let extractors = extractor_stack_for(person_class);
+    let extractors = extractor_stack_for_classes(&person_classes, military_signal);
     let extractor_refs: Vec<&dyn CandidateExtractor> =
         extractors.iter().map(|e| e.as_ref()).collect();
     let resolver = GazetteerResolver;
@@ -376,16 +382,13 @@ pub async fn run_lot_e_density_ingest(
         {
             tracing::warn!(error = %e, "wikidata structured statements ingest failed");
         }
-        let (by2, dy2, _, _) = quality_lifespan_years(&pool, subject_id).await?;
+        let (by2, _, _, _) = quality_lifespan_years(&pool, subject_id).await?;
         if subject_res.birth_year.is_none() {
             subject_res.birth_year = by2;
         }
-        if subject_res.death_year.is_none() {
-            subject_res.death_year = dy2;
-        }
     }
 
-    if profile.enable_wdqs_military {
+    if military_signal {
         if let Some(qid) = subject_res.qid.clone() {
             match crate::ingest::ingest_wdqs_events(&pool, config, &subject_res, subject_id).await {
                 Ok(wdqs) => {
@@ -471,10 +474,16 @@ pub async fn run_lot_e_density_ingest(
             // Be polite to Wikimedia — search-triggered density must not stampede.
             tokio::time::sleep(Duration::from_millis(2000)).await;
 
-            // Battle/treaty regex expansion only for military-class subjects.
-            if profile.enable_military_extractor {
+            // Battle/treaty regex expansion only when this person has a military signal.
+            if military_signal {
                 for linked in discover_linked_titles(&text) {
-                    if rank_wikipedia_title(&linked, &profile, subject_res.death_year) < 0.30 {
+                    if rank_wikipedia_title_for_classes(
+                        &linked,
+                        &person_classes,
+                        subject_res.death_year,
+                        military_signal,
+                    ) < 0.55
+                    {
                         continue;
                     }
                     enqueue_discovered_title(
@@ -544,12 +553,9 @@ pub async fn run_lot_e_density_ingest(
             .await?;
 
             // Keep Wikidata lifespan sticky — quality refresh may still be the noisy singleton.
-            let (by2, dy2, _, _) = quality_lifespan_years(&pool, subject_id).await?;
+            let (by2, _, _, _) = quality_lifespan_years(&pool, subject_id).await?;
             if subject_res.birth_year.is_none() {
                 subject_res.birth_year = by2;
-            }
-            if subject_res.death_year.is_none() {
-                subject_res.death_year = dy2;
             }
 
             let input = ExtractorInput {
@@ -567,7 +573,7 @@ pub async fn run_lot_e_density_ingest(
 
             // For military subjects only: ensure battle/siege pages produce at least a
             // page-level candidate when the military_campaign extractor fired nothing.
-            if profile.enable_military_extractor
+            if military_signal
                 && !raws.iter().any(|r| {
                     r.extractor_id == "military_campaign"
                         && r.object_surface.as_deref() == Some(resolved_title.as_str())
@@ -1388,6 +1394,18 @@ pub(crate) async fn fetch_wikidata_subject_meta(
     let mut occupations: Vec<String> = Vec::new();
     if occupation_qids.iter().any(|q| is_military_occupation_qid(q)) {
         occupations.push("military".to_string());
+    }
+    for pid in ["P607", "P241", "P410", "P1344"] {
+        if claims
+            .get(pid)
+            .and_then(|v| v.as_array())
+            .is_some_and(|a| !a.is_empty())
+        {
+            if !occupations.iter().any(|o| o.eq_ignore_ascii_case("military")) {
+                occupations.push("military".to_string());
+            }
+            break;
+        }
     }
 
     let mut fetch_ids = related_qids.clone();

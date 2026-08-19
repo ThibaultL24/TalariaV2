@@ -5,7 +5,7 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
-use talaria_wikidata::WikidataClient;
+use talaria_wikidata::{person_search_score, sort_person_search_hits, WikidataClient};
 use uuid::Uuid;
 
 use super::AppState;
@@ -73,12 +73,16 @@ pub async fn search(
 
     if !state.offline_only && items.len() < query.limit as usize {
         if let Ok(client) = WikidataClient::new() {
-            let remaining = (query.limit as usize).saturating_sub(items.len());
             if let Ok(hits) = client
-                .search_entities(trimmed, &query.lang, remaining as u32)
+                .search_entities(trimmed, &query.lang, query.limit.max(10) as u32)
                 .await
             {
+                let known: Vec<String> = local_qids.iter().cloned().collect();
+                let hits = sort_person_search_hits(hits, &known);
                 for hit in hits {
+                    if items.len() >= query.limit as usize {
+                        break;
+                    }
                     if local_qids.contains(&hit.qid) {
                         continue;
                     }
@@ -113,6 +117,23 @@ pub async fn search(
             }
         }
     }
+
+    items.sort_by(|a, b| {
+        let a_local = a.get("known_locally").and_then(|v| v.as_bool()).unwrap_or(false);
+        let b_local = b.get("known_locally").and_then(|v| v.as_bool()).unwrap_or(false);
+        b_local.cmp(&a_local).then_with(|| {
+            let a_s = person_search_score(
+                a.get("label").and_then(|v| v.as_str()).unwrap_or(""),
+                a.get("description").and_then(|v| v.as_str()),
+            );
+            let b_s = person_search_score(
+                b.get("label").and_then(|v| v.as_str()).unwrap_or(""),
+                b.get("description").and_then(|v| v.as_str()),
+            );
+            b_s.cmp(&a_s)
+        })
+    });
+    items.truncate(query.limit as usize);
 
     Json(json!({ "items": items }))
 }

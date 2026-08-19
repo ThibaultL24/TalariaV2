@@ -534,6 +534,18 @@ fn resolve_dense_subject(text: &str, page_lower: &str) -> Option<(String, i32, i
         ("peninsular war", "Napoleon", 1765, 1865),
         ("continental system", "Napoleon", 1765, 1865),
         ("napoleonic", "Napoleon", 1765, 1865),
+        ("waterloo", "Napoleon", 1765, 1865),
+        ("austerlitz", "Napoleon", 1765, 1865),
+        ("tilsit", "Napoleon", 1765, 1865),
+        ("borodino", "Napoleon", 1765, 1865),
+        ("jena", "Napoleon", 1765, 1865),
+        ("wagram", "Napoleon", 1765, 1865),
+        ("marengo", "Napoleon", 1765, 1865),
+        ("eylau", "Napoleon", 1765, 1865),
+        ("friedland", "Napoleon", 1765, 1865),
+        ("leipzig", "Napoleon", 1765, 1865),
+        ("toulon", "Napoleon", 1765, 1865),
+        ("ligny", "Napoleon", 1765, 1865),
         ("les misérables", "Victor Hugo", 1800, 1885),
         ("les miserables", "Victor Hugo", 1800, 1885),
         ("notre-dame de paris", "Victor Hugo", 1800, 1885),
@@ -569,18 +581,12 @@ fn resolve_dense_subject(text: &str, page_lower: &str) -> Option<(String, i32, i
             return Some(((*title).into(), *min, *max));
         }
     }
-    if page_lower.starts_with("battle of ")
-        || page_lower.starts_with("treaty of ")
-        || page_lower.starts_with("congress of ")
-        || page_lower.starts_with("coup of ")
-    {
-        return Some(("Napoleon".into(), 1765, 1865));
-    }
     None
 }
 
 fn subject_year_window(person: &str) -> (i32, i32) {
     match person {
+        "Napoleon" => (1765, 1865),
         "Marie Curie" => (1865, 1935),
         "Victor Hugo" => (1800, 1885),
         "Leonardo da Vinci" => (1450, 1520),
@@ -588,7 +594,7 @@ fn subject_year_window(person: &str) -> (i32, i32) {
         "Alan Turing" => (1910, 1960),
         "Cleopatra" => (-80, 30),
         "Honoré de Balzac" => (1795, 1860),
-        _ => (1765, 1865),
+        _ => (-4000, 2100),
     }
 }
 
@@ -900,6 +906,24 @@ mod tests {
         assert_eq!(tuples[0].person, "Napoleon");
         assert_eq!(tuples[0].time, "1793");
         assert!(tuples[0].place.to_lowercase().contains("toulon"));
+    }
+
+    #[test]
+    fn unknown_battle_page_is_not_napoleon() {
+        let text = "The armies clashed on 14 October 1066 near the ridge.";
+        let tuples = mock_extract_text(text, Some("Battle of Hastings"));
+        assert!(
+            tuples.iter().all(|t| t.person != "Napoleon"),
+            "Hastings must not default to Napoleon, got {tuples:?}"
+        );
+    }
+
+    #[test]
+    fn unknown_person_window_is_not_napoleonic() {
+        assert_eq!(subject_year_window("Napoleon"), (1765, 1865));
+        let (lo, hi) = subject_year_window("Emmanuel Macron");
+        assert!(lo <= 1977, "lo={lo}");
+        assert!(hi >= 2017, "hi={hi}");
     }
 
     #[test]

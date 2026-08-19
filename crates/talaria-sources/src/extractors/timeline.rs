@@ -24,10 +24,10 @@ impl CandidateExtractor for TimelineListExtractor {
                 continue;
             }
             let year = parts[0];
-            if year.len() != 4 || !year.chars().all(|c| c.is_ascii_digit()) {
+            let Some(year_i) = parse_timeline_year(year) else {
                 continue;
-            }
-            let year_i: i32 = year.parse().unwrap_or(0);
+            };
+            let year_surface = year.to_string();
             let place = if parts.len() >= 2 {
                 Some(parts[1].to_string())
             } else {
@@ -50,7 +50,7 @@ impl CandidateExtractor for TimelineListExtractor {
                 event_type: et,
                 predicate: predicate.into(),
                 subject_surface: subject.clone(),
-                time_surface: Some(year.to_string()),
+                time_surface: Some(year_surface),
                 place_surface: place,
                 object_surface: None,
                 participant_surfaces: vec![],
@@ -67,6 +67,24 @@ impl CandidateExtractor for TimelineListExtractor {
         }
         out
     }
+}
+
+fn parse_timeline_year(token: &str) -> Option<i32> {
+    let t = token.trim();
+    let lower = t.to_ascii_lowercase();
+    if lower.contains("bc") || lower.contains("b.c") || lower.contains("bce") || lower.contains("av")
+    {
+        let digits: String = t.chars().filter(|c| c.is_ascii_digit()).collect();
+        let abs: i32 = digits.parse().ok()?;
+        return Some(-abs);
+    }
+    if t.starts_with('-') {
+        return t.parse().ok();
+    }
+    if t.chars().all(|c| c.is_ascii_digit()) {
+        return t.parse().ok();
+    }
+    None
 }
 
 fn classify_desc(desc: &str) -> (&'static str, &'static str) {

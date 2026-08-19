@@ -15,7 +15,9 @@ use documents::{
 use entities::{get_entity, list_claims, search as search_entities};
 use events::{detail, evidence, geojson, timeline};
 use facets::{list_periods, list_profiles};
-use ingest::{get_ingest_job, start_ingest, IngestJobMap};
+use ingest::{
+    get_ingest_job, start_agora_ingest, start_explorer_ingest, start_ingest, IngestJobMap,
+};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -66,6 +68,8 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/v1/events/{event_id}", get(detail))
         .route("/api/v1/events/{event_id}/evidence", get(evidence))
         .route("/api/v1/ingest", post(start_ingest))
+        .route("/api/v1/ingest/explorer", post(start_explorer_ingest))
+        .route("/api/v1/ingest/agora", post(start_agora_ingest))
         .route("/api/v1/ingest/{job_id}", get(get_ingest_job))
         .with_state(AppState {
             pool,

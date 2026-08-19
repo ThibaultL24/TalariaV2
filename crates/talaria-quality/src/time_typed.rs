@@ -175,14 +175,46 @@ fn trailing_day(before: &str) -> Option<u32> {
 }
 
 fn scan_year(text: &str) -> Option<String> {
+    let lower = text.to_lowercase();
+    if let Some(s) = scan_bce_surface(&lower) {
+        return Some(s);
+    }
     for word in text.split(|c: char| !c.is_ascii_digit()) {
         if word.len() == 4 {
             if let Ok(y) = word.parse::<i32>() {
-                if (1000..=2100).contains(&y) {
+                if (1..=2100).contains(&y) {
                     return Some(y.to_string());
                 }
             }
         }
+    }
+    None
+}
+
+fn scan_bce_surface(lower: &str) -> Option<String> {
+    let bytes = lower.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i].is_ascii_digit() {
+            let start = i;
+            while i < bytes.len() && bytes[i].is_ascii_digit() {
+                i += 1;
+            }
+            let digits = &lower[start..i];
+            if digits.len() <= 4 && !digits.is_empty() {
+                let rest = lower[i..].trim_start();
+                if rest.starts_with("bc")
+                    || rest.starts_with("b.c")
+                    || rest.starts_with("bce")
+                    || rest.starts_with("av. j")
+                    || rest.starts_with("av j")
+                {
+                    return Some(format!("{} BC", digits.trim_start_matches('0')));
+                }
+            }
+            continue;
+        }
+        i += 1;
     }
     None
 }
@@ -255,6 +287,14 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn extracts_bce_year() {
+        let s = extract_time_surface("Cleopatra died in 30 BC in Alexandria.").unwrap();
+        assert!(s.to_lowercase().contains("bc"), "{s}");
+        let t = parse_typed_time(Some(&s));
+        assert_eq!(t.year_for_gates(), Some(-30), "{t:?}");
     }
 }
 

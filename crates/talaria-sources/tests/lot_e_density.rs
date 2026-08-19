@@ -4,7 +4,7 @@
 use talaria_quality::{
     competing_places, occurrence_key, occurrence_stem_for_event, parse_typed_time, TypedTime,
 };
-use talaria_sources::extractors::{default_extractor_stack, ExtractorInput};
+use talaria_sources::extractors::{default_extractor_stack, extractor_stack_for, ExtractorInput};
 use talaria_sources::{
     is_plausible_place_label, place_hint_from_title, resolve_place_offline, DensityProgress,
     DensityTargets,
@@ -192,7 +192,7 @@ fn place_plausibility_filters_noise() {
 
 #[test]
 fn military_page_yields_battle_candidate() {
-    let stack = default_extractor_stack();
+    let stack = extractor_stack_for(talaria_sources::PersonClass::MilitaryLeader);
     let input = ExtractorInput {
         text: "The Battle of Waterloo was fought on 18 June 1815 near Waterloo.".into(),
         page_title: Some("Battle of Waterloo".into()),

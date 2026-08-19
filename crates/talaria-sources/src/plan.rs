@@ -4,7 +4,9 @@ use uuid::Uuid;
 
 use crate::budgets::IngestBudgets;
 use crate::kinds::SourceKind;
-use crate::person_profile::{infer_person_class, profile_for, PersonClass};
+use crate::person_profile::{
+    has_military_signal, infer_person_class, infer_person_classes, profile_for, PersonClass,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResolvedSubject {
@@ -20,8 +22,16 @@ pub struct ResolvedSubject {
 }
 
 impl ResolvedSubject {
+    pub fn person_classes(&self) -> Vec<PersonClass> {
+        infer_person_classes(&self.occupations, None)
+    }
+
     pub fn person_class(&self) -> PersonClass {
         infer_person_class(&self.occupations, None)
+    }
+
+    pub fn has_military_signal(&self) -> bool {
+        has_military_signal(&self.occupations, None)
     }
 
     pub fn catalog_query(&self, kind: SourceKind) -> String {
@@ -54,8 +64,10 @@ pub const PLANNER_V1: &str = "plan_sources:v2_person_class";
 /// Deterministic planner keyed by person class (POC presets), not a single military net.
 #[allow(clippy::vec_init_then_push)]
 pub fn plan_sources(subject: &ResolvedSubject, budgets: IngestBudgets) -> SourcePlan {
+    let classes = subject.person_classes();
     let class = subject.person_class();
     let profile = profile_for(class);
+    let military = subject.has_military_signal();
     let mut sources = Vec::new();
 
     sources.push(PlannedSource {
@@ -68,9 +80,23 @@ pub fn plan_sources(subject: &ResolvedSubject, budgets: IngestBudgets) -> Source
         max_documents: budgets.max_documents_per_source.min(20),
     });
 
+    let wiki_reason = if military {
+        format!(
+            "biography pages ranked for {} (military signal, {} facets)",
+            class.as_str(),
+            classes.len().max(1)
+        )
+    } else {
+        format!(
+            "biography pages ranked for {} ({} facets)",
+            class.as_str(),
+            classes.len().max(1)
+        )
+    };
+
     sources.push(PlannedSource {
         kind: SourceKind::Wikipedia,
-        reason: format!("biography pages ranked for {}", class.as_str()),
+        reason: wiki_reason,
         priority: 20,
         max_documents: budgets.max_documents_per_source,
     });

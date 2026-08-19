@@ -47,9 +47,10 @@ pub use kinds::{
 };
 pub use matching::{match_resolved_subject_to_document, match_subject_to_document, subject_match_aliases};
 pub use person_profile::{
-    catalog_search_buckets, catalog_search_query, filter_wiki_titles_for_profile,
-    infer_person_class, profile_for,
-    rank_wikipedia_title, IngestProfile, PersonClass,
+    catalog_search_buckets, catalog_search_query, filter_wiki_titles_for_classes,
+    filter_wiki_titles_for_profile, has_military_signal, infer_person_class, infer_person_classes,
+    keep_military_typed_event, profile_for, rank_wikipedia_title, rank_wikipedia_title_for_classes,
+    IngestProfile, PersonClass,
 };
 pub use place_quality::is_plausible_place_label;
 pub use places::{place_hint_from_title, resolve_place_offline, PlaceResolution};
@@ -57,7 +58,7 @@ pub use plan::{plan_sources, PlannedSource, ResolvedSubject, SourcePlan};
 pub use registry::{ConnectorRegistration, SourceRegistry};
 pub use seeds::{
     first_year_in_window, is_high_value_link_title, is_noise_wiki_title, lifespan_year_window,
-    load_seed_titles, merge_seed_titles, subject_surname,
+    load_seed_titles, merge_seed_titles, merge_seed_titles_for, subject_surname,
 };
 pub use types::{DiscoveredDocument, ExternalEntityRef, SourceMetadata, TypedTimeLite};
 

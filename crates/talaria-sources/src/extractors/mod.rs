@@ -68,16 +68,26 @@ impl ExtractorInput {
 }
 
 pub fn default_extractor_stack() -> Vec<Box<dyn CandidateExtractor>> {
-    extractor_stack_for(crate::PersonClass::MilitaryLeader)
+    extractor_stack_for_classes(&[crate::PersonClass::Unknown], false)
 }
 
 pub fn extractor_stack_for(class: crate::PersonClass) -> Vec<Box<dyn CandidateExtractor>> {
-    let profile = crate::profile_for(class);
+    extractor_stack_for_classes(&[class], class == crate::PersonClass::MilitaryLeader)
+}
+
+pub fn extractor_stack_for_classes(
+    classes: &[crate::PersonClass],
+    has_military_signal: bool,
+) -> Vec<Box<dyn CandidateExtractor>> {
+    let enable_military = has_military_signal
+        || classes
+            .iter()
+            .any(|c| *c == crate::PersonClass::MilitaryLeader);
     let mut stack: Vec<Box<dyn CandidateExtractor>> = vec![
         Box::new(StructuredStatementExtractor),
         Box::new(TimelineListExtractor),
     ];
-    if profile.enable_military_extractor {
+    if enable_military {
         stack.push(Box::new(MilitaryCampaignExtractor));
     }
     stack.extend([

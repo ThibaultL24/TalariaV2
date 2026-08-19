@@ -283,8 +283,12 @@ export async function fetchProfiles(): Promise<import("@/lib/schemas/entity").Pr
   return data.profiles ?? [];
 }
 
+export type IngestLane = "explorer" | "agora";
+
 export interface IngestJobResponse {
   job_id: string;
+  lane?: IngestLane | string;
+  purpose?: string | null;
   status: "queued" | "running" | "done" | "failed" | string;
   subject: string;
   qid?: string | null;
@@ -294,25 +298,61 @@ export interface IngestJobResponse {
   deduped?: boolean;
 }
 
-export async function startPersonIngest(input: {
-  subject: string;
-  qid?: string | null;
-  live?: boolean;
-}): Promise<IngestJobResponse> {
-  const response = await fetch("/api/v1/ingest", {
+async function startLaneIngest(
+  lane: IngestLane,
+  input: {
+    subject: string;
+    qid?: string | null;
+    live?: boolean;
+    maxTitles?: number;
+    corpusLimit?: number;
+  },
+): Promise<IngestJobResponse> {
+  const response = await fetch(`/api/v1/ingest/${lane}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       subject: input.subject,
       qid: input.qid ?? undefined,
       live: input.live ?? true,
+      max_titles: input.maxTitles,
+      corpus_limit: input.corpusLimit,
     }),
   });
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(body?.error ?? "ingest start failed");
+    throw new Error(body?.error ?? `${lane} ingest start failed`);
   }
   return response.json();
+}
+
+/** Quality life-trace: dated events with places for map + timeline. */
+export async function startExplorerIngest(input: {
+  subject: string;
+  qid?: string | null;
+  live?: boolean;
+  maxTitles?: number;
+}): Promise<IngestJobResponse> {
+  return startLaneIngest("explorer", input);
+}
+
+/** Historiography layer: corpus sources + soft claims (debates, theories). */
+export async function startAgoraIngest(input: {
+  subject: string;
+  qid?: string | null;
+  live?: boolean;
+  corpusLimit?: number;
+}): Promise<IngestJobResponse> {
+  return startLaneIngest("agora", input);
+}
+
+/** @deprecated Use startExplorerIngest */
+export async function startPersonIngest(input: {
+  subject: string;
+  qid?: string | null;
+  live?: boolean;
+}): Promise<IngestJobResponse> {
+  return startExplorerIngest(input);
 }
 
 export async function fetchIngestJob(jobId: string): Promise<IngestJobResponse> {

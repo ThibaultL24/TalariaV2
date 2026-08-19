@@ -56,42 +56,101 @@ pub struct IngestProfile {
     pub enable_military_extractor: bool,
 }
 
-pub fn infer_person_class(occupations: &[String], lead: Option<&str>) -> PersonClass {
+const CLASS_ORDER: &[PersonClass] = &[
+    PersonClass::Scientist,
+    PersonClass::InventorEngineer,
+    PersonClass::ArtistWriter,
+    PersonClass::ArtistVisual,
+    PersonClass::MusicianComposer,
+    PersonClass::Philosopher,
+    PersonClass::Explorer,
+    PersonClass::ReligiousLeader,
+    PersonClass::Athlete,
+    PersonClass::Reformer,
+    PersonClass::MilitaryLeader,
+    PersonClass::Ruler,
+];
+
+/// Every matching class for this person (polyvalent careers). Empty → unknown later.
+pub fn infer_person_classes(occupations: &[String], lead: Option<&str>) -> Vec<PersonClass> {
     let mut found = Vec::new();
     for occ in occupations {
         if let Some(c) = class_from_text(occ) {
-            found.push(c);
+            if !found.contains(&c) {
+                found.push(c);
+            }
         }
     }
     if let Some(lead) = lead {
         if let Some(c) = class_from_text(lead) {
-            found.push(c);
+            if !found.contains(&c) {
+                found.push(c);
+            }
         }
     }
-    primary_class(&found)
+    CLASS_ORDER
+        .iter()
+        .copied()
+        .filter(|c| found.contains(c))
+        .collect()
 }
 
-fn primary_class(found: &[PersonClass]) -> PersonClass {
-    const ORDER: &[PersonClass] = &[
-        PersonClass::Scientist,
-        PersonClass::InventorEngineer,
-        PersonClass::ArtistWriter,
-        PersonClass::ArtistVisual,
-        PersonClass::MusicianComposer,
-        PersonClass::Philosopher,
-        PersonClass::Explorer,
-        PersonClass::ReligiousLeader,
-        PersonClass::Athlete,
-        PersonClass::Reformer,
-        PersonClass::MilitaryLeader,
-        PersonClass::Ruler,
-    ];
-    for want in ORDER {
-        if found.contains(want) {
-            return *want;
-        }
+/// Primary class for logging / catalog query (first in CLASS_ORDER).
+pub fn infer_person_class(occupations: &[String], lead: Option<&str>) -> PersonClass {
+    infer_person_classes(occupations, lead)
+        .into_iter()
+        .next()
+        .unwrap_or(PersonClass::Unknown)
+}
+
+pub fn has_military_signal(occupations: &[String], lead: Option<&str>) -> bool {
+    infer_person_classes(occupations, lead).contains(&PersonClass::MilitaryLeader)
+}
+
+fn military_event_type(event_type: &str) -> bool {
+    matches!(
+        event_type,
+        "battle" | "siege" | "military_campaign" | "surrender" | "retreat"
+    )
+}
+
+fn clause_attests_subject_service(clause: &str, subject: &str) -> bool {
+    let c = clause.to_lowercase();
+    let name_hit = subject
+        .split_whitespace()
+        .map(|w| w.trim_matches(|ch: char| !ch.is_alphabetic()).to_lowercase())
+        .filter(|w| w.chars().count() >= 4)
+        .any(|w| c.contains(&w));
+    if !name_hit {
+        return false;
     }
-    PersonClass::Unknown
+    [
+        "fought",
+        "enlisted",
+        "served in",
+        "served as",
+        "soldier",
+        "battled",
+        "combattit",
+        "s'engagea",
+        "s engager",
+        "militaire",
+    ]
+    .iter()
+    .any(|v| c.contains(v))
+}
+
+/// Keep battle/siege only if this person has a military signal or the clause attests service.
+pub fn keep_military_typed_event(
+    event_type: &str,
+    clause: &str,
+    subject: &str,
+    has_military_signal: bool,
+) -> bool {
+    if !military_event_type(event_type) {
+        return true;
+    }
+    has_military_signal || clause_attests_subject_service(clause, subject)
 }
 
 fn class_from_text(raw: &str) -> Option<PersonClass> {
@@ -311,7 +370,10 @@ pub fn profile_for(class: PersonClass) -> IngestProfile {
         PersonClass::Ruler => IngestProfile {
             class,
             expected_event_types: &["office", "diplomatic", "treaty", "residence"],
-            wikipedia_boost: &["règne", "regne", "treaty", "traité", "traite", "reform", "réforme", "cour"],
+            wikipedia_boost: &[
+                "règne", "regne", "treaty", "traité", "traite", "reform", "réforme", "cour",
+                "presidency", "président", "president", "office",
+            ],
             wikipedia_deny: &["comics", "fictional"],
             catalog_terms: &["règne", "regne", "traité", "traite", "cour"],
             scholarly_terms: &["reign", "diplomacy", "court"],
@@ -375,13 +437,61 @@ pub fn profile_for(class: PersonClass) -> IngestProfile {
 }
 
 pub fn rank_wikipedia_title(title: &str, profile: &IngestProfile, death_year: Option<i32>) -> f32 {
+    rank_wikipedia_title_ex(
+        title,
+        profile,
+        death_year,
+        profile.enable_military_extractor,
+    )
+}
+
+/// POC-style keep score: topical boosts, deny unless this person is military, WW2 penalty if dead before 1900.
+pub fn rank_wikipedia_title_for_classes(
+    title: &str,
+    classes: &[PersonClass],
+    death_year: Option<i32>,
+    has_military_signal: bool,
+) -> f32 {
+    if classes.is_empty() {
+        return rank_wikipedia_title_ex(
+            title,
+            &profile_for(PersonClass::Unknown),
+            death_year,
+            has_military_signal,
+        );
+    }
+    classes
+        .iter()
+        .map(|c| {
+            rank_wikipedia_title_ex(title, &profile_for(*c), death_year, has_military_signal)
+        })
+        .fold(0.0f32, f32::max)
+}
+
+fn rank_wikipedia_title_ex(
+    title: &str,
+    profile: &IngestProfile,
+    death_year: Option<i32>,
+    allow_military_pages: bool,
+) -> f32 {
     let lower = title.to_lowercase();
-    if profile.wikipedia_deny.iter().any(|d| lower.contains(d)) {
+    let battleish = lower.contains("battle of")
+        || lower.contains("bataille de")
+        || lower.contains("siege of")
+        || lower.contains("siège de")
+        || lower.contains("siege de");
+    if profile.wikipedia_deny.iter().any(|d| lower.contains(d))
+        && !(allow_military_pages && battleish)
+    {
         return 0.15;
     }
-    let mut score: f32 = 0.55;
+    // Baseline below POC keep threshold (0.55) so untopical links drop.
+    let mut score: f32 = 0.40;
     if profile.wikipedia_boost.iter().any(|b| lower.contains(b)) {
         score += 0.40;
+    }
+    if allow_military_pages && battleish {
+        score += 0.30;
     }
     if let Some(death) = death_year {
         if death < 1900
@@ -565,18 +675,42 @@ pub fn catalog_search_query(label: &str, profile: &IngestProfile, kind: SourceKi
     }
 }
 
-/// Keep the subject page; drop denied titles (battles for scientists, etc.).
+/// Keep the subject page; drop denied / untopical titles (POC keep ≥ 0.55).
 pub fn filter_wiki_titles_for_profile(
     subject: &str,
     titles: Vec<String>,
     profile: &IngestProfile,
     death_year: Option<i32>,
 ) -> Vec<String> {
+    filter_wiki_titles_scored(
+        subject,
+        titles,
+        |title| rank_wikipedia_title(title, profile, death_year),
+    )
+}
+
+pub fn filter_wiki_titles_for_classes(
+    subject: &str,
+    titles: Vec<String>,
+    classes: &[PersonClass],
+    death_year: Option<i32>,
+    has_military_signal: bool,
+) -> Vec<String> {
+    filter_wiki_titles_scored(subject, titles, |title| {
+        rank_wikipedia_title_for_classes(title, classes, death_year, has_military_signal)
+    })
+}
+
+fn filter_wiki_titles_scored(
+    subject: &str,
+    titles: Vec<String>,
+    score_fn: impl Fn(&str) -> f32,
+) -> Vec<String> {
     let mut kept: Vec<(bool, f32, String)> = Vec::new();
     for title in titles {
         let is_subject = title.eq_ignore_ascii_case(subject);
-        let score = rank_wikipedia_title(&title, profile, death_year);
-        if !is_subject && score < 0.30 {
+        let score = score_fn(&title);
+        if !is_subject && score < 0.55 {
             continue;
         }
         kept.push((is_subject, score, title));

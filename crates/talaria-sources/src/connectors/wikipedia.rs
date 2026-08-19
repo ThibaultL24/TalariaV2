@@ -145,7 +145,8 @@ impl SourceConnector for WikipediaConnector {
                 next_cursor: None,
             });
         }
-        let profile = crate::profile_for(subject.person_class());
+        let classes = subject.person_classes();
+        let military = subject.has_military_signal();
         let search_q = subject.catalog_query(SourceKind::Wikipedia);
         let mut docs = Vec::new();
         for lang in &self.config.languages {
@@ -180,8 +181,13 @@ impl SourceConnector for WikipediaConnector {
                 if hit.eq_ignore_ascii_case(&subject.label) {
                     continue;
                 }
-                let score = crate::rank_wikipedia_title(&hit, &profile, subject.death_year);
-                if score < 0.30 {
+                let score = crate::rank_wikipedia_title_for_classes(
+                    &hit,
+                    &classes,
+                    subject.death_year,
+                    military,
+                );
+                if score < 0.55 {
                     continue;
                 }
                 docs.push(DiscoveredDocument {

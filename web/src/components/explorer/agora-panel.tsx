@@ -7,6 +7,7 @@ import {
 } from "@/lib/agora-taxonomy";
 import { epistemicBadgeClass, epistemicStatusLabel } from "@/lib/event-taxonomy";
 import { sourceKindBadgeClass, sourceSystemLabel } from "@/lib/source-labels";
+import { strings } from "@/lib/strings";
 
 interface AgoraPanelProps {
   claims: EntityClaim[];
@@ -178,10 +179,10 @@ export function AgoraPanel({
   if (empty && !isLoading && !bibliographyLoading) {
     return (
       <div className="space-y-3 p-4 text-center text-sm text-(--color-text-muted)">
-        <p>No historiographic layer yet for this person.</p>
+        <p>No agora layer yet for this person.</p>
+        <p className="text-xs leading-relaxed">{strings.laneAgoraHint}</p>
         <p className="text-xs leading-relaxed">
-          Run corpus-ingest (HAL, Persée, Gallica, theses.fr, OpenAlex) then historiography-extract.
-          Map and timeline stay quality facts only.
+          A full search runs explorer (life trace) then agora (sources + debates) automatically.
         </p>
       </div>
     );
@@ -191,8 +192,8 @@ export function AgoraPanel({
     <div className="space-y-4 overflow-y-auto p-3">
       {!claimsOnly ? (
         <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-100/90">
-          <strong className="font-semibold">Agora layer</strong> — theories, debates, and bibliographic
-          sources. Not shown on the map; timeline points are quality-validated facts only.
+          <strong className="font-semibold">{strings.laneAgoraTitle}</strong> —{" "}
+          {strings.laneAgoraHint}
         </div>
       ) : null}
 

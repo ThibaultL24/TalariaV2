@@ -13,15 +13,15 @@ use talaria_quality::{
 };
 use talaria_sources::connectors::{default_registry, FixtureConnector};
 use talaria_sources::extractors::{
-    claim_fingerprint, extractor_stack_for, CandidateExtractor, ClaimKey, ExtractorInput,
+    claim_fingerprint, extractor_stack_for_classes, CandidateExtractor, ClaimKey, ExtractorInput,
     StructuredStatementExtractor,
 };
 use talaria_sources::wdqs::{
     events_from_fixture_dir, events_to_statement_text, fetch_events_for_person,
 };
 use talaria_sources::{
-    plan_sources, profile_for, BudgetCounters, DiscoveredDocument, IngestBudgets, ResolvedSubject,
-    SourceKind,
+    keep_military_typed_event, plan_sources, BudgetCounters, DiscoveredDocument, IngestBudgets,
+    ResolvedSubject, SourceKind,
 };
 use talaria_store::{
     add_claim_support, connect, density_report_counts,
@@ -137,12 +137,12 @@ pub async fn run_ingest_quality(
                         subject.occupations = meta.occupations;
                     }
                     subject.birth_year = meta.birth_year.or(subject.birth_year);
-                    subject.death_year = meta.death_year.or(subject.death_year);
+                    subject.death_year = meta.death_year;
                 }
                 Err(e) => tracing::warn!(error = %e, %q, "wikidata occupations unavailable"),
             }
         }
-        if profile_for(subject.person_class()).enable_wdqs_military {
+        if subject.has_military_signal() {
             if let Some(qid) = subject.qid.clone() {
                 match ingest_wdqs_events(&pool, config, &subject, subject_id).await {
                     Ok(wdqs_metrics) => {
@@ -188,7 +188,10 @@ pub async fn run_ingest_quality(
 
     let mut metrics = IngestMetrics::default();
     let mut counters = BudgetCounters::default();
-    let extractors = extractor_stack_for(subject.person_class());
+    let extractors = extractor_stack_for_classes(
+        &subject.person_classes(),
+        subject.has_military_signal(),
+    );
     let extractor_refs: Vec<&dyn CandidateExtractor> =
         extractors.iter().map(|e| e.as_ref()).collect();
     let resolver = GazetteerResolver;
@@ -511,6 +514,19 @@ pub(crate) async fn process_raw_candidate(
     assemble: bool,
     metrics: &mut IngestMetrics,
 ) -> anyhow::Result<()> {
+    if !keep_military_typed_event(
+        &raw.event_type,
+        &raw.clause_text,
+        &subject.label,
+        subject.has_military_signal(),
+    ) {
+        metrics.bump_loss("military_without_person_signal");
+        return Ok(());
+    }
+    if raw.event_type == "death" && subject.death_year.is_none() && subject.qid.is_some() {
+        metrics.bump_loss("death_without_p570");
+        return Ok(());
+    }
     let time = parse_typed_time(raw.time_surface.as_deref());
     let mut shell = talaria_quality::EventCandidate {
         id: Uuid::nil(),

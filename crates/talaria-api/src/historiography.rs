@@ -19,7 +19,7 @@ pub async fn run_historiography_extract(
     config: &AppConfig,
     subject: &str,
     file: Option<&Path>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<String> {
     let pool = connect(config).await?;
     run_migrations(&pool).await?;
     let (entity_id, label, wiki_title) = if file.is_some() {
@@ -44,18 +44,14 @@ pub async fn run_historiography_extract(
                 Persist::Skipped => skipped += 1,
             }
         }
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&serde_json::json!({
-                "subject": label,
-                "entity_id": entity_id,
-                "source": "fixture",
-                "passages_scanned": scanned,
-                "inserted": inserted,
-                "skipped": skipped,
-            }))?
-        );
-        return Ok(());
+        return Ok(serde_json::to_string_pretty(&serde_json::json!({
+            "subject": label,
+            "entity_id": entity_id,
+            "source": "fixture",
+            "passages_scanned": scanned,
+            "soft_claims_inserted": inserted,
+            "skipped": skipped,
+        }))?);
     }
 
     let pattern = format!("%{wiki_title}%");
@@ -126,17 +122,13 @@ pub async fn run_historiography_extract(
         }
     }
 
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&serde_json::json!({
-            "subject": label,
-            "entity_id": entity_id,
-            "passages_scanned": scanned,
-            "inserted": inserted,
-            "skipped": skipped,
-        }))?
-    );
-    Ok(())
+    Ok(serde_json::to_string_pretty(&serde_json::json!({
+        "subject": label,
+        "entity_id": entity_id,
+        "passages_scanned": scanned,
+        "soft_claims_inserted": inserted,
+        "skipped": skipped,
+    }))?)
 }
 
 async fn resolve_subject(

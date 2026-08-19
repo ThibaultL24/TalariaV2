@@ -426,21 +426,7 @@ fn resolve_subject(lower: &str, page_title: &str) -> Option<&'static Subject> {
     }) {
         return Some(subject);
     }
-
-    let campaign = page_lower.starts_with("battle of ")
-        || page_lower.starts_with("treaty of ")
-        || page_lower.starts_with("treaties of ")
-        || page_lower.starts_with("congress of ")
-        || page_lower.starts_with("siege of ");
-    if !campaign {
-        return None;
-    }
-    let years = extract_years(lower);
-    SUBJECTS.iter().find(|subject| {
-        years
-            .iter()
-            .any(|year| (subject.year_min..=subject.year_max).contains(&year.year))
-    })
+    None
 }
 
 fn find_verb(lower: &str) -> Option<String> {
@@ -777,6 +763,29 @@ mod tests {
         assert_eq!(hits[0].person, "Honoré de Balzac");
         assert_eq!(hits[0].time, "1799");
         assert_eq!(hits[0].place.to_lowercase(), "tours");
+    }
+
+    #[test]
+    fn unrelated_modern_battle_is_not_assigned_by_year_window() {
+        let hits = mine_sentence(
+            "The armies clashed in 1942 near the Volga after a long siege.",
+            "Battle of Stalingrad",
+        );
+        assert!(
+            hits.is_empty() || hits.iter().all(|h| h.person != "Alan Turing"),
+            "year-window must not attach Turing to Stalingrad, got {hits:?}"
+        );
+    }
+
+    #[test]
+    fn napoleon_battle_page_still_mines_via_needle() {
+        let hits = mine_sentence(
+            "The Battle of Waterloo was fought on 18 June 1815 near the ridge after a long march.",
+            "Battle of Waterloo",
+        );
+        assert_eq!(hits.len(), 1, "expected Waterloo fixture, got {hits:?}");
+        assert_eq!(hits[0].person, "Napoleon");
+        assert_eq!(hits[0].time, "1815");
     }
 
     #[test]

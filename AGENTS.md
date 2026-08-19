@@ -55,7 +55,7 @@ Event families include battle, diplomatic, meeting, residence, marriage/divorce,
 - Gates unchanged globally; density comes from more documents + multi-extractors (structured, timeline, dense clause, travel, publication, posthumous).
 - Tests: `cargo test -p talaria-sources` (fixtures only, no network).
 
-### Lot E — granular trajectory toward ≥500 map points (Napoleon floor)
+### Lot E — person-first density (Napoleon is a fixture)
 - **Legacy vs quality coexistence is strict**: never import or auto-requalify `pipeline='legacy'` into quality-accepted.
 - Migration `011`: `exploration_targets`, `place_aliases`, `occurrence_key` columns, density targets on runs.
 - CLI (JSON-capable): `ingest-quality --live --seed-list fixtures/seeds/napoleon_wiki_titles.txt --target-timeline-events 500 --target-map-events 500 --max-depth 3 --max-documents 10000`, `resolve-places --subject … --all-unresolved`, `density-report --subject … --show-bottlenecks --show-source-coverage --show-unresolved-places`, `source-status`, `exploration-report`, `connector-report`.
@@ -63,7 +63,7 @@ Event families include battle, diplomatic, meeting, residence, marriage/divorce,
 - Events are **append-only**; corrections use supersession. Partial dates stay typed (`year`/`month`); do not coerce year → 1 Jan.
 - Events without coords stay `timeline_eligible=true`, `map_eligible=false` until `ResolvePlaces` / page coordinates / aliases succeed.
 - Density targets **pilot exploration only** — never invent, never duplicate, never silently lower gates. If budgets exhaust below 500, report `target_not_reached` with bottlenecks.
-- For extremely documented subjects (e.g. Napoleon/Q517), the product floor is **≥500 map_eligible** quality events; this is not a global system cap.
+- For extremely documented subjects (e.g. Napoleon/Q517), density is a **by-product of sources**, not a product floor. Ingest is person-first: all occupations, classes as search priors, no invented map points.
 - **Stubs ≠ integrations**: announce maturity via `source-status` only. Open Library, Internet Archive, and Gallica are fetch/parse/extract ready with `--live`. Europeana is ready only with `EUROPEANA_API_KEY`. BnF SPARQL, Persée, Wikisource, Commons, VIAF/ISNI remain stubs.
 - Occurrence identity uses `occurrence_key` (subject+type+role+time+place+primary object…), not display title.
 - Seed lists / gazetteer aliases are data, not Napoleon-hardcoded gate rules.

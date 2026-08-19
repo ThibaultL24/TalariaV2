@@ -25,7 +25,8 @@ import {
   fetchStatus,
   fetchTimeline,
   searchEntities,
-  startPersonIngest,
+  startAgoraIngest,
+  startExplorerIngest,
   type BibliographyItem,
   type EntityClaim,
   type GeoJsonFeatureCollection,
@@ -47,6 +48,24 @@ import { useExplorerStore } from "@/stores/explorer-store";
 const POLL_MS = 5000;
 const LIVE_LIMIT = 2000;
 const INGEST_POLL_MS = 3000;
+const INGEST_TIMEOUT_MS = 45 * 60 * 1000;
+
+async function pollIngestJob(
+  jobId: string,
+  onRunning: () => void,
+): Promise<Awaited<ReturnType<typeof fetchIngestJob>>> {
+  const deadline = Date.now() + INGEST_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, INGEST_POLL_MS));
+    const job = await fetchIngestJob(jobId);
+    if (job.status === "running" || job.status === "queued") {
+      onRunning();
+      continue;
+    }
+    return job;
+  }
+  throw new Error("timeout");
+}
 
 function namesOverlap(left: string, right: string): boolean {
   const a = left.trim().toLowerCase();
@@ -368,44 +387,59 @@ export function ExplorerPage() {
       }
 
       setPersonFilter(chosen.label, chosen.label);
-      setIngestStatus(strings.ingestQueued);
       setError(null);
       try {
-        const started = await startPersonIngest({
+        setIngestStatus(strings.ingestQueued);
+        const explorerJob = await startExplorerIngest({
           subject: chosen.label,
           qid: chosen.qid,
           live: true,
         });
         setIngestStatus(
-          started.status === "running" ? strings.ingestRunning : strings.ingestQueued,
+          explorerJob.status === "running" ? strings.ingestRunning : strings.ingestQueued,
         );
 
-        const deadline = Date.now() + 45 * 60 * 1000;
-        while (Date.now() < deadline) {
-          await new Promise((resolve) => setTimeout(resolve, INGEST_POLL_MS));
-          const job = await fetchIngestJob(started.job_id);
-          if (job.status === "running" || job.status === "queued") {
-            setIngestStatus(strings.ingestRunning);
-            continue;
-          }
-          if (job.status === "failed") {
-            setIngestStatus(null);
-            setError(`${strings.ingestFailed}: ${job.error ?? "unknown"}`);
-            return;
-          }
-          if (job.status === "done") {
-            setIngestStatus(strings.ingestDone);
-            if (job.entity_id) {
-              setEntity(job.entity_id, chosen.label);
-            } else {
-              setPersonFilter(chosen.label, chosen.label);
-            }
-            setIngestStatus(null);
-            return;
-          }
+        const explorerResult = await pollIngestJob(explorerJob.job_id, () => {
+          setIngestStatus(strings.ingestRunning);
+        });
+        if (explorerResult.status === "failed") {
+          setIngestStatus(null);
+          setError(`${strings.ingestFailed}: ${explorerResult.error ?? "unknown"}`);
+          return;
         }
-        setIngestStatus(null);
-        setError(`${strings.ingestFailed}: timeout`);
+
+        setIngestStatus(strings.ingestDone);
+        const resolvedEntityId = explorerResult.entity_id;
+        if (resolvedEntityId) {
+          setEntity(resolvedEntityId, chosen.label);
+        } else {
+          setPersonFilter(chosen.label, chosen.label);
+        }
+
+        setIngestStatus(strings.agoraQueued);
+        const agoraJob = await startAgoraIngest({
+          subject: chosen.label,
+          qid: chosen.qid,
+          live: true,
+        });
+        setIngestStatus(
+          agoraJob.status === "running" ? strings.agoraRunning : strings.agoraQueued,
+        );
+
+        const agoraResult = await pollIngestJob(agoraJob.job_id, () => {
+          setIngestStatus(strings.agoraRunning);
+        });
+        if (agoraResult.status === "failed") {
+          setIngestStatus(null);
+          setError(`Agora ingest failed: ${agoraResult.error ?? "unknown"}`);
+          return;
+        }
+
+        if (!resolvedEntityId && agoraResult.entity_id) {
+          setEntity(agoraResult.entity_id, chosen.label);
+        }
+        setIngestStatus(strings.agoraDone);
+        window.setTimeout(() => setIngestStatus(null), 2500);
       } catch (err) {
         setIngestStatus(null);
         setError(err instanceof Error ? err.message : strings.ingestFailed);
@@ -508,8 +542,9 @@ export function ExplorerPage() {
                     : "text-(--color-text-muted)"
                 }`}
                 onClick={() => setSidebarTab("timeline")}
+                title={strings.laneExplorerHint}
               >
-                Facts
+                {strings.laneExplorerTitle}
               </button>
               <button
                 type="button"
@@ -519,13 +554,20 @@ export function ExplorerPage() {
                     : "text-(--color-text-muted)"
                 }`}
                 onClick={() => setSidebarTab("agora")}
+                title={strings.laneAgoraHint}
               >
-                Agora
+                {strings.laneAgoraTitle}
                 {agoraClaims.length + bibliography.length > 0
                   ? ` (${agoraClaims.length + bibliography.length})`
                   : ""}
               </button>
             </div>
+          ) : null}
+
+          {hasEntity ? (
+            <p className="border-b border-(--color-border-subtle) px-3 py-2 text-[10px] leading-relaxed text-(--color-text-muted)">
+              {sidebarTab === "timeline" ? strings.laneExplorerHint : strings.laneAgoraHint}
+            </p>
           ) : null}
 
           <div className="min-h-0 flex-1 overflow-y-auto">
@@ -578,8 +620,8 @@ export function ExplorerPage() {
             </div>
           ) : (
             <div className="pointer-events-none absolute bottom-3 left-3 z-10 max-w-xs rounded-lg border border-sky-500/30 bg-sky-950/75 px-3 py-2 text-[11px] leading-relaxed text-sky-100/90 backdrop-blur-sm">
-              <strong className="font-semibold">Quality facts</strong> — map points and timeline
-              events only. Historiography lives in the Agora tab.
+              <strong className="font-semibold">{strings.laneExplorerTitle}</strong> —{" "}
+              {strings.laneExplorerHint}
             </div>
           )}
 

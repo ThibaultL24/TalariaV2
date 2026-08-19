@@ -1,4 +1,5 @@
 // web/src/components/explorer/entity-profile.tsx
+import { strings } from "@/lib/strings";
 interface EntityProfileProps {
   name: string;
   qid?: string | null;
@@ -36,7 +37,7 @@ export function EntityProfile({
         ) : null}
       </div>
       <p className="mt-2 text-[10px] leading-relaxed text-(--color-text-muted)">
-        Map & timeline = validated facts. Agora = debates & bibliographic sources.
+        {strings.laneExplorerHint} · {strings.laneAgoraHint}
       </p>
       {profiles.length > 0 ? (
         <div className="mt-2 flex flex-wrap gap-1.5">

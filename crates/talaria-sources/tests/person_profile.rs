@@ -1,8 +1,9 @@
 // crates/talaria-sources/tests/person_profile.rs
-use talaria_sources::extractors::{extractor_stack_for, ExtractorInput};
+use talaria_sources::extractors::{extractor_stack_for, extractor_stack_for_classes, ExtractorInput};
 use talaria_sources::{
-    catalog_search_buckets, catalog_search_query, infer_person_class, plan_sources, profile_for,
-    rank_wikipedia_title, IngestBudgets, PersonClass, ResolvedSubject, SourceKind,
+    catalog_search_buckets, catalog_search_query, infer_person_class, infer_person_classes,
+    keep_military_typed_event, plan_sources, profile_for, rank_wikipedia_title, IngestBudgets,
+    PersonClass, ResolvedSubject, SourceKind,
 };
 
 #[test]
@@ -21,17 +22,24 @@ fn writer_denies_coalition_pages() {
     let class = infer_person_class(&["writer".into()], Some("French poet and novelist"));
     assert_eq!(class, PersonClass::ArtistWriter);
     let p = profile_for(class);
-    assert!(rank_wikipedia_title("Les Misérables", &p, None) > 0.5);
+    assert!(rank_wikipedia_title("Bibliography of Victor Hugo", &p, None) > 0.5);
     assert!(rank_wikipedia_title("Battle of Waterloo", &p, None) < 0.4);
 }
 
 #[test]
-fn explorer_beats_admiral_military_qid() {
-    let class = infer_person_class(&["explorer".into(), "military".into()], None);
-    assert_eq!(class, PersonClass::Explorer);
-    let p = profile_for(class);
-    assert!(!p.enable_wdqs_military);
-    assert!(rank_wikipedia_title("Voyages of Christopher Columbus", &p, None) > 0.5);
+fn explorer_plus_military_keeps_both_facets() {
+    let classes = infer_person_classes(&["explorer".into(), "military".into()], None);
+    assert!(classes.contains(&PersonClass::Explorer));
+    assert!(classes.contains(&PersonClass::MilitaryLeader));
+    let stack = extractor_stack_for_classes(&classes, true);
+    assert!(stack.iter().any(|e| e.extractor_id() == "military_campaign"));
+    assert!(
+        rank_wikipedia_title(
+            "Battle of the Atlantic",
+            &profile_for(PersonClass::MilitaryLeader),
+            None
+        ) >= 0.55
+    );
 }
 
 #[test]
@@ -162,4 +170,174 @@ fn scientist_wiki_filter_drops_battles_keeps_labs() {
     assert_eq!(kept[0], "Marie Curie");
     assert!(kept.iter().any(|t| t.contains("University")));
     assert!(!kept.iter().any(|t| t.contains("Waterloo")));
+}
+
+#[test]
+fn writer_soldier_keeps_military_career() {
+    let classes = infer_person_classes(&["writer".into(), "soldier".into()], None);
+    assert!(classes.contains(&PersonClass::ArtistWriter));
+    assert!(classes.contains(&PersonClass::MilitaryLeader));
+    assert!(keep_military_typed_event(
+        "battle",
+        "Ernst Jünger fought at the Somme in 1916.",
+        "Ernst Jünger",
+        true,
+    ));
+}
+
+#[test]
+fn scientist_without_signal_drops_battle_candidate() {
+    assert!(!keep_military_typed_event(
+        "battle",
+        "The Battle of Waterloo decided the campaign.",
+        "Marie Curie",
+        false,
+    ));
+}
+
+#[test]
+fn clause_service_keeps_battle_without_occupation() {
+    assert!(keep_military_typed_event(
+        "battle",
+        "Marie Curie enlisted in 1914 and served as a radiographer.",
+        "Marie Curie",
+        false,
+    ));
+}
+
+#[test]
+fn default_extractor_stack_is_not_military() {
+    let stack = talaria_sources::extractors::default_extractor_stack();
+    assert!(!stack.iter().any(|e| e.extractor_id() == "military_campaign"));
+}
+
+#[test]
+fn living_ruler_keeps_office_drops_unsourced_battles() {
+    let classes = infer_person_classes(&["president".into()], Some("President of France"));
+    assert!(classes.contains(&PersonClass::Ruler));
+    assert!(!classes.contains(&PersonClass::MilitaryLeader));
+    let office = talaria_sources::rank_wikipedia_title_for_classes(
+        "French presidential court",
+        &classes,
+        None,
+        false,
+    );
+    let battle = talaria_sources::rank_wikipedia_title_for_classes(
+        "Battle of Waterloo",
+        &classes,
+        None,
+        false,
+    );
+    assert!(office >= 0.55, "office={office}");
+    assert!(battle < 0.55, "battle={battle}");
+}
+
+#[test]
+fn antiquity_ruler_keeps_bce_diplomatic_not_modern_wars() {
+    let classes = infer_person_classes(&["pharaoh".into(), "queen of".into()], Some("Queen of Ptolemaic Egypt"));
+    assert!(classes.contains(&PersonClass::Ruler));
+    let court = talaria_sources::rank_wikipedia_title_for_classes(
+        "Ptolemaic court",
+        &classes,
+        Some(-30),
+        false,
+    );
+    let ww2 = talaria_sources::rank_wikipedia_title_for_classes(
+        "World War II",
+        &classes,
+        Some(-30),
+        false,
+    );
+    assert!(court >= 0.55, "court={court}");
+    assert!(ww2 < 0.55, "ww2={ww2}");
+}
+
+#[test]
+fn explorer_ranks_voyage_not_world_war() {
+    let classes = infer_person_classes(&["explorer".into()], None);
+    let voyage = talaria_sources::rank_wikipedia_title_for_classes(
+        "Voyages of Christopher Columbus",
+        &classes,
+        Some(1506),
+        false,
+    );
+    let ww1 = talaria_sources::rank_wikipedia_title_for_classes(
+        "World War I",
+        &classes,
+        Some(1506),
+        false,
+    );
+    assert!(voyage >= 0.55, "voyage={voyage}");
+    assert!(ww1 < 0.55, "ww1={ww1}");
+}
+
+#[test]
+fn scientist_seed_merge_does_not_keep_battles_over_labs() {
+    let seeds = talaria_sources::merge_seed_titles_for(
+        "Marie Curie",
+        ["Marie Curie".into()],
+        [
+            "Battle of Waterloo".into(),
+            "University of Paris".into(),
+        ],
+        2,
+        false,
+    );
+    assert_eq!(seeds[0], "Marie Curie");
+    assert!(seeds.iter().any(|t| t.contains("University")));
+    assert!(!seeds.iter().any(|t| t.contains("Waterloo")));
+}
+
+#[test]
+fn military_seed_merge_still_keeps_battle_pages() {
+    let seeds = talaria_sources::merge_seed_titles_for(
+        "Napoleon",
+        ["Napoleon".into()],
+        ["Battle of Austerlitz".into(), "Comics".into()],
+        8,
+        true,
+    );
+    assert!(seeds.iter().any(|t| t.contains("Austerlitz")));
+}
+
+#[test]
+fn untopical_list_page_drops_below_poc_keep_threshold() {
+    let score = talaria_sources::rank_wikipedia_title_for_classes(
+        "List of Belgian football clubs",
+        &[PersonClass::Scientist],
+        Some(1934),
+        false,
+    );
+    assert!(score < 0.55, "score={score}");
+}
+
+#[test]
+fn polyvalent_artist_scientist_ranks_both_lab_and_atelier() {
+    let classes = infer_person_classes(
+        &["painter".into(), "scientist".into(), "engineer".into()],
+        None,
+    );
+    assert!(classes.contains(&PersonClass::ArtistVisual));
+    assert!(classes.contains(&PersonClass::Scientist));
+    let lab = talaria_sources::rank_wikipedia_title_for_classes(
+        "University of Florence",
+        &classes,
+        Some(1519),
+        false,
+    );
+    let atelier = talaria_sources::rank_wikipedia_title_for_classes(
+        "Milan atelier",
+        &classes,
+        Some(1519),
+        false,
+    );
+    assert!(lab >= 0.55, "lab={lab}");
+    assert!(atelier >= 0.55, "atelier={atelier}");
+    let battle = talaria_sources::rank_wikipedia_title_for_classes(
+        "Battle of Waterloo",
+        &classes,
+        Some(1519),
+        false,
+    );
+    assert!(battle < 0.55, "battle={battle}");
 }
