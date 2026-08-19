@@ -17,21 +17,13 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use super::AppState;
-use crate::corpus_ingest;
+use crate::corpus_ingest::{self, live_corpus_providers};
 use crate::historiography;
 use crate::lot_e::{run_lot_e_density_ingest, write_minimal_seed_list};
 use talaria_sources::DensityTargets;
 
 pub const LANE_EXPLORER: &str = "explorer";
 pub const LANE_AGORA: &str = "agora";
-
-const DEFAULT_AGORA_PROVIDERS: &[&str] = &[
-    "hal",
-    "persee",
-    "gallica",
-    "theses_fr",
-    "open_alex",
-];
 
 #[derive(Debug, Clone)]
 pub struct IngestJob {
@@ -90,9 +82,11 @@ fn resolve_seed_list(subject: &str) -> anyhow::Result<PathBuf> {
 }
 
 fn parse_entity_id_from_report(report: &Value) -> Option<Uuid> {
-    if let Some(nested) = report.get("explorer") {
-        if let Some(id) = parse_entity_id_from_report(nested) {
-            return Some(id);
+    for nested_key in ["explorer", "corpus", "agora"] {
+        if let Some(nested) = report.get(nested_key) {
+            if let Some(id) = parse_entity_id_from_report(nested) {
+                return Some(id);
+            }
         }
     }
     report
@@ -336,10 +330,7 @@ async fn run_agora_lane(
     qid: Option<&str>,
     corpus_limit: u32,
 ) -> anyhow::Result<Value> {
-    let providers: Vec<String> = DEFAULT_AGORA_PROVIDERS
-        .iter()
-        .map(|s| (*s).to_string())
-        .collect();
+    let providers = live_corpus_providers();
     let corpus_report = corpus_ingest::run_corpus_ingest(
         config,
         subject,
@@ -380,16 +371,6 @@ fn lane_purpose(lane: &str) -> &'static str {
     }
 }
 
-fn entity_id_from_report(report: &Value) -> Option<Uuid> {
-    report
-        .pointer("/subject/entity_id")
-        .or_else(|| report.get("entity_id"))
-        .or_else(|| report.get("subject_entity_id"))
-        .or_else(|| report.pointer("/comparison/entity_id"))
-        .and_then(|value| value.as_str())
-        .and_then(|s| Uuid::parse_str(s).ok())
-}
-
 pub async fn get_ingest_job(
     State(state): State<AppState>,
     Path(job_id): Path<Uuid>,
@@ -424,8 +405,29 @@ mod tests {
             "subject": { "entity_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" }
         });
         assert_eq!(
-            entity_id_from_report(&report).unwrap().to_string(),
+            parse_entity_id_from_report(&report).unwrap().to_string(),
             "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
         );
+    }
+
+    #[test]
+    fn agora_lane_uses_every_live_catalog() {
+        let providers = live_corpus_providers();
+        for name in [
+            "hal",
+            "persee",
+            "gallica",
+            "theses_fr",
+            "open_alex",
+            "bnf",
+            "open_library",
+            "internet_archive",
+            "europeana",
+        ] {
+            assert!(
+                providers.iter().any(|p| p == name),
+                "agora missing catalog {name}"
+            );
+        }
     }
 }

@@ -48,7 +48,7 @@ Event families include battle, diplomatic, meeting, residence, marriage/divorce,
 - Unit tests: `cargo test -p talaria-quality`. End-to-end demo needs Postgres.
 
 ### Multi-source density (Lot A/B)
-- Crate `talaria-sources`: `SourceConnector`, `SourceRegistry`, `PlanSources`, fixture/Wikidata/Wikipedia plus **live catalog** connectors (Open Library, Internet Archive, Gallica; Europeana when `EUROPEANA_API_KEY` is set). Remaining Lot C/D sources (BnF SPARQL, Persée, Wikisource, Commons, VIAF/ISNI/IdRef) are still stubs.
+- Crate `talaria-sources`: `SourceConnector`, `SourceRegistry`, `PlanSources`, fixture/Wikidata/Wikipedia plus **live catalog** connectors (HAL, Persée, Gallica, theses.fr, OpenAlex, Open Library, Internet Archive, BnF; Europeana when `EUROPEANA_API_KEY` is set). Remaining Lot C/D sources (Wikisource, Commons, VIAF/ISNI/IdRef) are still stubs.
 - Migration `010`: discovery runs, discovered documents, `quality_claims` (+ supports), place_resolutions, eligibility triad (`historically_valid` / `timeline_eligible` / `map_eligible`).
 - CLI: `talaria source-registry`, `plan-sources --subject …`, `ingest-quality --subject … [--qid Q…] [--fixture true|false] [--live] [--sources wikidata,wikipedia,open_library,gallica,europeana]`, `density-report`.
 - Extra sources **reinforce** existing quality events (`source_count++`) via event fingerprint — they must not create duplicate map points.
@@ -64,7 +64,7 @@ Event families include battle, diplomatic, meeting, residence, marriage/divorce,
 - Events without coords stay `timeline_eligible=true`, `map_eligible=false` until `ResolvePlaces` / page coordinates / aliases succeed.
 - Density targets **pilot exploration only** — never invent, never duplicate, never silently lower gates. If budgets exhaust below 500, report `target_not_reached` with bottlenecks.
 - For extremely documented subjects (e.g. Napoleon/Q517), density is a **by-product of sources**, not a product floor. Ingest is person-first: all occupations, classes as search priors, no invented map points.
-- **Stubs ≠ integrations**: announce maturity via `source-status` only. Open Library, Internet Archive, and Gallica are fetch/parse/extract ready with `--live`. Europeana is ready only with `EUROPEANA_API_KEY`. BnF SPARQL, Persée, Wikisource, Commons, VIAF/ISNI remain stubs.
+- **Stubs ≠ integrations**: announce maturity via `source-status` only. HAL, Persée, Gallica, theses.fr, OpenAlex, Open Library, Internet Archive, and BnF are fetch/parse/extract ready with `--live`. Europeana is ready only with `EUROPEANA_API_KEY`. Wikisource, Commons, VIAF/ISNI remain stubs.
 - Occurrence identity uses `occurrence_key` (subject+type+role+time+place+primary object…), not display title.
 - Seed lists / gazetteer aliases are data, not Napoleon-hardcoded gate rules.
 
