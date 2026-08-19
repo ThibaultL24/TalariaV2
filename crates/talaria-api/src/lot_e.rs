@@ -719,6 +719,8 @@ pub async fn run_lot_e_density_ingest(
         "connectors": {
             "wikipedia": "extraction_ready",
             "wikidata": "fetch_ready",
+            "wikisource": "extraction_ready",
+            "commons": "extraction_ready",
             "fixture": "production_ready",
             "bnf": "stub",
             "gallica": "extraction_ready",
@@ -1692,8 +1694,8 @@ pub fn connector_status_json() -> String {
     serde_json::to_string_pretty(&serde_json::json!({
         "wikipedia": "extraction_ready",
         "wikidata": "fetch_ready",
-        "wikisource": "stub",
-        "commons": "stub",
+        "wikisource": "extraction_ready",
+        "commons": "extraction_ready",
         "fixture": "production_ready",
         "bnf": "extraction_ready",
         "gallica": "extraction_ready",
@@ -1711,7 +1713,7 @@ pub fn connector_status_json() -> String {
         "isni": "metadata_only",
         "openalex": "extraction_ready",
         "crossref": "stub",
-        "note": "Executable with --live from explorer search or ingest-quality: wikipedia, wikidata, hal, persee, gallica, theses_fr, open_library, open_alex, internet_archive, bnf. Europeana needs EUROPEANA_API_KEY."
+        "note": "Executable with --live from explorer search or ingest-quality: wikipedia, wikidata, wikisource, commons, hal, persee, gallica, theses_fr, open_library, open_alex, internet_archive, bnf. Europeana needs EUROPEANA_API_KEY."
     }))
     .unwrap_or_else(|_| "{}".into())
 }

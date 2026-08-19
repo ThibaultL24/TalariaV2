@@ -1,6 +1,6 @@
 // crates/talaria-api/src/routes/ingest.rs
 //! Two explicit ingest lanes:
-//! - **explorer** — Wikipedia/Wikidata life trace plus catalog-derived dated facts
+//! - **explorer** — Wikipedia/Wikidata/Wikisource/Commons life trace plus catalog-derived dated facts
 //! - **agora** — bibliographic catalogs + historiography (theories, theses, opinions)
 
 use axum::{
@@ -17,7 +17,7 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use super::AppState;
-use crate::corpus_ingest::{self, live_corpus_providers};
+use crate::corpus_ingest::{self, explorer_fact_providers, live_corpus_providers};
 use crate::historiography;
 use crate::lot_e::{run_lot_e_density_ingest, write_minimal_seed_list};
 use talaria_sources::DensityTargets;
@@ -338,7 +338,7 @@ async fn run_explorer_lane(
         config,
         subject,
         qid,
-        Some(live_corpus_providers()),
+        Some(explorer_fact_providers()),
         false,
         true,
     )
@@ -476,6 +476,16 @@ mod tests {
                 "agora missing catalog {name}"
             );
         }
+        assert!(!providers.iter().any(|p| p == "wikisource"));
+        assert!(!providers.iter().any(|p| p == "wikimedia_commons"));
+    }
+
+    #[test]
+    fn explorer_lane_collects_sister_wikis() {
+        let providers = explorer_fact_providers();
+        assert!(providers.iter().any(|p| p == "wikisource"));
+        assert!(providers.iter().any(|p| p == "wikimedia_commons"));
+        assert!(providers.iter().any(|p| p == "hal"));
     }
 
     #[test]
