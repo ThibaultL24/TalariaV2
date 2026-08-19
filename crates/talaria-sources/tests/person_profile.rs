@@ -341,3 +341,15 @@ fn polyvalent_artist_scientist_ranks_both_lab_and_atelier() {
     );
     assert!(battle < 0.55, "battle={battle}");
 }
+
+#[test]
+fn military_leader_still_ranks_battles_but_also_political_career() {
+    let p = profile_for(PersonClass::MilitaryLeader);
+    assert!(p.enable_wdqs_military);
+    let battle = rank_wikipedia_title("Bataille de Montcornet", &p, None);
+    let presidence = rank_wikipedia_title("Présidence de Charles de Gaulle", &p, None);
+    let gouvernement = rank_wikipedia_title("Gouvernement de Gaulle", &p, None);
+    assert!(battle > 0.8);
+    assert!(presidence >= 0.55, "presidence={presidence}");
+    assert!(gouvernement >= 0.55, "gouvernement={gouvernement}");
+}

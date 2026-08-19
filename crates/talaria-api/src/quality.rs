@@ -11,7 +11,7 @@ use talaria_quality::{
     start_time_from_typed, time_to_json, BuildProjections, ClauseAnalyzeInput, ClauseAnalyzer,
     DerivedLabelProjections, DeterministicClauseAnalyzer, EntityKind, EvidencePtr,
     ExistingCandidateAction, EXTRACTOR_EPISTEMIC_STATUS, GateContext, GazetteerResolver,
-    ParticipantRole, TypedTime, ASSEMBLER_V1, EXTRACTOR_DETERMINISTIC_V1,
+    ParticipantRole, ASSEMBLER_V1, EXTRACTOR_DETERMINISTIC_V1,
 };
 use talaria_store::{
     connect, count_active_quality_by_type, find_active_quality_event_by_occurrence_key,

@@ -203,9 +203,14 @@ fn heuristic_verb(clause: &str) -> Option<String> {
     const EXTRA: &[(&str, &str)] = &[
         ("discovered", "discovered"),
         ("published", "published"),
+        ("publia", "published"),
+        ("publié", "published"),
+        ("parut", "published"),
         ("studied", "studied"),
         ("visited", "visited"),
         ("lived", "lived"),
+        ("vécut", "lived"),
+        ("habita", "lived"),
         ("resided", "lived"),
     ];
     for (cue, verb) in EXTRA {

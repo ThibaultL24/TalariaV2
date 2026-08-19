@@ -425,6 +425,46 @@ pub fn default_registry_with_corpus(
             connector: Some(Arc::new(persee_conn)),
             config_notes: "Persée OAI-PMH Dublin Core (public)".into(),
         });
+        match ThesesFrConnector::new(ThesesFrConfig::default()) {
+            Ok(conn) => {
+                reg.register(ConnectorRegistration {
+                    kind: SourceKind::ThesesFr,
+                    implemented: true,
+                    capabilities: caps_theses_fr(),
+                    connector: Some(Arc::new(conn)),
+                    config_notes: "theses.fr search (public)".into(),
+                });
+            }
+            Err(_) => register_stub(&mut reg, SourceKind::ThesesFr, "theses.fr connector init failed"),
+        }
+        let mut oa_cfg = OpenAlexConfig::default();
+        oa_cfg.mailto = std::env::var("OPENALEX_MAILTO")
+            .ok()
+            .filter(|s| !s.trim().is_empty());
+        match OpenAlexConnector::new(oa_cfg) {
+            Ok(conn) => {
+                reg.register(ConnectorRegistration {
+                    kind: SourceKind::OpenAlex,
+                    implemented: true,
+                    capabilities: caps_open_alex(),
+                    connector: Some(Arc::new(conn)),
+                    config_notes: "OpenAlex works API (public)".into(),
+                });
+            }
+            Err(_) => register_stub(&mut reg, SourceKind::OpenAlex, "OpenAlex connector init failed"),
+        }
+        match BnfConnector::new(BnfConfig::default()) {
+            Ok(conn) => {
+                reg.register(ConnectorRegistration {
+                    kind: SourceKind::Bnf,
+                    implemented: true,
+                    capabilities: caps_notice(SourceKind::Bnf),
+                    connector: Some(Arc::new(conn)),
+                    config_notes: "BnF catalogue (public SPARQL/SRU)".into(),
+                });
+            }
+            Err(_) => register_stub(&mut reg, SourceKind::Bnf, "BnF connector init failed"),
+        }
         let eu_config = EuropeanaConfig {
             api_key: std::env::var("EUROPEANA_API_KEY").ok(),
             ..EuropeanaConfig::default()
@@ -458,6 +498,9 @@ pub fn default_registry_with_corpus(
         register_stub(&mut reg, SourceKind::Gallica, "enable with --live");
         register_stub(&mut reg, SourceKind::Hal, "enable with --live");
         register_stub(&mut reg, SourceKind::Persee, "enable with --live");
+        register_stub(&mut reg, SourceKind::ThesesFr, "enable with --live");
+        register_stub(&mut reg, SourceKind::OpenAlex, "enable with --live");
+        register_stub(&mut reg, SourceKind::Bnf, "enable with --live");
         register_stub(
             &mut reg,
             SourceKind::Europeana,
@@ -469,7 +512,6 @@ pub fn default_registry_with_corpus(
     for kind in [
         SourceKind::Wikisource,
         SourceKind::WikimediaCommons,
-        SourceKind::Bnf,
         SourceKind::Viaf,
         SourceKind::Isni,
         SourceKind::IdRef,
@@ -478,7 +520,6 @@ pub fn default_registry_with_corpus(
         SourceKind::Sudoc,
     ] {
         let notes = match kind {
-            SourceKind::Bnf => "requires BnF SPARQL/API access config",
             SourceKind::Wikisource | SourceKind::WikimediaCommons => "Wikimedia remainder",
             _ => "alignment layer — not yet wired",
         };

@@ -380,6 +380,16 @@ fn lane_purpose(lane: &str) -> &'static str {
     }
 }
 
+fn entity_id_from_report(report: &Value) -> Option<Uuid> {
+    report
+        .pointer("/subject/entity_id")
+        .or_else(|| report.get("entity_id"))
+        .or_else(|| report.get("subject_entity_id"))
+        .or_else(|| report.pointer("/comparison/entity_id"))
+        .and_then(|value| value.as_str())
+        .and_then(|s| Uuid::parse_str(s).ok())
+}
+
 pub async fn get_ingest_job(
     State(state): State<AppState>,
     Path(job_id): Path<Uuid>,
@@ -402,4 +412,20 @@ pub async fn get_ingest_job(
         "error": job.error,
         "report": job.report,
     })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn entity_id_reads_subject_pointer() {
+        let report = json!({
+            "subject": { "entity_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" }
+        });
+        assert_eq!(
+            entity_id_from_report(&report).unwrap().to_string(),
+            "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        );
+    }
 }

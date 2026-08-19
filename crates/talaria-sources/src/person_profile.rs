@@ -385,7 +385,9 @@ pub fn profile_for(class: PersonClass) -> IngestProfile {
             expected_event_types: &["battle", "siege", "treaty", "exile", "office"],
             wikipedia_boost: &[
                 "battle of", "bataille", "siege", "siège", "campaign", "campagne", "treaty",
-                "traité", "guerre",
+                "traité", "guerre", "président", "president", "présidence", "presidence",
+                "gouvernement", "résistance", "resistance", "ministre", "discours", "rpf",
+                "élysée", "elysee",
             ],
             wikipedia_deny: &["comics", "fictional"],
             catalog_terms: &["bataille", "campagne", "guerre", "armée"],

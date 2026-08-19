@@ -21,7 +21,14 @@ impl CandidateExtractor for PublicationExtractor {
             if !(lower.contains("published")
                 || lower.contains("wrote ")
                 || lower.contains("authored")
-                || lower.contains("printed"))
+                || lower.contains("printed")
+                || lower.contains("publia")
+                || lower.contains("publié")
+                || lower.contains("publie")
+                || lower.contains("parut")
+                || lower.contains("parution")
+                || lower.contains("édita")
+                || lower.contains("edita"))
             {
                 continue;
             }
@@ -48,5 +55,26 @@ impl CandidateExtractor for PublicationExtractor {
             });
         }
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::extractors::ExtractorInput;
+
+    #[test]
+    fn french_publication_verbs_yield_a_dated_work() {
+        let raws = PublicationExtractor.extract(&ExtractorInput {
+            text: "Baudelaire publia Les Fleurs du mal à Paris en 1857.".into(),
+            page_title: Some("Charles Baudelaire".into()),
+            subject_label: Some("Charles Baudelaire".into()),
+            document_type: "article".into(),
+            subject_death_year: Some(1867),
+        });
+        assert_eq!(raws.len(), 1);
+        assert_eq!(raws[0].event_type, "publication");
+        assert_eq!(raws[0].time_surface.as_deref(), Some("1857"));
+        assert_eq!(raws[0].place_surface.as_deref(), Some("Paris"));
     }
 }
