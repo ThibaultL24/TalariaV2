@@ -68,7 +68,7 @@ pub(crate) fn find_year(s: &str) -> Option<String> {
     None
 }
 
-fn find_place(s: &str) -> Option<String> {
+pub(crate) fn find_place(s: &str) -> Option<String> {
     let lower = s.to_lowercase();
     for cue in [" in ", " at ", " to ", " for "] {
         if let Some(pos) = lower.rfind(cue) {

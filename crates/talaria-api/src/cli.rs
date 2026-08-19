@@ -112,11 +112,11 @@ pub enum Commands {
         subject: String,
         #[arg(long)]
         qid: Option<String>,
-        #[arg(long, value_delimiter = ',', help = "Optional source filter, e.g. wikidata,wikipedia,fixture")]
+        #[arg(long, value_delimiter = ',', help = "Optional source filter, e.g. wikidata,wikipedia,open_library,gallica,europeana")]
         sources: Option<Vec<String>>,
         #[arg(long, default_value_t = true, action = clap::ArgAction::Set, help = "Use deterministic fixture corpus")]
         fixture: bool,
-        #[arg(long, help = "Call live Wikimedia APIs (requires network)")]
+        #[arg(long, help = "Call live Wikimedia + catalog APIs (Open Library, Internet Archive, Gallica; Europeana if EUROPEANA_API_KEY)")]
         live: bool,
         /// Lot E: seed-driven dense Wikipedia exploration toward density targets
         #[arg(long, help = "Path to seed title list (enables Lot E density ingest when --live)")]

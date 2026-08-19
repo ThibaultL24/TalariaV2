@@ -20,16 +20,20 @@ impl CandidateExtractor for PublicationExtractor {
             let lower = line.to_lowercase();
             if !(lower.contains("published")
                 || lower.contains("wrote ")
-                || lower.contains("authored"))
+                || lower.contains("authored")
+                || lower.contains("printed"))
             {
                 continue;
             }
+            let Some(year) = find_year(line) else {
+                continue;
+            };
             out.push(RawCandidate {
                 event_type: "publication".into(),
                 predicate: "published".into(),
                 subject_surface: subject.clone(),
-                time_surface: find_year(line),
-                place_surface: None,
+                time_surface: Some(year),
+                place_surface: super::travel::find_place(line),
                 object_surface: None,
                 participant_surfaces: vec![],
                 clause_text: line.trim().to_string(),

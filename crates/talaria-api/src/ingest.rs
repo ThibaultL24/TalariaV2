@@ -188,6 +188,9 @@ pub async fn run_ingest_quality(
         let Some(reg) = registry.get(&kind) else {
             continue;
         };
+        if !reg.implemented {
+            continue;
+        }
         let Some(connector) = &reg.connector else {
             continue;
         };

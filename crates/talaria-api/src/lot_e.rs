@@ -500,10 +500,10 @@ pub async fn run_lot_e_density_ingest(
             "wikidata": "fetch_ready",
             "fixture": "production_ready",
             "bnf": "stub",
-            "gallica": "stub",
-            "europeana": "stub",
-            "open_library": "stub",
-            "internet_archive": "stub",
+            "gallica": "extraction_ready",
+            "europeana": "needs_EUROPEANA_API_KEY",
+            "open_library": "extraction_ready",
+            "internet_archive": "extraction_ready",
         }
     });
     let s = serde_json::to_string_pretty(&report)?;
@@ -892,6 +892,11 @@ pub fn default_napoleon_seed() -> PathBuf {
 }
 
 pub fn connector_status_json() -> String {
+    let europeana = std::env::var("EUROPEANA_API_KEY")
+        .ok()
+        .filter(|k| !k.trim().is_empty())
+        .map(|_| "extraction_ready")
+        .unwrap_or("needs_EUROPEANA_API_KEY");
     serde_json::to_string_pretty(&serde_json::json!({
         "wikipedia": "extraction_ready",
         "wikidata": "fetch_ready",
@@ -899,20 +904,20 @@ pub fn connector_status_json() -> String {
         "commons": "stub",
         "fixture": "production_ready",
         "bnf": "stub",
-        "gallica": "stub",
+        "gallica": "extraction_ready",
         "persee": "stub",
         "idref": "stub",
         "sudoc": "stub",
         "archives_nationales": "stub",
-        "open_library": "stub",
-        "internet_archive": "stub",
-        "europeana": "stub",
+        "open_library": "extraction_ready",
+        "internet_archive": "extraction_ready",
+        "europeana": europeana,
         "loc": "stub",
         "viaf": "metadata_only",
         "isni": "metadata_only",
         "openalex": "stub",
         "crossref": "stub",
-        "note": "Only wikipedia/wikidata/fixture are executable beyond stubs; stubs must not be reported as integrated."
+        "note": "Executable with --live: wikipedia, wikidata, fixture, open_library, internet_archive, gallica. Europeana needs EUROPEANA_API_KEY. Remaining Lot C/D sources stay stubs until fetch/parse/extract exist."
     }))
     .unwrap_or_else(|_| "{}".into())
 }
