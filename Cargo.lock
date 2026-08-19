@@ -2209,6 +2209,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "talaria-judge",
  "talaria-quality",
  "thiserror",
  "tokio",

@@ -7,8 +7,8 @@ mod time;
 
 pub use claims::{classify_claim_text, ClaimClass};
 pub use dump_mine::{
-    mine_sentence, mine_sentence_with_carry, MineCarry, MinedCandidate, EXTRACTOR_ANECDOTE,
-    EXTRACTOR_KEYWORDS,
+    death_refers_to_other_person, mine_sentence, mine_sentence_with_carry, split_heading_chunks,
+    MineCarry, MinedCandidate, EXTRACTOR_ANECDOTE, EXTRACTOR_KEYWORDS,
 };
 pub use place::{find_place_in_text, parse_place_surface, ParsedPlace};
 pub use rules::{judge_candidate, CandidateInput, JudgeLabel, JudgeVerdict};

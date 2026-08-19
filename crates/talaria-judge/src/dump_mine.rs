@@ -241,6 +241,15 @@ const ANECDOTE_CUES: &[&str] = &[
     "famous anecdote",
     "an apocryphal",
     "folklore",
+    "learned about",
+    "learnt about",
+    "learned of",
+    "learnt of",
+    "from a newspaper",
+    "newspaper that he read",
+    "newspaper that she read",
+    "read in a café",
+    "read in a cafe",
 ];
 
 const COMMEMORATIVE: &[&str] = &[
@@ -380,9 +389,12 @@ pub fn mine_sentence_with_carry(
         return vec![];
     }
 
-    let Some(verb) = find_verb(&lower) else {
+    let Some(mut verb) = find_verb(&lower) else {
         return vec![];
     };
+    if verb == "died" && death_refers_to_other_person(&lower, subject.aliases) {
+        verb = "grieved".into();
+    }
     vec![MinedCandidate {
         person: subject.wiki_title.into(),
         time: year,
@@ -552,6 +564,105 @@ fn has_subject_hook(lower: &str, subject: &Subject) -> bool {
         .any(|pronoun| contains_word(lower, pronoun))
 }
 
+pub fn split_heading_chunks(text: &str) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut rest = text;
+    while let Some((idx, len)) = find_wiki_heading(rest) {
+        let before = rest[..idx].trim();
+        if !before.is_empty() {
+            chunks.push(before.to_string());
+        }
+        rest = rest[idx + len..].trim_start();
+    }
+    let tail = rest.trim();
+    if !tail.is_empty() {
+        chunks.push(tail.to_string());
+    }
+    if chunks.is_empty() {
+        vec![text.trim().to_string()]
+    } else {
+        chunks
+    }
+}
+
+fn find_wiki_heading(text: &str) -> Option<(usize, usize)> {
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i + 4 < bytes.len() {
+        if bytes[i] != b'=' {
+            i += 1;
+            continue;
+        }
+        let mut j = i;
+        while j < bytes.len() && bytes[j] == b'=' {
+            j += 1;
+        }
+        if j - i < 2 {
+            i += 1;
+            continue;
+        }
+        let mut k = j;
+        while k < bytes.len() && bytes[k] != b'=' {
+            k += 1;
+        }
+        let mut end = k;
+        while end < bytes.len() && bytes[end] == b'=' {
+            end += 1;
+        }
+        if end - k >= 2 && k > j {
+            return Some((i, end - i));
+        }
+        i += 1;
+    }
+    None
+}
+
+pub fn death_refers_to_other_person(sentence_lc: &str, subject_aliases: &[&str]) -> bool {
+    const RELATIVES: &[&str] = &[
+        "daughter",
+        "son",
+        "wife",
+        "husband",
+        "father",
+        "mother",
+        "sister",
+        "brother",
+        "child",
+        "infant",
+        "fiancée",
+        "fiancee",
+    ];
+    const DEATH_CUES: &[&str] = &[
+        " died",
+        "drowned",
+        "was buried",
+        "funeral",
+        "'s death",
+        "death of",
+    ];
+    if subject_died_explicitly(sentence_lc, subject_aliases) {
+        return false;
+    }
+    let has_relative = RELATIVES.iter().any(|rel| contains_word(sentence_lc, rel));
+    let has_death = DEATH_CUES.iter().any(|cue| sentence_lc.contains(cue));
+    if has_relative && has_death {
+        return true;
+    }
+    if sentence_lc.contains("'s death") {
+        return true;
+    }
+    false
+}
+
+fn subject_died_explicitly(sentence_lc: &str, subject_aliases: &[&str]) -> bool {
+    subject_aliases.iter().any(|alias| {
+        sentence_lc.contains(&format!("{alias} died"))
+            || sentence_lc.contains(&format!("{alias} drowned"))
+            || sentence_lc.contains(&format!("death of {alias}"))
+            || sentence_lc.contains(&format!("{alias}'s death"))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -678,6 +789,54 @@ mod tests {
         assert_eq!(hits[0].extractor, EXTRACTOR_ANECDOTE);
         assert_eq!(hits[0].time, "48 BC");
         assert!(hits[0].place.to_lowercase().contains("alexandria"));
+    }
+
+    #[test]
+    fn does_not_mine_daughters_drowning_as_subject_death() {
+        let hits = mine_sentence(
+            "On 4 September 1843, she drowned in the Seine at Villequier when the boat she was in overturned. Her young husband died trying to save her.",
+            "Victor Hugo",
+        );
+        assert!(
+            hits.iter().all(|hit| hit.verb != "died"),
+            "daughter drowning must not use verb died, got {hits:?}"
+        );
+    }
+
+    #[test]
+    fn mines_newspaper_cafe_as_anecdote_not_death() {
+        let hits = mine_sentence(
+            "Hugo was travelling in 1843 in the south of France when he first learned about Léopoldine's death from a newspaper that he read in a café.",
+            "Victor Hugo",
+        );
+        assert_eq!(hits.len(), 1, "expected one anecdote, got {hits:?}");
+        assert_eq!(hits[0].extractor, EXTRACTOR_ANECDOTE);
+        assert_ne!(hits[0].verb, "died");
+    }
+
+    #[test]
+    fn heading_chunks_break_glued_wiki_sections() {
+        let text = "Hugo was unable to attend her funeral in Villequier, where their daughter Léopoldine was buried. ==== Children ==== Adèle and Victor Hugo had their first child, Léopold, in 1823, but the boy died in infancy.";
+        let chunks = split_heading_chunks(text);
+        assert_eq!(chunks.len(), 2);
+        assert!(chunks[0].contains("Villequier"));
+        assert!(chunks[1].contains("1823"));
+        assert!(!chunks[1].contains("Villequier"));
+    }
+
+    #[test]
+    fn mines_balzac_sardinia_travel() {
+        let mut carry = MineCarry::default();
+        carry.absorb("As of April 1828 Balzac owed money to his mother in Paris.", "Honoré de Balzac");
+        let hits = mine_sentence_with_carry(
+            "He traveled to Sardinia in the hopes of reprocessing the slag from the Roman mines there.",
+            "Honoré de Balzac",
+            &carry,
+        );
+        assert_eq!(hits.len(), 1, "expected Sardinia travel, got {hits:?}");
+        assert_eq!(hits[0].verb, "visited");
+        assert!(hits[0].place.to_lowercase().contains("sardinia"));
+        assert_ne!(hits[0].verb, "died");
     }
 
     #[test]

@@ -46,6 +46,9 @@ fn push_sentence(spans: &mut Vec<SentenceSpan>, text: &str, start: usize, end: u
     if slice.len() < MIN_SENTENCE_LEN || !slice.chars().any(|c| c.is_alphabetic()) {
         return;
     }
+    if is_wiki_heading_slice(slice) {
+        return;
+    }
     spans.push(SentenceSpan {
         ordinal: spans.len() as i32,
         text: slice.to_string(),
@@ -75,7 +78,52 @@ fn sentence_boundaries(text: &str) -> Vec<usize> {
         }
         i += 1;
     }
+    for (start, end) in wiki_heading_spans(text) {
+        boundaries.push(start);
+        boundaries.push(end);
+    }
+    boundaries.sort_unstable();
+    boundaries.dedup();
     boundaries
+}
+
+fn wiki_heading_spans(text: &str) -> Vec<(usize, usize)> {
+    let bytes = text.as_bytes();
+    let mut spans = Vec::new();
+    let mut i = 0;
+    while i + 4 < bytes.len() {
+        if bytes[i] != b'=' {
+            i += 1;
+            continue;
+        }
+        let mut j = i;
+        while j < bytes.len() && bytes[j] == b'=' {
+            j += 1;
+        }
+        if j - i < 2 {
+            i += 1;
+            continue;
+        }
+        let mut k = j;
+        while k < bytes.len() && bytes[k] != b'=' {
+            k += 1;
+        }
+        let mut end = k;
+        while end < bytes.len() && bytes[end] == b'=' {
+            end += 1;
+        }
+        if end - k >= 2 && k > j {
+            spans.push((i, end));
+            i = end;
+            continue;
+        }
+        i += 1;
+    }
+    spans
+}
+
+fn is_wiki_heading_slice(slice: &str) -> bool {
+    slice.trim_start().starts_with("==")
 }
 
 fn is_sentence_start(text: &str, idx: usize) -> bool {
@@ -160,5 +208,20 @@ mod tests {
         let raw = "'''Alan Turing''' (1912–1954) was a mathematician. He worked at Bletchley Park.";
         let spans = segment_wikitext(raw);
         assert_eq!(spans.len(), 2);
+    }
+
+    #[test]
+    fn splits_on_wiki_heading_markers() {
+        let text = "Hugo was unable to attend her funeral in Villequier, where their daughter Léopoldine was buried. ==== Children ==== Adèle and Victor Hugo had their first child, Léopold, in 1823, but the boy died in infancy.";
+        let spans = split_sentences(text);
+        assert!(
+            spans.len() >= 2,
+            "expected heading split, got {} spans: {:?}",
+            spans.len(),
+            spans.iter().map(|s| s.text.as_str()).collect::<Vec<_>>()
+        );
+        assert!(spans.iter().any(|s| s.text.contains("Villequier")));
+        assert!(spans.iter().any(|s| s.text.contains("1823")));
+        assert!(spans.iter().all(|s| !s.text.contains("====")));
     }
 }

@@ -40,7 +40,9 @@ pub async fn search_local_entities(
     limit: i64,
 ) -> anyhow::Result<Vec<EntityRow>> {
     let pattern = format!("%{query}%");
-    let rows = sqlx::query_as::<_, EntityRow>(
+    let folded = format!("%{}%", fold_latin_accents(query));
+    let predicate = person_match_sql(1, 3);
+    let sql = format!(
         r#"
         SELECT
             e.id,
@@ -50,18 +52,24 @@ pub async fn search_local_entities(
             COUNT(ce.id)::bigint AS event_count
         FROM entities e
         LEFT JOIN canonical_events ce ON ce.entity_id = e.id
-        WHERE e.canonical_name ILIKE $1
-           OR e.wikipedia_title ILIKE $1
-           OR e.qid ILIKE $1
+        WHERE (
+            e.qid ILIKE $1
+            OR {predicate}
+        )
+          AND char_length(coalesce(e.canonical_name, e.wikipedia_title)) BETWEEN 2 AND 120
+          AND coalesce(e.canonical_name, e.wikipedia_title) !~ '[=]{{2}}'
+          AND coalesce(e.canonical_name, e.wikipedia_title) NOT IN ('He', 'She', 'They')
         GROUP BY e.id
         ORDER BY event_count DESC, e.canonical_name ASC NULLS LAST
         LIMIT $2
-        "#,
-    )
-    .bind(pattern)
-    .bind(limit)
-    .fetch_all(pool)
-    .await?;
+        "#
+    );
+    let rows = sqlx::query_as::<_, EntityRow>(&sql)
+        .bind(pattern)
+        .bind(limit)
+        .bind(folded)
+        .fetch_all(pool)
+        .await?;
 
     Ok(rows)
 }
@@ -189,4 +197,68 @@ pub async fn upsert_entity_from_wikidata(
         .execute(pool)
         .await?;
     Ok(id)
+}
+
+pub fn fold_latin_accents(s: &str) -> String {
+    s.to_lowercase()
+        .chars()
+        .map(|c| match c {
+            'à' | 'á' | 'â' | 'ä' | 'ã' | 'å' | 'ā' => 'a',
+            'è' | 'é' | 'ê' | 'ë' | 'ē' => 'e',
+            'ì' | 'í' | 'î' | 'ï' | 'ī' => 'i',
+            'ò' | 'ó' | 'ô' | 'ö' | 'õ' | 'ø' | 'ō' => 'o',
+            'ù' | 'ú' | 'û' | 'ü' | 'ū' => 'u',
+            'ý' | 'ÿ' => 'y',
+            'ñ' => 'n',
+            'ç' => 'c',
+            'ł' => 'l',
+            'ś' => 's',
+            'ź' | 'ż' => 'z',
+            _ => c,
+        })
+        .collect()
+}
+
+const ACCENT_FROM: &str = "àáâäãåāèéêëēìíîïīòóôöõøōùúûüūýÿñçłśźż";
+const ACCENT_TO: &str = "aaaaaaaeeeeeiiiiioooooouuuuuyynclszz";
+
+pub fn person_match_sql(pattern_n: usize, folded_n: usize) -> String {
+    format!(
+        "( \
+            ${p}::text IS NULL \
+            OR e.wikipedia_title ILIKE ${p} \
+            OR e.canonical_name ILIKE ${p} \
+            OR translate(lower(coalesce(e.canonical_name, '')), '{from}', '{to}') LIKE ${f} \
+            OR translate(lower(e.wikipedia_title), '{from}', '{to}') LIKE ${f} \
+            OR EXISTS ( \
+                SELECT 1 FROM entity_aliases ea \
+                WHERE ea.entity_id = e.id \
+                  AND (ea.surface ILIKE ${p} \
+                       OR translate(lower(ea.surface), '{from}', '{to}') LIKE ${f}) \
+            ) \
+        )",
+        p = pattern_n,
+        f = folded_n,
+        from = ACCENT_FROM,
+        to = ACCENT_TO,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fold_latin_accents;
+
+    #[test]
+    fn folds_honore_de_balzac() {
+        assert_eq!(fold_latin_accents("Honoré de Balzac"), "honore de balzac");
+        assert_eq!(fold_latin_accents("Honore de Balzac"), "honore de balzac");
+        assert_eq!(fold_latin_accents("Léopoldine"), "leopoldine");
+    }
+
+    #[test]
+    fn person_lookup_sql_mentions_aliases_and_fold() {
+        let sql = super::person_match_sql(2, 3);
+        assert!(sql.contains("entity_aliases"));
+        assert!(sql.contains("translate"));
+    }
 }

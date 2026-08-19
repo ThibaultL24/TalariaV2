@@ -29,39 +29,45 @@ pub async fn run_dump_mine(config: &AppConfig, limit: i64) -> anyhow::Result<()>
             carry = MineCarry::default();
             current_page = row.page_title.clone();
         }
-        let mined = mine_sentence_with_carry(&row.text, &row.page_title, &carry);
-        carry.absorb(&row.text, &row.page_title);
-        if mined.is_empty() {
-            skipped += 1;
-            continue;
-        }
-        for hit in mined {
-            if hit.extractor.contains("anecdote") {
-                anecdotes += 1;
+        let chunks = talaria_judge::split_heading_chunks(&row.text);
+        for (chunk_idx, chunk) in chunks.iter().enumerate() {
+            if chunk_idx > 0 {
+                carry = MineCarry::default();
             }
-            let entity_id =
-                upsert_entity_surface(&pool, &config.wiki_lang, &hit.person).await?;
-            let hash = combinator_hash(
-                row.id,
-                &hit.person,
-                &hit.time,
-                &hit.place,
-                Some(&hit.verb),
-            );
-            let record = PhraseCandidateRecord {
-                sentence_id: row.id,
-                entity_id: Some(entity_id),
-                person_surface: hit.person,
-                time_surface: Some(hit.time),
-                place_surface: Some(hit.place),
-                verb_pivot: Some(hit.verb),
-                combinator_hash: hash,
-                extractor: hit.extractor.into(),
-            };
-            if insert_phrase_candidate(&pool, &record).await?.is_some() {
-                inserted += 1;
-            } else {
+            let mined = mine_sentence_with_carry(chunk, &row.page_title, &carry);
+            carry.absorb(chunk, &row.page_title);
+            if mined.is_empty() {
                 skipped += 1;
+                continue;
+            }
+            for hit in mined {
+                if hit.extractor.contains("anecdote") {
+                    anecdotes += 1;
+                }
+                let entity_id =
+                    upsert_entity_surface(&pool, &config.wiki_lang, &hit.person).await?;
+                let hash = combinator_hash(
+                    row.id,
+                    &hit.person,
+                    &hit.time,
+                    &hit.place,
+                    Some(&hit.verb),
+                );
+                let record = PhraseCandidateRecord {
+                    sentence_id: row.id,
+                    entity_id: Some(entity_id),
+                    person_surface: hit.person,
+                    time_surface: Some(hit.time),
+                    place_surface: Some(hit.place),
+                    verb_pivot: Some(hit.verb),
+                    combinator_hash: hash,
+                    extractor: hit.extractor.into(),
+                };
+                if insert_phrase_candidate(&pool, &record).await?.is_some() {
+                    inserted += 1;
+                } else {
+                    skipped += 1;
+                }
             }
         }
     }

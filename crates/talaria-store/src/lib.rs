@@ -27,8 +27,9 @@ pub use claims::{
 };
 pub use dump_runs::{finish_dump_run, start_dump_run};
 pub use entities::{
-    find_entity_by_qid, find_entity_by_wikipedia_title, get_entity, search_local_entities,
-    update_entity_qid, upsert_entity_from_wikidata, upsert_entity_surface, EntityRow,
+    find_entity_by_qid, find_entity_by_wikipedia_title, fold_latin_accents, get_entity,
+    search_local_entities, update_entity_qid, upsert_entity_from_wikidata, upsert_entity_surface,
+    EntityRow,
 };
 pub use judgments::insert_judgment;
 pub use multi_source::{

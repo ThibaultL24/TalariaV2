@@ -2,6 +2,7 @@
 //! Rule-based judge: category (event_type) × epistemic_status.
 //! COSMOS tuples are ClaimCandidates — never silent authority.
 
+use crate::dump_mine::death_refers_to_other_person;
 use crate::place::parse_place_surface;
 use crate::time::parse_time_surface;
 use chrono::{DateTime, Utc};
@@ -85,7 +86,7 @@ pub fn judge_candidate(input: &CandidateInput) -> JudgeVerdict {
         .to_lowercase();
     let sentence_lc = input.sentence_text.to_lowercase();
 
-    let classified = classify(&verb, &sentence_lc);
+    let classified = classify(&verb, &sentence_lc, &input.person_surface);
     if classified.family != "other" {
         score += 0.15;
         reasons.push("category_classified");
@@ -146,12 +147,27 @@ pub fn judge_candidate(input: &CandidateInput) -> JudgeVerdict {
     }
 }
 
-fn classify(verb: &str, sentence_lc: &str) -> Classified {
+fn classify(verb: &str, sentence_lc: &str, person_surface: &str) -> Classified {
     if let Some(c) = classify_anecdote(verb, sentence_lc) {
         return c;
     }
     if let Some(c) = classify_commemorative(sentence_lc) {
         return c;
+    }
+    let aliases = person_aliases(person_surface);
+    let alias_refs: Vec<&str> = aliases.iter().map(String::as_str).collect();
+    if death_refers_to_other_person(sentence_lc, &alias_refs)
+        && (verb_token_match(verb, "died")
+            || verb_token_match(verb, "death")
+            || sentence_lc.contains("drowned")
+            || sentence_lc.contains(" died")
+            || sentence_lc.contains("'s death"))
+    {
+        return Classified {
+            event_type: "life_event".into(),
+            verb_label: "grieved".into(),
+            family: "bio",
+        };
     }
     if let Some(c) = classify_verb(verb) {
         return c;
@@ -170,6 +186,17 @@ fn classify(verb: &str, sentence_lc: &str) -> Classified {
     }
 }
 
+fn person_aliases(person: &str) -> Vec<String> {
+    let lower = person.trim().to_lowercase();
+    let mut aliases = vec![lower.clone()];
+    if let Some(last) = lower.split_whitespace().last() {
+        if last.len() >= 3 && last != lower {
+            aliases.push(last.to_string());
+        }
+    }
+    aliases
+}
+
 fn classify_anecdote(verb: &str, sentence_lc: &str) -> Option<Classified> {
     let verb_anecdote = verb == "anecdoted" || verb == "anecdote";
     let cue = [
@@ -185,6 +212,15 @@ fn classify_anecdote(verb: &str, sentence_lc: &str) -> Option<Classified> {
         "reputed to have",
         "tradition holds",
         "an apocryphal",
+        "learned about",
+        "learnt about",
+        "learned of",
+        "learnt of",
+        "from a newspaper",
+        "newspaper that he read",
+        "newspaper that she read",
+        "read in a café",
+        "read in a cafe",
     ]
     .iter()
     .any(|needle| sentence_lc.contains(needle));
@@ -233,6 +269,7 @@ fn classify_verb(verb: &str) -> Option<Classified> {
     let rules: &[(&[&str], &str, &str, &str)] = &[
         (&["born", "birth"], "birth", "born", "bio"),
         (&["died", "death", "deceased", "killed"], "death", "died", "bio"),
+        (&["grieved"], "life_event", "grieved", "bio"),
         (&["married", "marriage", "wed"], "marriage", "married", "bio"),
         (&["divorced", "divorce", "annulled"], "divorce", "divorced", "bio"),
         (
@@ -527,6 +564,44 @@ mod tests {
         });
         assert_eq!(verdict.event_type, "education");
         assert_ne!(verdict.event_type, "death");
+    }
+
+    #[test]
+    fn daughters_drowning_is_not_subject_death() {
+        let verdict = judge_candidate(&CandidateInput {
+            person_surface: "Victor Hugo".into(),
+            time_surface: Some("1843".into()),
+            place_surface: Some("Villequier".into()),
+            verb_pivot: Some("died".into()),
+            sentence_text: "On 4 September, she drowned in the Seine at Villequier when the boat she was in overturned. Her young husband died trying to save her.".into(),
+        });
+        assert_eq!(verdict.label, JudgeLabel::Accept);
+        assert_ne!(verdict.event_type, "death");
+        assert!(!verdict.title.to_lowercase().contains("hugo died"));
+    }
+
+    #[test]
+    fn newspaper_cafe_is_anecdote() {
+        let verdict = judge_candidate(&CandidateInput {
+            person_surface: "Victor Hugo".into(),
+            time_surface: Some("1843".into()),
+            place_surface: Some("France".into()),
+            verb_pivot: Some("died".into()),
+            sentence_text: "Hugo was travelling at the time, in the south of France, when he first learned about Léopoldine's death from a newspaper that he read in a café.".into(),
+        });
+        assert_eq!(verdict.event_type, "anecdote");
+    }
+
+    #[test]
+    fn subject_own_death_still_classifies() {
+        let verdict = judge_candidate(&CandidateInput {
+            person_surface: "Napoleon".into(),
+            time_surface: Some("1821".into()),
+            place_surface: Some("Saint Helena".into()),
+            verb_pivot: Some("died".into()),
+            sentence_text: "Napoleon died in 1821 on Saint Helena.".into(),
+        });
+        assert_eq!(verdict.event_type, "death");
     }
 
     #[test]

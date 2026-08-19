@@ -276,6 +276,25 @@ const GAZETTEER: &[(&str, f64, f64)] = &[
         ("geneva", 46.2044, 6.1432),
         ("berdychiv", 49.907, 28.591),
         ("berdichev", 49.907, 28.591),
+        ("villequier", 49.5126, 0.6714),
+        ("sardinia", 40.12, 9.01),
+        ("sardegna", 40.12, 9.01),
+];
+
+const COUNTRY_OR_REALM: &[&str] = &[
+    "france",
+    "italy",
+    "spain",
+    "portugal",
+    "germany",
+    "prussia",
+    "austria",
+    "russia",
+    "england",
+    "britain",
+    "belgium",
+    "egypt",
+    "malta",
 ];
 
 fn gazetteer_lookup(key: &str) -> Option<(Option<f64>, Option<f64>)> {
@@ -286,10 +305,11 @@ fn gazetteer_lookup(key: &str) -> Option<(Option<f64>, Option<f64>)> {
 }
 
 /// Longest gazetteer hit in free text (word-boundary aware).
+/// Localities beat countries even when the country name is longer (`Paris, France`).
 pub fn find_place_in_text(text: &str) -> Option<String> {
     let lower = text.to_ascii_lowercase();
     let bytes = lower.as_bytes();
-    let mut best: Option<(&str, usize)> = None;
+    let mut best: Option<(&str, u8, usize)> = None;
     for (name, _, _) in GAZETTEER {
         let Some(idx) = lower.find(*name) else {
             continue;
@@ -300,11 +320,18 @@ pub fn find_place_in_text(text: &str) -> Option<String> {
         if !before_ok || !after_ok {
             continue;
         }
-        if name.len() > best.map(|(_, n)| n).unwrap_or(0) {
-            best = Some((*name, name.len()));
+        let locality = if COUNTRY_OR_REALM.contains(name) { 0 } else { 1 };
+        let better = match best {
+            None => true,
+            Some((_, best_loc, best_len)) => {
+                locality > best_loc || (locality == best_loc && name.len() > best_len)
+            }
+        };
+        if better {
+            best = Some((*name, locality, name.len()));
         }
     }
-    best.map(|(name, _)| title_case_place(name))
+    best.map(|(name, _, _)| title_case_place(name))
 }
 
 fn title_case_place(place: &str) -> String {
@@ -341,5 +368,19 @@ mod tests {
         assert!(island.to_lowercase().contains("san salvador"));
         let krakow = find_place_in_text("She left Kraków in 1891.").unwrap();
         assert!(krakow.to_lowercase().contains("krak"));
+    }
+
+    #[test]
+    fn prefers_city_over_country() {
+        let hit = find_place_in_text("He lived in Paris, France in 1835.").unwrap();
+        assert_eq!(hit.to_lowercase(), "paris");
+    }
+
+    #[test]
+    fn finds_villequier_and_sardinia() {
+        let villequier = find_place_in_text("she drowned in the Seine at Villequier").unwrap();
+        assert_eq!(villequier.to_lowercase(), "villequier");
+        let sardinia = find_place_in_text("he traveled to Sardinia").unwrap();
+        assert_eq!(sardinia.to_lowercase(), "sardinia");
     }
 }

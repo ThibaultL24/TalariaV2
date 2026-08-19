@@ -1,4 +1,5 @@
 // crates/talaria-store/src/canonical_events.rs
+use crate::entities::{fold_latin_accents, person_match_sql};
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -168,8 +169,8 @@ pub async fn list_timeline_events(
     };
     let start_year = period.as_ref().and_then(|row| row.start_year);
     let end_year = period.as_ref().and_then(|row| row.end_year);
-
-    let rows = sqlx::query_as::<_, CanonicalEventRow>(
+    let person_sql = person_match_sql(2, 7);
+    let sql = format!(
         r#"
         SELECT
             ce.id,
@@ -188,7 +189,7 @@ pub async fn list_timeline_events(
         FROM canonical_events ce
         INNER JOIN entities e ON e.id = ce.entity_id
         WHERE ($1::uuid IS NULL OR ce.entity_id = $1)
-          AND ($2::text IS NULL OR e.wikipedia_title ILIKE $2 OR e.canonical_name ILIKE $2)
+          AND {person_sql}
           AND (
             $3::text IS NULL
             OR EXISTS (
@@ -203,16 +204,19 @@ pub async fn list_timeline_events(
           )
         ORDER BY ce.start_time ASC NULLS LAST, ce.created_at ASC
         LIMIT $6
-        "#,
-    )
-    .bind(entity_id)
-    .bind(person.map(|value| format!("%{value}%")))
-    .bind(profile_slug)
-    .bind(start_year)
-    .bind(end_year)
-    .bind(limit)
-    .fetch_all(pool)
-    .await?;
+        "#
+    );
+
+    let rows = sqlx::query_as::<_, CanonicalEventRow>(&sql)
+        .bind(entity_id)
+        .bind(person.map(|value| format!("%{value}%")))
+        .bind(profile_slug)
+        .bind(start_year)
+        .bind(end_year)
+        .bind(limit)
+        .bind(person.map(fold_latin_accents).map(|value| format!("%{value}%")))
+        .fetch_all(pool)
+        .await?;
 
     Ok(rows)
 }
@@ -232,8 +236,8 @@ pub async fn list_geojson_events(
     };
     let start_year = period.as_ref().and_then(|row| row.start_year);
     let end_year = period.as_ref().and_then(|row| row.end_year);
-
-    let rows = sqlx::query_as::<_, CanonicalEventRow>(
+    let person_sql = person_match_sql(2, 8);
+    let sql = format!(
         r#"
         SELECT
             ce.id,
@@ -252,7 +256,7 @@ pub async fn list_geojson_events(
         FROM canonical_events ce
         INNER JOIN entities e ON e.id = ce.entity_id
         WHERE ($1::uuid IS NULL OR ce.entity_id = $1)
-          AND ($2::text IS NULL OR e.wikipedia_title ILIKE $2 OR e.canonical_name ILIKE $2)
+          AND {person_sql}
           AND ($3 = false OR ce.map_eligible = true)
           AND ce.geom IS NOT NULL
           AND (
@@ -269,17 +273,20 @@ pub async fn list_geojson_events(
           )
         ORDER BY ce.start_time ASC NULLS LAST
         LIMIT $7
-        "#,
-    )
-    .bind(entity_id)
-    .bind(person.map(|value| format!("%{value}%")))
-    .bind(map_eligible_only)
-    .bind(profile_slug)
-    .bind(start_year)
-    .bind(end_year)
-    .bind(limit)
-    .fetch_all(pool)
-    .await?;
+        "#
+    );
+
+    let rows = sqlx::query_as::<_, CanonicalEventRow>(&sql)
+        .bind(entity_id)
+        .bind(person.map(|value| format!("%{value}%")))
+        .bind(map_eligible_only)
+        .bind(profile_slug)
+        .bind(start_year)
+        .bind(end_year)
+        .bind(limit)
+        .bind(person.map(fold_latin_accents).map(|value| format!("%{value}%")))
+        .fetch_all(pool)
+        .await?;
 
     Ok(rows)
 }
