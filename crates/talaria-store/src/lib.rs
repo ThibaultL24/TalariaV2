@@ -91,10 +91,10 @@ pub use quality::{
     count_sentence_fragments, find_document_snapshot, insert_document_fragment,
     insert_document_snapshot, insert_quality_canonical_event,
     list_event_candidates_by_status, mark_candidate_assembled, quality_lifespan_years,
-    quality_report_counts, reinforce_quality_event, rejection_reason_counts,
-    update_event_candidate_judgment, upsert_entity_with_kind, upsert_event_candidate,
-    DocumentFragmentInsert, DocumentSnapshotInsert, EventCandidateInsert, EventCandidateRow,
-    QualityEventInsert, QualityReportCounts, RejectionReasonCount,
+    quality_report_counts, reinforce_quality_event, reject_if_singleton_exists,
+    rejection_reason_counts, update_event_candidate_judgment, upsert_entity_with_kind,
+    upsert_event_candidate, DocumentFragmentInsert, DocumentSnapshotInsert, EventCandidateInsert,
+    EventCandidateRow, QualityEventInsert, QualityReportCounts, RejectionReasonCount,
 };
 pub use sentences::{
     list_sentences_for_dump_mine, list_sentences_for_extraction, replace_sentences_for_page,

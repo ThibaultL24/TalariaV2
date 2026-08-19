@@ -10,6 +10,7 @@
 
 mod claim_extract;
 mod cli;
+mod cli_helpers;
 mod corpus_ingest;
 mod cosmos;
 mod dump_mine;

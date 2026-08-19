@@ -26,14 +26,16 @@ use talaria_sources::{
 };
 use talaria_store::{
     add_claim_support, apply_place_to_quality_event, connect, density_report_counts,
-    find_active_quality_event_by_occurrence_key, find_active_singleton,
-    get_event_candidate_by_fingerprint, insert_document_fragment, insert_document_snapshot,
-    insert_quality_canonical_event, link_claim_to_event, mark_candidate_assembled,
-    quality_lifespan_years, reinforce_quality_event, run_migrations,
+    find_active_quality_event_by_occurrence_key, get_event_candidate_by_fingerprint,
+    insert_document_fragment, insert_document_snapshot, insert_quality_canonical_event,
+    link_claim_to_event, mark_candidate_assembled, quality_lifespan_years,
+    reinforce_quality_event, reject_if_singleton_exists, run_migrations,
     update_event_candidate_judgment, upsert_entity_with_kind, upsert_event_candidate,
     upsert_quality_claim, DocumentFragmentInsert, DocumentSnapshotInsert, EventCandidateInsert,
     QualityClaimInsert, QualityEventInsert,
 };
+
+use crate::cli_helpers::open_db_for_subject;
 use uuid::Uuid;
 
 use crate::place_conflict::{abstain_if_competing_place, competing_place_codes};
@@ -222,10 +224,7 @@ pub async fn run_lot_e_density_ingest(
     lang: &str,
     max_titles: Option<u32>,
 ) -> anyhow::Result<String> {
-    let pool = connect(config).await?;
-    run_migrations(&pool).await?;
-
-    let subject_id = upsert_entity_with_kind(&pool, &config.wiki_lang, subject, "person").await?;
+    let (pool, subject_id) = open_db_for_subject(config, subject, "person").await?;
     if let Some(qid) = qid {
         talaria_store::update_entity_qid(&pool, subject_id, qid).await?;
     }
@@ -1100,30 +1099,23 @@ async fn process_one(
         return Ok(());
     }
 
-    if shell.event_type == "birth" || shell.event_type == "death" {
-        if find_active_singleton(pool, subject_id, &shell.event_type)
-            .await?
-            .is_some()
-        {
-            update_event_candidate_judgment(
-                pool,
-                cand_id,
-                "rejected",
-                &["singleton_cardinality_violation".into()],
-                &serde_json::json!({"at":"assemble"}),
-                shell.subject_entity_id,
-                shell.place_entity_id,
-                shell.place_label.as_deref(),
-                &serde_json::json!([]),
-                &serde_json::json!([]),
-                &serde_json::json!([]),
-            )
-            .await?;
-            metrics.rejected += 1;
-            metrics.accepted = metrics.accepted.saturating_sub(1);
-            metrics.bump("singleton_cardinality_violation");
-            return Ok(());
-        }
+    if reject_if_singleton_exists(
+        pool,
+        cand_id,
+        subject_id,
+        &shell.event_type,
+        shell.place_entity_id,
+        shell.place_label.as_deref(),
+        &serde_json::json!([]),
+        &serde_json::json!([]),
+        &serde_json::json!([]),
+    )
+    .await?
+    {
+        metrics.rejected += 1;
+        metrics.accepted = metrics.accepted.saturating_sub(1);
+        metrics.bump("singleton_cardinality_violation");
+        return Ok(());
     }
 
     let map_eligible = lat.is_some() && lon.is_some();
@@ -1712,9 +1704,7 @@ pub async fn run_resolve_places(
     subject: &str,
     _all_unresolved: bool,
 ) -> anyhow::Result<String> {
-    let pool = connect(config).await?;
-    run_migrations(&pool).await?;
-    let subject_id = upsert_entity_with_kind(&pool, &config.wiki_lang, subject, "person").await?;
+    let (pool, subject_id) = open_db_for_subject(config, subject, "person").await?;
 
     let unresolved: Vec<(Uuid, Option<String>)> = sqlx::query_as(
         r#"
@@ -2068,9 +2058,7 @@ pub async fn run_density_report(
 }
 
 pub async fn run_exploration_report(config: &AppConfig, subject: &str) -> anyhow::Result<String> {
-    let pool = connect(config).await?;
-    run_migrations(&pool).await?;
-    let subject_id = upsert_entity_with_kind(&pool, &config.wiki_lang, subject, "person").await?;
+    let (pool, subject_id) = open_db_for_subject(config, subject, "person").await?;
     let queue: Vec<(String, i64)> = sqlx::query_as(
         r#"
         SELECT status, COUNT(*)::bigint FROM exploration_targets

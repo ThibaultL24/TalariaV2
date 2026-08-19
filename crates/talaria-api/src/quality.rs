@@ -17,9 +17,10 @@ use talaria_store::{
     connect, count_active_quality_by_type, find_active_quality_event_by_occurrence_key,
     find_active_singleton, get_event_candidate_by_fingerprint, insert_document_fragment,
     insert_document_snapshot, insert_quality_canonical_event, mark_candidate_assembled,
-    quality_lifespan_years, quality_report_counts, rejection_reason_counts, run_migrations,
-    update_event_candidate_judgment, upsert_entity_with_kind, upsert_event_candidate,
-    DocumentFragmentInsert, DocumentSnapshotInsert, EventCandidateInsert, QualityEventInsert,
+    quality_lifespan_years, quality_report_counts, reject_if_singleton_exists,
+    rejection_reason_counts, run_migrations, update_event_candidate_judgment,
+    upsert_entity_with_kind, upsert_event_candidate, DocumentFragmentInsert,
+    DocumentSnapshotInsert, EventCandidateInsert, QualityEventInsert,
 };
 use uuid::Uuid;
 
@@ -200,29 +201,22 @@ async fn judge_and_maybe_assemble(
         return Ok(());
     }
 
-    if shell.event_type == "birth" || shell.event_type == "death" {
-        if find_active_singleton(pool, subject_entity_id, &shell.event_type)
-            .await?
-            .is_some()
-        {
-            update_event_candidate_judgment(
-                pool,
-                candidate_id,
-                "rejected",
-                &["singleton_cardinality_violation".into()],
-                &serde_json::json!({"at":"assemble"}),
-                shell.subject_entity_id,
-                shell.place_entity_id,
-                shell.place_label.as_deref(),
-                &serde_json::to_value(&shell.place_mentions)?,
-                &serde_json::to_value(&shell.object_mentions)?,
-                &serde_json::to_value(&shell.participant_mentions)?,
-            )
-            .await?;
-            stats.rejected += 1;
-            stats.accepted = stats.accepted.saturating_sub(1);
-            return Ok(());
-        }
+    if reject_if_singleton_exists(
+        pool,
+        candidate_id,
+        subject_entity_id,
+        &shell.event_type,
+        shell.place_entity_id,
+        shell.place_label.as_deref(),
+        &serde_json::to_value(&shell.place_mentions)?,
+        &serde_json::to_value(&shell.object_mentions)?,
+        &serde_json::to_value(&shell.participant_mentions)?,
+    )
+    .await?
+    {
+        stats.rejected += 1;
+        stats.accepted = stats.accepted.saturating_sub(1);
+        return Ok(());
     }
 
     let event_id = insert_quality_canonical_event(

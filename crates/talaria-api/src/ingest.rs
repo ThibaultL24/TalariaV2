@@ -25,17 +25,19 @@ use talaria_sources::{
 };
 use talaria_store::{
     add_claim_support, connect, density_report_counts,
-    find_active_quality_event_by_occurrence_key, find_active_singleton, finish_discovery_run,
+    find_active_quality_event_by_occurrence_key, finish_discovery_run,
     get_event_candidate_by_fingerprint, insert_document_fragment, insert_document_snapshot,
     insert_quality_canonical_event, link_claim_to_event, mark_candidate_assembled,
     mark_discovered_skipped, mark_discovered_snapshotted, quality_lifespan_years,
-    reinforce_quality_event, run_migrations, start_discovery_run, update_event_candidate_judgment,
-    update_entity_qid, upsert_discovered_document, upsert_entity_with_kind, upsert_event_candidate,
-    upsert_quality_claim, DiscoveredDocumentInsert, DiscoveryRunInsert, DocumentFragmentInsert,
-    DocumentSnapshotInsert, EventCandidateInsert, QualityClaimInsert, QualityEventInsert,
+    reinforce_quality_event, reject_if_singleton_exists, run_migrations, start_discovery_run,
+    update_event_candidate_judgment, update_entity_qid, upsert_discovered_document,
+    upsert_entity_with_kind, upsert_event_candidate, upsert_quality_claim,
+    DiscoveredDocumentInsert, DiscoveryRunInsert, DocumentFragmentInsert, DocumentSnapshotInsert,
+    EventCandidateInsert, QualityClaimInsert, QualityEventInsert,
 };
 use uuid::Uuid;
 
+use crate::cli_helpers::open_db_for_subject;
 use crate::place_conflict::{abstain_if_competing_place, competing_place_codes};
 
 #[derive(Debug, Default, Clone)]
@@ -103,10 +105,7 @@ pub async fn run_ingest_quality(
     use_fixture: bool,
     live: bool,
 ) -> anyhow::Result<String> {
-    let pool = connect(config).await?;
-    run_migrations(&pool).await?;
-
-    let subject_id = upsert_entity_with_kind(&pool, &config.wiki_lang, label, "person").await?;
+    let (pool, subject_id) = open_db_for_subject(config, label, "person").await?;
     if let Some(qid) = qid {
         update_entity_qid(&pool, subject_id, qid).await?;
     }
@@ -800,30 +799,23 @@ pub(crate) async fn process_raw_candidate(
         return Ok(());
     }
 
-    if shell.event_type == "birth" || shell.event_type == "death" {
-        if find_active_singleton(pool, subject_id, &shell.event_type)
-            .await?
-            .is_some()
-        {
-            update_event_candidate_judgment(
-                pool,
-                cand_id,
-                "rejected",
-                &["singleton_cardinality_violation".into()],
-                &serde_json::json!({"at":"assemble"}),
-                shell.subject_entity_id,
-                shell.place_entity_id,
-                shell.place_label.as_deref(),
-                &serde_json::to_value(&shell.place_mentions)?,
-                &serde_json::to_value(&shell.object_mentions)?,
-                &serde_json::to_value(&shell.participant_mentions)?,
-            )
-            .await?;
-            metrics.rejected += 1;
-            metrics.accepted = metrics.accepted.saturating_sub(1);
-            metrics.bump_loss("singleton_cardinality_violation");
-            return Ok(());
-        }
+    if reject_if_singleton_exists(
+        pool,
+        cand_id,
+        subject_id,
+        &shell.event_type,
+        shell.place_entity_id,
+        shell.place_label.as_deref(),
+        &serde_json::to_value(&shell.place_mentions)?,
+        &serde_json::to_value(&shell.object_mentions)?,
+        &serde_json::to_value(&shell.participant_mentions)?,
+    )
+    .await?
+    {
+        metrics.rejected += 1;
+        metrics.accepted = metrics.accepted.saturating_sub(1);
+        metrics.bump_loss("singleton_cardinality_violation");
+        return Ok(());
     }
 
     let proj = projections.from_candidate(&shell, &subject.label);

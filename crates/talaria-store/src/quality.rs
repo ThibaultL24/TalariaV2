@@ -903,3 +903,43 @@ pub async fn count_active_quality_by_type(
     .await?;
     Ok(n)
 }
+
+/// Reject `candidate_id` with `singleton_cardinality_violation` when a quality `birth` or
+/// `death` event already exists for the subject.  Returns `true` when the rejection was applied
+/// (caller should return early), `false` when the candidate may proceed.
+pub async fn reject_if_singleton_exists(
+    pool: &PgPool,
+    candidate_id: Uuid,
+    subject_entity_id: Uuid,
+    event_type: &str,
+    place_entity_id: Option<Uuid>,
+    place_label: Option<&str>,
+    place_mentions: &serde_json::Value,
+    object_mentions: &serde_json::Value,
+    participant_mentions: &serde_json::Value,
+) -> anyhow::Result<bool> {
+    if event_type != "birth" && event_type != "death" {
+        return Ok(false);
+    }
+    if find_active_singleton(pool, subject_entity_id, event_type)
+        .await?
+        .is_none()
+    {
+        return Ok(false);
+    }
+    update_event_candidate_judgment(
+        pool,
+        candidate_id,
+        "rejected",
+        &["singleton_cardinality_violation".into()],
+        &serde_json::json!({"at": "assemble"}),
+        Some(subject_entity_id),
+        place_entity_id,
+        place_label,
+        place_mentions,
+        object_mentions,
+        participant_mentions,
+    )
+    .await?;
+    Ok(true)
+}
