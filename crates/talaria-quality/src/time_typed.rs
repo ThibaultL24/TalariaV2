@@ -249,3 +249,25 @@ mod tests {
         }
     }
 }
+
+/// Serialise a `TypedTime` to a JSON value for storage in `canonical_events.time_json`.
+pub fn time_to_json(time: &TypedTime) -> serde_json::Value {
+    serde_json::to_value(time).unwrap_or_else(|_| serde_json::json!({"kind":"unknown"}))
+}
+
+/// Convert a `TypedTime` to a `DateTime<Utc>` suitable for `start_time` columns.
+/// Uses mid-year / mid-month defaults for partial dates to keep ordering sensible.
+pub fn start_time_from_typed(time: &TypedTime) -> Option<chrono::DateTime<chrono::Utc>> {
+    match time {
+        TypedTime::Exact { year, month, day, .. } => {
+            let m = month.unwrap_or(6);
+            let d = day.unwrap_or(15);
+            chrono::NaiveDate::from_ymd_opt(*year, m, d)
+                .and_then(|nd| nd.and_hms_opt(0, 0, 0))
+                .map(|n| chrono::DateTime::from_naive_utc_and_offset(n, chrono::Utc))
+        }
+        _ => time
+            .year_for_gates()
+            .and_then(|y| parse_time_surface(&y.to_string()).map(|p| p.start)),
+    }
+}

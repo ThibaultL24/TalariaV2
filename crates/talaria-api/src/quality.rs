@@ -2,16 +2,16 @@
 //! Quality pipeline orchestration (Livrable 1).
 //! Coexists with legacy phrase_candidates → judge-candidates path.
 
-use sha2::{Digest, Sha256};
 use talaria_core::AppConfig;
-use talaria_judge::{parse_place_surface, parse_time_surface};
+use talaria_dump::content_hash;
+use talaria_judge::parse_place_surface;
 use talaria_quality::{
     apply_gates, candidate_fingerprint, existing_candidate_action, occurrence_key_for_event,
     occurrence_stem_for_event, parse_typed_time, resolve_mentions, should_reinforce_existing_event,
-    BuildProjections, ClauseAnalyzeInput, ClauseAnalyzer, DerivedLabelProjections,
-    DeterministicClauseAnalyzer, EntityKind, EvidencePtr, ExistingCandidateAction,
-    EXTRACTOR_EPISTEMIC_STATUS, GateContext, GazetteerResolver, ParticipantRole, TypedTime,
-    ASSEMBLER_V1, EXTRACTOR_DETERMINISTIC_V1,
+    start_time_from_typed, time_to_json, BuildProjections, ClauseAnalyzeInput, ClauseAnalyzer,
+    DerivedLabelProjections, DeterministicClauseAnalyzer, EntityKind, EvidencePtr,
+    ExistingCandidateAction, EXTRACTOR_EPISTEMIC_STATUS, GateContext, GazetteerResolver,
+    ParticipantRole, TypedTime, ASSEMBLER_V1, EXTRACTOR_DETERMINISTIC_V1,
 };
 use talaria_store::{
     connect, count_active_quality_by_type, find_active_quality_event_by_occurrence_key,
@@ -24,21 +24,6 @@ use talaria_store::{
 use uuid::Uuid;
 
 use crate::place_conflict::{abstain_if_competing_place, competing_place_codes};
-
-fn content_hash(text: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(text.as_bytes());
-    hex::encode(hasher.finalize())
-}
-
-fn time_to_json(time: &TypedTime) -> serde_json::Value {
-    serde_json::to_value(time).unwrap_or_else(|_| serde_json::json!({"kind":"unknown"}))
-}
-
-fn start_time_from_typed(time: &TypedTime) -> Option<chrono::DateTime<chrono::Utc>> {
-    time.year_for_gates()
-        .and_then(|y| parse_time_surface(&y.to_string()).map(|p| p.start))
-}
 
 fn split_sentences(text: &str) -> Vec<String> {
     let mut out = Vec::new();

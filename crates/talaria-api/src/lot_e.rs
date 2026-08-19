@@ -6,14 +6,14 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use sha2::{Digest, Sha256};
 use talaria_core::AppConfig;
-use talaria_judge::parse_time_surface;
+use talaria_dump::content_hash;
 use talaria_quality::{
     apply_gates, candidate_fingerprint, existing_candidate_action, occurrence_key_for_event,
     occurrence_stem_for_event, parse_typed_time, resolve_mentions, should_reinforce_existing_event,
-    BuildProjections, DerivedLabelProjections, EntityKind, EvidencePtr, ExistingCandidateAction,
-    EXTRACTOR_EPISTEMIC_STATUS, GazetteerResolver, GateContext, TypedTime, ASSEMBLER_V1,
+    start_time_from_typed, time_to_json, BuildProjections, DerivedLabelProjections, EntityKind,
+    EvidencePtr, ExistingCandidateAction, EXTRACTOR_EPISTEMIC_STATUS, GazetteerResolver,
+    GateContext, TypedTime, ASSEMBLER_V1,
 };
 use talaria_sources::extractors::{
     claim_fingerprint, extractor_stack_for, CandidateExtractor, ClaimKey, ExtractorInput,
@@ -37,33 +37,6 @@ use talaria_store::{
 use uuid::Uuid;
 
 use crate::place_conflict::{abstain_if_competing_place, competing_place_codes};
-
-fn content_hash(text: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(text.as_bytes());
-    hex::encode(hasher.finalize())
-}
-
-fn time_to_json(time: &TypedTime) -> serde_json::Value {
-    serde_json::to_value(time).unwrap_or_else(|_| serde_json::json!({"kind":"unknown"}))
-}
-
-fn start_time_from_typed(time: &TypedTime) -> Option<chrono::DateTime<chrono::Utc>> {
-    match time {
-        TypedTime::Exact {
-            year, month, day, ..
-        } => {
-            let m = month.unwrap_or(6);
-            let d = day.unwrap_or(15);
-            chrono::NaiveDate::from_ymd_opt(*year, m, d)
-                .and_then(|nd| nd.and_hms_opt(0, 0, 0))
-                .map(|n| chrono::DateTime::from_naive_utc_and_offset(n, chrono::Utc))
-        }
-        _ => time
-            .year_for_gates()
-            .and_then(|y| parse_time_surface(&y.to_string()).map(|p| p.start)),
-    }
-}
 
 fn html_to_rough_text(html: &str) -> String {
     let mut out = String::with_capacity(html.len() / 2);

@@ -34,4 +34,6 @@ pub use resolve::{
 pub use resume::{
     existing_candidate_action, should_reinforce_existing_event, ExistingCandidateAction,
 };
-pub use time_typed::{extract_time_surface, parse_typed_time, typed_time_year};
+pub use time_typed::{
+    extract_time_surface, parse_typed_time, start_time_from_typed, time_to_json, typed_time_year,
+};
