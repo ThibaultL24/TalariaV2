@@ -10,7 +10,7 @@ export const strings = {
   searchNew: "New",
   collectLifeTrace: "Collect life trace",
   collectLifeTraceHint:
-    "Wikipedia, Wikidata and catalogs → dated facts, anecdotes and places on the map.",
+    "Wikipedia, Wikisource, Commons, Wikidata and catalogs → dated facts, anecdotes and places on the map.",
   collectScholarship: "Collect scholarship",
   collectScholarshipHint:
     "HAL, Persée, theses, Gallica and catalogs → theories, controversies and academic works.",
