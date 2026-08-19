@@ -7,8 +7,8 @@ use crate::connector::{
     SourceConnector,
 };
 use crate::connectors::catalog::{
-    bibliographic_notice, http_client, json_first_string, names_match, parse_year, year_in_life,
-    NoticeRelation,
+    bibliographic_notice, catalog_place, http_client, json_first_string, names_match, parse_year,
+    year_in_life, NoticeRelation,
 };
 use crate::kinds::{DiscoveryMethod, DocumentType, SourceKind};
 use crate::plan::ResolvedSubject;
@@ -69,14 +69,17 @@ impl EuropeanaConnector {
                     }
                 }
             }
-            let place = item
-                .get("edmPlaceLabel")
-                .and_then(json_first_string)
-                .or_else(|| item.get("country").and_then(json_first_string));
             let description = item
                 .get("dcDescription")
                 .and_then(json_first_string)
                 .or_else(|| item.get("description").and_then(json_first_string));
+            let place = catalog_place(
+                item.get("edmPlaceLabel")
+                    .and_then(json_first_string)
+                    .or_else(|| item.get("country").and_then(json_first_string))
+                    .as_deref(),
+            )
+            .or_else(|| catalog_place(description.as_deref()));
             let shown_at = item.get("edmIsShownAt").and_then(json_first_string);
             let relation = if authored {
                 NoticeRelation::Authored

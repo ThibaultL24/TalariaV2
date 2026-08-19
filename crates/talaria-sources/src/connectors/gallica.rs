@@ -6,8 +6,8 @@ use crate::connector::{
     SourceConnector,
 };
 use crate::connectors::catalog::{
-    bibliographic_notice, http_client, names_match, parse_year, xml_texts, year_in_life,
-    NoticeRelation,
+    bibliographic_notice, catalog_place, http_client, names_match, parse_year, xml_texts,
+    year_in_life, NoticeRelation,
 };
 use crate::kinds::{DiscoveryMethod, DocumentType, SourceKind};
 use crate::plan::ResolvedSubject;
@@ -62,10 +62,13 @@ impl GallicaConnector {
                     }
                 }
             }
-            let place = xml_texts(chunk, "dc:coverage")
-                .into_iter()
-                .next()
-                .or_else(|| xml_texts(chunk, "dc:publisher").into_iter().next());
+            let place = catalog_place(
+                xml_texts(chunk, "dc:coverage")
+                    .into_iter()
+                    .next()
+                    .or_else(|| xml_texts(chunk, "dc:publisher").into_iter().next())
+                    .as_deref(),
+            );
             let description = xml_texts(chunk, "dc:description").into_iter().next();
             let relation = if authored {
                 NoticeRelation::Authored

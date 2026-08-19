@@ -2,6 +2,7 @@
 //! Shared bibliographic notice text for catalog connectors.
 
 use serde_json::Value;
+use talaria_judge::find_place_in_text;
 
 use crate::plan::ResolvedSubject;
 
@@ -65,6 +66,15 @@ pub fn names_match(person: &str, candidate: &str) -> bool {
     let person = folded(person);
     let candidate = folded(candidate);
     !person.is_empty() && (candidate.contains(&person) || person.contains(&candidate))
+}
+
+/// Keep only gazetteer places so catalog notices can become map-eligible.
+pub fn catalog_place(raw: Option<&str>) -> Option<String> {
+    let raw = raw?.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    find_place_in_text(raw)
 }
 
 pub fn year_in_life(year: i32, subject: &ResolvedSubject) -> bool {

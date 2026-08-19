@@ -7,8 +7,8 @@ use crate::connector::{
     SourceConnector,
 };
 use crate::connectors::catalog::{
-    bibliographic_notice, http_client, json_first_string, names_match, parse_year, year_in_life,
-    NoticeRelation,
+    bibliographic_notice, catalog_place, http_client, json_first_string, names_match, parse_year,
+    year_in_life, NoticeRelation,
 };
 use crate::kinds::{DiscoveryMethod, DocumentType, SourceKind};
 use crate::plan::ResolvedSubject;
@@ -65,8 +65,9 @@ impl InternetArchiveConnector {
                     }
                 }
             }
-            let place = doc.get("place").and_then(json_first_string);
             let description = doc.get("description").and_then(json_first_string);
+            let place = catalog_place(doc.get("place").and_then(json_first_string).as_deref())
+                .or_else(|| catalog_place(description.as_deref()));
             let relation = if authored {
                 NoticeRelation::Authored
             } else {
