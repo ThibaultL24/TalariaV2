@@ -142,7 +142,10 @@ pub async fn run_ingest_quality(
                 Err(e) => tracing::warn!(error = %e, %q, "wikidata occupations unavailable"),
             }
         }
-        let want_wdqs = sources_filter.as_ref().map(filter_includes_wikidata).unwrap_or(true);
+        let want_wdqs = sources_filter
+            .as_ref()
+            .map(|sources| filter_includes_wikidata(sources))
+            .unwrap_or(true);
         if want_wdqs && subject.qid.is_some() {
             if let Some(qid) = subject.qid.clone() {
                 match ingest_wdqs_events(&pool, config, &subject, subject_id).await {
