@@ -153,12 +153,19 @@ pub fn keep_extracted_raw(raw: &RawCandidate, page_title: &str, subject: &str) -
         return true;
     }
     if page_is_subject_biography(page_title, subject) {
+<<<<<<< HEAD
         return true;
     }
     if !crate::seeds::is_followable_map_title(page_title) {
         return false;
     }
     clause_is_about_subject(&raw.clause_text, subject)
+=======
+        return clause_is_about_subject(&raw.clause_text, subject);
+    }
+    crate::seeds::is_followable_map_title(page_title)
+        || clause_names_subject(&raw.clause_text, subject)
+>>>>>>> 139d330bf46b4f4b13318e4536bd284b49df5b3a
 }
 
 /// Drop clauses whose grammatical agent is another named person.
@@ -197,6 +204,10 @@ fn leading_person_agent(clause: &str) -> Option<String> {
         "en", "in", "le", "la", "les", "the", "on", "after", "during", "puis", "alors", "dès",
         "des", "de", "du", "au", "aux", "un", "une", "a", "an", "il", "elle", "ils", "elles",
         "he", "she", "they", "his", "her", "their",
+        "january", "february", "march", "april", "may", "june", "july", "august", "september",
+        "october", "november", "december", "janvier", "février", "fevrier", "mars", "avril",
+        "mai", "juin", "juillet", "août", "aout", "septembre", "octobre", "novembre", "décembre",
+        "decembre",
     ];
     let mut words = Vec::new();
     for w in clause.split_whitespace() {
@@ -251,12 +262,13 @@ mod subject_clause_tests {
             "George Sand"
         ));
         assert!(!clause_is_about_subject(
-            "Victor Hugo s'installe à Hauteville House en 1855.",
-            "George Sand"
+            "Le 7 novembre 1659, les Espagnols acceptent de signer le traité des Pyrénées.",
+            "Louis XIV",
         ));
     }
 
     #[test]
+<<<<<<< HEAD
     fn drops_other_person_on_their_bio_page() {
         let raw = super::RawCandidate {
             event_type: "residence".into(),
@@ -312,6 +324,9 @@ mod subject_clause_tests {
 
     #[test]
     fn bio_page_keeps_third_party_dated_clause() {
+=======
+    fn bio_page_drops_third_party_dated_clause() {
+>>>>>>> 139d330bf46b4f4b13318e4536bd284b49df5b3a
         let raw = super::RawCandidate {
             event_type: "diplomatic".into(),
             predicate: "signed".into(),
@@ -331,7 +346,7 @@ mod subject_clause_tests {
             lat: None,
             lon: None,
         };
-        assert!(super::keep_extracted_raw(&raw, "Louis XIV", "Louis XIV"));
+        assert!(!super::keep_extracted_raw(&raw, "Louis XIV", "Louis XIV"));
         assert!(super::keep_extracted_raw(&raw, "Traité des Pyrénées", "Louis XIV"));
         assert!(!super::keep_extracted_raw(&raw, "Anne d'Autriche", "Louis XIV"));
         assert!(!super::keep_extracted_raw(

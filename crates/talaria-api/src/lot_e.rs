@@ -21,9 +21,15 @@ use talaria_sources::extractors::{
 };
 use talaria_sources::connectors::net::send_retrying;
 use talaria_sources::{
+<<<<<<< HEAD
     dated_wikilink_titles, first_year_in_window, is_followable_map_title, is_plausible_place_label,
     lifespan_year_window, load_seed_titles, merge_seed_titles, place_hint_from_title,
     resolve_place_offline, DensityProgress, DensityTargets, ResolvedSubject,
+=======
+    dated_wikilink_titles, first_year_in_window, has_military_signal, is_plausible_place_label,
+    keep_military_typed_event, lifespan_year_window, load_seed_titles, merge_seed_titles,
+    place_hint_from_title, resolve_place_offline, DensityProgress, DensityTargets, ResolvedSubject,
+>>>>>>> 139d330bf46b4f4b13318e4536bd284b49df5b3a
 };
 use talaria_store::{
     add_claim_support, apply_coords_to_event, apply_place_to_quality_event, connect,
@@ -620,6 +626,15 @@ pub async fn run_lot_e_density_ingest(
                         });
                     }
                 }
+            }
+
+            let mil = has_military_signal(&subject_res.occupations, None);
+            raws.retain(|r| {
+                keep_military_typed_event(&r.event_type, &r.clause_text, subject, mil)
+            });
+            if crate::llm::judge_enabled() {
+                raws = crate::llm::judge_raw_candidates(subject, &subject_res.occupations, raws)
+                    .await;
             }
 
             for raw in raws {
