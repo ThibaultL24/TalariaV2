@@ -152,11 +152,13 @@ pub fn keep_extracted_raw(raw: &RawCandidate, page_title: &str, subject: &str) -
     if raw.extractor_id == "infobox" || raw.extractor_id == "structured_statement" {
         return true;
     }
-    if page_is_subject_biography(page_title, subject) {
-        return clause_is_about_subject(&raw.clause_text, subject);
+    if !clause_is_about_subject(&raw.clause_text, subject) {
+        return false;
     }
-    crate::seeds::is_followable_map_title(page_title)
-        || clause_names_subject(&raw.clause_text, subject)
+    if page_is_subject_biography(page_title, subject) {
+        return true;
+    }
+    clause_names_subject(&raw.clause_text, subject)
 }
 
 /// Drop clauses whose grammatical agent is another named person.
@@ -334,7 +336,7 @@ mod subject_clause_tests {
             lon: None,
         };
         assert!(!super::keep_extracted_raw(&raw, "Louis XIV", "Louis XIV"));
-        assert!(super::keep_extracted_raw(&raw, "Traité des Pyrénées", "Louis XIV"));
+        assert!(!super::keep_extracted_raw(&raw, "Traité des Pyrénées", "Louis XIV"));
         assert!(!super::keep_extracted_raw(&raw, "Anne d'Autriche", "Louis XIV"));
         assert!(!super::keep_extracted_raw(
             &super::RawCandidate {
