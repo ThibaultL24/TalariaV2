@@ -170,8 +170,15 @@ export async function fetchStatus(): Promise<StatusResponse> {
   return response.json();
 }
 
-export async function searchEntities(query: string): Promise<SearchSuggestion[]> {
-  const params = new URLSearchParams({ q: query.trim(), limit: "10" });
+export async function searchEntities(
+  query: string,
+  lang = "en",
+): Promise<SearchSuggestion[]> {
+  const params = new URLSearchParams({
+    q: query.trim(),
+    limit: "10",
+    lang: lang === "fr" ? "fr" : "en",
+  });
   const response = await fetch(`/api/v1/entities/search?${params}`);
   if (!response.ok) throw new Error("entity search failed");
   const data = (await response.json()) as { items: SearchSuggestion[] };

@@ -46,6 +46,31 @@ export function filterTimelineByYearRange(
   });
 }
 
+export function filterGeoJsonUntilYear(
+  collection: GeoJsonFeatureCollection,
+  untilYear: number,
+): GeoJsonFeatureCollection {
+  return {
+    type: "FeatureCollection",
+    features: collection.features.filter((feature) => {
+      const year = extractYear(String(feature.properties.start_time ?? ""));
+      if (year == null) return true;
+      return year <= untilYear;
+    }),
+  };
+}
+
+export function filterTimelineUntilYear(
+  events: TimelineEvent[],
+  untilYear: number,
+): TimelineEvent[] {
+  return events.filter((event) => {
+    const year = extractYear(event.start_time);
+    if (year == null) return true;
+    return year <= untilYear;
+  });
+}
+
 export function buildYearBounds(events: TimelineEvent[]): { min: number; max: number } {
   const years = events
     .map((event) => extractYear(event.start_time))
