@@ -152,9 +152,13 @@ pub fn keep_extracted_raw(raw: &RawCandidate, page_title: &str, subject: &str) -
     if raw.extractor_id == "infobox" || raw.extractor_id == "structured_statement" {
         return true;
     }
-    page_is_subject_biography(page_title, subject)
-        || crate::seeds::is_followable_map_title(page_title)
-        || clause_names_subject(&raw.clause_text, subject)
+    if page_is_subject_biography(page_title, subject) {
+        return true;
+    }
+    if !crate::seeds::is_followable_map_title(page_title) {
+        return false;
+    }
+    clause_is_about_subject(&raw.clause_text, subject)
 }
 
 /// Drop clauses whose grammatical agent is another named person.
@@ -249,6 +253,60 @@ mod subject_clause_tests {
         assert!(!clause_is_about_subject(
             "Victor Hugo s'installe à Hauteville House en 1855.",
             "George Sand"
+        ));
+    }
+
+    #[test]
+    fn drops_other_person_on_their_bio_page() {
+        let raw = super::RawCandidate {
+            event_type: "residence".into(),
+            predicate: "resided_in".into(),
+            subject_surface: "Marie Curie".into(),
+            time_surface: Some("1920".into()),
+            place_surface: Some("Dublin".into()),
+            object_surface: None,
+            participant_surfaces: vec![],
+            clause_text: "On 6 April 1920, Schrödinger married Annemarie Bertel in Vienna.".into(),
+            clause_index: 72,
+            start_offset: 0,
+            end_offset: 80,
+            cross_clause_join: false,
+            extractor_id: "travel_residence".into(),
+            is_posthumous: false,
+            lat: None,
+            lon: None,
+        };
+        assert!(!super::keep_extracted_raw(
+            &raw,
+            "Erwin Schrödinger",
+            "Marie Curie"
+        ));
+    }
+
+    #[test]
+    fn drops_nobel_list_clause_about_other_laureate() {
+        let raw = super::RawCandidate {
+            event_type: "award".into(),
+            predicate: "received".into(),
+            subject_surface: "Marie Curie".into(),
+            time_surface: Some("1933".into()),
+            place_surface: Some("Stockholm".into()),
+            object_surface: None,
+            participant_surfaces: vec![],
+            clause_text: "Erwin Schrödinger received the Nobel Prize in Physics in 1933.".into(),
+            clause_index: 1,
+            start_offset: 0,
+            end_offset: 70,
+            cross_clause_join: false,
+            extractor_id: "dense_clause".into(),
+            is_posthumous: false,
+            lat: None,
+            lon: None,
+        };
+        assert!(!super::keep_extracted_raw(
+            &raw,
+            "Nobel Prize in Physics",
+            "Marie Curie"
         ));
     }
 

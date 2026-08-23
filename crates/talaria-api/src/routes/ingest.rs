@@ -19,8 +19,7 @@ use uuid::Uuid;
 use super::AppState;
 use crate::corpus_ingest::{self, live_corpus_providers};
 use crate::historiography;
-use crate::lot_e::{run_lot_e_density_ingest, write_minimal_seed_list};
-use talaria_sources::DensityTargets;
+use crate::lot_e::write_minimal_seed_list;
 use talaria_store::{density_report_counts, update_entity_qid, upsert_entity_with_kind};
 
 pub const LANE_EXPLORER: &str = "explorer";
@@ -361,35 +360,24 @@ async fn run_explorer_lane(
     qid: Option<&str>,
     seed_list: &std::path::Path,
     wiki_lang: &str,
-    max_titles: Option<u32>,
+    _max_titles: Option<u32>,
     max_documents: u32,
 ) -> anyhow::Result<Value> {
-    let targets = DensityTargets {
-        target_timeline_events: 500,
-        target_map_events: 500,
-        max_documents,
-        max_linked_entities: 5_000,
-        max_depth: 3,
-        max_documents_per_source: 2_500,
-    };
-    let lot_e_text = run_lot_e_density_ingest(
+    let person = crate::person_ingest::run_person_ingest(
         config,
         subject,
         qid,
-        seed_list,
-        targets,
         wiki_lang,
-        max_titles,
+        max_documents,
+        Some(seed_list),
     )
     .await?;
-    let wikipedia_wikidata = parse_json_report(&lot_e_text);
-    let entity_id = parse_entity_id_from_report(&wikipedia_wikidata);
-
+    let entity_id = parse_entity_id_from_report(&person);
     Ok(json!({
         "lane": LANE_EXPLORER,
         "purpose": lane_purpose(LANE_EXPLORER),
-        "wikipedia_wikidata": wikipedia_wikidata,
-        "enrichment": "agora",
+        "pipeline": "person",
+        "person": person,
         "subject": {
             "entity_id": entity_id.map(|id| id.to_string()),
             "label": subject,

@@ -44,12 +44,13 @@ pub fn parse_sparql_bindings(payload: &Value, default_type: Option<&str>) -> Vec
             .or_else(|| default_type.map(str::to_string))
             .unwrap_or_else(|| "historical_fact".into());
         let event_type = classify_event(&ev_type, &label);
+        let (lat, lon) = parse_geo(row);
         let dated_required = !matches!(
             event_type.as_str(),
             "birth" | "death" | "residence" | "office" | "education" | "publication"
         );
         let Some(date) = date.or_else(|| {
-            if dated_required {
+            if dated_required && lat.is_none() {
                 None
             } else {
                 Some(String::new())
@@ -57,7 +58,6 @@ pub fn parse_sparql_bindings(payload: &Value, default_type: Option<&str>) -> Vec
         }) else {
             continue;
         };
-        let (lat, lon) = parse_geo(row);
         out.push(WdqsEvent {
             event_qid,
             label,
@@ -195,6 +195,25 @@ SELECT DISTINCT ?event ?eventLabel ?date ?place ?placeLabel ?evType ?geo ?pgeo W
     OPTIONAL {{ ?event wdt:P577 ?date . }}
     OPTIONAL {{ ?event wdt:P291 ?place . }}
     BIND("publication" AS ?evType)
+  }} UNION {{
+    wd:{qid} wdt:P793 ?event .
+    BIND("historical_fact" AS ?evType)
+    OPTIONAL {{ ?event wdt:P585 ?date . }}
+    OPTIONAL {{ ?event wdt:P580 ?date . }}
+    OPTIONAL {{ ?event wdt:P276 ?place . }}
+  }} UNION {{
+    wd:{qid} wdt:P119 ?place .
+    OPTIONAL {{ wd:{qid} wdt:P570 ?date . }}
+    BIND("death" AS ?evType)
+    BIND(IRI(CONCAT("http://www.wikidata.org/entity/{qid}-burial")) AS ?event)
+  }} UNION {{
+    wd:{qid} wdt:P937 ?place .
+    BIND("residence" AS ?evType)
+    BIND(IRI(CONCAT("http://www.wikidata.org/entity/{qid}-work-", STRAFTER(STR(?place), "entity/"))) AS ?event)
+  }} UNION {{
+    wd:{qid} wdt:P2632 ?place .
+    BIND("residence" AS ?evType)
+    BIND(IRI(CONCAT("http://www.wikidata.org/entity/{qid}-det-", STRAFTER(STR(?place), "entity/"))) AS ?event)
   }}
   OPTIONAL {{ ?event wdt:P625 ?geo . }}
   OPTIONAL {{ ?place wdt:P625 ?pgeo . }}

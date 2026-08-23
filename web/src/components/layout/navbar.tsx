@@ -12,10 +12,7 @@ export function Navbar({ status }: NavbarProps) {
   return (
     <header className="navbar">
       <a href="/" className="navbar__brand">
-        <div>
-          <div className="navbar__title">{strings.productName}</div>
-          <div className="navbar__subtitle">{strings.productSubtitle}</div>
-        </div>
+        <div className="navbar__title">{strings.productName}</div>
       </a>
       <div className="navbar__actions">
         {status ? (

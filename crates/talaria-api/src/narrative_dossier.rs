@@ -253,7 +253,7 @@ async fn local_section_claims(
         .iter()
         .find_map(|row| row.revision_id)
         .or_else(|| chosen.first().and_then(|s| s.revision_id));
-    let keywords = relevance_keywords(event);
+    let (keywords, subject_keys) = relevance_keywords(event);
     let mut claims = Vec::new();
 
     for section in chosen {
@@ -264,7 +264,7 @@ async fn local_section_claims(
             if text.chars().count() < 40 || text.chars().count() > 320 {
                 continue;
             }
-            if !is_relevant(&text, &keywords) {
+            if !is_relevant(&text, &keywords, &subject_keys) {
                 continue;
             }
             if is_identity_blurb(&text) {
@@ -350,7 +350,7 @@ async fn fetch_section_claims(
 
     let html = fetch_section_html(&client, lang, &resolved, &section_index).await?;
     let plain = html_to_plain(&html);
-    let keywords = relevance_keywords(event);
+    let (keywords, subject_keys) = relevance_keywords(event);
     let mut claims = Vec::new();
 
     for span in split_sentences(&plain) {
@@ -359,7 +359,7 @@ async fn fetch_section_claims(
         if text.chars().count() < 40 || text.chars().count() > 320 {
             continue;
         }
-        if !is_relevant(&text, &keywords) {
+        if !is_relevant(&text, &keywords, &subject_keys) {
             continue;
         }
         if is_identity_blurb(&text) {
@@ -542,8 +542,16 @@ fn section_needles(event_type: &str, lang: &str) -> Vec<&'static str> {
     }
 }
 
-fn relevance_keywords(event: &CanonicalEventRow) -> Vec<String> {
+fn relevance_keywords(event: &CanonicalEventRow) -> (Vec<String>, Vec<String>) {
     let mut keys = Vec::new();
+    let mut subject_keys = Vec::new();
+    let person = event.person_name.split('(').next().unwrap_or(&event.person_name).trim();
+    if !person.is_empty() {
+        subject_keys.push(person.to_ascii_lowercase());
+        if let Some(sur) = talaria_sources::subject_surname(person) {
+            subject_keys.push(sur.to_ascii_lowercase());
+        }
+    }
     if let Some(place) = event.place_label.as_deref() {
         keys.push(place.to_ascii_lowercase());
     }
@@ -606,7 +614,7 @@ fn relevance_keywords(event: &CanonicalEventRow) -> Vec<String> {
         ),
         _ => keys.extend(["en ", "à ", "in ", "at "].into_iter().map(str::to_string)),
     }
-    keys
+    (keys, subject_keys)
 }
 
 fn strip_section_heading(text: &str, section_title: &str) -> String {
@@ -625,8 +633,15 @@ fn strip_section_heading(text: &str, section_title: &str) -> String {
     text
 }
 
-fn is_relevant(text: &str, keywords: &[String]) -> bool {
+fn is_relevant(text: &str, keywords: &[String], subject_keys: &[String]) -> bool {
     let lower = text.to_ascii_lowercase();
+    if !subject_keys.is_empty()
+        && !subject_keys
+            .iter()
+            .any(|key| !key.trim().is_empty() && lower.contains(key.as_str()))
+    {
+        return false;
+    }
     let hits = keywords
         .iter()
         .filter(|key| !key.trim().is_empty() && lower.contains(key.as_str()))

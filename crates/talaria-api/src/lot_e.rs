@@ -16,17 +16,18 @@ use talaria_quality::{
     EXTRACTOR_EPISTEMIC_STATUS, GazetteerResolver, GateContext, ASSEMBLER_V1,
 };
 use talaria_sources::extractors::{
-    claim_fingerprint, default_extractor_stack, keep_extracted_raw, CandidateExtractor,
-    ClaimKey, ExtractorInput,
+    claim_fingerprint, default_extractor_stack, keep_extracted_raw, page_is_subject_biography,
+    CandidateExtractor, ClaimKey, ExtractorInput,
 };
 use talaria_sources::connectors::net::send_retrying;
 use talaria_sources::{
-    dated_wikilink_titles, first_year_in_window, is_plausible_place_label,
+    dated_wikilink_titles, first_year_in_window, is_followable_map_title, is_plausible_place_label,
     lifespan_year_window, load_seed_titles, merge_seed_titles, place_hint_from_title,
     resolve_place_offline, DensityProgress, DensityTargets, ResolvedSubject,
 };
 use talaria_store::{
-    add_claim_support, apply_place_to_quality_event, connect, density_report_counts,
+    add_claim_support, apply_coords_to_event, apply_place_to_quality_event, connect,
+    density_report_counts,
     find_active_quality_event_by_occurrence_key, get_event_candidate_by_fingerprint,
     insert_document_fragment, insert_document_snapshot, insert_quality_canonical_event,
     link_claim_to_event, mark_candidate_assembled, quality_lifespan_years,
@@ -355,6 +356,15 @@ pub async fn run_lot_e_density_ingest(
             "deactivated quality events with implausible place labels"
         );
     }
+    let cross_cleaned = deactivate_cross_subject_quality_events(config, subject)
+        .await
+        .unwrap_or(0);
+    if cross_cleaned > 0 {
+        tracing::info!(
+            cross_cleaned,
+            "deactivated quality events extracted from unrelated Wikipedia pages"
+        );
+    }
 
     let extractors = default_extractor_stack();
     let extractor_refs: Vec<&dyn CandidateExtractor> =
@@ -439,6 +449,12 @@ pub async fn run_lot_e_density_ingest(
                 metrics.bump("budget_per_source");
                 break;
             }
+            if !page_is_subject_biography(&title, subject)
+                && !is_followable_map_title(&title)
+            {
+                metrics.bump("skipped_non_followable_title");
+                continue;
+            }
             // Check density progress
             let density = density_report_counts(&pool, Some(subject_id)).await?;
             let progress = DensityProgress {
@@ -486,6 +502,7 @@ pub async fn run_lot_e_density_ingest(
                     &mut seen_titles,
                     linked,
                     targets.max_linked_entities as usize,
+                    subject,
                 );
             }
 
@@ -738,11 +755,15 @@ fn enqueue_discovered_title(
     seen: &mut std::collections::HashSet<String>,
     title: String,
     cap: usize,
+    subject: &str,
 ) {
     if seen.len() >= cap {
         return;
     }
     if talaria_sources::is_noise_wiki_title(&title) {
+        return;
+    }
+    if !page_is_subject_biography(&title, subject) && !is_followable_map_title(&title) {
         return;
     }
     if seen.insert(title.clone()) {
@@ -1734,7 +1755,7 @@ pub async fn run_resolve_places(
     let unresolved: Vec<(Uuid, Option<String>)> = sqlx::query_as(
         r#"
         SELECT id, place_label FROM canonical_events
-        WHERE pipeline = 'quality' AND is_active AND timeline_eligible AND NOT map_eligible
+        WHERE pipeline IN ('quality', 'person') AND is_active AND timeline_eligible AND NOT map_eligible
           AND entity_id = $1 AND place_label IS NOT NULL
         "#,
     )
@@ -1777,17 +1798,7 @@ pub async fn run_resolve_places(
         };
         if let Some(hit) = hit {
             for eid in ids {
-                apply_place_to_quality_event(
-                    &pool,
-                    *eid,
-                    &label,
-                    None,
-                    hit.lat,
-                    hit.lon,
-                    &hit.precision,
-                    hit.uncertainty,
-                )
-                .await?;
+                apply_coords_to_event(&pool, *eid, hit.lat, hit.lon).await?;
                 resolved += 1;
             }
         } else {
@@ -1812,14 +1823,14 @@ pub async fn run_resolve_places(
     }))?)
 }
 
-struct PlaceHit {
-    lat: f64,
-    lon: f64,
-    precision: String,
-    uncertainty: Option<f64>,
+pub(crate) struct PlaceHit {
+    pub lat: f64,
+    pub lon: f64,
+    pub precision: String,
+    pub uncertainty: Option<f64>,
 }
 
-async fn resolve_label_coords(label: &str) -> Option<PlaceHit> {
+pub(crate) async fn resolve_label_coords(label: &str) -> Option<PlaceHit> {
     if let Some(res) = resolve_place_offline(label) {
         return Some(PlaceHit {
             lat: res.lat,
@@ -2021,6 +2032,50 @@ pub async fn deactivate_implausible_place_events(
             .await?;
             n += 1;
         }
+    }
+    Ok(n)
+}
+
+/// Soft-deactivate quality events mined from another person's bio or unrelated pages.
+pub async fn deactivate_cross_subject_quality_events(
+    config: &AppConfig,
+    subject: &str,
+) -> anyhow::Result<u64> {
+    use talaria_sources::extractors::{clause_is_about_subject, page_is_subject_biography};
+    use talaria_sources::is_followable_map_title;
+
+    let pool = connect(config).await?;
+    let subject_id = upsert_entity_with_kind(&pool, &config.wiki_lang, subject, "person").await?;
+    let rows: Vec<(Uuid, String, String)> = sqlx::query_as(
+        r#"
+        SELECT ce.id, ds.title, COALESCE(ec.evidence_ptrs->0->>'quoted_text', '') AS quoted
+        FROM canonical_events ce
+        JOIN event_candidates ec ON ec.id = ce.event_candidate_id
+        JOIN document_snapshots ds ON ds.id = ec.snapshot_id
+        WHERE ce.pipeline = 'quality' AND ce.is_active AND ce.entity_id = $1
+        "#,
+    )
+    .bind(subject_id)
+    .fetch_all(&pool)
+    .await?;
+    let mut n = 0u64;
+    for (id, page_title, quoted) in rows {
+        let keep = page_is_subject_biography(&page_title, subject)
+            || (is_followable_map_title(&page_title)
+                && (quoted.is_empty() || clause_is_about_subject(&quoted, subject)));
+        if keep {
+            continue;
+        }
+        sqlx::query(
+            r#"
+            UPDATE canonical_events SET is_active = false
+            WHERE id = $1 AND pipeline = 'quality'
+            "#,
+        )
+        .bind(id)
+        .execute(&pool)
+        .await?;
+        n += 1;
     }
     Ok(n)
 }

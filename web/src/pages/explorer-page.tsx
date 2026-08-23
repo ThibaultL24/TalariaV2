@@ -43,6 +43,7 @@ import {
   filterTimelineByTaxonomy,
   filterTimelineByYearRange,
 } from "@/lib/geo";
+import { collapseToSinglePersonSuggestion } from "@/lib/search-suggestions";
 import { strings } from "@/lib/strings";
 import { useExplorerStore } from "@/stores/explorer-store";
 
@@ -239,7 +240,9 @@ export function ExplorerPage() {
 
     searchEntities(searchQuery)
       .then((items) => {
-        if (!cancelled) setSuggestions(items);
+        if (!cancelled) {
+          setSuggestions(collapseToSinglePersonSuggestion(searchQuery, items));
+        }
       })
       .catch(() => {
         if (!cancelled) setSuggestions([]);

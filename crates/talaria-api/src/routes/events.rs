@@ -16,6 +16,8 @@ pub struct TimelineQuery {
     pub person: Option<String>,
     pub profile_slug: Option<String>,
     pub period_slug: Option<String>,
+    /// `quality` (default), `legacy`, or omit for all active pipelines.
+    pub pipeline: Option<String>,
     #[serde(default = "default_limit")]
     pub limit: i64,
 }
@@ -26,10 +28,15 @@ pub struct GeoJsonQuery {
     pub person: Option<String>,
     pub profile_slug: Option<String>,
     pub period_slug: Option<String>,
+    pub pipeline: Option<String>,
     #[serde(default = "default_true")]
     pub map_eligible: bool,
     #[serde(default = "default_limit")]
     pub limit: i64,
+}
+
+fn default_pipeline() -> Option<String> {
+    Some("person".into())
 }
 
 fn default_limit() -> i64 {
@@ -40,16 +47,22 @@ fn default_true() -> bool {
     true
 }
 
+fn resolve_pipeline(explicit: &Option<String>) -> Option<String> {
+    explicit.clone().or_else(default_pipeline)
+}
+
 pub async fn timeline(
     State(state): State<AppState>,
     Query(query): Query<TimelineQuery>,
 ) -> Json<Value> {
+    let pipeline = resolve_pipeline(&query.pipeline);
     let events = talaria_store::list_timeline_events(
         &state.pool,
         query.entity_id,
         query.person.as_deref(),
         query.profile_slug.as_deref(),
         query.period_slug.as_deref(),
+        pipeline.as_deref(),
         query.limit,
     )
     .await
@@ -65,6 +78,7 @@ pub async fn geojson(
     State(state): State<AppState>,
     Query(query): Query<GeoJsonQuery>,
 ) -> Json<Value> {
+    let pipeline = resolve_pipeline(&query.pipeline);
     let events = talaria_store::list_geojson_events(
         &state.pool,
         query.entity_id,
@@ -72,6 +86,7 @@ pub async fn geojson(
         query.map_eligible,
         query.profile_slug.as_deref(),
         query.period_slug.as_deref(),
+        pipeline.as_deref(),
         query.limit,
     )
     .await

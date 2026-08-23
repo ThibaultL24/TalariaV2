@@ -5,6 +5,7 @@ mod analyzer;
 mod assertion;
 mod fingerprint;
 mod gates;
+mod grounding;
 mod model;
 mod occurrence;
 mod projections;
@@ -19,6 +20,10 @@ pub use analyzer::{
 };
 pub use fingerprint::{candidate_fingerprint, event_fingerprint, normalize_surface};
 pub use gates::{apply_gates, event_type_is_map_locus, GateContext, GateDecision, RejectionCode};
+pub use grounding::{
+    accept_items, agent_is_other_person, parse_lane, quote_is_grounded, validate_item, GroundedItem,
+    Lane, RawExtractItem, RejectReason,
+};
 pub use model::{
     CandidateStatus, EntityKind, EventCandidate, EvidencePtr, Mention, ParticipantRole, TypedTime,
     ASSEMBLER_V1, EXTRACTOR_DETERMINISTIC_V1,

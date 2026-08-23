@@ -441,3 +441,16 @@ mod tests {
         assert!(!is_life_trace_link_title("List of Belgian football clubs"));
     }
 }
+
+#[cfg(test)]
+mod schrodinger_follow_tests {
+    use super::is_followable_map_title;
+
+    #[test]
+    fn nobel_physicists_are_not_followable_map_titles() {
+        assert!(!is_followable_map_title("Erwin Schrödinger"));
+        assert!(!is_followable_map_title("Arthur Harden"));
+        assert!(!is_followable_map_title("Albert Einstein"));
+        assert!(!is_followable_map_title("Henryk Sienkiewicz"));
+    }
+}

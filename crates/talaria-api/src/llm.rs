@@ -105,3 +105,129 @@ pub async fn ping() -> PingResult {
         },
     }
 }
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct LlmExtractItem {
+    #[serde(default)]
+    pub lane: String,
+    #[serde(default)]
+    pub event_type: String,
+    #[serde(default)]
+    pub role: String,
+    pub year: Option<i32>,
+    pub place_surface: Option<String>,
+    #[serde(default)]
+    pub summary: String,
+    #[serde(alias = "quote", alias = "quoted_text")]
+    pub quoted_text: String,
+    #[serde(default)]
+    pub confidence: f64,
+}
+
+pub fn parse_extract_items(payload: &str) -> Vec<LlmExtractItem> {
+    let trimmed = payload.trim();
+    let json_slice = if let (Some(start), Some(end)) = (trimmed.find('['), trimmed.rfind(']')) {
+        &trimmed[start..=end]
+    } else {
+        trimmed
+    };
+    serde_json::from_str::<Vec<LlmExtractItem>>(json_slice).unwrap_or_default()
+}
+
+impl LlmExtractItem {
+    pub fn into_raw(self) -> talaria_quality::RawExtractItem {
+        talaria_quality::RawExtractItem {
+            lane: self.lane,
+            event_type: if self.event_type.is_empty() {
+                "historical_fact".into()
+            } else {
+                self.event_type
+            },
+            role: if self.role.is_empty() {
+                "direct".into()
+            } else {
+                self.role
+            },
+            year: self.year,
+            place_surface: self.place_surface,
+            summary: self.summary,
+            quoted_text: self.quoted_text,
+            confidence: if self.confidence == 0.0 {
+                0.7
+            } else {
+                self.confidence
+            },
+        }
+    }
+}
+
+pub async fn extract_chunk(
+    subject: &str,
+    page_title: &str,
+    chunk: &str,
+) -> anyhow::Result<Vec<LlmExtractItem>> {
+    let Some(key) = api_key() else {
+        anyhow::bail!("OPENAI_API_KEY missing");
+    };
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(90))
+        .build()?;
+    let prompt = format!(
+        "Subject: {subject}\nPage: {page_title}\n\n\
+         Extract JSON array of items about THIS subject only.\n\
+         Each item: lane (fact|debate), event_type (birth,death,residence,travel,battle,treaty,diplomatic,office,education,work,anecdote,commemoration,other), \
+         role (direct|indirect), year (number or null), place_surface, summary, quoted_text (exact substring of the text), confidence 0-1.\n\
+         Facts: every dated or located event about the subject — life, work, travel, AND commemorations (statue, plaque, tomb, museum, school named after them).\n\
+         place_surface MUST be a named city, town, or institution (Warsaw, Paris, Sorbonne), never 'her house', 'the institute', or a country alone.\n\
+         Extract as many grounded facts as the text supports. Debates: controversies, theses, attribution disputes. Never invent quotes.\n\
+         Text:\n{chunk}"
+    );
+    let response = client
+        .post(OPENAI_RESPONSES_URL)
+        .bearer_auth(key)
+        .json(&json!({
+            "model": model(),
+            "input": prompt,
+            "store": false,
+        }))
+        .send()
+        .await?;
+    let body: Value = response.json().await.unwrap_or(json!({}));
+    let text = output_text(&body);
+    Ok(parse_extract_items(&text))
+}
+
+fn output_text(body: &Value) -> String {
+    if let Some(s) = body.get("output_text").and_then(|v| v.as_str()) {
+        return s.to_string();
+    }
+    body.get("output")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| {
+            arr.iter().find_map(|item| {
+                item.get("content")
+                    .and_then(|c| c.as_array())
+                    .and_then(|parts| {
+                        parts.iter().find_map(|p| {
+                            p.get("text")
+                                .and_then(|t| t.as_str())
+                                .map(str::to_string)
+                        })
+                    })
+            })
+        })
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_json_array_of_extracts() {
+        let raw = r#"[{"lane":"fact","event_type":"birth","quoted_text":"born in Warsaw","year":1867,"place_surface":"Warsaw","summary":"birth","confidence":0.9}]"#;
+        let items = parse_extract_items(raw);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].place_surface.as_deref(), Some("Warsaw"));
+    }
+}

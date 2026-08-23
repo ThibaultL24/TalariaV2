@@ -161,73 +161,7 @@ pub async fn list_timeline_events(
     person: Option<&str>,
     profile_slug: Option<&str>,
     period_slug: Option<&str>,
-    limit: i64,
-) -> anyhow::Result<Vec<CanonicalEventRow>> {
-    let period = match period_slug {
-        Some(slug) => crate::profiles::get_period_by_slug(pool, slug).await?,
-        None => None,
-    };
-    let start_year = period.as_ref().and_then(|row| row.start_year);
-    let end_year = period.as_ref().and_then(|row| row.end_year);
-    let person_sql = person_match_sql(2, 7);
-    let sql = format!(
-        r#"
-        SELECT
-            ce.id,
-            ce.entity_id,
-            COALESCE(e.canonical_name, e.wikipedia_title) AS person_name,
-            ce.event_type,
-            ce.epistemic_status,
-            ce.title,
-            ce.summary,
-            ce.start_time,
-            ce.place_label,
-            ce.confidence,
-            ce.map_eligible,
-            ST_Y(ce.geom::geometry) AS lat,
-            ST_X(ce.geom::geometry) AS lon
-        FROM canonical_events ce
-        INNER JOIN entities e ON e.id = ce.entity_id
-        WHERE ($1::uuid IS NULL OR ce.entity_id = $1)
-          AND {person_sql}
-          AND (
-            $3::text IS NULL
-            OR EXISTS (
-                SELECT 1 FROM entity_profiles ep
-                WHERE ep.entity_id = ce.entity_id AND ep.profile_slug = $3
-            )
-          )
-          AND (
-            $4::int IS NULL
-            OR ce.start_time IS NULL
-            OR EXTRACT(YEAR FROM ce.start_time)::int BETWEEN COALESCE($4, -9999) AND COALESCE($5, 9999)
-          )
-        ORDER BY ce.start_time ASC NULLS LAST, ce.created_at ASC
-        LIMIT $6
-        "#
-    );
-
-    let rows = sqlx::query_as::<_, CanonicalEventRow>(&sql)
-        .bind(entity_id)
-        .bind(person.map(|value| format!("%{value}%")))
-        .bind(profile_slug)
-        .bind(start_year)
-        .bind(end_year)
-        .bind(limit)
-        .bind(person.map(fold_latin_accents).map(|value| format!("%{value}%")))
-        .fetch_all(pool)
-        .await?;
-
-    Ok(rows)
-}
-
-pub async fn list_geojson_events(
-    pool: &PgPool,
-    entity_id: Option<Uuid>,
-    person: Option<&str>,
-    map_eligible_only: bool,
-    profile_slug: Option<&str>,
-    period_slug: Option<&str>,
+    pipeline: Option<&str>,
     limit: i64,
 ) -> anyhow::Result<Vec<CanonicalEventRow>> {
     let period = match period_slug {
@@ -255,7 +189,79 @@ pub async fn list_geojson_events(
             ST_X(ce.geom::geometry) AS lon
         FROM canonical_events ce
         INNER JOIN entities e ON e.id = ce.entity_id
-        WHERE ($1::uuid IS NULL OR ce.entity_id = $1)
+        WHERE ce.is_active = true
+          AND ($1::uuid IS NULL OR ce.entity_id = $1)
+          AND {person_sql}
+          AND (
+            $3::text IS NULL
+            OR EXISTS (
+                SELECT 1 FROM entity_profiles ep
+                WHERE ep.entity_id = ce.entity_id AND ep.profile_slug = $3
+            )
+          )
+          AND (
+            $4::int IS NULL
+            OR ce.start_time IS NULL
+            OR EXTRACT(YEAR FROM ce.start_time)::int BETWEEN COALESCE($4, -9999) AND COALESCE($5, 9999)
+          )
+          AND ($7::text IS NULL OR ce.pipeline = $7)
+        ORDER BY ce.start_time ASC NULLS LAST, ce.created_at ASC
+        LIMIT $6
+        "#
+    );
+
+    let rows = sqlx::query_as::<_, CanonicalEventRow>(&sql)
+        .bind(entity_id)
+        .bind(person.map(|value| format!("%{value}%")))
+        .bind(profile_slug)
+        .bind(start_year)
+        .bind(end_year)
+        .bind(limit)
+        .bind(pipeline)
+        .bind(person.map(fold_latin_accents).map(|value| format!("%{value}%")))
+        .fetch_all(pool)
+        .await?;
+
+    Ok(rows)
+}
+
+pub async fn list_geojson_events(
+    pool: &PgPool,
+    entity_id: Option<Uuid>,
+    person: Option<&str>,
+    map_eligible_only: bool,
+    profile_slug: Option<&str>,
+    period_slug: Option<&str>,
+    pipeline: Option<&str>,
+    limit: i64,
+) -> anyhow::Result<Vec<CanonicalEventRow>> {
+    let period = match period_slug {
+        Some(slug) => crate::profiles::get_period_by_slug(pool, slug).await?,
+        None => None,
+    };
+    let start_year = period.as_ref().and_then(|row| row.start_year);
+    let end_year = period.as_ref().and_then(|row| row.end_year);
+    let person_sql = person_match_sql(2, 9);
+    let sql = format!(
+        r#"
+        SELECT
+            ce.id,
+            ce.entity_id,
+            COALESCE(e.canonical_name, e.wikipedia_title) AS person_name,
+            ce.event_type,
+            ce.epistemic_status,
+            ce.title,
+            ce.summary,
+            ce.start_time,
+            ce.place_label,
+            ce.confidence,
+            ce.map_eligible,
+            ST_Y(ce.geom::geometry) AS lat,
+            ST_X(ce.geom::geometry) AS lon
+        FROM canonical_events ce
+        INNER JOIN entities e ON e.id = ce.entity_id
+        WHERE ce.is_active = true
+          AND ($1::uuid IS NULL OR ce.entity_id = $1)
           AND {person_sql}
           AND ($3 = false OR ce.map_eligible = true)
           AND ce.geom IS NOT NULL
@@ -271,6 +277,7 @@ pub async fn list_geojson_events(
             OR ce.start_time IS NULL
             OR EXTRACT(YEAR FROM ce.start_time)::int BETWEEN COALESCE($5, -9999) AND COALESCE($6, 9999)
           )
+          AND ($8::text IS NULL OR ce.pipeline = $8)
         ORDER BY ce.start_time ASC NULLS LAST
         LIMIT $7
         "#
@@ -284,6 +291,7 @@ pub async fn list_geojson_events(
         .bind(start_year)
         .bind(end_year)
         .bind(limit)
+        .bind(pipeline)
         .bind(person.map(fold_latin_accents).map(|value| format!("%{value}%")))
         .fetch_all(pool)
         .await?;

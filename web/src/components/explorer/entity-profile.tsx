@@ -1,5 +1,4 @@
 // web/src/components/explorer/entity-profile.tsx
-import { strings } from "@/lib/strings";
 interface EntityProfileProps {
   name: string;
   qid?: string | null;
@@ -21,10 +20,7 @@ export function EntityProfile({
 }: EntityProfileProps) {
   return (
     <div className="border-b border-(--color-border-subtle) px-4 py-3">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-(--color-text-secondary)">
-        {strings.productSubtitle}
-      </p>
-      <h2 className="mt-1 text-lg font-semibold leading-snug">{name}</h2>
+      <h2 className="text-lg font-semibold leading-snug">{name}</h2>
       {qid ? <p className="mt-0.5 font-mono text-[10px] text-(--color-text-muted)">{qid}</p> : null}
       <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-(--color-text-muted)">
         {eventCount != null ? <span>{eventCount} facts</span> : null}

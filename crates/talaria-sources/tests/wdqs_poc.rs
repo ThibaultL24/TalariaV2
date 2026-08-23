@@ -69,6 +69,27 @@ fn query_fetches_coordinates_and_life_trajectory() {
     assert!(q.contains("P39"), "offices");
     assert!(q.contains("wdt:P800"), "notable works / publications");
     assert!(q.contains("P69"), "education");
+    assert!(q.contains("P793"), "significant events");
+    assert!(q.contains("P119"), "burial place");
+    assert!(q.contains("P937"), "work location");
+    assert!(q.contains("P2632"), "place of detention / exile");
+}
+
+#[test]
+fn parse_keeps_undated_battle_when_coords_exist() {
+    let payload = serde_json::json!({
+        "results": { "bindings": [{
+            "event": { "type": "uri", "value": "http://www.wikidata.org/entity/Q48314" },
+            "eventLabel": { "type": "literal", "value": "Battle of Waterloo" },
+            "placeLabel": { "type": "literal", "value": "Waterloo" },
+            "evType": { "type": "literal", "value": "battle" },
+            "pgeo": { "type": "literal", "value": "Point(4.4047 50.6794)" }
+        }]}
+    });
+    let events = parse_sparql_bindings(&payload, None);
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].event_qid, "Q48314");
+    assert!(events[0].lat.is_some() && events[0].lon.is_some());
 }
 
 #[test]

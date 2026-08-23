@@ -12,6 +12,7 @@ pub mod intuition;
 pub mod judgments;
 pub mod multi_source;
 pub mod phrase_candidates;
+pub mod person_events;
 pub mod places;
 pub mod pool;
 pub mod profiles;
@@ -77,8 +78,13 @@ pub use phrase_candidates::{
     PhraseCandidateRecord,
 };
 pub use places::{
-    apply_geocode_to_events, get_place_geocode, list_place_labels_needing_geocode,
-    upsert_place_geocode, PlaceGeocodeRow,
+    apply_coords_to_event, apply_geocode_to_events, get_place_geocode,
+    list_place_labels_needing_geocode, upsert_place_geocode, PlaceGeocodeRow,
+};
+pub use person_events::{
+    find_active_person_event_by_occurrence, insert_person_event, insert_person_quote_evidence,
+    reinforce_person_event, upsert_raw_wikidata_document, upsert_raw_wikipedia_document,
+    PersonEventInsert,
 };
 pub use pool::{connect, run_migrations, DbPool};
 pub use profiles::{

@@ -27,7 +27,7 @@ fn default_lang() -> String {
 }
 
 fn default_search_limit() -> i64 {
-    10
+    1
 }
 
 pub async fn search(
@@ -133,9 +133,86 @@ pub async fn search(
             b_s.cmp(&a_s)
         })
     });
-    items.truncate(query.limit as usize);
+    items = collapse_person_search(trimmed, items);
+    items.truncate(1);
 
     Json(json!({ "items": items }))
+}
+
+fn is_person_search_noise(label: &str) -> bool {
+    let label = label.trim();
+    if label.len() < 2 {
+        return true;
+    }
+    if label.to_ascii_lowercase().contains("lotd") {
+        return true;
+    }
+    label_contains_uuid(label)
+}
+
+fn label_contains_uuid(label: &str) -> bool {
+    let bytes = label.as_bytes();
+    let mut i = 0;
+    while i + 36 <= bytes.len() {
+        if bytes[i..i + 36].iter().enumerate().all(|(j, b)| {
+            let c = *b as char;
+            match j {
+                8 | 13 | 18 | 23 => c == '-',
+                _ => c.is_ascii_hexdigit(),
+            }
+        }) {
+            return true;
+        }
+        i += 1;
+    }
+    false
+}
+
+fn collapse_person_search(query: &str, items: Vec<Value>) -> Vec<Value> {
+    let label = query.trim();
+    if label.len() < 2 {
+        return vec![];
+    }
+
+    let mut usable: Vec<Value> = items
+        .into_iter()
+        .filter(|item| {
+            let Some(l) = item.get("label").and_then(|v| v.as_str()) else {
+                return false;
+            };
+            !is_person_search_noise(l)
+        })
+        .collect();
+
+    usable.sort_by(|a, b| {
+        let a_count = a
+            .get("event_count")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let b_count = b
+            .get("event_count")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        b_count.cmp(&a_count)
+    });
+
+    let pick = usable.into_iter().next();
+    match pick {
+        Some(mut best) => {
+            if let Some(obj) = best.as_object_mut() {
+                obj.insert("label".into(), json!(label));
+            }
+            vec![best]
+        }
+        None => vec![json!({
+            "entity_id": Value::Null,
+            "qid": Value::Null,
+            "label": label,
+            "description": Value::Null,
+            "known_locally": false,
+            "event_count": 0,
+        })],
+    }
 }
 
 pub async fn get_entity(
@@ -263,4 +340,40 @@ pub async fn list_claims(
         "epistemic": "historiographic_opinion",
         "epistemic_note": "Soft claims are theories, debates, and historiographic interpretations — not quality map/timeline facts.",
     }))
+}
+
+#[cfg(test)]
+mod search_collapse_tests {
+    use super::*;
+
+    #[test]
+    fn drops_lotd_noise_and_keeps_densest_person() {
+        let items = vec![
+            json!({
+                "entity_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                "label": "Napoleon LotD 2c043962-804a-493c-a9fd-5fe1dc1861a7",
+                "known_locally": true,
+                "event_count": 5,
+            }),
+            json!({
+                "entity_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+                "label": "Napoleon",
+                "known_locally": true,
+                "event_count": 1027,
+                "qid": "Q517",
+            }),
+        ];
+        let out = collapse_person_search("Napoleon", items);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0]["label"], "Napoleon");
+        assert_eq!(out[0]["event_count"], 1027);
+    }
+
+    #[test]
+    fn unknown_person_yields_single_new_row() {
+        let out = collapse_person_search("Ada Lovelace", vec![]);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0]["label"], "Ada Lovelace");
+        assert_eq!(out[0]["known_locally"], false);
+    }
 }

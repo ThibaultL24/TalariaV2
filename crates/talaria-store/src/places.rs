@@ -1,5 +1,6 @@
 // crates/talaria-store/src/places.rs
 use sqlx::PgPool;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct PlaceGeocodeRow {
@@ -113,4 +114,26 @@ pub async fn apply_geocode_to_events(
     .await?;
 
     Ok(result.rows_affected())
+}
+
+pub async fn apply_coords_to_event(
+    pool: &PgPool,
+    event_id: Uuid,
+    lat: f64,
+    lon: f64,
+) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"
+        UPDATE canonical_events
+        SET geom = ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography,
+            map_eligible = true
+        WHERE id = $1 AND is_active
+        "#,
+    )
+    .bind(event_id)
+    .bind(lon)
+    .bind(lat)
+    .execute(pool)
+    .await?;
+    Ok(())
 }

@@ -53,7 +53,9 @@ pub use person_profile::{
     IngestProfile, PersonClass,
 };
 pub use place_quality::is_plausible_place_label;
-pub use places::{place_hint_from_title, resolve_place_offline, PlaceResolution};
+pub use places::{
+    place_hint_from_title, place_query_variants, resolve_place_offline, PlaceResolution,
+};
 pub use plan::{plan_sources, PlannedSource, ResolvedSubject, SourcePlan};
 pub use registry::{ConnectorRegistration, SourceRegistry};
 pub use seeds::{

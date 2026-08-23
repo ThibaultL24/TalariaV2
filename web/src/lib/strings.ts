@@ -2,10 +2,9 @@
 export const strings = {
   explorer: "Explorer",
   productName: "Talaria",
-  productSubtitle: "Life geography",
   search: "Search",
   searchPlaceholder: "Search a historical figure…",
-  searchHintCommit: "Pick a person — Talaria starts collecting their life trace.",
+  searchHintCommit: "Pick the person — Talaria collects their life trace.",
   searchInLibrary: "In library",
   searchNew: "New",
   collectLifeTrace: "Collect life trace",

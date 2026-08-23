@@ -135,27 +135,31 @@ export interface TimelineQuery {
   person?: string;
   profileSlug?: string;
   periodSlug?: string;
+  /** Active person-ingest events (default). Pass `quality` or `legacy` to inspect older rows. */
+  pipeline?: "person" | "quality" | "legacy";
   limit?: number;
 }
 
-export async function fetchTimeline(query: TimelineQuery = {}): Promise<TimelineResponse> {
-  const params = new URLSearchParams({ limit: String(query.limit ?? 2000) });
+function timelineSearchParams(query: TimelineQuery = {}): URLSearchParams {
+  const params = new URLSearchParams({
+    limit: String(query.limit ?? 2000),
+    pipeline: query.pipeline ?? "person",
+  });
   if (query.entityId) params.set("entity_id", query.entityId);
   if (query.person?.trim()) params.set("person", query.person.trim());
   if (query.profileSlug) params.set("profile_slug", query.profileSlug);
   if (query.periodSlug) params.set("period_slug", query.periodSlug);
-  const response = await fetch(`/api/v1/timeline?${params}`);
+  return params;
+}
+
+export async function fetchTimeline(query: TimelineQuery = {}): Promise<TimelineResponse> {
+  const response = await fetch(`/api/v1/timeline?${timelineSearchParams(query)}`);
   if (!response.ok) throw new Error("timeline fetch failed");
   return response.json();
 }
 
 export async function fetchGeoJson(query: TimelineQuery = {}): Promise<GeoJsonFeatureCollection> {
-  const params = new URLSearchParams({ limit: String(query.limit ?? 2000) });
-  if (query.entityId) params.set("entity_id", query.entityId);
-  if (query.person?.trim()) params.set("person", query.person.trim());
-  if (query.profileSlug) params.set("profile_slug", query.profileSlug);
-  if (query.periodSlug) params.set("period_slug", query.periodSlug);
-  const response = await fetch(`/api/v1/events/geojson?${params}`);
+  const response = await fetch(`/api/v1/events/geojson?${timelineSearchParams(query)}`);
   if (!response.ok) throw new Error("geojson fetch failed");
   return response.json();
 }

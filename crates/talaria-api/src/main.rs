@@ -25,6 +25,7 @@ mod judge;
 mod llm;
 mod lot_e;
 mod narrative_dossier;
+mod person_ingest;
 mod place_conflict;
 mod quality;
 mod routes;

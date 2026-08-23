@@ -251,26 +251,81 @@ fn lookup_alias(key: &str) -> Option<PlaceResolution> {
         ("danieli", 45.434, 12.342, "exact"),
         ("square d'orléans", 48.877, 2.331, "exact"),
         ("square d'orleans", 48.877, 2.331, "exact"),
+        ("london", 51.5074, -0.1278, "exact"),
+        ("londres", 51.5074, -0.1278, "exact"),
+        ("chicago", 41.8781, -87.6298, "exact"),
+        ("montreal", 45.5017, -73.5673, "exact"),
+        ("montréal", 45.5017, -73.5673, "exact"),
+        ("beirut", 33.8938, 35.5018, "exact"),
+        ("beyrouth", 33.8938, 35.5018, "exact"),
+        ("ho chi minh", 10.8231, 106.6297, "exact"),
+        ("saigon", 10.8231, 106.6297, "exact"),
+        ("eiffel tower", 48.8584, 2.2945, "exact"),
+        ("tour eiffel", 48.8584, 2.2945, "exact"),
+        ("rue dauphine", 48.8554, 2.3395, "exact"),
+        ("royal institution", 51.5098, -0.1325, "exact"),
+        ("sancellemoz", 45.923, 6.710, "exact"),
+        ("haute-savoie", 45.9, 6.15, "centroid"),
+        ("sorbonne", 48.8493, 2.3459, "exact"),
+        ("institut du radium", 48.8447, 2.345, "exact"),
+        ("radium institute", 48.8447, 2.345, "exact"),
+        ("école normale supérieure", 48.8417, 2.3444, "exact"),
+        ("ecole normale superieure", 48.8417, 2.3444, "exact"),
+        ("panthéon", 48.8462, 2.3461, "exact"),
+        ("pantheon", 48.8462, 2.3461, "exact"),
+        ("new york", 40.7128, -74.006, "exact"),
+        ("philadelphia", 39.9526, -75.1652, "exact"),
+        ("washington", 38.9072, -77.0369, "exact"),
     ];
+    let mut best: Option<(&str, f64, f64, &str)> = None;
     for (alias, lat, lon, precision) in ALIASES {
         if *alias == key || key.contains(alias) {
-            return Some(PlaceResolution {
-                label: key.to_string(),
-                method: "alias_gazetteer".into(),
-                wikidata_qid: None,
-                lat: *lat,
-                lon: *lon,
-                precision: (*precision).into(),
-                uncertainty_radius_m: if *precision == "exact" {
-                    Some(500.0)
-                } else {
-                    Some(5000.0)
-                },
-                score: 0.85,
-            });
+            if best.map_or(true, |(prev, _, _, _)| alias.len() > prev.len()) {
+                best = Some((*alias, *lat, *lon, *precision));
+            }
         }
     }
-    None
+    best.map(|(_alias, lat, lon, precision)| PlaceResolution {
+        label: key.to_string(),
+        method: "alias_gazetteer".into(),
+        wikidata_qid: None,
+        lat,
+        lon,
+        precision: precision.into(),
+        uncertainty_radius_m: if precision == "exact" {
+            Some(500.0)
+        } else {
+            Some(5000.0)
+        },
+        score: 0.85,
+    })
+}
+
+pub fn place_query_variants(label: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let push = |out: &mut Vec<String>, s: &str| {
+        let t = s.trim().to_lowercase();
+        if t.len() >= 3 && !out.iter().any(|x| x == &t) {
+            out.push(t);
+        }
+    };
+    push(&mut out, label);
+    let low = label.trim().to_lowercase();
+    let stripped = ["the ", "a ", "an ", "le ", "la ", "les ", "el "]
+        .iter()
+        .find_map(|p| low.strip_prefix(p))
+        .unwrap_or(low.as_str())
+        .trim();
+    push(&mut out, stripped);
+    for part in stripped.split([',', ';']) {
+        push(&mut out, part);
+    }
+    for sep in [" in ", " at ", " à ", " en "] {
+        if let Some((_, right)) = stripped.rsplit_once(sep) {
+            push(&mut out, right);
+        }
+    }
+    out
 }
 
 /// Offline alias table (mirrors DB seed) for tests and fast path.
@@ -279,11 +334,13 @@ pub fn resolve_place_offline(label: &str) -> Option<PlaceResolution> {
     if raw.is_empty() {
         return None;
     }
-    let key = raw.to_lowercase();
-    if let Some(mut r) = lookup_alias(&key) {
-        r.label = raw.to_string();
-        return Some(r);
+    for variant in place_query_variants(raw) {
+        if let Some(mut r) = lookup_alias(&variant) {
+            r.label = raw.to_string();
+            return Some(r);
+        }
     }
+    let key = raw.to_lowercase();
     // Strip parenthetical qualifiers: "Mantua (1796–1797)" → "Mantua"
     if let Some(base) = key.split('(').next().map(str::trim).filter(|s| !s.is_empty()) {
         if base != key {
@@ -357,5 +414,26 @@ mod tests {
             place_hint_from_title("Battle of Waterloo").as_deref(),
             Some("Waterloo")
         );
+    }
+
+    #[test]
+    fn curie_life_and_commemoration_places_resolve() {
+        assert!(resolve_place_offline("London").is_some());
+        assert!(resolve_place_offline("Chicago, United States").is_some());
+        assert!(resolve_place_offline("Saint-Laurent in Montreal").is_some());
+        assert!(resolve_place_offline("Eiffel Tower").is_some());
+        assert!(resolve_place_offline("Rue Dauphine").is_some());
+        assert!(resolve_place_offline("Royal Institution").is_some());
+        let death = resolve_place_offline(
+            "the Sancellemoz sanatorium in Passy, Haute-Savoie, France",
+        )
+        .unwrap();
+        assert!(
+            death.lat > 45.0 && death.lat < 47.0,
+            "death must be Haute-Savoie not Paris Passy, got {}",
+            death.lat
+        );
+        assert!(resolve_place_offline("her house").is_none());
+        assert!(resolve_place_offline("the institute").is_none());
     }
 }
