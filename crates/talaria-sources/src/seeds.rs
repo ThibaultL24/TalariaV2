@@ -290,9 +290,20 @@ fn looks_like_other_person_or_topic_title(title: &str) -> bool {
     SKIP.iter().any(|p| lower.contains(p))
 }
 
+fn is_award_catalogue_title(title: &str) -> bool {
+    let lower = title.to_lowercase();
+    lower.contains("nobel")
+        || lower.contains("prize")
+        || lower.contains("prix ")
+        || lower.starts_with("list of awards")
+}
+
 /// Follow a linked page only when it can add places or dated occurrences.
 pub fn is_followable_map_title(title: &str) -> bool {
-    if is_noise_wiki_title(title) || looks_like_other_person_or_topic_title(title) {
+    if is_noise_wiki_title(title)
+        || looks_like_other_person_or_topic_title(title)
+        || is_award_catalogue_title(title)
+    {
         return false;
     }
     if is_high_value_link_title(title) {
@@ -452,5 +463,7 @@ mod schrodinger_follow_tests {
         assert!(!is_followable_map_title("Arthur Harden"));
         assert!(!is_followable_map_title("Albert Einstein"));
         assert!(!is_followable_map_title("Henryk Sienkiewicz"));
+        assert!(!is_followable_map_title("Nobel Prize in Physics"));
+        assert!(!is_followable_map_title("Prix Nobel de physique"));
     }
 }
