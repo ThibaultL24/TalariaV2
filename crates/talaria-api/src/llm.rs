@@ -106,7 +106,6 @@ pub async fn ping() -> PingResult {
     }
 }
 
-<<<<<<< HEAD
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct LlmExtractItem {
     #[serde(default)]
@@ -183,7 +182,21 @@ pub async fn extract_chunk(
          Extract as many grounded facts as the text supports. Debates: controversies, theses, attribution disputes. Never invent quotes.\n\
          Text:\n{chunk}"
     );
-=======
+    let response = client
+        .post(OPENAI_RESPONSES_URL)
+        .bearer_auth(key)
+        .json(&json!({
+            "model": model(),
+            "input": prompt,
+            "store": false,
+        }))
+        .send()
+        .await?;
+    let body: Value = response.json().await.unwrap_or(json!({}));
+    let text = output_text(&body).unwrap_or_default();
+    Ok(parse_extract_items(&text))
+}
+
 pub fn judge_enabled() -> bool {
     is_configured()
         && std::env::var("TALARIA_LLM_JUDGE")
@@ -285,61 +298,16 @@ Rules:\n\
 Events:\n{payload}"
     );
 
->>>>>>> 139d330bf46b4f4b13318e4536bd284b49df5b3a
     let response = client
         .post(OPENAI_RESPONSES_URL)
         .bearer_auth(key)
         .json(&json!({
-<<<<<<< HEAD
-            "model": model(),
-=======
             "model": model,
->>>>>>> 139d330bf46b4f4b13318e4536bd284b49df5b3a
             "input": prompt,
             "store": false,
         }))
         .send()
         .await?;
-<<<<<<< HEAD
-    let body: Value = response.json().await.unwrap_or(json!({}));
-    let text = output_text(&body);
-    Ok(parse_extract_items(&text))
-}
-
-fn output_text(body: &Value) -> String {
-    if let Some(s) = body.get("output_text").and_then(|v| v.as_str()) {
-        return s.to_string();
-    }
-    body.get("output")
-        .and_then(|v| v.as_array())
-        .and_then(|arr| {
-            arr.iter().find_map(|item| {
-                item.get("content")
-                    .and_then(|c| c.as_array())
-                    .and_then(|parts| {
-                        parts.iter().find_map(|p| {
-                            p.get("text")
-                                .and_then(|t| t.as_str())
-                                .map(str::to_string)
-                        })
-                    })
-            })
-        })
-        .unwrap_or_default()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_json_array_of_extracts() {
-        let raw = r#"[{"lane":"fact","event_type":"birth","quoted_text":"born in Warsaw","year":1867,"place_surface":"Warsaw","summary":"birth","confidence":0.9}]"#;
-        let items = parse_extract_items(raw);
-        assert_eq!(items.len(), 1);
-        assert_eq!(items[0].place_surface.as_deref(), Some("Warsaw"));
-    }
-=======
     let status = response.status();
     let body: Value = response.json().await.unwrap_or(json!({}));
     if !status.is_success() {
@@ -386,5 +354,17 @@ fn first_year(surface: &str) -> Option<i32> {
         }
     }
     None
->>>>>>> 139d330bf46b4f4b13318e4536bd284b49df5b3a
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_json_array_of_extracts() {
+        let raw = r#"[{"lane":"fact","event_type":"birth","quoted_text":"born in Warsaw","year":1867,"place_surface":"Warsaw","summary":"birth","confidence":0.9}]"#;
+        let items = parse_extract_items(raw);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].place_surface.as_deref(), Some("Warsaw"));
+    }
 }

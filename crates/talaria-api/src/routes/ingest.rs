@@ -1,6 +1,6 @@
 // crates/talaria-api/src/routes/ingest.rs
 //! Two explicit ingest lanes:
-//! - **explorer** — Wikipedia biography + Wikidata (map/timeline life trace)
+//! - **explorer** — Wikipedia/Wikidata/Wikisource/Commons life trace (map/timeline)
 //! - **agora** — catalogs + historiography (theses, controversies, works)
 
 use axum::{
@@ -17,7 +17,7 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use super::AppState;
-use crate::corpus_ingest::{self, live_corpus_providers};
+use crate::corpus_ingest::{self, explorer_fact_providers, live_corpus_providers};
 use crate::historiography;
 use crate::lot_e::write_minimal_seed_list;
 use talaria_store::{density_report_counts, update_entity_qid, upsert_entity_with_kind};
@@ -372,12 +372,33 @@ async fn run_explorer_lane(
         Some(seed_list),
     )
     .await?;
-    let entity_id = parse_entity_id_from_report(&person);
+
+    let sister_wiki_facts = match crate::ingest::run_ingest_quality(
+        config,
+        subject,
+        qid,
+        Some(explorer_fact_providers()),
+        false,
+        true,
+    )
+    .await
+    {
+        Ok(text) => parse_json_report(&text),
+        Err(error) => {
+            tracing::warn!(error = %error, "explorer sister-wiki fact ingest failed");
+            json!({ "error": error.to_string() })
+        }
+    };
+
+    let entity_id = parse_entity_id_from_report(&person)
+        .or_else(|| parse_entity_id_from_report(&sister_wiki_facts));
+
     Ok(json!({
         "lane": LANE_EXPLORER,
         "purpose": lane_purpose(LANE_EXPLORER),
         "pipeline": "person",
         "person": person,
+        "sister_wiki_facts": sister_wiki_facts,
         "subject": {
             "entity_id": entity_id.map(|id| id.to_string()),
             "label": subject,
@@ -428,7 +449,7 @@ fn parse_json_report(text: &str) -> Value {
 fn lane_purpose(lane: &str) -> &'static str {
     match lane {
         LANE_EXPLORER => {
-            "Wikipedia biography and Wikidata — dated life facts for the map and timeline"
+            "Wikipedia, Wikidata, Wikisource and Commons — dated life facts for the map and timeline"
         }
         LANE_AGORA => {
             "Theories, controversies, opinions, analyses, and academic works about the person"
@@ -527,6 +548,19 @@ mod tests {
                 "agora missing catalog {name}"
             );
         }
+        assert!(!providers.iter().any(|p| p == "wikisource"));
+        assert!(!providers.iter().any(|p| p == "wikimedia_commons"));
+    }
+
+    #[test]
+    fn explorer_lane_collects_sister_wikis() {
+        let providers = explorer_fact_providers();
+        assert!(providers.iter().any(|p| p == "wikisource"));
+        assert!(providers.iter().any(|p| p == "wikimedia_commons"));
+        assert!(
+            !providers.iter().any(|p| p == "hal"),
+            "HAL stays on the Agora bibliographic lane"
+        );
     }
 
     #[test]

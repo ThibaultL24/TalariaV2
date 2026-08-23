@@ -1,34 +1,35 @@
 // crates/talaria-sources/src/connectors/mod.rs
+mod bnf;
 mod catalog;
+mod commons;
 mod europeana;
 mod fixture;
 mod gallica;
 mod hal;
 mod internet_archive;
-mod open_library;
-mod bnf;
 pub mod net;
+mod open_library;
 mod openalex;
 mod persee;
 mod stub;
 mod theses_fr;
 mod wikidata;
 mod wikipedia;
+mod wikisource;
 
+pub use bnf::{normalize_bnf_notice, BnfConfig, BnfConnector};
+pub use commons::WikimediaCommonsConnector;
+pub use europeana::{normalize_europeana_item, EuropeanaConfig, EuropeanaConnector};
 pub use fixture::FixtureConnector;
 pub use gallica::GallicaConnector;
 pub use hal::{normalize_hal_doc, HalConnector, CONNECTOR_VERSION as HAL_VERSION};
-pub use persee::{normalize_persee_record, PerseeConnector, CONNECTOR_VERSION as PERSEE_VERSION};
+pub use internet_archive::{normalize_ia_item, InternetArchiveConfig, InternetArchiveConnector};
 pub use open_library::OpenLibraryConnector;
-pub use bnf::{normalize_bnf_notice, BnfConfig, BnfConnector};
-pub use europeana::{normalize_europeana_item, EuropeanaConfig, EuropeanaConnector};
-pub use internet_archive::{
-    normalize_ia_item, InternetArchiveConfig, InternetArchiveConnector,
-};
 pub use openalex::{
     normalize_openalex_work, openalex_debate_query, OpenAlexConfig, OpenAlexConnector,
     CONNECTOR_VERSION as OPENALEX_VERSION,
 };
+pub use persee::{normalize_persee_record, PerseeConnector, CONNECTOR_VERSION as PERSEE_VERSION};
 pub use stub::StubConnector;
 pub use theses_fr::{
     normalize_these_detail, ThesesFrConfig, ThesesFrConnector,
@@ -36,6 +37,7 @@ pub use theses_fr::{
 };
 pub use wikidata::{WikidataSourceConnector, WikidataSourceConnectorConfig};
 pub use wikipedia::{WikipediaConnector, WikipediaConnectorConfig};
+pub use wikisource::{WikisourceConnector, WikisourceConnectorConfig};
 
 use std::sync::Arc;
 
@@ -71,6 +73,52 @@ fn caps_wikidata() -> SourceCapabilities {
         default_confidence_ocr: 0.0,
         identifiers: vec!["qid".into()],
         document_types: vec![DocumentType::StructuredStatement],
+    }
+}
+
+fn caps_wikisource() -> SourceCapabilities {
+    SourceCapabilities {
+        access_mode: SourceAccessMode::Api,
+        authority_tier: AuthorityTier::CommunityCatalog,
+        provides_text: true,
+        provides_structured_statements: false,
+        provides_coordinates: false,
+        provides_identifiers: true,
+        provides_full_text: true,
+        provides_ocr: true,
+        provides_iiif: false,
+        provides_audiovisual: false,
+        provides_authority_alignment: true,
+        license_notes: "CC BY-SA".into(),
+        default_confidence_structured: 0.68,
+        default_confidence_ocr: 0.55,
+        identifiers: vec!["title".into(), "pageid".into()],
+        document_types: vec![
+            DocumentType::BookOcr,
+            DocumentType::Correspondence,
+            DocumentType::Manuscript,
+        ],
+    }
+}
+
+fn caps_commons() -> SourceCapabilities {
+    SourceCapabilities {
+        access_mode: SourceAccessMode::Api,
+        authority_tier: AuthorityTier::CommunityCatalog,
+        provides_text: true,
+        provides_structured_statements: true,
+        provides_coordinates: true,
+        provides_identifiers: true,
+        provides_full_text: false,
+        provides_ocr: false,
+        provides_iiif: false,
+        provides_audiovisual: true,
+        provides_authority_alignment: true,
+        license_notes: "per-file Commons license".into(),
+        default_confidence_structured: 0.7,
+        default_confidence_ocr: 0.0,
+        identifiers: vec!["title".into()],
+        document_types: vec![DocumentType::MediaCaption],
     }
 }
 
@@ -385,6 +433,22 @@ pub fn default_registry_with_corpus(
             connector: Some(Arc::new(wp)),
             config_notes: "Wikipedia MediaWiki API extracts".into(),
         });
+        let ws = WikisourceConnector::new(WikisourceConnectorConfig::default())?;
+        reg.register(ConnectorRegistration {
+            kind: SourceKind::Wikisource,
+            implemented: true,
+            capabilities: caps_wikisource(),
+            connector: Some(Arc::new(ws)),
+            config_notes: "Wikisource MediaWiki API extracts (en/fr)".into(),
+        });
+        let commons = WikimediaCommonsConnector::new()?;
+        reg.register(ConnectorRegistration {
+            kind: SourceKind::WikimediaCommons,
+            implemented: true,
+            capabilities: caps_commons(),
+            connector: Some(Arc::new(commons)),
+            config_notes: "Wikimedia Commons search + imageinfo/coordinates".into(),
+        });
         let ol = OpenLibraryConnector::new()?;
         reg.register(ConnectorRegistration {
             kind: SourceKind::OpenLibrary,
@@ -435,7 +499,11 @@ pub fn default_registry_with_corpus(
                     config_notes: "theses.fr search (public)".into(),
                 });
             }
-            Err(_) => register_stub(&mut reg, SourceKind::ThesesFr, "theses.fr connector init failed"),
+            Err(_) => register_stub(
+                &mut reg,
+                SourceKind::ThesesFr,
+                "theses.fr connector init failed",
+            ),
         }
         let mut oa_cfg = OpenAlexConfig::default();
         oa_cfg.api_key = std::env::var("OPENALEX_API_KEY")
@@ -454,7 +522,11 @@ pub fn default_registry_with_corpus(
                     config_notes: "OpenAlex works API (public)".into(),
                 });
             }
-            Err(_) => register_stub(&mut reg, SourceKind::OpenAlex, "OpenAlex connector init failed"),
+            Err(_) => register_stub(
+                &mut reg,
+                SourceKind::OpenAlex,
+                "OpenAlex connector init failed",
+            ),
         }
         match BnfConnector::new(BnfConfig::default()) {
             Ok(conn) => {
@@ -489,7 +561,12 @@ pub fn default_registry_with_corpus(
             ),
         }
     } else {
-        for kind in [SourceKind::Wikidata, SourceKind::Wikipedia] {
+        for kind in [
+            SourceKind::Wikidata,
+            SourceKind::Wikipedia,
+            SourceKind::Wikisource,
+            SourceKind::WikimediaCommons,
+        ] {
             register_stub(
                 &mut reg,
                 kind,
@@ -513,8 +590,6 @@ pub fn default_registry_with_corpus(
 
     // Remaining Lot C/D — interfaces only until fetch/parse/extract exist.
     for kind in [
-        SourceKind::Wikisource,
-        SourceKind::WikimediaCommons,
         SourceKind::Viaf,
         SourceKind::Isni,
         SourceKind::IdRef,
@@ -522,11 +597,7 @@ pub fn default_registry_with_corpus(
         SourceKind::OpenEdition,
         SourceKind::Sudoc,
     ] {
-        let notes = match kind {
-            SourceKind::Wikisource | SourceKind::WikimediaCommons => "Wikimedia remainder",
-            _ => "alignment layer — not yet wired",
-        };
-        register_stub(&mut reg, kind, notes);
+        register_stub(&mut reg, kind, "alignment layer — not yet wired");
     }
 
     // Register corpus connectors supplied by the caller (override stubs when present).

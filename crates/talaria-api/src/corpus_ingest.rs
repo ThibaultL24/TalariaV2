@@ -43,8 +43,20 @@ pub const LIVE_CORPUS_PROVIDERS: &[&str] = &[
     "bnf",
 ];
 
+/// Sister Wikimedia projects that yield dated captions / transcriptions.
+pub const LIVE_WIKI_SISTER_PROVIDERS: &[&str] = &["wikisource", "wikimedia_commons"];
+
 pub fn live_corpus_providers() -> Vec<String> {
     LIVE_CORPUS_PROVIDERS
+        .iter()
+        .map(|name| (*name).to_string())
+        .collect()
+}
+
+/// Explorer quality ingest: Wikisource + Commons life-trace only.
+/// Bibliographic catalogs stay on the Agora lane.
+pub fn explorer_fact_providers() -> Vec<String> {
+    LIVE_WIKI_SISTER_PROVIDERS
         .iter()
         .map(|name| (*name).to_string())
         .collect()
@@ -61,10 +73,7 @@ pub fn resolve_corpus_providers(providers: &[String], live: bool) -> Vec<SourceK
     } else {
         providers.to_vec()
     };
-    names
-        .iter()
-        .map(|name| SourceKind::parse(name))
-        .collect()
+    names.iter().map(|name| SourceKind::parse(name)).collect()
 }
 
 fn wants(kinds: &[SourceKind], kind: SourceKind) -> bool {
@@ -600,6 +609,21 @@ mod tests {
                 expected.as_str()
             );
         }
+        assert!(
+            !wants(&kinds, SourceKind::Wikisource),
+            "agora catalogs stay bibliographic"
+        );
+    }
+
+    #[test]
+    fn explorer_fact_providers_include_sister_wikis() {
+        let names = explorer_fact_providers();
+        assert!(names.iter().any(|n| n == "wikisource"));
+        assert!(names.iter().any(|n| n == "wikimedia_commons"));
+        assert!(
+            !names.iter().any(|n| n == "hal"),
+            "explorer must not pull Agora catalogs"
+        );
     }
 
     #[test]

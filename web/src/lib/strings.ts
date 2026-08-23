@@ -9,7 +9,7 @@ export const strings = {
   searchNew: "New",
   collectLifeTrace: "Collect life trace",
   collectLifeTraceHint:
-    "Search starts Wikipedia + Wikidata. Run again to add more dated places to the map.",
+    "Search starts Wikipedia, Wikisource, Commons and Wikidata. Run again to add more dated places to the map.",
   collectScholarship: "Collect scholarship",
   collectScholarshipHint:
     "HAL, Persée, theses, Gallica and catalogs → theories, controversies and academic works.",
