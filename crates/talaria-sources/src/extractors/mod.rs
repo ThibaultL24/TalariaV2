@@ -152,8 +152,10 @@ pub fn keep_extracted_raw(raw: &RawCandidate, page_title: &str, subject: &str) -
     if raw.extractor_id == "infobox" || raw.extractor_id == "structured_statement" {
         return true;
     }
-    page_is_subject_biography(page_title, subject)
-        || crate::seeds::is_followable_map_title(page_title)
+    if page_is_subject_biography(page_title, subject) {
+        return clause_is_about_subject(&raw.clause_text, subject);
+    }
+    crate::seeds::is_followable_map_title(page_title)
         || clause_names_subject(&raw.clause_text, subject)
 }
 
@@ -193,6 +195,10 @@ fn leading_person_agent(clause: &str) -> Option<String> {
         "en", "in", "le", "la", "les", "the", "on", "after", "during", "puis", "alors", "dès",
         "des", "de", "du", "au", "aux", "un", "une", "a", "an", "il", "elle", "ils", "elles",
         "he", "she", "they", "his", "her", "their",
+        "january", "february", "march", "april", "may", "june", "july", "august", "september",
+        "october", "november", "december", "janvier", "février", "fevrier", "mars", "avril",
+        "mai", "juin", "juillet", "août", "aout", "septembre", "octobre", "novembre", "décembre",
+        "decembre",
     ];
     let mut words = Vec::new();
     for w in clause.split_whitespace() {
@@ -247,13 +253,13 @@ mod subject_clause_tests {
             "George Sand"
         ));
         assert!(!clause_is_about_subject(
-            "Victor Hugo s'installe à Hauteville House en 1855.",
-            "George Sand"
+            "Le 7 novembre 1659, les Espagnols acceptent de signer le traité des Pyrénées.",
+            "Louis XIV",
         ));
     }
 
     #[test]
-    fn bio_page_keeps_third_party_dated_clause() {
+    fn bio_page_drops_third_party_dated_clause() {
         let raw = super::RawCandidate {
             event_type: "diplomatic".into(),
             predicate: "signed".into(),
@@ -273,7 +279,7 @@ mod subject_clause_tests {
             lat: None,
             lon: None,
         };
-        assert!(super::keep_extracted_raw(&raw, "Louis XIV", "Louis XIV"));
+        assert!(!super::keep_extracted_raw(&raw, "Louis XIV", "Louis XIV"));
         assert!(super::keep_extracted_raw(&raw, "Traité des Pyrénées", "Louis XIV"));
         assert!(!super::keep_extracted_raw(&raw, "Anne d'Autriche", "Louis XIV"));
         assert!(!super::keep_extracted_raw(
