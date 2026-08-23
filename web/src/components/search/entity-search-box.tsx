@@ -1,14 +1,13 @@
 // web/src/components/search/entity-search-box.tsx
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SearchSuggestion } from "@/lib/schemas/entity";
-import { strings } from "@/lib/strings";
+import { useI18n } from "@/lib/i18n";
 
 interface EntitySearchBoxProps {
   suggestions: SearchSuggestion[];
   onSubmitQuery: (trimmedQuery: string) => void;
   onSelect: (item: SearchSuggestion) => void;
   isLoading?: boolean;
-  placeholder?: string;
 }
 
 export function EntitySearchBox({
@@ -16,11 +15,11 @@ export function EntitySearchBox({
   onSubmitQuery,
   onSelect,
   isLoading,
-  placeholder = strings.searchPlaceholder,
 }: EntitySearchBoxProps) {
+  const { t } = useI18n();
   const [value, setValue] = useState("");
-  const [lastSubmitted, setLastSubmitted] = useState("");
   const [isFocused, setIsFocused] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const blurCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearBlurTimer = useCallback(() => {
@@ -30,90 +29,73 @@ export function EntitySearchBox({
     }
   }, []);
 
-  useEffect(() => () => clearBlurTimer(), [clearBlurTimer]);
+  useEffect(() => () => {
+    clearBlurTimer();
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  }, [clearBlurTimer]);
 
   const trimmed = value.trim();
-  const hasMinQuery = trimmed.length >= 2;
-  const hasSubmittedCurrentQuery = lastSubmitted === trimmed && hasMinQuery;
-  const showSuggestionPanel = isFocused && hasSubmittedCurrentQuery;
-  const showSuggestionsList = suggestions.length > 0 && !isLoading;
+  const showPanel = isFocused && trimmed.length >= 2;
+  const showList = suggestions.length > 0 && !isLoading;
 
-  function submitQuery() {
-    if (!hasMinQuery) return;
-    setLastSubmitted(trimmed);
-    onSubmitQuery(trimmed);
-  }
-
-  function clearSubmitted() {
-    setLastSubmitted("");
-    onSubmitQuery("");
+  function queueSearch(next: string) {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      onSubmitQuery(next.trim());
+    }, 220);
   }
 
   return (
     <div className="relative">
-      <div className="flex gap-2">
-        <input
-          type="search"
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          onFocus={() => {
-            clearBlurTimer();
-            setIsFocused(true);
-          }}
-          onBlur={() => {
-            clearBlurTimer();
-            blurCloseTimerRef.current = setTimeout(() => {
-              setIsFocused(false);
-              blurCloseTimerRef.current = null;
-            }, 150);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.preventDefault();
-              (event.target as HTMLInputElement).blur();
-              return;
-            }
-            if (event.key !== "Enter") return;
+      <input
+        type="search"
+        value={value}
+        onChange={(event) => {
+          const next = event.target.value;
+          setValue(next);
+          queueSearch(next);
+        }}
+        onFocus={() => {
+          clearBlurTimer();
+          setIsFocused(true);
+          if (trimmed.length >= 2) onSubmitQuery(trimmed);
+        }}
+        onBlur={() => {
+          clearBlurTimer();
+          blurCloseTimerRef.current = setTimeout(() => {
+            setIsFocused(false);
+            blurCloseTimerRef.current = null;
+          }, 150);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
             event.preventDefault();
-            submitQuery();
-          }}
-          placeholder={placeholder ?? strings.searchPlaceholder}
-          className="person-filter min-w-0 flex-1"
-          aria-label="Entity search"
-          aria-autocomplete="list"
-          aria-expanded={showSuggestionPanel}
-          autoComplete="off"
-        />
-        <button
-          type="button"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => {
-            clearBlurTimer();
-            submitQuery();
-            setIsFocused(true);
-          }}
-          disabled={!hasMinQuery}
-          className="shrink-0 rounded-xl border border-(--color-border-subtle) bg-(--color-bg-surface) px-3 py-2 text-sm font-medium disabled:opacity-40"
-        >
-          {strings.search}
-        </button>
-      </div>
+            (event.target as HTMLInputElement).blur();
+          }
+        }}
+        placeholder={t.searchPlaceholder}
+        className="person-filter min-w-0 w-full"
+        aria-label={t.personSearch}
+        aria-autocomplete="list"
+        aria-expanded={showPanel}
+        autoComplete="off"
+      />
 
-      {showSuggestionPanel ? (
+      {showPanel ? (
         <div
-          className="absolute top-full right-0 left-0 z-20 mt-1.5 overflow-hidden rounded-xl border border-(--color-border-subtle) bg-(--color-bg-elevated) shadow-lg"
+          className="absolute top-full right-0 left-0 z-30 mt-1.5 overflow-hidden rounded-xl border border-(--color-border-subtle) bg-(--color-bg-elevated) shadow-lg"
           role="listbox"
         >
           <div className="border-b border-(--color-border-subtle) px-3 py-2 text-[11px] text-(--color-text-muted)">
-            {strings.searchHintCommit}
+            {t.searchHint}
           </div>
-          {isLoading && !showSuggestionsList ? (
-            <div className="px-3 py-3 text-sm text-(--color-text-secondary)">{strings.loading}</div>
+          {isLoading && !showList ? (
+            <div className="px-3 py-3 text-sm text-(--color-text-secondary)">{t.loading}</div>
           ) : null}
           {!isLoading && suggestions.length === 0 ? (
-            <div className="px-3 py-3 text-sm text-(--color-text-secondary)">{strings.noResults}</div>
+            <div className="px-3 py-3 text-sm text-(--color-text-secondary)">{t.noResults}</div>
           ) : null}
-          {showSuggestionsList
+          {showList
             ? suggestions.map((item) => (
                 <button
                   key={`${item.qid ?? "local"}-${item.entity_id ?? item.label}`}
@@ -123,7 +105,7 @@ export function EntitySearchBox({
                     clearBlurTimer();
                     onSelect(item);
                     setValue(item.label);
-                    clearSubmitted();
+                    onSubmitQuery("");
                     setIsFocused(false);
                   }}
                   className="block w-full px-3 py-2 text-left hover:bg-(--color-bg-primary)"
@@ -136,19 +118,9 @@ export function EntitySearchBox({
                         <div className="text-xs opacity-70">{item.description}</div>
                       ) : null}
                     </div>
-                    <span className="shrink-0 text-[10px]">
-                      {item.known_locally ? (
-                        <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-emerald-400">
-                          {strings.searchInLibrary}
-                          {item.event_count != null ? ` · ${item.event_count}` : ""}
-                        </span>
-                      ) : (
-                        <span className="rounded bg-sky-500/15 px-1.5 py-0.5 text-sky-300">
-                          {strings.searchNew}
-                          {item.qid ? ` · ${item.qid}` : ""}
-                        </span>
-                      )}
-                    </span>
+                    {item.qid ? (
+                      <span className="shrink-0 text-[10px] text-(--color-text-muted)">{item.qid}</span>
+                    ) : null}
                   </div>
                 </button>
               ))

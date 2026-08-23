@@ -32,3 +32,35 @@ export function buildWikipediaSourceUrl(
   }
   return `https://${wikiLang}.wikipedia.org/wiki/${encodeURIComponent(slug)}`;
 }
+
+function wikipediaSectionSlug(section: string): string {
+  return section.trim().replace(/\s+/g, "_");
+}
+
+function textFragmentFromQuote(quote: string): string | null {
+  const words = quote
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter((word) => word.length > 0)
+    .slice(0, 8);
+  if (words.join(" ").length < 12) return null;
+  return encodeURIComponent(words.join(" "));
+}
+
+/** Prefer the cited paragraph: section hash + browser text fragment when a quote exists. */
+export function resolveSourceParagraphHref(
+  ref: EventSourceRef,
+  defaultLang = "en",
+): string | null {
+  const base = resolveSourceRefHref(ref, defaultLang);
+  if (!base) return null;
+  const section = ref.section_title?.trim();
+  const fragment = textFragmentFromQuote(ref.snippet ?? ref.quote ?? "");
+  const hashParts: string[] = [];
+  if (section) hashParts.push(wikipediaSectionSlug(section));
+  if (fragment) hashParts.push(`:~:text=${fragment}`);
+  if (hashParts.length === 0) return base;
+  const withoutHash = base.split("#")[0];
+  return `${withoutHash}#${hashParts.join("")}`;
+}
