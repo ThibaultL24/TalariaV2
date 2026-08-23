@@ -7,6 +7,7 @@ mod fingerprint;
 mod gates;
 mod model;
 mod occurrence;
+mod overlay;
 mod projections;
 mod resolve;
 mod resume;
@@ -27,6 +28,9 @@ pub use assertion::{
     competing_places, occurrence_stem_for_event, ABSTAIN_COMPETING_PLACE, EXTRACTOR_EPISTEMIC_STATUS,
 };
 pub use occurrence::{occurrence_key, occurrence_key_for_event};
+pub use overlay::{
+    overlay_effect, parse_overlay_verdicts, OverlayEffect, OverlayItem, OverlayVerdict,
+};
 pub use projections::{BuildProjections, DerivedLabelProjections, ProjectionEvent};
 pub use resolve::{
     gazetteer_place_in_text, resolve_mentions, GazetteerResolver, MentionResolver, ResolvedMentions,

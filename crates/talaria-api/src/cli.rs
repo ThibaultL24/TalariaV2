@@ -166,6 +166,11 @@ pub enum Commands {
             help = "Resume flag reserved for exploration queue (accepted, Lot E uses seed cursor)"
         )]
         resume: bool,
+        #[arg(
+            long,
+            help = "Skip OpenAI overlay even if OPENAI_API_KEY is set (never invents map points)"
+        )]
+        no_llm_judge: bool,
     },
     /// Resolve unresolved quality places (offline gazetteer / aliases)
     ResolvePlaces {

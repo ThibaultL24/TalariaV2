@@ -204,8 +204,8 @@ fn writer_soldier_keeps_military_career() {
 }
 
 #[test]
-fn wiki_page_keeps_battle_without_person_class() {
-    assert!(keep_military_typed_event(
+fn wiki_page_drops_battle_without_person_class() {
+    assert!(!keep_military_typed_event(
         "battle",
         "The Battle of Waterloo decided the campaign.",
         "Marie Curie",
