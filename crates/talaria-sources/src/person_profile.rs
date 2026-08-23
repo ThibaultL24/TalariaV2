@@ -140,16 +140,21 @@ fn clause_attests_subject_service(clause: &str, subject: &str) -> bool {
     .any(|v| c.contains(v))
 }
 
-/// Wiki life-trace keeps battle/siege whenever the page states them.
-/// Person class is not a gate — catalogs enrich agora, not the map.
+/// Keep battle/siege only when the person has a military occupation, or the
+/// clause itself says they served/fought. Catalogs still enrich agora.
 pub fn keep_military_typed_event(
     event_type: &str,
-    _clause: &str,
-    _subject: &str,
-    _has_military_signal: bool,
+    clause: &str,
+    subject: &str,
+    has_military_signal: bool,
 ) -> bool {
-    let _ = event_type;
-    true
+    if !military_event_type(event_type) {
+        return true;
+    }
+    if has_military_signal {
+        return true;
+    }
+    clause_attests_subject_service(clause, subject)
 }
 
 fn class_from_text(raw: &str) -> Option<PersonClass> {

@@ -21,9 +21,9 @@ use talaria_sources::extractors::{
 };
 use talaria_sources::connectors::net::send_retrying;
 use talaria_sources::{
-    dated_wikilink_titles, first_year_in_window, is_plausible_place_label,
-    lifespan_year_window, load_seed_titles, merge_seed_titles, place_hint_from_title,
-    resolve_place_offline, DensityProgress, DensityTargets, ResolvedSubject,
+    dated_wikilink_titles, first_year_in_window, has_military_signal, is_plausible_place_label,
+    keep_military_typed_event, lifespan_year_window, load_seed_titles, merge_seed_titles,
+    place_hint_from_title, resolve_place_offline, DensityProgress, DensityTargets, ResolvedSubject,
 };
 use talaria_store::{
     add_claim_support, apply_place_to_quality_event, connect, density_report_counts,
@@ -603,6 +603,15 @@ pub async fn run_lot_e_density_ingest(
                         });
                     }
                 }
+            }
+
+            let mil = has_military_signal(&subject_res.occupations, None);
+            raws.retain(|r| {
+                keep_military_typed_event(&r.event_type, &r.clause_text, subject, mil)
+            });
+            if crate::llm::judge_enabled() {
+                raws = crate::llm::judge_raw_candidates(subject, &subject_res.occupations, raws)
+                    .await;
             }
 
             for raw in raws {

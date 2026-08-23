@@ -74,7 +74,86 @@ pub fn is_plausible_place_label(raw: &str) -> bool {
     if s.chars().all(|c| c.is_ascii_digit() || c == '-') {
         return false;
     }
+    if looks_like_non_place(s, &lower) {
+        return false;
+    }
     true
+}
+
+const DEMONYMS: &[&str] = &[
+    "anglais", "english", "français", "francais", "french", "allemand", "german",
+    "prussien", "prussian", "espagnol", "spanish", "italien", "italian",
+    "russe", "russian", "autrichien", "austrian", "américain", "americain", "american",
+];
+
+const ABSTRACT_NOUNS: &[&str] = &[
+    "schisme", "schism", "concile", "council", "rencontre", "meeting", "encounter",
+    "victoire", "victory", "guerre", "war", "paix", "peace", "traité", "traite",
+    "treaty", "alliance", "coalition", "révolution", "revolution", "empire",
+];
+
+const GIVEN_NAMES: &[&str] = &[
+    "charles", "georges", "george", "antoine", "pierre", "jean", "paul", "jacques",
+    "henri", "louis", "joseph", "william", "john", "robert", "james", "marie",
+    "jeanne", "anne", "catherine", "françois", "francois", "napoleon", "napoléon",
+];
+
+const GEO_PREFIXES: &[&str] = &[
+    "saint", "st", "st.", "san", "santa", "ste", "sainte", "mount", "mt", "fort",
+    "cape", "port", "lake", "île", "ile", "island", "rio", "rue", "quai", "new",
+    "los", "las", "el",
+];
+
+const TITLE_PREFIXES: &[&str] = &[
+    "vicomte", "vicomtesse", "duc", "duchesse", "comte", "comtesse", "marquis",
+    "baron", "baronne", "prince", "princesse", "roi", "reine", "king", "queen",
+    "emperor", "empress", "empereur", "impératrice",
+];
+
+fn looks_like_non_place(original: &str, lower: &str) -> bool {
+    if DEMONYMS.iter().any(|d| lower == *d) {
+        return true;
+    }
+    if ABSTRACT_NOUNS.iter().any(|n| lower == *n) {
+        return true;
+    }
+    if lower.starts_with("la rencontre")
+        || lower.starts_with("le concile")
+        || lower.starts_with("the meeting")
+        || lower.starts_with("the encounter")
+        || lower.starts_with("the council")
+    {
+        return true;
+    }
+    if lower.contains(" et ") || lower.contains(" and ") {
+        return true;
+    }
+    let tokens: Vec<&str> = lower.split_whitespace().collect();
+    if tokens.is_empty() {
+        return false;
+    }
+    if TITLE_PREFIXES.iter().any(|t| tokens[0] == *t || tokens[0].starts_with(&format!("{t}-"))) {
+        return true;
+    }
+    if tokens.iter().any(|tok| GEO_PREFIXES.contains(tok)) || is_street_address(original) {
+        return false;
+    }
+    // "Lyon Charles", "Georges-Antoine Rochegrosse"
+    let last = tokens[tokens.len() - 1].trim_matches(|c: char| !c.is_alphabetic());
+    if tokens.len() >= 2 && GIVEN_NAMES.contains(&last) {
+        return true;
+    }
+    if tokens.len() >= 2 {
+        let first = tokens[0];
+        let first_parts: Vec<&str> = first.split('-').collect();
+        if first_parts.len() >= 2 && first_parts.iter().all(|p| GIVEN_NAMES.contains(p)) {
+            return true;
+        }
+        if GIVEN_NAMES.contains(&first) && tokens.len() <= 3 {
+            return true;
+        }
+    }
+    false
 }
 
 fn is_street_address(s: &str) -> bool {
@@ -120,5 +199,17 @@ mod tests {
         assert!(is_plausible_place_label("19 quai Malaquais"));
         assert!(is_plausible_place_label("hôtel Danieli"));
         assert!(is_plausible_place_label("square d'Orléans"));
+    }
+
+    #[test]
+    fn rejects_people_demonyms_and_abstractions() {
+        assert!(!is_plausible_place_label("Lyon Charles"));
+        assert!(!is_plausible_place_label("Georges-Antoine Rochegrosse"));
+        assert!(!is_plausible_place_label("Anglais"));
+        assert!(!is_plausible_place_label("schisme"));
+        assert!(!is_plausible_place_label("la rencontre de Nobel et Hess"));
+        assert!(is_plausible_place_label("Waterloo"));
+        assert!(is_plausible_place_label("Saint Helena"));
+        assert!(is_plausible_place_label("New York"));
     }
 }

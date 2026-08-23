@@ -292,15 +292,14 @@ fn classify_predicate(clause: &str) -> Option<(&'static str, &'static str)> {
         (&["divorced"], "divorce", "divorced"),
         (
             &[
-                "fought",
+                "fought at",
+                "fought in",
                 "battle of",
-                "defeated",
-                "victory at",
+                "wounded at",
                 "bataille de",
                 "siège de",
                 "siege de",
-                "guerre de",
-                "victoire",
+                "siege of",
             ],
             "battle",
             "fought_at",
@@ -625,7 +624,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn french_meeting_keeps_person_and_place() {
         let analyzer = DeterministicClauseAnalyzer;
         let xs = analyzer.analyze_sentence(&ClauseAnalyzeInput {
@@ -664,6 +662,17 @@ mod tests {
         assert_eq!(meeting.place_surface.as_deref(), Some("London"));
         assert_eq!(meeting.time_surface.as_deref(), Some("1836"));
         assert_eq!(meeting.object_surface.as_deref(), Some("Darwin"));
+    }
+
+    #[test]
+    fn metaphorical_fought_is_not_a_battle() {
+        let analyzer = DeterministicClauseAnalyzer;
+        let xs = analyzer.analyze_sentence(&ClauseAnalyzeInput {
+            text: "In 1903 she fought for recognition of her discovery in Paris.".into(),
+            page_title: Some("Marie Curie".into()),
+            start_offset: 0,
+        });
+        assert!(xs.iter().all(|x| x.event_type != "battle"));
     }
 
     #[test]

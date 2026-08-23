@@ -275,7 +275,11 @@ async fn main() -> anyhow::Result<()> {
             max_titles,
             wiki_lang,
             resume: _,
+            no_llm_judge,
         } => {
+            if no_llm_judge {
+                std::env::set_var("TALARIA_LLM_JUDGE", "0");
+            }
             if live {
                 let corpus_sources = crate::corpus_ingest::live_corpus_providers();
                 let run_wikimedia = sources.as_ref().map(|s| {

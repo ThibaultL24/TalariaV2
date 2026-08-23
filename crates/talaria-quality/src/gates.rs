@@ -88,15 +88,49 @@ impl GateDecision {
     }
 }
 
+fn looks_like_accession(evidence: &str) -> bool {
+    let e = evidence.to_lowercase();
+    [
+        "crowned",
+        "couronné",
+        "couronne",
+        "became king",
+        "became queen",
+        "became emperor",
+        "became empress",
+        "accession",
+        "succeeded",
+        "sacré roi",
+        "proclaimed emperor",
+        "proclamé empereur",
+        "devint roi",
+        "devient roi",
+        "devint empereur",
+        "king of",
+        "queen of",
+        "empereur",
+    ]
+    .iter()
+    .any(|cue| e.contains(cue))
+}
+
 /// Generic age plausibility by event type (not subject-specific).
-fn implausible_age(event_type: &str, age: i32) -> bool {
+fn implausible_age(event_type: &str, age: i32, evidence: &str) -> bool {
     match event_type {
         "birth" => false,
         "death" => age < 0 || age > 120,
         "marriage" | "divorce" => age < 12 || age > 100,
         "battle" | "employment" | "exile" | "imprisonment" => age < 10 || age > 100,
-        // Child monarchs hold office and sign in their name from accession.
-        "office" | "diplomatic" => age < 0 || age > 100,
+        // Child monarchs hold office from accession; otherwise require age 12+.
+        "office" | "diplomatic" => {
+            if age < 0 || age > 100 {
+                true
+            } else if age < 12 {
+                !looks_like_accession(evidence)
+            } else {
+                false
+            }
+        }
         "education" => age < 3 || age > 90,
         _ => age < 0 || age > 120,
     }
@@ -142,7 +176,12 @@ pub fn apply_gates(candidate: &EventCandidate, ctx: &GateContext) -> GateDecisio
             rejects.push(RejectionCode::EventBeforeSubjectBirth);
         }
         let age = ey - by;
-        if candidate.event_type != "birth" && implausible_age(&candidate.event_type, age) {
+        let evidence = candidate
+            .evidence_ptrs
+            .first()
+            .map(|e| e.quoted_text.as_str())
+            .unwrap_or("");
+        if candidate.event_type != "birth" && implausible_age(&candidate.event_type, age, evidence) {
             rejects.push(RejectionCode::ImplausibleAgeForEventType);
         }
     }
@@ -218,7 +257,6 @@ pub fn event_type_is_map_locus(event_type: &str) -> bool {
             | "imprisonment"
             | "diplomatic"
             | "employment"
-            | "historical_fact"
     )
 }
 
@@ -265,8 +303,21 @@ mod tests {
     }
 
     #[test]
-    fn child_monarch_office_is_plausible() {
+    fn child_monarch_office_without_accession_is_implausible() {
         let c = base_candidate("office", 1643);
+        let ctx = GateContext {
+            subject_birth_year: Some(1638),
+            subject_death_year: Some(1715),
+            ..Default::default()
+        };
+        let codes = apply_gates(&c, &ctx).codes();
+        assert!(codes.contains(&"implausible_age_for_event_type".into()));
+    }
+
+    #[test]
+    fn child_monarch_office_with_coronation_is_plausible() {
+        let mut c = base_candidate("office", 1643);
+        c.evidence_ptrs[0].quoted_text = "Louis XIV was crowned King of France".into();
         let ctx = GateContext {
             subject_birth_year: Some(1638),
             subject_death_year: Some(1715),
@@ -355,6 +406,6 @@ mod tests {
         assert!(!event_type_is_map_locus("publication"));
         assert!(event_type_is_map_locus("arrival"));
         assert!(event_type_is_map_locus("residence"));
-        assert!(event_type_is_map_locus("historical_fact"));
+        assert!(!event_type_is_map_locus("historical_fact"));
     }
 }
