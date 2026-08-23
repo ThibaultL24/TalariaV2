@@ -114,6 +114,7 @@ async fn run_dump_events(
             subject_label: Some(opts.subject.clone()),
             document_type: "encyclopedia_article".into(),
             subject_death_year: None,
+            ..Default::default()
         };
         let mut raws = Vec::new();
         for ex in &extractors {

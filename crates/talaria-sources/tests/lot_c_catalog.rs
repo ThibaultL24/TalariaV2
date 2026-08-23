@@ -126,6 +126,7 @@ fn publication_extractor_reads_year_and_place() {
         subject_label: Some("Napoleon".into()),
         document_type: "bibliographic_notice".into(),
         subject_death_year: Some(1821),
+        ..Default::default()
     };
     let mut found = false;
     for extractor in &stack {

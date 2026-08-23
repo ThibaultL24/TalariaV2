@@ -24,6 +24,23 @@ fn writer_denies_coalition_pages() {
     let p = profile_for(class);
     assert!(rank_wikipedia_title("Bibliography of Victor Hugo", &p, None) > 0.5);
     assert!(rank_wikipedia_title("Battle of Waterloo", &p, None) < 0.4);
+    assert!(rank_wikipedia_title("Maison de George Sand", &p, None) >= 0.55);
+    assert!(rank_wikipedia_title("Un hiver à Majorque", &p, None) >= 0.55);
+    let kept = talaria_sources::filter_wiki_titles_for_classes(
+        "George Sand",
+        vec![
+            "George Sand".into(),
+            "Un hiver à Majorque".into(),
+            "Maison de George Sand".into(),
+            "List of Belgian football clubs".into(),
+        ],
+        &[class],
+        Some(1876),
+        false,
+    );
+    assert!(kept.iter().any(|t| t.contains("Majorque")));
+    assert!(kept.iter().any(|t| t.contains("Maison")));
+    assert!(!kept.iter().any(|t| t.contains("football")));
 }
 
 #[test]
@@ -136,15 +153,16 @@ fn plan_scientist_prioritizes_openalex_not_battle_wiki() {
 }
 
 #[test]
-fn scientist_extractor_stack_omits_military_campaign() {
+fn scientist_extractor_stack_still_extracts_publications() {
     let stack = extractor_stack_for(PersonClass::Scientist);
-    assert!(!stack.iter().any(|e| e.extractor_id() == "military_campaign"));
+    assert!(stack.iter().any(|e| e.extractor_id() == "military_campaign"));
     let input = ExtractorInput {
         text: "She published in 1903.".into(),
         page_title: Some("Marie Curie".into()),
         subject_label: Some("Marie Curie".into()),
         document_type: "article".into(),
         subject_death_year: Some(1934),
+        ..Default::default()
     };
     let pubs: Vec<_> = stack
         .iter()
@@ -186,8 +204,8 @@ fn writer_soldier_keeps_military_career() {
 }
 
 #[test]
-fn scientist_without_signal_drops_battle_candidate() {
-    assert!(!keep_military_typed_event(
+fn wiki_page_keeps_battle_without_person_class() {
+    assert!(keep_military_typed_event(
         "battle",
         "The Battle of Waterloo decided the campaign.",
         "Marie Curie",
@@ -206,9 +224,9 @@ fn clause_service_keeps_battle_without_occupation() {
 }
 
 #[test]
-fn default_extractor_stack_is_not_military() {
+fn default_extractor_stack_includes_military() {
     let stack = talaria_sources::extractors::default_extractor_stack();
-    assert!(!stack.iter().any(|e| e.extractor_id() == "military_campaign"));
+    assert!(stack.iter().any(|e| e.extractor_id() == "military_campaign"));
 }
 
 #[test]
@@ -272,20 +290,19 @@ fn explorer_ranks_voyage_not_world_war() {
 }
 
 #[test]
-fn scientist_seed_merge_does_not_keep_battles_over_labs() {
-    let seeds = talaria_sources::merge_seed_titles_for(
+fn scientist_seed_merge_keeps_both_labs_and_battles_from_the_page() {
+    let seeds = talaria_sources::merge_seed_titles(
         "Marie Curie",
         ["Marie Curie".into()],
         [
             "Battle of Waterloo".into(),
             "University of Paris".into(),
         ],
-        2,
-        false,
+        3,
     );
     assert_eq!(seeds[0], "Marie Curie");
     assert!(seeds.iter().any(|t| t.contains("University")));
-    assert!(!seeds.iter().any(|t| t.contains("Waterloo")));
+    assert!(seeds.iter().any(|t| t.contains("Waterloo")));
 }
 
 #[test]

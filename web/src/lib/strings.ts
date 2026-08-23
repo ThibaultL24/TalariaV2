@@ -5,18 +5,20 @@ export const strings = {
   productSubtitle: "Life geography",
   search: "Search",
   searchPlaceholder: "Search a historical figure…",
-  searchHintCommit: "Choose a person, then collect sources for this view.",
+  searchHintCommit: "Pick a person — Talaria starts collecting their life trace.",
   searchInLibrary: "In library",
   searchNew: "New",
   collectLifeTrace: "Collect life trace",
   collectLifeTraceHint:
-    "Wikipedia, Wikidata and catalogs → dated facts, anecdotes and places on the map.",
+    "Search starts Wikipedia + Wikidata. Run again to add more dated places to the map.",
   collectScholarship: "Collect scholarship",
   collectScholarshipHint:
     "HAL, Persée, theses, Gallica and catalogs → theories, controversies and academic works.",
   collecting: "Collecting sources…",
   ingestQueued: "Life-trace collection queued…",
   ingestRunning: "Collecting dated facts and places…",
+  ingestRunningCounts: (timeline: number, map: number) =>
+    `Collecting… ${timeline} dated facts, ${map} on the map`,
   ingestDone: "Life trace updated",
   agoraQueued: "Scholarship collection queued…",
   agoraRunning: "Collecting theses, debates and sources…",

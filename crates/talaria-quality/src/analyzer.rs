@@ -206,6 +206,7 @@ fn heuristic_verb(clause: &str) -> Option<String> {
         ("publia", "published"),
         ("publié", "published"),
         ("parut", "published"),
+        ("rencontre", "met"),
         ("studied", "studied"),
         ("visited", "visited"),
         ("lived", "lived"),
@@ -254,24 +255,109 @@ pub fn split_clauses(sentence: &str) -> Vec<(i32, String, i32, i32)> {
 fn classify_predicate(clause: &str) -> Option<(&'static str, &'static str)> {
     let lower = clause.to_lowercase();
     const RULES: &[(&[&str], &str, &str)] = &[
-        (&["was born", "born in", "born at"], "birth", "born_in"),
-        (&["died", "death of", "passed away"], "death", "died_in"),
-        (&["married", "wedding"], "marriage", "married"),
+        (
+            &[
+                "was born",
+                "born in",
+                "born at",
+                "née à",
+                "nee a",
+                "né à",
+                "ne a",
+                "est née",
+                "est nee",
+                "est né",
+                "né le",
+                "née le",
+                "nee le",
+            ],
+            "birth",
+            "born_in",
+        ),
+        (
+            &[
+                "died",
+                "death of",
+                "passed away",
+                "mourut",
+                "morte à",
+                "mort à",
+                "décédée",
+                "decedee",
+            ],
+            "death",
+            "died_in",
+        ),
+        (&["married", "wedding", "épouse", "epouse", "mariée", "mariee"], "marriage", "married"),
         (&["divorced"], "divorce", "divorced"),
         (
-            &["fought", "battle of", "defeated", "victory at"],
+            &[
+                "fought",
+                "battle of",
+                "defeated",
+                "victory at",
+                "bataille de",
+                "siège de",
+                "siege de",
+                "guerre de",
+                "victoire",
+            ],
             "battle",
             "fought_at",
         ),
-        (&["exiled", "exile to"], "exile", "exiled_to"),
-        (&["crowned", "abdicated"], "office", "held_office"),
-        (&["signed", "treaty"], "diplomatic", "signed"),
-        (&["met with", "meeting"], "meeting", "met"),
+        (&["exiled", "exile to", "s'exila", "exilé"], "exile", "exiled_to"),
+        (
+            &[
+                "crowned",
+                "abdicated",
+                "sacré",
+                "sacre",
+                "couronné",
+                "couronne",
+            ],
+            "office",
+            "held_office",
+        ),
+        (
+            &[
+                "signed",
+                "treaty",
+                "signe le traité",
+                "signe le traite",
+                "signe le",
+                "traité de",
+                "traite de",
+                "traité des",
+                "traite des",
+            ],
+            "diplomatic",
+            "signed",
+        ),
+        (
+            &[
+                "dirige son royaume depuis",
+                "s'installe",
+                "sinstalle",
+                "installe à",
+                "installe a",
+            ],
+            "residence",
+            "resided_in",
+        ),
+        (
+            &["met with", " rencontre ", "rencontre ", "rencontre avec"],
+            "meeting",
+            "met",
+        ),
     ];
     for (cues, et, pred) in RULES {
         if cues.iter().any(|c| lower.contains(c)) {
             return Some((*et, *pred));
         }
+    }
+    // "She met Darwin" / "il rencontra X" without the longer cues above.
+    if lower.contains(" met ") || lower.contains("rencontra") {
+        return Some(("meeting", "met"));
     }
     None
 }
@@ -279,7 +365,10 @@ fn classify_predicate(clause: &str) -> Option<(&'static str, &'static str)> {
 fn extract_place_after_cue(clause: &str, lower: &str) -> Option<String> {
     // Prefer last geographic cue; stop before years and further cues.
     let mut best = None;
-    for cue in [" in ", " at ", " to ", " on ", " near "] {
+    for cue in [
+        " in ", " at ", " to ", " on ", " near ", " depuis ", " à ", " au ", " aux ", " en ",
+        " chez ",
+    ] {
         let mut search_from = 0usize;
         while let Some(rel) = lower[search_from..].find(cue) {
             let pos = search_from + rel;
@@ -298,6 +387,9 @@ fn extract_place_after_cue(clause: &str, lower: &str) -> Option<String> {
                 .split(" to ")
                 .next()
                 .unwrap_or(token)
+                .split(" en ")
+                .next()
+                .unwrap_or(token)
                 .trim()
                 .trim_matches(|c: char| !c.is_alphabetic() && c != ' ' && c != '-' && c != '\'')
                 .to_string();
@@ -312,9 +404,26 @@ fn extract_place_after_cue(clause: &str, lower: &str) -> Option<String> {
 
 fn find_place_or_person_object(clause: &str) -> (Option<String>, Option<String>) {
     let lower = clause.to_lowercase();
-    let mut object = None;
-    if let Some(pos) = lower.find(" married ") {
-        let after = clause[pos + " married ".len()..].trim();
+    let object = person_object_after_cue(&lower, clause);
+    let place = extract_place_after_cue(clause, &lower);
+    if object.as_ref() == place.as_ref() {
+        return (place, None);
+    }
+    (place, object)
+}
+
+fn person_object_after_cue(lower: &str, clause: &str) -> Option<String> {
+    const CUES: &[&str] = &[
+        " rencontre avec ",
+        " rencontre ",
+        " rencontra ",
+        " met with ",
+        " married ",
+        " met ",
+    ];
+    for cue in CUES {
+        let Some(pos) = lower.find(cue) else { continue };
+        let after = clause[pos + cue.len()..].trim();
         let name = after
             .split(" in ")
             .next()
@@ -322,24 +431,23 @@ fn find_place_or_person_object(clause: &str) -> (Option<String>, Option<String>)
             .split(" at ")
             .next()
             .unwrap_or(after)
+            .split(" à ")
+            .next()
+            .unwrap_or(after)
+            .split(" en ")
+            .next()
+            .unwrap_or(after)
             .split(|c: char| c == '.' || c == ';' || c == ',')
             .next()
             .unwrap_or(after)
             .trim()
-            .trim_matches(|c: char| {
-                !c.is_alphabetic() && c != ' ' && c != '-' && c != '\'' && c != 'é' && c != 'è'
-            })
+            .trim_matches(|c: char| !c.is_alphabetic() && c != ' ' && c != '-' && c != '\'')
             .to_string();
         if !name.is_empty() {
-            object = Some(name);
+            return Some(name);
         }
     }
-    let place = extract_place_after_cue(clause, &lower);
-    // If object equals place token (no spouse), keep as place only.
-    if object.as_ref() == place.as_ref() {
-        return (place, None);
-    }
-    (place, object)
+    None
 }
 
 fn subject_from_title_or_clause(page_title: Option<&str>, clause: &str) -> String {
@@ -514,6 +622,48 @@ mod tests {
         });
         assert!(j.accepted, "1898 must not be dropped: {j:?}");
         assert!(j.signals.iter().any(|s| s == "year"));
+    }
+
+    #[test]
+    #[test]
+    fn french_meeting_keeps_person_and_place() {
+        let analyzer = DeterministicClauseAnalyzer;
+        let xs = analyzer.analyze_sentence(&ClauseAnalyzeInput {
+            text: "Elle rencontre Chopin à Paris en 1838.".into(),
+            page_title: Some("George Sand".into()),
+            start_offset: 0,
+        });
+        let meeting = xs.iter().find(|x| x.event_type == "meeting").expect("meeting");
+        assert_eq!(meeting.place_surface.as_deref(), Some("Paris"));
+        assert_eq!(meeting.time_surface.as_deref(), Some("1838"));
+        assert_eq!(meeting.object_surface.as_deref(), Some("Chopin"));
+    }
+
+    #[test]
+    fn french_birth_clause() {
+        let analyzer = DeterministicClauseAnalyzer;
+        let xs = analyzer.analyze_sentence(&ClauseAnalyzeInput {
+            text: "Marie Curie est née à Varsovie en 1867.".into(),
+            page_title: Some("Marie Curie".into()),
+            start_offset: 0,
+        });
+        let birth = xs.iter().find(|x| x.event_type == "birth").expect("birth");
+        assert_eq!(birth.place_surface.as_deref(), Some("Varsovie"));
+        assert_eq!(birth.time_surface.as_deref(), Some("1867"));
+    }
+
+    #[test]
+    fn english_meeting_for_any_subject() {
+        let analyzer = DeterministicClauseAnalyzer;
+        let xs = analyzer.analyze_sentence(&ClauseAnalyzeInput {
+            text: "She met Darwin in London in 1836.".into(),
+            page_title: Some("Harriet Martineau".into()),
+            start_offset: 0,
+        });
+        let meeting = xs.iter().find(|x| x.event_type == "meeting").expect("meeting");
+        assert_eq!(meeting.place_surface.as_deref(), Some("London"));
+        assert_eq!(meeting.time_surface.as_deref(), Some("1836"));
+        assert_eq!(meeting.object_surface.as_deref(), Some("Darwin"));
     }
 
     #[test]

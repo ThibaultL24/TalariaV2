@@ -47,182 +47,40 @@ impl MineCarry {
 }
 
 struct Subject {
-    wiki_title: &'static str,
-    aliases: &'static [&'static str],
-    page_needles: &'static [&'static str],
+    wiki_title: String,
+    aliases: Vec<String>,
     year_min: i32,
     year_max: i32,
 }
 
-const SUBJECTS: &[Subject] = &[
+fn is_roman_token(token: &str) -> bool {
+    let t = token.to_ascii_uppercase();
+    !t.is_empty() && t.chars().all(|c| matches!(c, 'I' | 'V' | 'X' | 'L' | 'C' | 'D' | 'M'))
+}
+
+fn subject_from_page(page_title: &str) -> Subject {
+    let title = page_title.split('(').next().unwrap_or(page_title).trim();
+    let mut aliases = Vec::new();
+    let full = title.to_ascii_lowercase();
+    if !full.is_empty() {
+        aliases.push(full);
+    }
+    for part in title.split(|c: char| !c.is_alphabetic() && c != '-') {
+        let p = part.trim();
+        if p.chars().count() >= 4 && !is_roman_token(p) {
+            let low = p.to_ascii_lowercase();
+            if !aliases.iter().any(|a| a == &low) {
+                aliases.push(low);
+            }
+        }
+    }
     Subject {
-        wiki_title: "Napoleon",
-        aliases: &[
-            "napoleon bonaparte",
-            "napoléon bonaparte",
-            "napoleon i",
-            "emperor napoleon",
-            "general bonaparte",
-            "bonaparte",
-            "napoleon",
-            "napoléon",
-        ],
-        page_needles: &[
-            "napoleon",
-            "napoléon",
-            "french consulate",
-            "first french empire",
-            "hundred days",
-            "peninsular war",
-            "continental system",
-            "napoleonic",
-            "brumaire",
-            "waterloo",
-            "austerlitz",
-            "borodino",
-            "jena",
-            "wagram",
-            "tilsit",
-            "amiens",
-            "marengo",
-            "eylau",
-            "friedland",
-            "leipzig",
-            "malmaison",
-            "campo formio",
-            "concordat",
-            "toulon",
-            "pyramids",
-            "ligny",
-        ],
-        year_min: 1765,
-        year_max: 1865,
-    },
-    Subject {
-        wiki_title: "Marie Curie",
-        aliases: &[
-            "marie skłodowska-curie",
-            "marie sklodowska-curie",
-            "marie skłodowska",
-            "marie curie",
-            "madame curie",
-        ],
-        page_needles: &[
-            "curie",
-            "radium",
-            "polonium",
-            "institut curie",
-            "espci",
-            "skłodowska",
-            "sklodowska",
-        ],
-        year_min: 1865,
-        year_max: 1935,
-    },
-    Subject {
-        wiki_title: "Victor Hugo",
-        aliases: &["victor hugo", "hugo"],
-        page_needles: &[
-            "victor hugo",
-            "les misérables",
-            "les miserables",
-            "notre-dame de paris",
-            "hauteville",
-            "hernani",
-            "ruy blas",
-            "toilers of the sea",
-            "the man who laughs",
-        ],
-        year_min: 1800,
-        year_max: 1885,
-    },
-    Subject {
-        wiki_title: "Leonardo da Vinci",
-        aliases: &["leonardo da vinci", "leonardo"],
-        page_needles: &[
-            "leonardo",
-            "mona lisa",
-            "last supper",
-            "vitruvian",
-            "codex atlanticus",
-            "clos lucé",
-            "clos luce",
-        ],
-        year_min: 1450,
-        year_max: 1520,
-    },
-    Subject {
-        wiki_title: "Christopher Columbus",
-        aliases: &["christopher columbus", "columbus", "cristoforo colombo"],
-        page_needles: &[
-            "columbus",
-            "voyages of christopher",
-            "palos de la frontera",
-            "santa maría",
-            "santa maria (ship)",
-            "la niña",
-            "la pinta",
-            "hispaniola",
-        ],
-        year_min: 1440,
-        year_max: 1510,
-    },
-    Subject {
-        wiki_title: "Alan Turing",
-        aliases: &["alan turing", "turing"],
-        page_needles: &[
-            "turing",
-            "bletchley",
-            "enigma",
-            "hut 8",
-            "manchester mark",
-            "automatic computing engine",
-        ],
-        year_min: 1910,
-        year_max: 1960,
-    },
-    Subject {
-        wiki_title: "Cleopatra",
-        aliases: &["cleopatra vii", "cleopatra"],
-        page_needles: &[
-            "cleopatra",
-            "ptolemaic",
-            "actium",
-            "caesarion",
-            "donations of alexandria",
-        ],
-        year_min: -80,
-        year_max: 30,
-    },
-    Subject {
-        wiki_title: "Honoré de Balzac",
-        aliases: &[
-            "honoré de balzac",
-            "honore de balzac",
-            "honoré balzac",
-            "honore balzac",
-            "de balzac",
-            "balzac",
-        ],
-        page_needles: &[
-            "balzac",
-            "comédie humaine",
-            "comedie humaine",
-            "père goriot",
-            "pere goriot",
-            "eugénie grandet",
-            "eugenie grandet",
-            "illusions perdues",
-            "lost illusions",
-            "cousine bette",
-            "cousin bette",
-            "château de saché",
-            "chateau de sache",
-        ],
-        year_min: 1795,
-        year_max: 1860,
-    },
-];
+        wiki_title: title.to_string(),
+        aliases,
+        year_min: -4000,
+        year_max: 2100,
+    }
+}
 
 const ANECDOTE_CUES: &[&str] = &[
     "anecdote",
@@ -260,6 +118,9 @@ const COMMEMORATIVE: &[&str] = &[
     "was unveiled",
     "street named",
     "named after",
+    "remains",
+    "reburied",
+    "commemorat",
 ];
 
 const VERB_CUES: &[(&str, &str)] = &[
@@ -331,6 +192,28 @@ const VERB_CUES: &[(&str, &str)] = &[
     ("designed", "invented"),
     ("decoded", "worked"),
     ("buried", "died"),
+    ("sacré", "crowned"),
+    ("sacre", "crowned"),
+    ("couronné", "crowned"),
+    ("couronne", "crowned"),
+    ("né le", "born"),
+    ("née le", "born"),
+    ("né à", "born"),
+    ("née à", "born"),
+    ("mourut", "died"),
+    ("mort le", "died"),
+    ("morte le", "died"),
+    ("traité de", "signed"),
+    ("traite de", "signed"),
+    ("traité des", "signed"),
+    ("signe le", "signed"),
+    ("bataille de", "fought"),
+    ("siège de", "fought"),
+    ("siege de", "fought"),
+    ("guerre de", "fought"),
+    ("s'installe", "lived"),
+    ("installe à", "lived"),
+    ("dirige son royaume depuis", "lived"),
 ];
 
 pub fn mine_sentence(text: &str, page_title: &str) -> Vec<MinedCandidate> {
@@ -370,7 +253,7 @@ pub fn mine_sentence_with_carry(
         return vec![];
     };
     let used_carry = own_year.is_none() || own_place.is_none();
-    if used_carry && !has_subject_hook(&lower, subject) {
+    if used_carry && !has_subject_hook(&lower, &subject) {
         return vec![];
     }
 
@@ -389,14 +272,14 @@ pub fn mine_sentence_with_carry(
         return vec![];
     }
 
-    let Some(mut verb) = find_verb(&lower) else {
-        return vec![];
-    };
-    if verb == "died" && death_refers_to_other_person(&lower, subject.aliases) {
+    // Year + place on the biography is enough — the page is the subject.
+    let mut verb = find_verb(&lower).unwrap_or_else(|| "occurred".into());
+    let alias_refs: Vec<&str> = subject.aliases.iter().map(String::as_str).collect();
+    if verb == "died" && death_refers_to_other_person(&lower, &alias_refs) {
         verb = "grieved".into();
     }
     vec![MinedCandidate {
-        person: subject.wiki_title.into(),
+        person: subject.wiki_title.clone(),
         time: year,
         place,
         verb,
@@ -408,25 +291,12 @@ fn resolve_place(text: &str, page_title: &str) -> Option<String> {
     find_place_in_text(text).or_else(|| place_from_page_title(page_title))
 }
 
-fn resolve_subject(lower: &str, page_title: &str) -> Option<&'static Subject> {
-    if let Some(subject) = SUBJECTS
-        .iter()
-        .find(|subject| subject.aliases.iter().any(|alias| contains_word(lower, alias)))
-    {
-        return Some(subject);
+fn resolve_subject(_lower: &str, page_title: &str) -> Option<Subject> {
+    let title = page_title.trim();
+    if title.len() < 2 {
+        return None;
     }
-
-    let page_lower = page_title.to_ascii_lowercase();
-    if let Some(subject) = SUBJECTS.iter().find(|subject| {
-        page_lower == subject.wiki_title.to_ascii_lowercase()
-            || subject
-                .page_needles
-                .iter()
-                .any(|needle| page_lower.contains(needle))
-    }) {
-        return Some(subject);
-    }
-    None
+    Some(subject_from_page(title))
 }
 
 fn find_verb(lower: &str) -> Option<String> {
@@ -499,10 +369,15 @@ fn place_from_page_title(page_title: &str) -> Option<String> {
     let title = page_title.trim();
     for prefix in [
         "Battle of ",
+        "Bataille de ",
         "Treaty of ",
+        "Traité de ",
+        "Traite de ",
         "Treaties of ",
         "Congress of ",
         "Siege of ",
+        "Siège de ",
+        "Siege de ",
         "Coup of ",
     ] {
         if let Some(rest) = title.strip_prefix(prefix) {
@@ -545,7 +420,7 @@ fn has_subject_hook(lower: &str, subject: &Subject) -> bool {
     {
         return true;
     }
-    ["she", "he", "they", "herself", "himself"]
+    ["she", "he", "they", "herself", "himself", "il", "elle", "lui", "on"]
         .iter()
         .any(|pronoun| contains_word(lower, pronoun))
 }
@@ -778,13 +653,13 @@ mod tests {
     }
 
     #[test]
-    fn napoleon_battle_page_still_mines_via_needle() {
+    fn battle_page_mines_from_its_own_title() {
         let hits = mine_sentence(
             "The Battle of Waterloo was fought on 18 June 1815 near the ridge after a long march.",
             "Battle of Waterloo",
         );
         assert_eq!(hits.len(), 1, "expected Waterloo fixture, got {hits:?}");
-        assert_eq!(hits[0].person, "Napoleon");
+        assert_eq!(hits[0].person, "Battle of Waterloo");
         assert_eq!(hits[0].time, "1815");
     }
 
@@ -885,5 +760,37 @@ mod tests {
             keywords >= 20,
             "expected extra life-event keywords in fixtures, got {keywords}"
         );
+    }
+
+    #[test]
+    fn mines_any_person_from_the_biography_page_title() {
+        let louis = mine_sentence(
+            "Louis XIV est sacré le 7 juin 1654 en la cathédrale de Reims.",
+            "Louis XIV",
+        );
+        assert_eq!(louis.len(), 1, "{louis:?}");
+        assert_eq!(louis[0].person, "Louis XIV");
+        assert_eq!(louis[0].time, "1654");
+        assert!(louis[0].place.to_lowercase().contains("reims"));
+
+        let ada = mine_sentence(
+            "Ada Lovelace was born in 1815 in London and later worked with Babbage.",
+            "Ada Lovelace",
+        );
+        assert_eq!(ada.len(), 1, "{ada:?}");
+        assert_eq!(ada[0].person, "Ada Lovelace");
+        assert_eq!(ada[0].time, "1815");
+    }
+
+    #[test]
+    fn mines_year_and_place_without_a_verb() {
+        let hits = mine_sentence(
+            "À partir de 1682 la cour demeure au château de Versailles pour tout le règne.",
+            "Louis XIV",
+        );
+        assert_eq!(hits.len(), 1, "{hits:?}");
+        assert_eq!(hits[0].time, "1682");
+        assert!(hits[0].place.to_lowercase().contains("versailles"));
+        assert_eq!(hits[0].verb, "occurred");
     }
 }

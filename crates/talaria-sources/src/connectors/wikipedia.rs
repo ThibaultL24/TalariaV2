@@ -145,9 +145,7 @@ impl SourceConnector for WikipediaConnector {
                 next_cursor: None,
             });
         }
-        let classes = subject.person_classes();
-        let military = subject.has_military_signal();
-        let search_q = subject.catalog_query(SourceKind::Wikipedia);
+        let search_q = subject.label.clone();
         let mut docs = Vec::new();
         for lang in &self.config.languages {
             let title = subject.label.clone();
@@ -178,16 +176,7 @@ impl SourceConnector for WikipediaConnector {
                 .await
                 .unwrap_or_default();
             for hit in extra {
-                if hit.eq_ignore_ascii_case(&subject.label) {
-                    continue;
-                }
-                let score = crate::rank_wikipedia_title_for_classes(
-                    &hit,
-                    &classes,
-                    subject.death_year,
-                    military,
-                );
-                if score < 0.55 {
+                if hit.eq_ignore_ascii_case(&subject.label) || crate::is_noise_wiki_title(&hit) {
                     continue;
                 }
                 docs.push(DiscoveredDocument {
@@ -207,9 +196,9 @@ impl SourceConnector for WikipediaConnector {
                     }],
                     publication_time: None,
                     discovery_method: DiscoveryMethod::LinkedEntity,
-                    relevance_score: score,
+                    relevance_score: 0.8,
                     source_metadata: SourceMetadata {
-                        raw: serde_json::json!({"lang": lang, "via": "class_search"}),
+                        raw: serde_json::json!({"lang": lang, "via": "wiki_search"}),
                     },
                 });
             }

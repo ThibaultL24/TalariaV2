@@ -438,6 +438,9 @@ pub fn default_registry_with_corpus(
             Err(_) => register_stub(&mut reg, SourceKind::ThesesFr, "theses.fr connector init failed"),
         }
         let mut oa_cfg = OpenAlexConfig::default();
+        oa_cfg.api_key = std::env::var("OPENALEX_API_KEY")
+            .ok()
+            .filter(|s| !s.trim().is_empty());
         oa_cfg.mailto = std::env::var("OPENALEX_MAILTO")
             .ok()
             .filter(|s| !s.trim().is_empty());

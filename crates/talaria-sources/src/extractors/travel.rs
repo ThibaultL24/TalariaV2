@@ -15,9 +15,15 @@ impl CandidateExtractor for TravelResidenceExtractor {
     fn extract(&self, input: &ExtractorInput) -> Vec<RawCandidate> {
         let subject = input.effective_subject();
         let mut out = Vec::new();
-        for (i, line) in input.text.lines().enumerate() {
+        for (i, unit) in crate::extractors::split_prose_units(&input.text).into_iter().enumerate() {
+            let line = unit.as_str();
             let lower = line.to_lowercase();
-            let (etype, pred) = if lower.contains("departed") || lower.contains("left for") || lower.contains("partit")
+            let (etype, pred) = if lower.contains("departed")
+                || lower.contains("left for")
+                || lower.contains("partit pour")
+                || lower.contains("partent pour")
+                || lower.contains("parti pour")
+                || lower.contains("partie pour")
             {
                 ("departure", "departed_for")
             } else if lower.contains("arrived") || lower.contains("arriva") {
@@ -29,6 +35,12 @@ impl CandidateExtractor for TravelResidenceExtractor {
                 || lower.contains("habita")
                 || lower.contains("s'installa")
                 || lower.contains("s’installa")
+                || lower.contains("s'installe")
+                || lower.contains("s’installe")
+                || lower.contains("séjourna")
+                || lower.contains("sejourna")
+                || lower.contains("séjourne")
+                || lower.contains("sejourne")
             {
                 ("residence", "resided_in")
             } else if lower.contains("stayed in") || lower.contains("stayed at") {
@@ -80,7 +92,7 @@ pub(crate) fn find_year(s: &str) -> Option<String> {
 
 pub(crate) fn find_place(s: &str) -> Option<String> {
     let lower = s.to_lowercase();
-    for cue in [" in ", " at ", " to ", " for ", " à ", " au ", " aux ", " en "] {
+    for cue in [" in ", " at ", " to ", " for ", " à ", " au ", " aux ", " en ", " pour "] {
         if let Some(pos) = lower.rfind(cue) {
             let after = &s[pos + cue.len()..];
             let raw = after
@@ -91,6 +103,8 @@ pub(crate) fn find_place(s: &str) -> Option<String> {
             let token = raw
                 .trim_end_matches(" en")
                 .trim_end_matches(" in")
+                .trim_start_matches("l'")
+                .trim_start_matches("l’")
                 .trim()
                 .to_string();
             if token.len() >= 2 && !token.eq_ignore_ascii_case("en") {
@@ -114,9 +128,47 @@ mod tests {
             subject_label: Some("Charles Baudelaire".into()),
             document_type: "article".into(),
             subject_death_year: Some(1867),
+            ..Default::default()
         });
         assert_eq!(raws[0].event_type, "residence");
         assert_eq!(raws[0].time_surface.as_deref(), Some("1859"));
         assert_eq!(raws[0].place_surface.as_deref(), Some("Honfleur"));
+    }
+
+    #[test]
+    fn french_installs_and_stays_are_residences() {
+        let raws = TravelResidenceExtractor.extract(&ExtractorInput {
+            text: "Elle s'installe à Nohant en 1831. En 1838 elle séjourne à Majorque.".into(),
+            page_title: Some("George Sand".into()),
+            subject_label: Some("George Sand".into()),
+            document_type: "article".into(),
+            subject_death_year: Some(1876),
+            ..Default::default()
+        });
+        assert!(
+            raws.iter().any(|r| r.place_surface.as_deref() == Some("Nohant")
+                && r.time_surface.as_deref() == Some("1831")),
+            "{raws:?}"
+        );
+        assert!(
+            raws.iter().any(|r| r.place_surface.as_deref() == Some("Majorque")
+                && r.time_surface.as_deref() == Some("1838")),
+            "{raws:?}"
+        );
+    }
+
+    #[test]
+    fn travel_sentence_not_swallowed_by_publication_in_same_paragraph() {
+        let travel = TravelResidenceExtractor.extract(&ExtractorInput {
+            text: "Elle s'installe à Paris en 1831. Elle publia Indiana à Paris en 1832.".into(),
+            page_title: Some("George Sand".into()),
+            subject_label: Some("George Sand".into()),
+            document_type: "article".into(),
+            subject_death_year: Some(1876),
+            ..Default::default()
+        });
+        assert_eq!(travel.len(), 1);
+        assert_eq!(travel[0].event_type, "residence");
+        assert_eq!(travel[0].time_surface.as_deref(), Some("1831"));
     }
 }

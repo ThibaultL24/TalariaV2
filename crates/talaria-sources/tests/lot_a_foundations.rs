@@ -85,6 +85,7 @@ fn josephine_not_place_via_extractors_object_path() {
         subject_label: Some("Subject".into()),
         document_type: "structured_statement".into(),
         subject_death_year: Some(1821),
+        ..Default::default()
     };
     let mut found = false;
     for e in &ex {
@@ -108,6 +109,7 @@ fn low_relevance_doc_produces_no_forced_candidates_when_skipped() {
         subject_label: Some("Unrelated".into()),
         document_type: "press_ocr".into(),
         subject_death_year: None,
+        ..Default::default()
     };
     let mut n = 0;
     for e in &ex {
@@ -158,6 +160,7 @@ fn posthumous_typed_as_commemoration() {
         subject_label: Some("Subject".into()),
         document_type: "chronology_list".into(),
         subject_death_year: Some(1821),
+        ..Default::default()
     };
     let mut found = false;
     for e in &ex {
@@ -200,12 +203,10 @@ async fn cursor_offset_zero_default() {
 
 #[test]
 fn military_class_has_page_fallback_extractor_flag() {
-    use talaria_sources::{profile_for, PersonClass};
-    assert!(profile_for(PersonClass::MilitaryLeader).enable_military_extractor);
-    assert!(!profile_for(PersonClass::Scientist).enable_military_extractor);
-    assert!(!profile_for(PersonClass::ArtistWriter).enable_military_extractor);
-    assert!(!profile_for(PersonClass::ArtistVisual).enable_military_extractor);
-    assert!(!profile_for(PersonClass::Ruler).enable_military_extractor);
+    use talaria_sources::extractors::default_extractor_stack;
+    assert!(default_extractor_stack()
+        .iter()
+        .any(|e| e.extractor_id() == "military_campaign"));
 }
 
 // --- Fix 2: Gallica query must include class terms, not bare label ---------------

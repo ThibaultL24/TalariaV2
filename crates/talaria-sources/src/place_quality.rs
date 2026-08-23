@@ -8,8 +8,9 @@ const STOP_WORDS: &[&str] = &[
     "january", "february", "march", "april", "may", "june", "july", "august", "september",
     "october", "november", "december", "spring", "summer", "autumn", "winter", "morning",
     "afternoon", "evening", "night", "year", "years", "month", "months", "day", "days",
-    "week", "weeks", "time", "times", "order", "command", "battle", "war", "campaign",
-    "siege", "army", "armies", "force", "forces", "troops", "victory", "defeat", "retreat",
+    "hiver", "été", "ete", "printemps", "automne",
+    "janvier", "février", "fevrier", "mars", "avril", "mai", "juin", "juillet",
+    "août", "aout", "septembre", "octobre", "novembre", "décembre", "decembre",
 ];
 
 const MONTHS: &[&str] = &[
@@ -49,13 +50,13 @@ pub fn is_plausible_place_label(raw: &str) -> bool {
     if STOP_WORDS.iter().any(|w| lower == *w) {
         return false;
     }
-    // Must start with a letter; prefer capitalised proper nouns
+    // Must start with a letter, or a numbered street address.
     let first = s.chars().next().unwrap_or(' ');
-    if !first.is_alphabetic() {
+    if !first.is_alphabetic() && !is_street_address(s) {
         return false;
     }
-    // Reject all-lowercase multi-word glue
-    if s.contains(' ') && s.chars().all(|c| !c.is_uppercase()) {
+    // Reject all-lowercase multi-word glue (keep "rue X" / "quai X").
+    if s.contains(' ') && s.chars().all(|c| !c.is_uppercase()) && !is_street_address(s) {
         return false;
     }
     // Must not end mid-phrase with prepositions/articles
@@ -74,6 +75,21 @@ pub fn is_plausible_place_label(raw: &str) -> bool {
         return false;
     }
     true
+}
+
+fn is_street_address(s: &str) -> bool {
+    let lower = s.to_lowercase();
+    let body = lower.trim_start_matches(|c: char| c.is_ascii_digit() || c == ' ' || c == ',');
+    body.starts_with("rue ")
+        || body.starts_with("quai ")
+        || body.starts_with("place ")
+        || body.starts_with("square ")
+        || body.starts_with("avenue ")
+        || body.starts_with("boulevard ")
+        || body.starts_with("hôtel ")
+        || body.starts_with("hotel ")
+        || body.starts_with("impasse ")
+        || body.starts_with("chemin ")
 }
 
 #[cfg(test)]
@@ -96,5 +112,13 @@ mod tests {
         assert!(!is_plausible_place_label("fight"));
         assert!(!is_plausible_place_label("Portoferraio on"));
         assert!(!is_plausible_place_label("Abukir ("));
+    }
+
+    #[test]
+    fn accepts_street_and_building_addresses() {
+        assert!(is_plausible_place_label("rue Meslay"));
+        assert!(is_plausible_place_label("19 quai Malaquais"));
+        assert!(is_plausible_place_label("hôtel Danieli"));
+        assert!(is_plausible_place_label("square d'Orléans"));
     }
 }

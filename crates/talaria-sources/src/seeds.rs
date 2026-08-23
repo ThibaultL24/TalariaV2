@@ -132,6 +132,12 @@ pub fn is_noise_wiki_title(title: &str) -> bool {
     if lower.ends_with(" century") || lower.ends_with(" millennium") {
         return true;
     }
+    if (lower.starts_with("list of ") || lower.starts_with("liste des ") || lower.starts_with("liste de "))
+        && !is_military_link_title(title)
+        && !lower.starts_with("list of awards")
+    {
+        return true;
+    }
     false
 }
 
@@ -159,6 +165,7 @@ fn is_civil_high_value_link_title(title: &str) -> bool {
         || lower.starts_with("treaties of ")
         || lower.starts_with("early life")
         || lower.starts_with("scientific career")
+        || is_life_trace_link_title(title)
         || lower.contains("university")
         || lower.contains("université")
         || lower.contains("institute")
@@ -183,7 +190,33 @@ fn is_civil_high_value_link_title(title: &str) -> bool {
         || lower.contains("sorbonne")
 }
 
-fn rank_seed_title(subject: &str, title: &str, boost_military_links: bool) -> u8 {
+/// Linked pages that carry biography geography for any person class.
+pub fn is_life_trace_link_title(title: &str) -> bool {
+    let lower = title.to_lowercase();
+    lower.starts_with("maison de")
+        || lower.starts_with("maison de ")
+        || lower.starts_with("house of")
+        || lower.contains("hiver à")
+        || lower.contains("hiver a")
+        || lower.contains("winter in")
+        || lower.starts_with("voyage")
+        || lower.contains("correspondance")
+        || lower.contains("correspondence")
+        || lower.starts_with("letters of")
+        || lower.contains("itinéraire")
+        || lower.contains("itinerary")
+        || lower.starts_with("early life")
+        || lower.starts_with("enfance")
+        || lower.contains("childhood of")
+        || lower.starts_with("residence of")
+        || lower.contains("séjour")
+        || lower.contains("sejour")
+        || lower.starts_with("château")
+        || lower.starts_with("chateau")
+        || lower.starts_with("castle of")
+}
+
+fn rank_seed_title(subject: &str, title: &str) -> u8 {
     if title.eq_ignore_ascii_case(subject) {
         return 0;
     }
@@ -193,24 +226,22 @@ fn rank_seed_title(subject: &str, title: &str, boost_military_links: bool) -> u8
             return 1;
         }
     }
-    if is_civil_high_value_link_title(title)
-        || (boost_military_links && is_military_link_title(title))
-    {
+    if is_high_value_link_title(title) {
         return 2;
     }
     3
 }
 
 /// Merge curated seeds with discovered Wikipedia/Wikidata titles.
-/// Subject page first; surname/high-value links next; noise dropped.
-/// Battle/siege pages are high-value only when `boost_military_links` is set.
+/// Subject page first; surname and life-trace links (battles, houses, itineraries) next; noise dropped.
+/// Person class is not used — the biography page is the map source.
 pub fn merge_seed_titles(
     subject: &str,
     existing: impl IntoIterator<Item = String>,
     discovered: impl IntoIterator<Item = String>,
     cap: usize,
 ) -> Vec<String> {
-    merge_seed_titles_for(subject, existing, discovered, cap, false)
+    merge_seed_titles_for(subject, existing, discovered, cap, true)
 }
 
 pub fn merge_seed_titles_for(
@@ -218,7 +249,7 @@ pub fn merge_seed_titles_for(
     existing: impl IntoIterator<Item = String>,
     discovered: impl IntoIterator<Item = String>,
     cap: usize,
-    boost_military_links: bool,
+    _boost_military_links: bool,
 ) -> Vec<String> {
     let mut seen = HashSet::new();
     let mut ranked: Vec<(u8, String)> = Vec::new();
@@ -231,11 +262,91 @@ pub fn merge_seed_titles_for(
         if !seen.insert(key) {
             continue;
         }
-        ranked.push((rank_seed_title(subject, &title, boost_military_links), title));
+        ranked.push((rank_seed_title(subject, &title), title));
     }
     ranked.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
     ranked.truncate(cap.max(1));
     ranked.into_iter().map(|(_, t)| t).collect()
+}
+
+/// Person bios, museums, and abstract pages — not map/timeline density.
+fn looks_like_other_person_or_topic_title(title: &str) -> bool {
+    let lower = title.to_lowercase();
+    if title.contains('(') && title.chars().any(|c| c.is_ascii_digit()) {
+        return true;
+    }
+    const SKIP: &[&str] = &[
+        "musée",
+        "musee",
+        "museum",
+        "peinture",
+        "painting",
+        "gangrène",
+        "gangrene",
+        "ministère",
+        "ministere",
+        "ministres",
+    ];
+    SKIP.iter().any(|p| lower.contains(p))
+}
+
+/// Follow a linked page only when it can add places or dated occurrences.
+pub fn is_followable_map_title(title: &str) -> bool {
+    if is_noise_wiki_title(title) || looks_like_other_person_or_topic_title(title) {
+        return false;
+    }
+    if is_high_value_link_title(title) {
+        return true;
+    }
+    let lower = title.to_lowercase();
+    const GEO: &[&str] = &[
+        "bataille",
+        "siège",
+        "siege",
+        "traité",
+        "traite",
+        "treaty",
+        "château",
+        "chateau",
+        "palais",
+        "cathédrale",
+        "cathedrale",
+        "basilique",
+        "hôtel",
+        "guerre",
+        "paix de",
+        "paix des",
+        "forteresse",
+        "abbaye",
+        "citadelle",
+        "place de",
+    ];
+    if GEO.iter().any(|p| lower.contains(p)) {
+        return true;
+    }
+    crate::places::resolve_place_offline(title).is_some()
+}
+
+/// Links that sit in the same paragraph as a year — the only related pages worth fetching.
+pub fn dated_wikilink_titles(wikitext: &str, lo: i32, hi: i32) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for para in wikitext.split("\n\n") {
+        if first_year_in_window(para, lo, hi).is_none() {
+            continue;
+        }
+        for link in talaria_text::extract_wikilinks(para) {
+            let title = link.target.trim();
+            if title.is_empty() || !is_followable_map_title(title) {
+                continue;
+            }
+            let key = title.to_lowercase();
+            if seen.insert(key) {
+                out.push(title.to_string());
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -280,5 +391,53 @@ mod tests {
         assert!(merged.iter().any(|t| t.contains("Nobel")));
         assert!(merged.iter().any(|t| t.contains("University")));
         assert!(!merged.iter().any(|t| t == "1903" || t.contains("century") || t.starts_with("Category:")));
+    }
+
+    #[test]
+    fn life_trace_merge_keeps_battles_and_palaces_without_a_person_class() {
+        let merged = merge_seed_titles(
+            "Louis XIV",
+            ["Louis XIV".into()],
+            [
+                "Bataille de Rocroi".into(),
+                "Château de Versailles".into(),
+                "List of Belgian football clubs".into(),
+                "20th century".into(),
+            ],
+            8,
+        );
+        assert_eq!(merged[0], "Louis XIV");
+        assert!(merged.iter().any(|t| t.contains("Rocroi")), "{merged:?}");
+        assert!(merged.iter().any(|t| t.contains("Versailles")), "{merged:?}");
+        assert!(!merged.iter().any(|t| t.contains("football") || t.contains("century")));
+    }
+
+    #[test]
+    fn dated_links_come_from_the_paragraph_not_a_demo_list() {
+        let wt = "En 1654 Louis XIV est sacré à [[Cathédrale Notre-Dame de Reims]] après la [[Bataille de Rethel]].\n\nVoir aussi [[Football]].\n\n[[Bataille de Rocroi]] sans date ici.";
+        let titles = dated_wikilink_titles(wt, 1638, 1715);
+        assert!(titles.iter().any(|t| t.contains("Reims")), "{titles:?}");
+        assert!(titles.iter().any(|t| t.contains("Rethel")), "{titles:?}");
+        assert!(!titles.iter().any(|t| t.contains("Football") || t.contains("Rocroi")));
+    }
+
+    #[test]
+    fn followable_map_titles_skip_other_people_and_museums() {
+        assert!(is_followable_map_title("Château de Versailles"));
+        assert!(is_followable_map_title("Bataille de Fleurus"));
+        assert!(is_followable_map_title("Traité des Pyrénées"));
+        assert!(!is_followable_map_title("Anne d'Autriche (1601-1666)"));
+        assert!(!is_followable_map_title("Musée du Louvre"));
+        assert!(!is_followable_map_title("Jules Mazarin"));
+        assert!(!is_followable_map_title("Gangrène"));
+    }
+
+    #[test]
+    fn life_trace_titles_are_high_value_for_any_person() {
+        assert!(is_life_trace_link_title("Maison de George Sand"));
+        assert!(is_life_trace_link_title("Un hiver à Majorque"));
+        assert!(is_life_trace_link_title("Letters of Ada Lovelace"));
+        assert!(is_high_value_link_title("Un hiver à Majorque"));
+        assert!(!is_life_trace_link_title("List of Belgian football clubs"));
     }
 }

@@ -40,6 +40,14 @@ const GAZETTEER_PLACES: &[&str] = &[
     "notre-dame",
     "notre dame",
     "amiens",
+    "venice",
+    "venise",
+    "milan",
+    "marseille",
+    "nohant",
+    "varsovie",
+    "warsaw",
+    "london",
 ];
 
 /// Whole-word gazetteer hit in `text`. Prefers the longest matching label.

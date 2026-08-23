@@ -1,5 +1,6 @@
 // crates/talaria-sources/src/connectors/openalex.rs
 //! OpenAlex works connector — title + abstract only, never PDF bytes.
+//! Live calls need OPENALEX_API_KEY (mailto polite pool retired Feb 2026).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -37,6 +38,7 @@ pub struct OpenAlexConfig {
     pub fixture_dir: Option<PathBuf>,
     pub timeout: Duration,
     pub mailto: Option<String>,
+    pub api_key: Option<String>,
 }
 
 impl Default for OpenAlexConfig {
@@ -47,6 +49,7 @@ impl Default for OpenAlexConfig {
             fixture_dir: None,
             timeout: Duration::from_secs(30),
             mailto: None,
+            api_key: None,
         }
     }
 }
@@ -385,10 +388,7 @@ impl SourceConnector for OpenAlexConnector {
                 self.config.base_url.trim_end_matches('/'),
                 urlencoding_encode(&q)
             );
-            if let Some(mail) = &self.config.mailto {
-                url.push_str("&mailto=");
-                url.push_str(&urlencoding_encode(mail));
-            }
+            append_openalex_auth(&mut url, &self.config);
             self.http_get_json(&url).await?
         };
 
@@ -453,10 +453,7 @@ impl SourceConnector for OpenAlexConnector {
                 self.config.base_url.trim_end_matches('/'),
                 urlencoding_encode(&document.external_id)
             );
-            if let Some(mail) = &self.config.mailto {
-                url.push_str("?mailto=");
-                url.push_str(&urlencoding_encode(mail));
-            }
+            append_openalex_auth(&mut url, &self.config);
             self.http_get_json(&url).await?
         };
 
@@ -553,6 +550,31 @@ fn lite_to_discovered(item: &serde_json::Value) -> Option<DiscoveredDocument> {
         relevance_score: 0.65,
         source_metadata: SourceMetadata { raw: item.clone() },
     })
+}
+
+fn append_openalex_auth(url: &mut String, config: &OpenAlexConfig) {
+    let sep = if url.contains('?') { '&' } else { '?' };
+    if let Some(key) = config
+        .api_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        url.push(sep);
+        url.push_str("api_key=");
+        url.push_str(&urlencoding_encode(key));
+        return;
+    }
+    if let Some(mail) = config
+        .mailto
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        url.push(sep);
+        url.push_str("mailto=");
+        url.push_str(&urlencoding_encode(mail));
+    }
 }
 
 fn urlencoding_encode(s: &str) -> String {

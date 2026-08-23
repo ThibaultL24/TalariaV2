@@ -140,17 +140,16 @@ fn clause_attests_subject_service(clause: &str, subject: &str) -> bool {
     .any(|v| c.contains(v))
 }
 
-/// Keep battle/siege only if this person has a military signal or the clause attests service.
+/// Wiki life-trace keeps battle/siege whenever the page states them.
+/// Person class is not a gate — catalogs enrich agora, not the map.
 pub fn keep_military_typed_event(
     event_type: &str,
-    clause: &str,
-    subject: &str,
-    has_military_signal: bool,
+    _clause: &str,
+    _subject: &str,
+    _has_military_signal: bool,
 ) -> bool {
-    if !military_event_type(event_type) {
-        return true;
-    }
-    has_military_signal || clause_attests_subject_service(clause, subject)
+    let _ = event_type;
+    true
 }
 
 fn class_from_text(raw: &str) -> Option<PersonClass> {
@@ -489,7 +488,9 @@ fn rank_wikipedia_title_ex(
     }
     // Baseline below POC keep threshold (0.55) so untopical links drop.
     let mut score: f32 = 0.40;
-    if profile.wikipedia_boost.iter().any(|b| lower.contains(b)) {
+    if profile.wikipedia_boost.iter().any(|b| lower.contains(b))
+        || crate::seeds::is_life_trace_link_title(title)
+    {
         score += 0.40;
     }
     if allow_military_pages && battleish {
@@ -708,11 +709,19 @@ fn filter_wiki_titles_scored(
     titles: Vec<String>,
     score_fn: impl Fn(&str) -> f32,
 ) -> Vec<String> {
+    let surname = crate::seeds::subject_surname(subject).map(|s| s.to_lowercase());
     let mut kept: Vec<(bool, f32, String)> = Vec::new();
     for title in titles {
         let is_subject = title.eq_ignore_ascii_case(subject);
         let score = score_fn(&title);
-        if !is_subject && score < 0.55 {
+        let surname_hit = surname
+            .as_ref()
+            .is_some_and(|s| title.to_lowercase().contains(s));
+        if !is_subject
+            && score < 0.55
+            && !surname_hit
+            && !crate::seeds::is_life_trace_link_title(&title)
+        {
             continue;
         }
         kept.push((is_subject, score, title));

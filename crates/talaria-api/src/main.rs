@@ -22,6 +22,7 @@ mod historiography;
 mod ingest;
 mod intuition;
 mod judge;
+mod llm;
 mod lot_e;
 mod narrative_dossier;
 mod place_conflict;

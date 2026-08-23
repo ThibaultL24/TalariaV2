@@ -199,6 +199,7 @@ fn military_page_yields_battle_candidate() {
         subject_label: Some("Napoleon".into()),
         document_type: "article".into(),
         subject_death_year: Some(1821),
+        ..Default::default()
     };
     let mut raws = Vec::new();
     for ex in &stack {
@@ -220,6 +221,7 @@ fn itinerary_steps_are_separate() {
         subject_label: Some("Napoleon".into()),
         document_type: "article".into(),
         subject_death_year: Some(1821),
+        ..Default::default()
     };
     let mut raws = Vec::new();
     for ex in &stack {

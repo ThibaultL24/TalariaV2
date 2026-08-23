@@ -94,9 +94,9 @@ fn implausible_age(event_type: &str, age: i32) -> bool {
         "birth" => false,
         "death" => age < 0 || age > 120,
         "marriage" | "divorce" => age < 12 || age > 100,
-        "battle" | "office" | "diplomatic" | "employment" | "exile" | "imprisonment" => {
-            age < 10 || age > 100
-        }
+        "battle" | "employment" | "exile" | "imprisonment" => age < 10 || age > 100,
+        // Child monarchs hold office and sign in their name from accession.
+        "office" | "diplomatic" => age < 0 || age > 100,
         "education" => age < 3 || age > 90,
         _ => age < 0 || age > 120,
     }
@@ -196,6 +196,32 @@ pub fn apply_gates(candidate: &EventCandidate, ctx: &GateContext) -> GateDecisio
     GateDecision::Accept
 }
 
+/// Publications stay on the timeline; map pins are life-locus types only.
+pub fn event_type_is_map_locus(event_type: &str) -> bool {
+    matches!(
+        event_type,
+        "birth"
+            | "death"
+            | "residence"
+            | "arrival"
+            | "departure"
+            | "passage"
+            | "meeting"
+            | "exile"
+            | "battle"
+            | "siege"
+            | "education"
+            | "office"
+            | "marriage"
+            | "divorce"
+            | "travel"
+            | "imprisonment"
+            | "diplomatic"
+            | "employment"
+            | "historical_fact"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -236,6 +262,17 @@ mod tests {
             status: CandidateStatus::Pending,
             rejection_codes: vec![],
         }
+    }
+
+    #[test]
+    fn child_monarch_office_is_plausible() {
+        let c = base_candidate("office", 1643);
+        let ctx = GateContext {
+            subject_birth_year: Some(1638),
+            subject_death_year: Some(1715),
+            ..Default::default()
+        };
+        assert!(matches!(apply_gates(&c, &ctx), GateDecision::Accept));
     }
 
     #[test]
@@ -311,5 +348,13 @@ mod tests {
         };
         let codes = apply_gates(&c, &ctx).codes();
         assert!(codes.contains(&"missing_evidence".into()));
+    }
+
+    #[test]
+    fn publication_is_not_a_map_locus() {
+        assert!(!event_type_is_map_locus("publication"));
+        assert!(event_type_is_map_locus("arrival"));
+        assert!(event_type_is_map_locus("residence"));
+        assert!(event_type_is_map_locus("historical_fact"));
     }
 }

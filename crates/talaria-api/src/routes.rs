@@ -15,6 +15,7 @@ use documents::{
 use entities::{get_entity, list_claims, search as search_entities};
 use events::{detail, evidence, geojson, timeline};
 use facets::{list_periods, list_profiles};
+use crate::llm;
 use ingest::{
     get_ingest_job, start_agora_ingest, start_explorer_ingest, start_ingest, IngestJobMap,
 };
@@ -45,6 +46,7 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
         .route("/health", get(health))
         .route("/up", get(health))
         .route("/api/v1/status", get(status))
+        .route("/api/v1/llm/ping", get(llm_ping))
         .route("/api/v1/entities/search", get(search_entities))
         .route("/api/v1/entities/{entity_id}", get(get_entity))
         .route("/api/v1/entities/{entity_id}/claims", get(list_claims))
@@ -137,8 +139,33 @@ async fn status(axum::extract::State(state): axum::extract::State<AppState>) -> 
             "canonical_events": events,
             "entity_profiles": profiles,
             "claims": claims
+        },
+        "llm": {
+            "configured": llm::is_configured(),
+            "model": llm::model(),
+        },
+        "catalogs": {
+            "openalex": env_present("OPENALEX_API_KEY"),
+            "europeana": env_present("EUROPEANA_API_KEY"),
         }
     }))
+}
+
+async fn llm_ping() -> Json<Value> {
+    let result = llm::ping().await;
+    Json(json!({
+        "ok": result.ok,
+        "model": result.model,
+        "latency_ms": result.latency_ms,
+        "error": result.error,
+    }))
+}
+
+fn env_present(key: &str) -> bool {
+    std::env::var(key)
+        .ok()
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false)
 }
 
 fn attach_web_ui(app: Router) -> Router {

@@ -47,23 +47,23 @@ import { strings } from "@/lib/strings";
 import { useExplorerStore } from "@/stores/explorer-store";
 
 const POLL_MS = 5000;
-const LIVE_LIMIT = 2000;
-const INGEST_POLL_MS = 3000;
+const LIVE_INGEST_POLL_MS = 1500;
+const INGEST_POLL_MS = 1500;
 const INGEST_TIMEOUT_MS = 45 * 60 * 1000;
+const LIVE_LIMIT = 2000;
 
 async function pollIngestJob(
   jobId: string,
-  onRunning: () => void,
+  onTick: (job: Awaited<ReturnType<typeof fetchIngestJob>>) => void,
 ): Promise<Awaited<ReturnType<typeof fetchIngestJob>>> {
   const deadline = Date.now() + INGEST_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, INGEST_POLL_MS));
     const job = await fetchIngestJob(jobId);
-    if (job.status === "running" || job.status === "queued") {
-      onRunning();
-      continue;
+    onTick(job);
+    if (job.status !== "running" && job.status !== "queued") {
+      return job;
     }
-    return job;
+    await new Promise((resolve) => setTimeout(resolve, INGEST_POLL_MS));
   }
   throw new Error("timeout");
 }
@@ -114,6 +114,7 @@ export function ExplorerPage() {
   const [bibliographyLoading, setBibliographyLoading] = useState(false);
   const [ingestStatus, setIngestStatus] = useState<string | null>(null);
   const rangeTouched = useRef(false);
+  const ingestLock = useRef<string | null>(null);
 
   const {
     entityId,
@@ -135,6 +136,10 @@ export function ExplorerPage() {
   } = useExplorerStore();
 
   const hasEntity = Boolean(entityId || personFilter);
+  const ingestLive =
+    Boolean(ingestStatus) &&
+    ingestStatus !== strings.ingestDone &&
+    ingestStatus !== strings.agoraDone;
 
   useEffect(() => {
     let cancelled = false;
@@ -273,7 +278,7 @@ export function ExplorerPage() {
     async function load() {
       if (inFlight) return;
       inFlight = true;
-      if (first) setLoading(true);
+      if (first && !ingestLive) setLoading(true);
       try {
         const [timeline, mapData] = await Promise.all([
           fetchTimeline(query),
@@ -303,12 +308,12 @@ export function ExplorerPage() {
     }
 
     load();
-    const tick = window.setInterval(load, POLL_MS);
+    const tick = window.setInterval(load, ingestLive ? LIVE_INGEST_POLL_MS : POLL_MS);
     return () => {
       cancelled = true;
       window.clearInterval(tick);
     };
-  }, [entityId, personFilter, hasEntity, filters.profileSlug, filters.periodSlug]);
+  }, [entityId, personFilter, hasEntity, ingestLive, filters.profileSlug, filters.periodSlug]);
 
   const dataBounds = useMemo(() => buildYearBounds(allEvents), [allEvents]);
   const activeRange = yearRange ?? dataBounds;
@@ -381,24 +386,18 @@ export function ExplorerPage() {
     setYearRange(range);
   }, []);
 
-  const handleSelectSuggestion = useCallback(
-    (item: SearchSuggestion) => {
-      const chosen = preferDenseLocalAlias(item, suggestions);
-      setIngestStatus(null);
-      setError(null);
-      if (chosen.known_locally && chosen.entity_id) {
-        setEntity(chosen.entity_id, chosen.label, chosen.qid);
-        return;
-      }
-      setPersonFilter(chosen.label, chosen.label, chosen.qid);
-    },
-    [setEntity, setPersonFilter, suggestions],
-  );
-
   const runLaneIngest = useCallback(
-    async (lane: "explorer" | "agora") => {
-      const subject = entityLabel ?? personFilter;
+    async (
+      lane: "explorer" | "agora",
+      override?: { subject: string; qid?: string | null; entityId?: string | null },
+    ) => {
+      const subject = override?.subject ?? entityLabel ?? personFilter;
       if (!subject) return;
+      const qid = override?.qid ?? entityQid;
+      const startingEntityId = override?.entityId ?? entityId;
+      const lockKey = `${lane}:${subject}:${qid ?? ""}`;
+      if (ingestLock.current === lockKey) return;
+      ingestLock.current = lockKey;
       setError(null);
       try {
         setIngestStatus(lane === "explorer" ? strings.ingestQueued : strings.agoraQueued);
@@ -406,39 +405,69 @@ export function ExplorerPage() {
           lane === "explorer"
             ? await startExplorerIngest({
                 subject,
-                qid: entityQid,
+                qid,
                 live: true,
               })
             : await startAgoraIngest({
                 subject,
-                qid: entityQid,
+                qid,
                 live: true,
               });
+        let boundEntityId = startingEntityId;
+        const bindEntity = (id?: string | null) => {
+          if (!id || boundEntityId === id) return;
+          boundEntityId = id;
+          setEntity(id, subject, qid);
+        };
+        bindEntity(job.entity_id);
         const running =
           lane === "explorer" ? strings.ingestRunning : strings.agoraRunning;
-        setIngestStatus(job.status === "running" ? running : ingestQueuedLabel(lane));
-        const result = await pollIngestJob(job.job_id, () => setIngestStatus(running));
+        const result = await pollIngestJob(job.job_id, (tick) => {
+          bindEntity(tick.entity_id);
+          if (lane === "explorer") {
+            setIngestStatus(
+              strings.ingestRunningCounts(tick.timeline_events ?? 0, tick.map_events ?? 0),
+            );
+          } else {
+            setIngestStatus(running);
+          }
+        });
         if (result.status === "failed") {
           setIngestStatus(null);
           setError(`${strings.ingestFailed}: ${result.error ?? "unknown"}`);
           return;
         }
-        if (result.entity_id) {
-          setEntity(result.entity_id, subject, entityQid);
-        }
+        bindEntity(result.entity_id);
         setIngestStatus(lane === "explorer" ? strings.ingestDone : strings.agoraDone);
         window.setTimeout(() => setIngestStatus(null), 2500);
       } catch (err) {
         setIngestStatus(null);
         setError(err instanceof Error ? err.message : strings.ingestFailed);
+      } finally {
+        if (ingestLock.current === lockKey) ingestLock.current = null;
       }
     },
-    [entityLabel, entityQid, personFilter, setEntity],
+    [entityId, entityLabel, entityQid, personFilter, setEntity],
   );
 
-  function ingestQueuedLabel(lane: "explorer" | "agora"): string {
-    return lane === "explorer" ? strings.ingestQueued : strings.agoraQueued;
-  }
+  const handleSelectSuggestion = useCallback(
+    (item: SearchSuggestion) => {
+      const chosen = preferDenseLocalAlias(item, suggestions);
+      setIngestStatus(null);
+      setError(null);
+      if (chosen.known_locally && chosen.entity_id) {
+        setEntity(chosen.entity_id, chosen.label, chosen.qid);
+      } else {
+        setPersonFilter(chosen.label, chosen.label, chosen.qid);
+      }
+      void runLaneIngest("explorer", {
+        subject: chosen.label,
+        qid: chosen.qid,
+        entityId: chosen.entity_id,
+      });
+    },
+    [runLaneIngest, setEntity, setPersonFilter, suggestions],
+  );
 
   const handleSelectEvent = useCallback(
     (eventId: string) => {
@@ -561,7 +590,7 @@ export function ExplorerPage() {
           {hasEntity ? (
             <LaneIngestBar
               lane={sidebarTab === "agora" ? "agora" : "explorer"}
-              busy={Boolean(ingestStatus) && ingestStatus !== strings.ingestDone && ingestStatus !== strings.agoraDone}
+              busy={ingestLive}
               status={ingestStatus}
               onRun={() => {
                 void runLaneIngest(sidebarTab === "agora" ? "agora" : "explorer");

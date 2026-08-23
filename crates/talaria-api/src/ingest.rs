@@ -5,23 +5,22 @@ use talaria_core::AppConfig;
 use talaria_dump::content_hash;
 use talaria_judge::parse_place_surface;
 use talaria_quality::{
-    apply_gates, candidate_fingerprint, existing_candidate_action, occurrence_key_for_event,
-    occurrence_stem_for_event, parse_typed_time, resolve_mentions, should_reinforce_existing_event,
-    start_time_from_typed, time_to_json, BuildProjections, DerivedLabelProjections, EntityKind,
-    EvidencePtr, ExistingCandidateAction, EXTRACTOR_EPISTEMIC_STATUS, GazetteerResolver,
-    GateContext, Mention, ASSEMBLER_V1,
+    apply_gates, candidate_fingerprint, event_type_is_map_locus, existing_candidate_action,
+    occurrence_key_for_event, occurrence_stem_for_event, parse_typed_time, resolve_mentions,
+    should_reinforce_existing_event, start_time_from_typed, time_to_json, BuildProjections,
+    DerivedLabelProjections, EntityKind, EvidencePtr, ExistingCandidateAction,
+    EXTRACTOR_EPISTEMIC_STATUS, GazetteerResolver, GateContext, Mention, ASSEMBLER_V1,
 };
 use talaria_sources::connectors::{default_registry, FixtureConnector};
 use talaria_sources::extractors::{
-    claim_fingerprint, extractor_stack_for_classes, CandidateExtractor, ClaimKey, ExtractorInput,
+    claim_fingerprint, default_extractor_stack, CandidateExtractor, ClaimKey, ExtractorInput,
     StructuredStatementExtractor,
 };
 use talaria_sources::wdqs::{
     events_from_fixture_dir, events_to_statement_text, fetch_events_for_person,
 };
 use talaria_sources::{
-    keep_military_typed_event, plan_sources, BudgetCounters, DiscoveredDocument, IngestBudgets,
-    ResolvedSubject, SourceKind,
+    plan_sources, BudgetCounters, DiscoveredDocument, IngestBudgets, ResolvedSubject, SourceKind,
 };
 use talaria_store::{
     add_claim_support, density_report_counts,
@@ -192,10 +191,7 @@ pub async fn run_ingest_quality(
 
     let mut metrics = IngestMetrics::default();
     let mut counters = BudgetCounters::default();
-    let extractors = extractor_stack_for_classes(
-        &subject.person_classes(),
-        subject.has_military_signal(),
-    );
+    let extractors = default_extractor_stack();
     let extractor_refs: Vec<&dyn CandidateExtractor> =
         extractors.iter().map(|e| e.as_ref()).collect();
     let resolver = GazetteerResolver;
@@ -333,6 +329,7 @@ pub async fn run_ingest_quality(
                     subject_label: Some(label.to_string()),
                     document_type: doc.document_type.as_str().to_string(),
                     subject_death_year: subject.death_year,
+                    ..Default::default()
                 };
 
                 let mut raws = Vec::new();
@@ -449,6 +446,7 @@ pub async fn ingest_wdqs_events(
         subject_label: Some(subject.label.clone()),
         document_type: "structured_statement".into(),
         subject_death_year: subject.death_year,
+        ..Default::default()
     };
     let raws = StructuredStatementExtractor.extract(&input);
     let resolver = GazetteerResolver;
@@ -524,15 +522,6 @@ pub(crate) async fn process_raw_candidate(
     assemble: bool,
     metrics: &mut IngestMetrics,
 ) -> anyhow::Result<()> {
-    if !keep_military_typed_event(
-        &raw.event_type,
-        &raw.clause_text,
-        &subject.label,
-        subject.has_military_signal(),
-    ) {
-        metrics.bump_loss("military_without_person_signal");
-        return Ok(());
-    }
     if raw.event_type == "death" && subject.death_year.is_none() && subject.qid.is_some() {
         metrics.bump_loss("death_without_p570");
         return Ok(());
@@ -859,6 +848,7 @@ pub(crate) async fn process_raw_candidate(
             .unwrap_or((None, None));
         (lat, lon, map_eligible)
     };
+    let map_eligible = map_eligible && event_type_is_map_locus(&shell.event_type);
 
     let event_id = insert_quality_canonical_event(
         pool,

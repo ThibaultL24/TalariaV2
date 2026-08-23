@@ -57,8 +57,10 @@ pub use places::{place_hint_from_title, resolve_place_offline, PlaceResolution};
 pub use plan::{plan_sources, PlannedSource, ResolvedSubject, SourcePlan};
 pub use registry::{ConnectorRegistration, SourceRegistry};
 pub use seeds::{
-    first_year_in_window, is_high_value_link_title, is_noise_wiki_title, lifespan_year_window,
-    load_seed_titles, merge_seed_titles, merge_seed_titles_for, subject_surname,
+    dated_wikilink_titles, first_year_in_window, is_followable_map_title, is_high_value_link_title,
+    is_life_trace_link_title, is_noise_wiki_title,
+    lifespan_year_window, load_seed_titles, merge_seed_titles, merge_seed_titles_for,
+    subject_surname,
 };
 pub use types::{DiscoveredDocument, ExternalEntityRef, SourceMetadata, TypedTimeLite};
 

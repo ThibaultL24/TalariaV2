@@ -9,34 +9,45 @@ use std::time::Duration;
 use talaria_core::AppConfig;
 use talaria_dump::content_hash;
 use talaria_quality::{
-    apply_gates, candidate_fingerprint, existing_candidate_action, occurrence_key_for_event,
-    occurrence_stem_for_event, parse_typed_time, resolve_mentions, should_reinforce_existing_event,
-    start_time_from_typed, time_to_json, BuildProjections, DerivedLabelProjections, EntityKind,
-    EvidencePtr, ExistingCandidateAction, EXTRACTOR_EPISTEMIC_STATUS, GazetteerResolver,
-    GateContext, ASSEMBLER_V1,
+    apply_gates, candidate_fingerprint, event_type_is_map_locus, existing_candidate_action,
+    occurrence_key_for_event, occurrence_stem_for_event, parse_typed_time, resolve_mentions,
+    should_reinforce_existing_event, start_time_from_typed, time_to_json, BuildProjections,
+    DerivedLabelProjections, EntityKind, EvidencePtr, ExistingCandidateAction,
+    EXTRACTOR_EPISTEMIC_STATUS, GazetteerResolver, GateContext, ASSEMBLER_V1,
 };
 use talaria_sources::extractors::{
-    claim_fingerprint, extractor_stack_for_classes, CandidateExtractor, ClaimKey, ExtractorInput,
+    claim_fingerprint, default_extractor_stack, keep_extracted_raw, CandidateExtractor,
+    ClaimKey, ExtractorInput,
 };
 use talaria_sources::connectors::net::send_retrying;
 use talaria_sources::{
-    filter_wiki_titles_for_classes, first_year_in_window, is_plausible_place_label,
-    lifespan_year_window, load_seed_titles, merge_seed_titles_for, place_hint_from_title,
-    rank_wikipedia_title_for_classes, resolve_place_offline, DensityProgress, DensityTargets,
-    ResolvedSubject,
+    dated_wikilink_titles, first_year_in_window, is_plausible_place_label,
+    lifespan_year_window, load_seed_titles, merge_seed_titles, place_hint_from_title,
+    resolve_place_offline, DensityProgress, DensityTargets, ResolvedSubject,
 };
 use talaria_store::{
     add_claim_support, apply_place_to_quality_event, connect, density_report_counts,
     find_active_quality_event_by_occurrence_key, get_event_candidate_by_fingerprint,
     insert_document_fragment, insert_document_snapshot, insert_quality_canonical_event,
     link_claim_to_event, mark_candidate_assembled, quality_lifespan_years,
-    reinforce_quality_event, reject_if_singleton_exists, run_migrations,
+    get_place_geocode, reinforce_quality_event, reject_if_singleton_exists, run_migrations,
     update_event_candidate_judgment, upsert_entity_with_kind, upsert_event_candidate,
+    upsert_place_geocode,
     upsert_quality_claim, DocumentFragmentInsert, DocumentSnapshotInsert, EventCandidateInsert,
     QualityClaimInsert, QualityEventInsert,
 };
 
 use crate::cli_helpers::open_db_for_subject;
+
+fn campaign_page_title(title: &str) -> bool {
+    let lower = title.to_lowercase();
+    lower.starts_with("battle")
+        || lower.starts_with("bataille")
+        || lower.starts_with("siege")
+        || lower.starts_with("siège")
+        || lower.starts_with("treaty")
+        || lower.starts_with("traité")
+}
 
 fn event_type_from_page_title(title: &str) -> &'static str {
     let lower = title.to_lowercase();
@@ -86,7 +97,7 @@ async fn fetch_wikipedia_extract_rest(
     client: &reqwest::Client,
     lang: &str,
     title: &str,
-) -> anyhow::Result<(String, String, Option<String>, Option<(f64, f64)>)> {
+) -> anyhow::Result<(String, String, Option<String>, Option<(f64, f64)>, Option<String>)> {
     let title_path = title.replace(' ', "_");
     let mut html_url = reqwest::Url::parse(&format!("https://{lang}.wikipedia.org"))?;
     {
@@ -125,21 +136,23 @@ async fn fetch_wikipedia_extract_rest(
             }
         }
     }
-    Ok((resolved, extract, None, coords))
+    Ok((resolved, extract, None, coords, None))
 }
 
 async fn fetch_wikipedia_extract(
     lang: &str,
     title: &str,
-) -> anyhow::Result<(String, String, Option<String>, Option<(f64, f64)>)> {
+) -> anyhow::Result<(String, String, Option<String>, Option<(f64, f64)>, Option<String>)> {
     let client = wiki_http_client()?;
     let api = format!("https://{lang}.wikipedia.org/w/api.php");
     let action = send_retrying(
         client.get(&api).query(&[
             ("action", "query"),
-            ("prop", "extracts|info|coordinates"),
+            ("prop", "extracts|info|coordinates|revisions"),
             ("explaintext", "1"),
             ("exlimit", "1"),
+            ("rvprop", "content"),
+            ("rvslots", "main"),
             ("titles", title),
             ("format", "json"),
             ("redirects", "1"),
@@ -188,8 +201,9 @@ async fn fetch_wikipedia_extract(
                     let lon = c.get("lon")?.as_f64()?;
                     Some((lat, lon))
                 });
+            let wikitext = revision_wikitext(page);
             if !extract.is_empty() {
-                return Ok((resolved, extract, revid, coords));
+                return Ok((resolved, extract, revid, coords, wikitext));
             }
         }
         Ok(resp) if resp.status().as_u16() == 429 || resp.status().as_u16() == 503 => {
@@ -208,6 +222,14 @@ async fn fetch_wikipedia_extract(
     }
 
     fetch_wikipedia_extract_rest(&client, lang, title).await
+}
+
+fn revision_wikitext(page: &serde_json::Value) -> Option<String> {
+    let rev = page.get("revisions")?.as_array()?.first()?;
+    if let Some(text) = rev.pointer("/slots/main/*").and_then(|v| v.as_str()) {
+        return Some(text.to_string());
+    }
+    rev.get("*").and_then(|v| v.as_str()).map(str::to_string)
 }
 
 #[derive(Debug, Default)]
@@ -283,15 +305,11 @@ pub async fn run_lot_e_density_ingest(
             .unwrap_or_default(),
     };
 
-    let person_classes = subject_res.person_classes();
-    let person_class = subject_res.person_class();
-    let military_signal = subject_res.has_military_signal();
     tracing::info!(
-        class = person_class.as_str(),
-        facets = ?person_classes.iter().map(|c| c.as_str()).collect::<Vec<_>>(),
         occupations = ?subject_res.occupations,
-        military_signal,
-        "resolved person ingest classes"
+        birth = ?subject_res.birth_year,
+        death = ?subject_res.death_year,
+        "resolved Wikipedia/Wikidata subject — page-first, no person-class filter"
     );
 
     let mut titles = load_seed_titles(seed_list).unwrap_or_default();
@@ -310,34 +328,18 @@ pub async fn run_lot_e_density_ingest(
         .wiki_title
         .clone()
         .unwrap_or_else(|| subject.to_string());
-    let wiki_links = fetch_wikipedia_article_links(lang, &start_title, expand_cap)
-        .await
-        .unwrap_or_default();
     let cap = expand_cap.max(titles.len());
-    titles = merge_seed_titles_for(
+    titles = merge_seed_titles(
         subject,
         titles,
-        wiki_links
-            .into_iter()
-            .chain(wd_meta.related_titles.clone()),
+        std::iter::once(start_title.clone()),
         cap,
-        military_signal,
-    );
-    titles = filter_wiki_titles_for_classes(
-        subject,
-        titles,
-        &person_classes,
-        subject_res.death_year,
-        military_signal,
     );
     tracing::info!(
         seeds = titles.len(),
-        class = person_class.as_str(),
         birth = ?subject_res.birth_year,
         death = ?subject_res.death_year,
-        occupations = ?subject_res.occupations,
-        military_signal,
-        "expanded Wikipedia/Wikidata seeds ranked by person facets"
+        "expanded Wikipedia/Wikidata seeds from the biography page"
     );
     if let Some(max) = max_titles {
         titles.truncate(max as usize);
@@ -354,7 +356,7 @@ pub async fn run_lot_e_density_ingest(
         );
     }
 
-    let extractors = extractor_stack_for_classes(&person_classes, military_signal);
+    let extractors = default_extractor_stack();
     let extractor_refs: Vec<&dyn CandidateExtractor> =
         extractors.iter().map(|e| e.as_ref()).collect();
     let resolver = GazetteerResolver;
@@ -457,7 +459,7 @@ pub async fn run_lot_e_density_ingest(
             }
 
             metrics.titles_attempted += 1;
-            let (resolved_title, text, revid, page_coords) =
+            let (resolved_title, text, revid, page_coords, wikitext) =
                 match fetch_wikipedia_extract(current_lang, &title).await {
                     Ok(v) => v,
                     Err(e) => {
@@ -472,29 +474,13 @@ pub async fn run_lot_e_density_ingest(
             // Be polite to Wikimedia — search-triggered density must not stampede.
             tokio::time::sleep(Duration::from_millis(2000)).await;
 
-            // Battle/treaty regex expansion only when this person has a military signal.
-            if military_signal {
-                for linked in discover_linked_titles(&text) {
-                    if rank_wikipedia_title_for_classes(
-                        &linked,
-                        &person_classes,
-                        subject_res.death_year,
-                        military_signal,
-                    ) < 0.55
-                    {
-                        continue;
-                    }
-                    enqueue_discovered_title(
-                        &mut title_queue,
-                        &mut seen_titles,
-                        linked,
-                        targets.max_linked_entities as usize,
-                    );
-                }
-            }
-            // Prose-fragment title mining is disabled: it floods the queue with non-pages.
-            // Growth comes from Wikipedia `prop=links` at ingest start instead.
-            for linked in ([] as [String; 0]) {
+            let (year_lo, year_hi) =
+                lifespan_year_window(subject_res.birth_year, subject_res.death_year);
+            let dated = wikitext
+                .as_deref()
+                .map(|wt| dated_wikilink_titles(wt, year_lo, year_hi))
+                .unwrap_or_default();
+            for linked in dated {
                 enqueue_discovered_title(
                     &mut title_queue,
                     &mut seen_titles,
@@ -556,22 +542,32 @@ pub async fn run_lot_e_density_ingest(
                 subject_res.birth_year = by2;
             }
 
+            let known_places = wikitext
+                .as_deref()
+                .map(talaria_text::extract_wikilinks)
+                .unwrap_or_default()
+                .into_iter()
+                .flat_map(|l| [l.display, l.target])
+                .filter(|s| is_plausible_place_label(s))
+                .collect::<Vec<_>>();
+
             let input = ExtractorInput {
                 text: text.clone(),
                 page_title: Some(resolved_title.clone()),
                 subject_label: Some(subject.to_string()),
                 document_type: "article".into(),
                 subject_death_year: subject_res.death_year,
+                wikitext: wikitext.clone(),
+                known_places,
             };
 
             let mut raws = Vec::new();
             for ex in &extractor_refs {
                 raws.extend(ex.extract(&input));
             }
+            raws.retain(|r| keep_extracted_raw(r, &resolved_title, subject));
 
-            // For military subjects only: ensure battle/siege pages produce at least a
-            // page-level candidate when the military_campaign extractor fired nothing.
-            if military_signal
+            if campaign_page_title(&resolved_title)
                 && !raws.iter().any(|r| {
                     r.extractor_id == "military_campaign"
                         && r.object_surface.as_deref() == Some(resolved_title.as_str())
@@ -888,6 +884,16 @@ async fn process_one(
             uncertainty = pres.uncertainty_radius_m;
             shell.place_entity_id =
                 Some(upsert_entity_with_kind(pool, &config.wiki_lang, pl, "place").await?);
+        } else if let Some((qid, pla, plo)) =
+            lookup_or_fetch_place_coords(pool, &config.wiki_lang, pl).await
+        {
+            lat = Some(pla);
+            lon = Some(plo);
+            location_precision = Some("wikidata_p625".into());
+            uncertainty = Some(5000.0);
+            shell.place_entity_id =
+                Some(upsert_entity_with_kind(pool, &config.wiki_lang, pl, "place").await?);
+            let _ = qid;
         } else if let Some((pla, plo)) = page_coords {
             // Wikipedia page coordinates — only for page-level / title-tied occurrences
             if raw.extractor_id == "military_campaign"
@@ -1132,7 +1138,8 @@ async fn process_one(
         return Ok(());
     }
 
-    let map_eligible = lat.is_some() && lon.is_some();
+    let map_eligible =
+        lat.is_some() && lon.is_some() && event_type_is_map_locus(&shell.event_type);
     let proj = projections.from_candidate(&shell, &subject.label);
     let title_derived = projections.display_label(&proj);
 
@@ -1636,6 +1643,7 @@ async fn ingest_memory_document(
         subject_label: Some(subject.into()),
         document_type: document_type.into(),
         subject_death_year: subject_res.death_year,
+        ..Default::default()
     };
     let mut raws = Vec::new();
     for ex in extractor_refs {
@@ -1830,7 +1838,7 @@ async fn resolve_label_coords(label: &str) -> Option<PlaceHit> {
             });
         }
     }
-    if let Some((lat, lon)) = fetch_wikidata_coords_for_label(label).await {
+    if let Some((_, lat, lon)) = fetch_wikidata_coords_for_label(label, "en").await {
         tokio::time::sleep(Duration::from_millis(250)).await;
         return Some(PlaceHit {
             lat,
@@ -1841,7 +1849,7 @@ async fn resolve_label_coords(label: &str) -> Option<PlaceHit> {
     }
     if let Some(hint) = place_hint_from_title(label) {
         if hint != label {
-            if let Some((lat, lon)) = fetch_wikidata_coords_for_label(&hint).await {
+            if let Some((_, lat, lon)) = fetch_wikidata_coords_for_label(&hint, "en").await {
                 tokio::time::sleep(Duration::from_millis(250)).await;
                 return Some(PlaceHit {
                     lat,
@@ -1855,7 +1863,31 @@ async fn resolve_label_coords(label: &str) -> Option<PlaceHit> {
     None
 }
 
-async fn fetch_wikidata_coords_for_label(label: &str) -> Option<(f64, f64)> {
+async fn lookup_or_fetch_place_coords(
+    pool: &sqlx::PgPool,
+    wiki_lang: &str,
+    label: &str,
+) -> Option<(String, f64, f64)> {
+    if let Ok(Some(row)) = get_place_geocode(pool, wiki_lang, label).await {
+        if let (Some(lat), Some(lon)) = (row.lat, row.lon) {
+            return Some((row.wikidata_qid.unwrap_or_default(), lat, lon));
+        }
+    }
+    let (qid, lat, lon) = fetch_wikidata_coords_for_label(label, wiki_lang).await?;
+    let _ = upsert_place_geocode(
+        pool,
+        wiki_lang,
+        label,
+        &qid,
+        lat,
+        lon,
+        serde_json::json!({ "qid": qid, "lat": lat, "lon": lon }),
+    )
+    .await;
+    Some((qid, lat, lon))
+}
+
+async fn fetch_wikidata_coords_for_label(label: &str, lang: &str) -> Option<(String, f64, f64)> {
     if !is_plausible_place_label(label) {
         return None;
     }
@@ -1864,12 +1896,30 @@ async fn fetch_wikidata_coords_for_label(label: &str) -> Option<(f64, f64)> {
         .timeout(Duration::from_secs(12))
         .build()
         .ok()?;
+    let langs = if lang == "en" {
+        vec![lang]
+    } else {
+        vec![lang, "en"]
+    };
+    for search_lang in langs {
+        if let Some(hit) = wb_search_coords(&client, label, search_lang).await {
+            return Some(hit);
+        }
+    }
+    None
+}
+
+async fn wb_search_coords(
+    client: &reqwest::Client,
+    label: &str,
+    lang: &str,
+) -> Option<(String, f64, f64)> {
     let search = client
         .get("https://www.wikidata.org/w/api.php")
         .query(&[
             ("action", "wbsearchentities"),
             ("search", label),
-            ("language", "en"),
+            ("language", lang),
             ("limit", "5"),
             ("format", "json"),
             ("type", "item"),
@@ -1905,6 +1955,9 @@ async fn fetch_wikidata_coords_for_label(label: &str) -> Option<(f64, f64)> {
         .await
         .ok()?;
     for qid in &ids {
+        if entity_is_human(&entity, qid) {
+            continue;
+        }
         let lat = entity
             .pointer(&format!(
                 "/entities/{qid}/claims/P625/0/mainsnak/datavalue/value/latitude"
@@ -1916,10 +1969,24 @@ async fn fetch_wikidata_coords_for_label(label: &str) -> Option<(f64, f64)> {
             ))
             .and_then(|v| v.as_f64());
         if let (Some(lat), Some(lon)) = (lat, lon) {
-            return Some((lat, lon));
+            return Some((qid.clone(), lat, lon));
         }
     }
     None
+}
+
+fn entity_is_human(entity: &serde_json::Value, qid: &str) -> bool {
+    let Some(claims) = entity
+        .pointer(&format!("/entities/{qid}/claims/P31"))
+        .and_then(|v| v.as_array())
+    else {
+        return false;
+    };
+    claims.iter().any(|c| {
+        c.pointer("/mainsnak/datavalue/value/id")
+            .and_then(|v| v.as_str())
+            == Some("Q5")
+    })
 }
 
 /// Soft-deactivate quality events whose place_label is clearly non-geographic noise.

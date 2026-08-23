@@ -18,7 +18,7 @@ pub use analyzer::{
     COSMOS_DEFAULT_MIN_SCORE, COSMOS_HEURISTIC_ID, COSMOS_HEURISTIC_V1,
 };
 pub use fingerprint::{candidate_fingerprint, event_fingerprint, normalize_surface};
-pub use gates::{apply_gates, GateContext, GateDecision, RejectionCode};
+pub use gates::{apply_gates, event_type_is_map_locus, GateContext, GateDecision, RejectionCode};
 pub use model::{
     CandidateStatus, EntityKind, EventCandidate, EvidencePtr, Mention, ParticipantRole, TypedTime,
     ASSEMBLER_V1, EXTRACTOR_DETERMINISTIC_V1,

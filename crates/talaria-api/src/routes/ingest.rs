@@ -1,7 +1,7 @@
 // crates/talaria-api/src/routes/ingest.rs
 //! Two explicit ingest lanes:
-//! - **explorer** — Wikipedia/Wikidata life trace plus catalog-derived dated facts
-//! - **agora** — bibliographic catalogs + historiography (theories, theses, opinions)
+//! - **explorer** — Wikipedia biography + Wikidata (map/timeline life trace)
+//! - **agora** — catalogs + historiography (theses, controversies, works)
 
 use axum::{
     extract::{Path, State},
@@ -21,6 +21,7 @@ use crate::corpus_ingest::{self, live_corpus_providers};
 use crate::historiography;
 use crate::lot_e::{run_lot_e_density_ingest, write_minimal_seed_list};
 use talaria_sources::DensityTargets;
+use talaria_store::{density_report_counts, update_entity_qid, upsert_entity_with_kind};
 
 pub const LANE_EXPLORER: &str = "explorer";
 pub const LANE_AGORA: &str = "agora";
@@ -48,9 +49,28 @@ pub struct StartIngestBody {
     /// Soft cap on seed titles processed (explorer lane only).
     #[serde(default)]
     pub max_titles: Option<u32>,
+    /// Wikipedia pages fetched this run (explorer). Dated place/battle links fill the rest.
+    #[serde(default)]
+    pub max_documents: Option<u32>,
+    /// Wikipedia language, e.g. `fr`. Falls back to `WIKI_LANG`.
+    #[serde(default)]
+    pub wiki_lang: Option<String>,
     /// Per-provider document cap (agora lane only).
     #[serde(default)]
     pub corpus_limit: Option<u32>,
+}
+
+fn resolve_wiki_lang(requested: Option<&str>, fallback: &str) -> String {
+    requested
+        .map(str::trim)
+        .filter(|code| code.len() == 2 && code.chars().all(|c| c.is_ascii_alphabetic()))
+        .map(|code| code.to_ascii_lowercase())
+        .filter(|code| !code.is_empty())
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+fn resolve_max_documents(requested: Option<u32>) -> u32 {
+    requested.filter(|n| *n > 0).unwrap_or(400).min(400)
 }
 
 fn default_live() -> bool {
@@ -196,6 +216,30 @@ async fn start_lane_ingest(
         ));
     }
 
+    let entity_id = upsert_entity_with_kind(
+        &state.pool,
+        &state.config.wiki_lang,
+        &subject,
+        "person",
+    )
+    .await
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("entity_upsert: {e}") })),
+        )
+    })?;
+    if let Some(qid) = body
+        .qid
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        if let Err(error) = update_entity_qid(&state.pool, entity_id, qid).await {
+            tracing::warn!(%error, "qid update failed at ingest start");
+        }
+    }
+
     let job_id = Uuid::new_v4();
     let job = IngestJob {
         id: job_id,
@@ -203,7 +247,7 @@ async fn start_lane_ingest(
         subject: subject.clone(),
         qid: body.qid.clone(),
         status: "queued".into(),
-        entity_id: None,
+        entity_id: Some(entity_id),
         report: None,
         error: None,
     };
@@ -214,8 +258,9 @@ async fn start_lane_ingest(
     let qid = body.qid.clone();
     let subject_for_job = subject.clone();
     let max_titles = body.max_titles.filter(|n| *n > 0);
+    let max_documents = resolve_max_documents(body.max_documents);
     let corpus_limit = body.corpus_limit.filter(|n| *n > 0).unwrap_or(15);
-    let wiki_lang = config.wiki_lang.clone();
+    let wiki_lang = resolve_wiki_lang(body.wiki_lang.as_deref(), &config.wiki_lang);
     let lane_owned = lane.to_string();
 
     let mut start_extra = json!({
@@ -254,6 +299,7 @@ async fn start_lane_ingest(
                 &seed_list,
                 &wiki_lang,
                 max_titles,
+                max_documents,
             )
             .await
         } else {
@@ -272,7 +318,7 @@ async fn start_lane_ingest(
         };
         match result {
             Ok(report) => {
-                job.entity_id = parse_entity_id_from_report(&report);
+                job.entity_id = parse_entity_id_from_report(&report).or(job.entity_id);
                 job.report = Some(report);
                 job.status = "done".into();
             }
@@ -289,6 +335,9 @@ async fn start_lane_ingest(
         "status": "queued",
         "subject": subject,
         "qid": body.qid,
+        "entity_id": entity_id,
+        "timeline_events": 0,
+        "map_events": 0,
         "deduped": false,
         "mode": lane,
         "purpose": lane_purpose(lane),
@@ -313,11 +362,12 @@ async fn run_explorer_lane(
     seed_list: &std::path::Path,
     wiki_lang: &str,
     max_titles: Option<u32>,
+    max_documents: u32,
 ) -> anyhow::Result<Value> {
     let targets = DensityTargets {
         target_timeline_events: 500,
         target_map_events: 500,
-        max_documents: 400,
+        max_documents,
         max_linked_entities: 5_000,
         max_depth: 3,
         max_documents_per_source: 2_500,
@@ -333,32 +383,13 @@ async fn run_explorer_lane(
     )
     .await?;
     let wikipedia_wikidata = parse_json_report(&lot_e_text);
-
-    let catalog_facts = match crate::ingest::run_ingest_quality(
-        config,
-        subject,
-        qid,
-        Some(live_corpus_providers()),
-        false,
-        true,
-    )
-    .await
-    {
-        Ok(text) => parse_json_report(&text),
-        Err(error) => {
-            tracing::warn!(error = %error, "explorer catalog fact ingest failed");
-            json!({ "error": error.to_string() })
-        }
-    };
-
-    let entity_id = parse_entity_id_from_report(&wikipedia_wikidata)
-        .or_else(|| parse_entity_id_from_report(&catalog_facts));
+    let entity_id = parse_entity_id_from_report(&wikipedia_wikidata);
 
     Ok(json!({
         "lane": LANE_EXPLORER,
         "purpose": lane_purpose(LANE_EXPLORER),
         "wikipedia_wikidata": wikipedia_wikidata,
-        "catalog_facts": catalog_facts,
+        "enrichment": "agora",
         "subject": {
             "entity_id": entity_id.map(|id| id.to_string()),
             "label": subject,
@@ -409,7 +440,7 @@ fn parse_json_report(text: &str) -> Value {
 fn lane_purpose(lane: &str) -> &'static str {
     match lane {
         LANE_EXPLORER => {
-            "Dated life facts and anecdotes with places — geographic trace for the map and timeline"
+            "Wikipedia biography and Wikidata — dated life facts for the map and timeline"
         }
         LANE_AGORA => {
             "Theories, controversies, opinions, analyses, and academic works about the person"
@@ -422,12 +453,22 @@ pub async fn get_ingest_job(
     State(state): State<AppState>,
     Path(job_id): Path<Uuid>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let jobs = state.ingest_jobs.lock().await;
-    let Some(job) = jobs.get(&job_id) else {
+    let job = {
+        let jobs = state.ingest_jobs.lock().await;
+        jobs.get(&job_id).cloned()
+    };
+    let Some(job) = job else {
         return Err((
             StatusCode::NOT_FOUND,
             Json(json!({ "error": "job_not_found" })),
         ));
+    };
+    let (timeline_events, map_events) = match job.entity_id {
+        Some(entity_id) => match density_report_counts(&state.pool, Some(entity_id)).await {
+            Ok(counts) => (counts.timeline_eligible, counts.map_eligible),
+            Err(_) => (0, 0),
+        },
+        None => (0, 0),
     };
     Ok(Json(json!({
         "job_id": job.id,
@@ -437,6 +478,8 @@ pub async fn get_ingest_job(
         "subject": job.subject,
         "qid": job.qid,
         "entity_id": job.entity_id,
+        "timeline_events": timeline_events,
+        "map_events": map_events,
         "error": job.error,
         "report": job.report,
     })))
@@ -445,6 +488,26 @@ pub async fn get_ingest_job(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn start_response_exposes_entity_id_before_dump() {
+        let entity_id = Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap();
+        let job = IngestJob {
+            id: entity_id,
+            lane: LANE_EXPLORER.into(),
+            subject: "Baudelaire".into(),
+            qid: Some("Q501".into()),
+            status: "queued".into(),
+            entity_id: Some(entity_id),
+            report: None,
+            error: None,
+        };
+        let Json(body) = job_started_response(&job, false, json!({ "x": 1 }));
+        assert_eq!(
+            body.get("entity_id").and_then(|v| v.as_str()).unwrap(),
+            "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        );
+    }
 
     #[test]
     fn entity_id_reads_subject_pointer() {
@@ -476,6 +539,16 @@ mod tests {
                 "agora missing catalog {name}"
             );
         }
+    }
+
+    #[test]
+    fn explorer_request_can_pick_wiki_lang_and_document_budget() {
+        assert_eq!(resolve_wiki_lang(Some("fr"), "en"), "fr");
+        assert_eq!(resolve_wiki_lang(Some("FR"), "en"), "fr");
+        assert_eq!(resolve_wiki_lang(Some("nope"), "en"), "en");
+        assert_eq!(resolve_max_documents(Some(80)), 80);
+        assert_eq!(resolve_max_documents(Some(0)), 400);
+        assert_eq!(resolve_max_documents(Some(9_000)), 400);
     }
 
     #[test]

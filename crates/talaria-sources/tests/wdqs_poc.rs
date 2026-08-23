@@ -104,6 +104,7 @@ fn statements_carry_object_year_and_coords_for_extractor() {
         subject_label: Some("Napoleon".into()),
         document_type: "structured_statement".into(),
         subject_death_year: Some(1821),
+        ..Default::default()
     });
     let aust = raws
         .iter()

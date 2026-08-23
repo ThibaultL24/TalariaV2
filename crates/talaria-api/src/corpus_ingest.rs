@@ -154,6 +154,9 @@ pub async fn run_corpus_ingest(
             Some(OpenAlexConnector::from_fixture_dir(&dir)?)
         } else if live {
             let mut cfg = OpenAlexConfig::default();
+            cfg.api_key = std::env::var("OPENALEX_API_KEY")
+                .ok()
+                .filter(|s| !s.trim().is_empty());
             cfg.mailto = std::env::var("OPENALEX_MAILTO")
                 .ok()
                 .filter(|s| !s.trim().is_empty());

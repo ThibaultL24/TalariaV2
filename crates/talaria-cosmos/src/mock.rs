@@ -79,7 +79,7 @@ fn absorb_mock_carry(
     let lower = cleaned.to_lowercase();
     let page = page_title.unwrap_or("").trim();
     let page_lower = page.to_lowercase();
-    let Some((_, year_min, year_max)) = resolve_dense_subject(&cleaned, &page_lower) else {
+    let Some((_, year_min, year_max)) = resolve_dense_subject(&cleaned, page) else {
         return;
     };
     if lower.contains("statue")
@@ -458,7 +458,7 @@ fn try_prose_dense(
     carry_place: Option<&str>,
 ) -> Option<ExtractedTuple> {
     let page_lower = page_title.to_lowercase();
-    let (person, year_min, year_max) = resolve_dense_subject(text, &page_lower)?;
+    let (person, year_min, year_max) = resolve_dense_subject(text, page_title)?;
     let own_year = find_year_in_window(lower, year_min, year_max);
     let year = own_year.clone().or_else(|| {
         let surface = carry_year?;
@@ -508,78 +508,9 @@ fn resolve_dense_subject(text: &str, page_lower: &str) -> Option<(String, i32, i
         let window = subject_year_window(&person);
         return Some((person, window.0, window.1));
     }
-    const PAGE_SUBJECTS: &[(&str, &str, i32, i32)] = &[
-        ("napoleon", "Napoleon", 1765, 1865),
-        ("napoléon", "Napoleon", 1765, 1865),
-        ("marie curie", "Marie Curie", 1865, 1935),
-        ("curie", "Marie Curie", 1865, 1935),
-        ("victor hugo", "Victor Hugo", 1800, 1885),
-        ("leonardo", "Leonardo da Vinci", 1450, 1520),
-        ("columbus", "Christopher Columbus", 1440, 1510),
-        ("turing", "Alan Turing", 1910, 1960),
-        ("bletchley", "Alan Turing", 1910, 1960),
-        ("cleopatra", "Cleopatra", -80, 30),
-        ("balzac", "Honoré de Balzac", 1795, 1860),
-        ("comédie humaine", "Honoré de Balzac", 1795, 1860),
-        ("comedie humaine", "Honoré de Balzac", 1795, 1860),
-        ("père goriot", "Honoré de Balzac", 1795, 1860),
-        ("pere goriot", "Honoré de Balzac", 1795, 1860),
-        ("eugénie grandet", "Honoré de Balzac", 1795, 1860),
-        ("lost illusions", "Honoré de Balzac", 1795, 1860),
-        ("illusions perdues", "Honoré de Balzac", 1795, 1860),
-        ("cousin bette", "Honoré de Balzac", 1795, 1860),
-        ("french consulate", "Napoleon", 1765, 1865),
-        ("first french empire", "Napoleon", 1765, 1865),
-        ("hundred days", "Napoleon", 1765, 1865),
-        ("peninsular war", "Napoleon", 1765, 1865),
-        ("continental system", "Napoleon", 1765, 1865),
-        ("napoleonic", "Napoleon", 1765, 1865),
-        ("waterloo", "Napoleon", 1765, 1865),
-        ("austerlitz", "Napoleon", 1765, 1865),
-        ("tilsit", "Napoleon", 1765, 1865),
-        ("borodino", "Napoleon", 1765, 1865),
-        ("jena", "Napoleon", 1765, 1865),
-        ("wagram", "Napoleon", 1765, 1865),
-        ("marengo", "Napoleon", 1765, 1865),
-        ("eylau", "Napoleon", 1765, 1865),
-        ("friedland", "Napoleon", 1765, 1865),
-        ("leipzig", "Napoleon", 1765, 1865),
-        ("toulon", "Napoleon", 1765, 1865),
-        ("ligny", "Napoleon", 1765, 1865),
-        ("les misérables", "Victor Hugo", 1800, 1885),
-        ("les miserables", "Victor Hugo", 1800, 1885),
-        ("notre-dame de paris", "Victor Hugo", 1800, 1885),
-        ("hauteville", "Victor Hugo", 1800, 1885),
-        ("hernani", "Victor Hugo", 1800, 1885),
-        ("ruy blas", "Victor Hugo", 1800, 1885),
-        ("toilers of the sea", "Victor Hugo", 1800, 1885),
-        ("the man who laughs", "Victor Hugo", 1800, 1885),
-        ("mona lisa", "Leonardo da Vinci", 1450, 1520),
-        ("last supper", "Leonardo da Vinci", 1450, 1520),
-        ("vitruvian", "Leonardo da Vinci", 1450, 1520),
-        ("codex atlanticus", "Leonardo da Vinci", 1450, 1520),
-        ("clos lucé", "Leonardo da Vinci", 1450, 1520),
-        ("clos luce", "Leonardo da Vinci", 1450, 1520),
-        ("voyages of christopher", "Christopher Columbus", 1440, 1510),
-        ("palos de la frontera", "Christopher Columbus", 1440, 1510),
-        ("hispaniola", "Christopher Columbus", 1440, 1510),
-        ("hut 8", "Alan Turing", 1910, 1960),
-        ("enigma", "Alan Turing", 1910, 1960),
-        ("manchester mark", "Alan Turing", 1910, 1960),
-        ("automatic computing engine", "Alan Turing", 1910, 1960),
-        ("ptolemaic", "Cleopatra", -80, 30),
-        ("actium", "Cleopatra", -80, 30),
-        ("caesarion", "Cleopatra", -80, 30),
-        ("donations of alexandria", "Cleopatra", -80, 30),
-        ("radium", "Marie Curie", 1865, 1935),
-        ("polonium", "Marie Curie", 1865, 1935),
-        ("institut curie", "Marie Curie", 1865, 1935),
-        ("espci", "Marie Curie", 1865, 1935),
-    ];
-    for (needle, title, min, max) in PAGE_SUBJECTS {
-        if page_lower.contains(needle) {
-            return Some(((*title).into(), *min, *max));
-        }
+    let title = page_lower.split('(').next().unwrap_or(page_lower).trim();
+    if title.len() >= 2 {
+        return Some((title.to_string(), -4000, 2100));
     }
     None
 }
@@ -931,7 +862,7 @@ mod tests {
         let text = "The armies clashed on 18 June 1815 near the ridge.";
         let tuples = mock_extract_text(text, Some("Battle of Waterloo"));
         assert_eq!(tuples.len(), 1);
-        assert_eq!(tuples[0].person, "Napoleon");
+        assert_eq!(tuples[0].person, "Battle of Waterloo");
         assert_eq!(tuples[0].time, "1815");
         assert!(tuples[0].place.to_lowercase().contains("waterloo"));
         assert_eq!(tuples[0].verb.as_deref(), Some("fought"));

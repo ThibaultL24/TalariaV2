@@ -16,7 +16,8 @@ impl CandidateExtractor for PublicationExtractor {
     fn extract(&self, input: &ExtractorInput) -> Vec<RawCandidate> {
         let subject = input.effective_subject();
         let mut out = Vec::new();
-        for (i, line) in input.text.lines().enumerate() {
+        for (i, unit) in crate::extractors::split_prose_units(&input.text).into_iter().enumerate() {
+            let line = unit.as_str();
             let lower = line.to_lowercase();
             if !(lower.contains("published")
                 || lower.contains("wrote ")
@@ -71,6 +72,7 @@ mod tests {
             subject_label: Some("Charles Baudelaire".into()),
             document_type: "article".into(),
             subject_death_year: Some(1867),
+            ..Default::default()
         });
         assert_eq!(raws.len(), 1);
         assert_eq!(raws[0].event_type, "publication");

@@ -41,6 +41,15 @@ export interface StatusResponse {
     phrase_candidates: number;
     canonical_events: number;
     entity_profiles?: number;
+    claims?: number;
+  };
+  llm?: {
+    configured: boolean;
+    model: string;
+  };
+  catalogs?: {
+    openalex: boolean;
+    europeana: boolean;
   };
 }
 
@@ -293,10 +302,19 @@ export interface IngestJobResponse {
   subject: string;
   qid?: string | null;
   entity_id?: string | null;
+  timeline_events?: number;
+  map_events?: number;
   error?: string | null;
   report?: unknown;
   deduped?: boolean;
 }
+
+export function browserWikiLang(): string {
+  const lang = (navigator.language || "en").slice(0, 2).toLowerCase();
+  return /^[a-z]{2}$/.test(lang) ? lang : "en";
+}
+
+export const EXPLORER_INGEST_MAX_DOCUMENTS = 80;
 
 async function startLaneIngest(
   lane: IngestLane,
@@ -305,6 +323,8 @@ async function startLaneIngest(
     qid?: string | null;
     live?: boolean;
     maxTitles?: number;
+    maxDocuments?: number;
+    wikiLang?: string;
     corpusLimit?: number;
   },
 ): Promise<IngestJobResponse> {
@@ -316,6 +336,8 @@ async function startLaneIngest(
       qid: input.qid ?? undefined,
       live: input.live ?? true,
       max_titles: input.maxTitles,
+      max_documents: input.maxDocuments,
+      wiki_lang: input.wikiLang,
       corpus_limit: input.corpusLimit,
     }),
   });
@@ -332,8 +354,14 @@ export async function startExplorerIngest(input: {
   qid?: string | null;
   live?: boolean;
   maxTitles?: number;
+  maxDocuments?: number;
+  wikiLang?: string;
 }): Promise<IngestJobResponse> {
-  return startLaneIngest("explorer", input);
+  return startLaneIngest("explorer", {
+    ...input,
+    maxDocuments: input.maxDocuments ?? EXPLORER_INGEST_MAX_DOCUMENTS,
+    wikiLang: input.wikiLang ?? browserWikiLang(),
+  });
 }
 
 /** Historiography layer: corpus sources + soft claims (debates, theories). */
