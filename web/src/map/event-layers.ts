@@ -2,6 +2,7 @@
 
 import type { CircleLayerSpecification, SymbolLayerSpecification } from "maplibre-gl";
 import { MAP_LAYER_COLORS_DARK } from "@/components/map/map-colors";
+import { mapLibreLegendColorExpr } from "@/lib/event-legend";
 
 /** Mode clair — carte parchemin / OSM (couleurs d’origine). */
 export const clustersLayer: CircleLayerSpecification = {
@@ -49,7 +50,7 @@ export const unclusteredEventsLayer: CircleLayerSpecification = {
       1,
       9,
     ],
-    "circle-color": "#5b77be",
+    "circle-color": mapLibreLegendColorExpr() as unknown as string,
     "circle-stroke-width": 1.5,
     "circle-stroke-color": "#4a3728",
     "circle-opacity": 0.95,
@@ -108,17 +109,7 @@ export const unclusteredEventsLayerDark: CircleLayerSpecification = {
       1,
       9,
     ],
-    "circle-color": [
-      "interpolate",
-      ["linear"],
-      ["coalesce", ["get", "confidence"], ["get", "confidence_score"], 0.5],
-      0,
-      D.eventLow,
-      0.55,
-      D.eventMid,
-      1,
-      D.eventHigh,
-    ],
+    "circle-color": mapLibreLegendColorExpr() as unknown as string,
     "circle-stroke-width": 1.5,
     "circle-stroke-color": D.pointStroke,
     "circle-opacity": 0.98,
@@ -142,7 +133,7 @@ export const anecdotesLayer: CircleLayerSpecification = {
   source: "anecdotes",
   paint: {
     "circle-radius": 7,
-    "circle-color": "#c9a227",
+    "circle-color": mapLibreLegendColorExpr() as unknown as string,
     "circle-stroke-width": 1.5,
     "circle-stroke-color": "#4a3728",
     "circle-opacity": 0.95,
@@ -153,7 +144,7 @@ export const anecdotesLayerDark: CircleLayerSpecification = {
   ...anecdotesLayer,
   paint: {
     "circle-radius": 7,
-    "circle-color": D.anecdote,
+    "circle-color": mapLibreLegendColorExpr() as unknown as string,
     "circle-stroke-width": 1.5,
     "circle-stroke-color": D.pointStroke,
     "circle-opacity": 0.98,

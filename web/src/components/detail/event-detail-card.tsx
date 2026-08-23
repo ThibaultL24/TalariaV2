@@ -2,26 +2,16 @@
 import { useEffect, useRef, useState } from "react";
 import { formatDateLabel } from "@/lib/geo";
 import {
-  epistemicBadgeClass,
-  epistemicStatusLabel,
-  eventTypeLabel,
-} from "@/lib/event-taxonomy";
-import {
-  fetchEntityClaims,
   fetchEventDetail,
-  type EntityClaim,
   type EventDetailResponse,
   type EventSourceRef,
   type TimelineEvent,
 } from "@/lib/api";
 import { SourceRefsList } from "@/components/detail/source-refs-list";
-import { HowItHappened } from "@/components/detail/how-it-happened";
 import { EventImageHero } from "@/components/detail/event-image-hero";
-import { AgoraPanel } from "@/components/explorer/agora-panel";
-import {
-  resolveEventImage,
-  type ResolvedEventImage,
-} from "@/lib/resolve-event-image";
+import { CitedParagraph } from "@/components/detail/cited-paragraph";
+import { resolveEventImage, type ResolvedEventImage } from "@/lib/resolve-event-image";
+import { useI18n } from "@/lib/i18n";
 
 interface EventDetailCardProps {
   event: TimelineEvent;
@@ -30,20 +20,20 @@ interface EventDetailCardProps {
 }
 
 export function EventDetailCard({ event, onClose, offlineOnly = false }: EventDetailCardProps) {
+  const { t } = useI18n();
   const [detail, setDetail] = useState<EventDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [relatedDebates, setRelatedDebates] = useState<EntityClaim[]>([]);
   const [activeCite, setActiveCite] = useState<number | null>(null);
   const [image, setImage] = useState<ResolvedEventImage | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
+  const [sourcesOpen, setSourcesOpen] = useState(false);
   const sourcesRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setActiveCite(null);
-    setRelatedDebates([]);
-
+    setSourcesOpen(false);
     fetchEventDetail(event.id)
       .then((payload) => {
         if (!cancelled) setDetail(payload);
@@ -54,19 +44,6 @@ export function EventDetailCard({ event, onClose, offlineOnly = false }: EventDe
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
-
-    fetchEntityClaims(event.entity_id)
-      .then((items) => {
-        if (!cancelled) {
-          setRelatedDebates(
-            items.filter((claim) => claim.canonical_event_id === event.id),
-          );
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setRelatedDebates([]);
-      });
-
     return () => {
       cancelled = true;
     };
@@ -108,13 +85,13 @@ export function EventDetailCard({ event, onClose, offlineOnly = false }: EventDe
   }, [detail, offlineOnly]);
 
   const resolved = detail?.event ?? event;
-  const howItHappened =
-    detail?.narrative?.how_it_happened?.trim() ||
+  const summary =
     detail?.narrative?.event_summary?.trim() ||
+    detail?.narrative?.how_it_happened?.trim() ||
     detail?.narrative?.fact?.trim() ||
     resolved.summary?.trim() ||
     null;
-  const sourceRefs = resolveSourceRefs(detail);
+  const sourceRefs = collectSourceRefs(detail);
   const wikiLang =
     sourceRefs.find((ref) => ref.language)?.language ??
     detail?.evidence?.find((item) => item.wiki_lang)?.wiki_lang ??
@@ -122,162 +99,82 @@ export function EventDetailCard({ event, onClose, offlineOnly = false }: EventDe
 
   function focusCitation(index: number) {
     setActiveCite(index);
-    const node = document.getElementById(`source-ref-${index}`);
-    node?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    sourcesRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    setSourcesOpen(true);
+    window.setTimeout(() => {
+      document.getElementById(`source-ref-${index}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+      sourcesRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 50);
   }
+
+  const datePlace = [formatDateLabel(resolved.start_time), resolved.place_label]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-(--color-bg-elevated)">
-      <div className="flex items-center justify-between border-b border-(--color-border-subtle) p-4">
-        <h2 id="event-detail-card-title" className="text-base font-semibold">
-          Event details
-        </h2>
+      <div className="flex items-start justify-between gap-3 border-b border-(--color-border-subtle) p-4">
+        <div className="min-w-0">
+          <h2 id="event-detail-card-title" className="text-lg font-semibold leading-snug">
+            {resolved.title}
+          </h2>
+          {datePlace ? (
+            <p className="mt-1 text-sm text-(--color-text-secondary)">{datePlace}</p>
+          ) : null}
+        </div>
         <button
           type="button"
           onClick={onClose}
-          className="rounded p-1 hover:bg-(--color-bg-primary)"
-          aria-label="Close"
+          className="rounded p-1 text-xl leading-none hover:bg-(--color-bg-primary)"
+          aria-label={t.closeDetail}
         >
           ×
         </button>
       </div>
 
       <div className="flex-1 space-y-4 p-4">
-        <header>
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-(--color-text-secondary)">
-              {eventTypeLabel(resolved.event_type)}
-            </p>
-            <span
-              className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${epistemicBadgeClass(resolved.epistemic_status)}`}
-            >
-              {epistemicStatusLabel(resolved.epistemic_status)}
-            </span>
-          </div>
-          <h3 className="mt-1 text-lg font-semibold leading-snug text-(--color-text-primary)">
-            {resolved.title}
-          </h3>
-        </header>
-
-        {loading ? (
-          <p className="text-sm text-(--color-text-muted)">Loading sources…</p>
-        ) : null}
-
+        {loading ? <p className="text-sm text-(--color-text-muted)">{t.loading}</p> : null}
         <EventImageHero image={image} loading={imageLoading} />
-
-        {howItHappened ? (
-          <HowItHappened text={howItHappened} onCiteClick={focusCitation} />
+        {summary ? (
+          <section>
+            <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted)">
+              {t.summary}
+            </h3>
+            <CitedParagraph text={summary} onCiteClick={focusCitation} variant="lead" />
+          </section>
         ) : null}
 
-        <dl className="grid gap-2 text-sm">
-          <div>
-            <dt className="text-(--color-text-secondary)">Person</dt>
-            <dd className="font-medium text-(--color-text-primary)">{resolved.person}</dd>
-          </div>
-          <div>
-            <dt className="text-(--color-text-secondary)">Date</dt>
-            <dd className="font-medium text-(--color-text-primary)">
-              {formatDateLabel(resolved.start_time)}
-            </dd>
-          </div>
-          {resolved.place_label ? (
-            <div>
-              <dt className="text-(--color-text-secondary)">Place</dt>
-              <dd className="font-medium text-(--color-text-primary)">{resolved.place_label}</dd>
+        <section ref={sourcesRef}>
+          <button
+            type="button"
+            className="flex w-full items-center justify-between rounded-lg border border-(--color-border-subtle) px-3 py-2 text-left text-sm font-semibold"
+            onClick={() => setSourcesOpen((open) => !open)}
+            aria-expanded={sourcesOpen}
+          >
+            <span>
+              {t.sources}
+              {sourceRefs.length > 0 ? ` (${sourceRefs.length})` : ""}
+            </span>
+            <span className="text-(--color-text-muted)">{sourcesOpen ? "−" : "+"}</span>
+          </button>
+          {sourcesOpen ? (
+            <div className="mt-2">
+              <SourceRefsList
+                refs={sourceRefs}
+                wikiLang={wikiLang ?? undefined}
+                activeCitationIndex={activeCite}
+              />
             </div>
           ) : null}
-          <div>
-            <dt className="text-(--color-text-secondary)">Veracity</dt>
-            <dd className="font-medium text-(--color-text-primary)">
-              {epistemicStatusLabel(resolved.epistemic_status)}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-(--color-text-secondary)">Model confidence</dt>
-            <dd className="font-medium tabular-nums text-(--color-text-primary)">
-              {Math.round(resolved.confidence * 100)}%
-            </dd>
-          </div>
-        </dl>
-
-        {(detail?.links?.wikipedia_url ||
-          detail?.links?.wikipedia_revision_url ||
-          detail?.links?.wikidata_url) && (
-          <section className="border-t border-(--color-border-subtle) pt-4">
-            <h4 className="mb-2 text-sm font-semibold text-(--color-text-primary)">Useful links</h4>
-            <ul className="space-y-1 text-sm">
-              {detail.links.wikipedia_revision_url ? (
-                <li>
-                  <a
-                    href={detail.links.wikipedia_revision_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-(--color-accent-strong) hover:underline"
-                  >
-                    Wikipedia revision
-                  </a>
-                </li>
-              ) : null}
-              {detail.links.wikipedia_url ? (
-                <li>
-                  <a
-                    href={detail.links.wikipedia_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-(--color-accent-strong) hover:underline"
-                  >
-                    Wikipedia article
-                  </a>
-                </li>
-              ) : null}
-              {detail.links.wikidata_url ? (
-                <li>
-                  <a
-                    href={detail.links.wikidata_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-(--color-accent-strong) hover:underline"
-                  >
-                    Wikidata
-                  </a>
-                </li>
-              ) : null}
-            </ul>
-          </section>
-        )}
-
-        {relatedDebates.length > 0 ? (
-          <section className="border-t border-(--color-border-subtle) pt-4">
-            <h4 className="mb-2 text-sm font-semibold text-(--color-text-primary)">
-              Agora — linked debates
-            </h4>
-            <p className="mb-2 text-xs text-(--color-text-secondary)">
-              Historiographic interpretations for this event — not quality map facts.
-            </p>
-            <AgoraPanel claims={relatedDebates} claimsOnly />
-          </section>
-        ) : null}
-
-        <section ref={sourcesRef} className="border-t border-(--color-border-subtle) pt-4">
-          <h4 className="mb-2 text-sm font-semibold text-(--color-text-primary)">
-            Verifiable sources
-          </h4>
-          <p className="mb-3 text-xs leading-relaxed text-(--color-text-secondary)">
-            Each [n] in the dossier points here. Prefer revision links (oldid) for stable citations.
-          </p>
-          <SourceRefsList
-            refs={sourceRefs}
-            wikiLang={wikiLang ?? undefined}
-            activeCitationIndex={activeCite}
-          />
         </section>
       </div>
     </div>
   );
 }
 
-function resolveSourceRefs(detail: EventDetailResponse | null): EventSourceRef[] {
+function collectSourceRefs(detail: EventDetailResponse | null): EventSourceRef[] {
   if (!detail) return [];
   if (detail.source_refs && detail.source_refs.length > 0) return detail.source_refs;
   return (detail.evidence ?? []).map((item, index) => ({
@@ -290,9 +187,6 @@ function resolveSourceRefs(detail: EventDetailResponse | null): EventSourceRef[]
     snippet: item.quoted_text ?? item.sentence_text,
     quote: item.quoted_text ?? item.sentence_text,
     label: item.wiki_title ? `Wikipedia — ${item.wiki_title}` : "Wikipedia",
-    section_title:
-      item.sentence_ordinal != null ? `sentence ${item.sentence_ordinal}` : null,
-    sentence_ordinal: item.sentence_ordinal,
     url: item.citation_url ?? item.revision_url ?? item.page_url,
     source_url: item.citation_url ?? item.revision_url ?? item.page_url,
     wikipedia_url: item.page_url,
