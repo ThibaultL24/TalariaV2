@@ -9,9 +9,10 @@ use crate::connector::{
     SourceConnector,
 };
 use crate::connectors::catalog::http_client;
-use crate::kinds::{DiscoveryMethod, DocumentType, SourceKind};
+use crate::corpus::NormalizedCorpusDocument;
+use crate::kinds::{AcademicStatus, AccessLevel, DiscoveryMethod, DocumentType, SourceKind};
 use crate::plan::ResolvedSubject;
-use crate::types::{DiscoveredDocument, ExternalEntityRef, SourceMetadata};
+use crate::types::{DiscoveredDocument, ExternalEntityRef, SourceMetadata, TypedTimeLite};
 
 const API: &str = "https://fr.wikisource.org/w/api.php";
 const CONNECTOR_VERSION: &str = "wikisource:fr_v1";
@@ -313,6 +314,91 @@ pub fn parse_fetch_page(json: &Value) -> Option<(String, Value)> {
     Some((text, metadata))
 }
 
+fn page_id_external(metadata: &Value) -> Option<String> {
+    match metadata.get("page_id") {
+        Some(Value::Number(n)) => Some(n.to_string()),
+        Some(Value::String(s)) if !s.is_empty() && s != "null" => Some(s.clone()),
+        _ => None,
+    }
+}
+
+fn proofread_level(wikitext: &str) -> Option<String> {
+    let has_marker = wikitext.contains("{{PR") || wikitext.contains("ProofreadPage");
+    if !has_marker {
+        return None;
+    }
+    if wikitext.to_ascii_lowercase().contains("problematic") {
+        Some("problematic".into())
+    } else {
+        Some("proofread".into())
+    }
+}
+
+/// Map a Wikisource page to a corpus document (primary source; never an Event).
+pub fn normalize_wikisource(
+    document: &DiscoveredDocument,
+    wikitext: &str,
+    metadata: &Value,
+) -> Result<NormalizedCorpusDocument, ConnectorError> {
+    let external_id = page_id_external(metadata).unwrap_or_else(|| document.title.clone());
+    let genre = document
+        .source_metadata
+        .raw
+        .get("genre")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(|| classify_genre(&document.title, wikitext, &[]).to_string());
+
+    let mut raw = document.source_metadata.raw.clone();
+    if let Some(obj) = metadata.as_object() {
+        for (key, value) in obj {
+            if key != "normalized" {
+                raw[key] = value.clone();
+            }
+        }
+    }
+    raw["genre"] = Value::String(genre);
+    raw["wiki"] = Value::String("frwikisource".into());
+    if let Some(level) = proofread_level(wikitext) {
+        raw["proofread_level"] = Value::String(level);
+    }
+
+    let mut doc = NormalizedCorpusDocument {
+        source_kind: SourceKind::Wikisource,
+        external_id,
+        canonical_url: document.canonical_url.clone(),
+        document_type: document.document_type.clone(),
+        title: document.title.clone(),
+        language: document.language.clone(),
+        abstract_text: None,
+        academic_status: AcademicStatus::PrimarySource,
+        access_level: AccessLevel::Open,
+        full_text_available: !wikitext.trim().is_empty(),
+        rights_uri: Some("https://creativecommons.org/licenses/by-sa/4.0/".into()),
+        rights_holder: Some("Wikisource".into()),
+        rights_normalized: AccessLevel::Open,
+        publisher_or_institution: Some("Wikisource".into()),
+        publication_time: TypedTimeLite::Unknown { surface: None },
+        identifiers: vec![],
+        contributions: vec![],
+        subjects: vec![],
+        connector_version: CONNECTOR_VERSION.into(),
+        snapshot_text: wikitext.to_string(),
+        revision_token: None,
+        raw_metadata: raw,
+    };
+    let fp = doc.content_fingerprint();
+    doc.revision_token = metadata
+        .get("revision_id")
+        .and_then(|v| match v {
+            Value::Number(n) => Some(n.to_string()),
+            Value::String(s) if !s.is_empty() => Some(s.clone()),
+            _ => None,
+        })
+        .or(Some(fp));
+    Ok(doc)
+}
+
 fn fallback_index_livre_titles(title: &str) -> Vec<String> {
     if is_skipped_discover_title(title) {
         return Vec::new();
@@ -411,13 +497,18 @@ impl SourceConnector for WikisourceConnector {
             Value::String(s) => Some(s.clone()),
             _ => None,
         });
+        let normalized = normalize_wikisource(document, &text, &metadata)?;
+        let mut raw_metadata = metadata;
+        raw_metadata["title"] = Value::String(document.title.clone());
+        raw_metadata["normalized"] = serde_json::to_value(&normalized)
+            .map_err(|e| ConnectorError::Parse(e.to_string()))?;
         let bytes = text.len() as u64;
         Ok(FetchedDocument {
             discovered: document.clone(),
             revision_id,
             content_type: "text/x-wiki".into(),
             text,
-            raw_metadata: metadata,
+            raw_metadata,
             license: Some("CC BY-SA".into()),
             content_bytes: bytes,
         })

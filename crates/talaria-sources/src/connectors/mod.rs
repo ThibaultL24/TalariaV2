@@ -36,7 +36,8 @@ pub use theses_fr::{
 pub use wikidata::{WikidataSourceConnector, WikidataSourceConnectorConfig};
 pub use wikipedia::{WikipediaConnector, WikipediaConnectorConfig};
 pub use wikisource::{
-    WikisourceConnector, classify_genre, parse_search_titles, parse_siteinfo_namespaces,
+    WikisourceConnector, classify_genre, normalize_wikisource, parse_fetch_page,
+    parse_search_titles, parse_siteinfo_namespaces,
 };
 
 use std::sync::Arc;

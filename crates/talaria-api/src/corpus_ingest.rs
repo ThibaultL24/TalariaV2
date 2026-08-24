@@ -9,12 +9,13 @@ use talaria_sources::connectors::{
     default_registry_with_corpus, normalize_hal_doc, BnfConfig, BnfConnector, CorpusConnectors,
     EuropeanaConfig, EuropeanaConnector, HalConnector, InternetArchiveConfig,
     InternetArchiveConnector, OpenAlexConfig, OpenAlexConnector, PerseeConnector, ThesesFrConfig,
-    ThesesFrConnector,
+    ThesesFrConnector, WikisourceConnector,
 };
 use talaria_sources::{
     match_resolved_subject_to_document, normalize_bnf_notice, normalize_europeana_item,
-    normalize_ia_item, normalize_openalex_work, normalize_these_detail, AccessLevel,
-    DiscoveredDocument, NormalizedCorpusDocument, ResolvedSubject, SourceKind, TypedTimeLite,
+    normalize_ia_item, normalize_openalex_work, normalize_these_detail, normalize_wikisource,
+    AccessLevel, DiscoveredDocument, NormalizedCorpusDocument, ResolvedSubject, SourceKind,
+    TypedTimeLite,
 };
 use talaria_store::{
     connect, finish_discovery_run, insert_document_snapshot, link_corpus_snapshot,
@@ -432,6 +433,23 @@ fn extract_normalized(
                 .cloned()
                 .unwrap_or_else(|| raw_metadata.clone());
             Ok(Some(normalize_hal_doc(&provider)?))
+        }
+        SourceKind::Wikisource => {
+            let title = raw_metadata
+                .get("title")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .unwrap_or("");
+            if title.is_empty() {
+                return Ok(None);
+            }
+            let wikitext = raw_metadata
+                .get("wikitext")
+                .or_else(|| raw_metadata.get("snapshot_text"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let doc = WikisourceConnector::document_from_title(title);
+            Ok(Some(normalize_wikisource(&doc, wikitext, raw_metadata)?))
         }
         _ => Ok(None),
     }

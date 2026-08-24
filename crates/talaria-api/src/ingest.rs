@@ -312,10 +312,14 @@ pub async fn run_ingest_quality(
                 mark_discovered_snapshotted(&pool, doc_id, snapshot_id).await?;
                 metrics.documents_snapshotted += 1;
 
-                let is_wiki = kind == SourceKind::Wikipedia
-                    && crate::wiki_persist::wikipedia_quality_uses_wiki_fragments(
-                        fetched.raw_metadata.get("source_form").and_then(|v| v.as_str()),
-                    );
+                let is_wiki = persist_as_wiki_fragments(&kind)
+                    && (kind != SourceKind::Wikipedia
+                        || crate::wiki_persist::wikipedia_quality_uses_wiki_fragments(
+                            fetched
+                                .raw_metadata
+                                .get("source_form")
+                                .and_then(|v| v.as_str()),
+                        ));
                 let (frag_id, sentences) = if is_wiki {
                     match crate::wiki_persist::persist_wiki_fragments(
                         &pool,
@@ -347,6 +351,10 @@ pub async fn run_ingest_quality(
                     metrics.fragments += 1;
                     (frag_id, vec![(frag_id, fetched.text.clone())])
                 };
+
+                if skip_event_extractors(&kind) {
+                    continue;
+                }
 
                 let plain = fetched
                     .raw_metadata
@@ -424,6 +432,14 @@ pub async fn run_ingest_quality(
     let report = build_ingest_report(&pool, &subject, subject_id, &metrics).await?;
     print!("{report}");
     Ok(report)
+}
+
+fn persist_as_wiki_fragments(kind: &SourceKind) -> bool {
+    matches!(kind, SourceKind::Wikipedia | SourceKind::Wikisource)
+}
+
+fn skip_event_extractors(kind: &SourceKind) -> bool {
+    matches!(kind, SourceKind::Wikisource)
 }
 
 fn filter_includes_wikidata(sources: &[String]) -> bool {
@@ -1039,4 +1055,20 @@ pub async fn print_density_snapshot(config: &AppConfig, subject: &str) {
         "  ↳ {subject}: {} quality events  ({} map_eligible / {} timeline_eligible)",
         counts.accepted_events, counts.map_eligible, counts.timeline_eligible,
     );
+}
+
+#[cfg(test)]
+mod wikisource_skip_tests {
+    use super::{persist_as_wiki_fragments, skip_event_extractors};
+    use talaria_sources::SourceKind;
+
+    #[test]
+    fn wikisource_persists_wiki_fragments_but_skips_event_extractors() {
+        assert!(persist_as_wiki_fragments(&SourceKind::Wikisource));
+        assert!(persist_as_wiki_fragments(&SourceKind::Wikipedia));
+        assert!(!persist_as_wiki_fragments(&SourceKind::Gallica));
+        assert!(skip_event_extractors(&SourceKind::Wikisource));
+        assert!(!skip_event_extractors(&SourceKind::Wikipedia));
+        assert!(!skip_event_extractors(&SourceKind::Gallica));
+    }
 }

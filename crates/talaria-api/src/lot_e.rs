@@ -1786,7 +1786,7 @@ pub fn connector_status_json() -> String {
     serde_json::to_string_pretty(&serde_json::json!({
         "wikipedia": "extraction_ready",
         "wikidata": "fetch_ready",
-        "wikisource": "stub",
+        "wikisource": "extraction_ready",
         "commons": "stub",
         "fixture": "production_ready",
         "bnf": "extraction_ready",
@@ -1805,7 +1805,7 @@ pub fn connector_status_json() -> String {
         "isni": "metadata_only",
         "openalex": "extraction_ready",
         "crossref": "stub",
-        "note": "Executable with --live from explorer search or ingest-quality: wikipedia, wikidata, hal, persee, gallica, theses_fr, open_library, open_alex, internet_archive, bnf. Europeana needs EUROPEANA_API_KEY."
+        "note": "Executable with --live from explorer search or ingest-quality: wikipedia, wikidata, wikisource, hal, persee, gallica, theses_fr, open_library, open_alex, internet_archive, bnf. Europeana needs EUROPEANA_API_KEY. Commons remains a stub."
     }))
     .unwrap_or_else(|_| "{}".into())
 }
@@ -2346,5 +2346,17 @@ mod persist_error_propagation_tests {
             !ingest_persist.contains(".await;"),
             "ingest must not swallow persist errors"
         );
+    }
+}
+
+#[cfg(test)]
+mod connector_status_tests {
+    use super::connector_status_json;
+
+    #[test]
+    fn connector_status_marks_wikisource_extraction_ready() {
+        let v: serde_json::Value = serde_json::from_str(&connector_status_json()).unwrap();
+        assert_eq!(v["wikisource"], "extraction_ready");
+        assert_eq!(v["commons"], "stub");
     }
 }
