@@ -10,6 +10,7 @@ pub mod dump_runs;
 pub mod entities;
 pub mod intuition;
 pub mod judgments;
+pub mod media;
 pub mod multi_source;
 pub mod phrase_candidates;
 pub mod person_events;
@@ -67,6 +68,7 @@ pub use intuition::{
     IntuitionPublicationRow, QualityConflictRow, SoftClaimExportRow,
 };
 pub use judgments::insert_judgment;
+pub use media::{upsert_media_asset, MediaAssetInsert};
 pub use multi_source::{
     add_claim_support, density_report_counts, finish_discovery_run, link_claim_to_event,
     list_place_labels_for_occurrence_stem, mark_discovered_skipped, mark_discovered_snapshotted,
