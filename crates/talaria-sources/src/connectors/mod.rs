@@ -1,6 +1,7 @@
 // crates/talaria-sources/src/connectors/mod.rs
 mod bnf;
 mod catalog;
+mod commons;
 mod europeana;
 mod fixture;
 mod gallica;
@@ -17,6 +18,7 @@ mod wikipedia;
 mod wikisource;
 
 pub use bnf::{BnfConfig, BnfConnector, normalize_bnf_notice};
+pub use commons::{CommonsAsset, parse_mediainfo};
 pub use europeana::{EuropeanaConfig, EuropeanaConnector, normalize_europeana_item};
 pub use fixture::FixtureConnector;
 pub use gallica::GallicaConnector;
