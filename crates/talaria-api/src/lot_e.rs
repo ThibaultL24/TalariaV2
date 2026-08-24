@@ -1446,15 +1446,15 @@ fn is_military_occupation_qid(qid: &str) -> bool {
 pub(crate) async fn persist_wikibase_entity_statements(
     pool: &sqlx::PgPool,
     entity: &serde_json::Value,
-) {
+) -> anyhow::Result<()> {
     let parsed = talaria_wikidata::parse_entity_claims(entity);
-    persist_parsed_wikibase_statements(pool, &parsed).await;
+    persist_parsed_wikibase_statements(pool, &parsed).await
 }
 
 pub(crate) async fn persist_parsed_wikibase_statements(
     pool: &sqlx::PgPool,
     parsed: &[talaria_wikidata::ParsedStatement],
-) {
+) -> anyhow::Result<()> {
     for stmt in parsed {
         let Some(revision_id) = stmt.insert.revision_id.clone() else {
             continue;
@@ -1470,14 +1470,9 @@ pub(crate) async fn persist_parsed_wikibase_statements(
             references_json: stmt.insert.references_json.clone(),
             revision_id: Some(revision_id),
         };
-        if let Err(e) = upsert_wikibase_statement(pool, &row).await {
-            tracing::warn!(
-                error = %e,
-                guid = %stmt.insert.guid,
-                "wikibase statement upsert failed"
-            );
-        }
+        upsert_wikibase_statement(pool, &row).await?;
     }
+    Ok(())
 }
 
 pub(crate) async fn fetch_wikidata_subject_meta(
@@ -1640,7 +1635,7 @@ pub(crate) async fn fetch_wikidata_subject_meta(
 
     let parsed = talaria_wikidata::parse_entity_claims(&entity);
     if let Some(pool) = pool {
-        persist_parsed_wikibase_statements(pool, &parsed).await;
+        persist_parsed_wikibase_statements(pool, &parsed).await?;
     }
     let statements_text = talaria_wikidata::promoted_statement_lines(&parsed);
 
@@ -2325,4 +2320,60 @@ pub async fn run_exploration_report(config: &AppConfig, subject: &str) -> anyhow
         "exploration_queue_by_status": queue.iter().map(|(s,n)| serde_json::json!({"status": s, "n": n})).collect::<Vec<_>>(),
         "note": "Lot E primarily drives exploration from fixtures/seeds/napoleon_wiki_titles.txt; exploration_targets table is ready for resume/queue."
     }))?)
+}
+
+#[cfg(test)]
+mod persist_error_propagation_tests {
+    #[test]
+    fn persist_wikibase_statements_propagates_upsert_errors() {
+        let lot_e = include_str!("lot_e.rs");
+        let persist_fn = lot_e
+            .split("fn persist_parsed_wikibase_statements")
+            .nth(1)
+            .expect("persist helper")
+            .split("fn fetch_wikidata_subject_meta")
+            .next()
+            .expect("fetch meta follows persist");
+        assert!(
+            persist_fn.contains("anyhow::Result"),
+            "persist helper must return Result"
+        );
+        assert!(
+            persist_fn.contains("upsert_wikibase_statement(pool, &row).await?"),
+            "first upsert error must propagate with ?"
+        );
+        assert!(
+            !persist_fn.contains("tracing::warn!"),
+            "must not log-and-continue on upsert failure"
+        );
+
+        let fetch_fn = lot_e
+            .split("fn fetch_wikidata_subject_meta")
+            .nth(1)
+            .expect("fetch meta")
+            .split("fn fetch_wikipedia_article_links")
+            .next()
+            .expect("links fetch follows meta");
+        assert!(
+            fetch_fn.contains("persist_parsed_wikibase_statements(pool, &parsed).await?"),
+            "fetch_wikidata_subject_meta must not discard persist Result"
+        );
+
+        let ingest = include_str!("ingest.rs");
+        let ingest_persist = ingest
+            .split("crate::lot_e::persist_wikibase_entity_statements")
+            .nth(1)
+            .expect("ingest persist call")
+            .split("counters.record_call")
+            .next()
+            .expect("counters follow persist");
+        assert!(
+            ingest_persist.contains(".await?"),
+            "ingest Wikidata persist must propagate with ?"
+        );
+        assert!(
+            !ingest_persist.contains(".await;"),
+            "ingest must not swallow persist errors"
+        );
+    }
 }

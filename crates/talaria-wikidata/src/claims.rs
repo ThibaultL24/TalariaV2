@@ -157,6 +157,7 @@ fn statement_has_date(stmt: &Value) -> bool {
 
 fn event_year(stmt: &Value) -> Option<i32> {
     qualifier_time(stmt, "P580")
+        .or_else(|| qualifier_time(stmt, "P582"))
         .or_else(|| qualifier_time(stmt, "P585"))
         .or_else(|| snak_time(stmt.get("mainsnak").unwrap_or(&Value::Null)))
         .map(|t| t.year)
@@ -441,6 +442,53 @@ mod tests {
         assert_eq!(
             promoted_statement_lines(&parsed),
             "STATEMENT\tbirth\tborn_in\t1769\t"
+        );
+    }
+
+    #[test]
+    fn p551_end_time_only_uses_p582_year() {
+        let entity = json!({
+            "id": "Q517",
+            "lastrevid": 7,
+            "claims": {
+                "P551": [{
+                    "id": "Q517$p551-end",
+                    "rank": "normal",
+                    "mainsnak": {
+                        "snaktype": "value",
+                        "property": "P551",
+                        "datavalue": { "value": { "id": "Q90" } }
+                    },
+                    "qualifiers": {
+                        "P582": [{
+                            "snaktype": "value",
+                            "property": "P582",
+                            "datavalue": {
+                                "value": {
+                                    "time": "+1814-04-06T00:00:00Z",
+                                    "precision": 11
+                                },
+                                "type": "time"
+                            }
+                        }]
+                    }
+                }]
+            }
+        });
+        let parsed = parse_entity_claims(&entity);
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(
+            parsed[0].event,
+            Some((
+                "residence".into(),
+                "resided_in".into(),
+                Some(1814),
+                Some("Q90".into())
+            ))
+        );
+        assert_eq!(
+            promoted_statement_lines(&parsed),
+            "STATEMENT\tresidence\tresided_in\t1814\tQ90"
         );
     }
 

@@ -278,7 +278,7 @@ pub async fn run_ingest_quality(
                         &pool,
                         &fetched.raw_metadata,
                     )
-                    .await;
+                    .await?;
                 }
                 let _ = counters.record_call(&budgets);
                 let _ = counters.record_document(kind.as_str(), &budgets, fetched.content_bytes);
