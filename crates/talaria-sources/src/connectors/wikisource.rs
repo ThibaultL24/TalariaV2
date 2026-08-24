@@ -316,6 +316,29 @@ fn fallback_index_livre_titles(title: &str) -> Vec<String> {
     vec![format!("Index:{title}"), format!("Livre:{title}")]
 }
 
+/// Merge live search + Auteur: link results when no sitelink identifiers exist.
+fn merge_live_discover(
+    search: Result<Vec<String>, ConnectorError>,
+    links: Result<Vec<String>, ConnectorError>,
+) -> Result<Vec<String>, ConnectorError> {
+    let search_ok = search.is_ok();
+    let links_ok = links.is_ok();
+    if !search_ok && !links_ok {
+        return Err(search.err().unwrap_or_else(|| links.unwrap_err()));
+    }
+
+    let mut titles = Vec::new();
+    let mut seen = HashSet::new();
+    for hits in [search, links].into_iter().filter_map(Result::ok) {
+        for title in hits {
+            if seen.insert(title.clone()) {
+                titles.push(title);
+            }
+        }
+    }
+    Ok(titles)
+}
+
 #[async_trait]
 impl SourceConnector for WikisourceConnector {
     fn source_kind(&self) -> SourceKind {
@@ -340,23 +363,10 @@ impl SourceConnector for WikisourceConnector {
 
         let (had_sitelink, mut titles) = sitelink_titles(subject);
         if titles.is_empty() && !had_sitelink {
-            let mut seen = HashSet::new();
-            if let Ok(hits) = self.search_titles(&subject.label).await {
-                for title in hits {
-                    if is_skipped_discover_title(&title) || !seen.insert(title.clone()) {
-                        continue;
-                    }
-                    titles.push(title);
-                }
-            }
-            if let Ok(links) = self.auteur_links(&subject.label).await {
-                for title in links {
-                    if is_skipped_discover_title(&title) || !seen.insert(title.clone()) {
-                        continue;
-                    }
-                    titles.push(title);
-                }
-            }
+            let search = self.search_titles(&subject.label).await;
+            let links = self.auteur_links(&subject.label).await;
+            titles = merge_live_discover(search, links)?;
+            titles.retain(|title| !is_skipped_discover_title(title));
         }
 
         titles.truncate(self.max_docs as usize);
@@ -625,6 +635,35 @@ mod tests {
         let (text, meta) = parse_fetch_page(&json).unwrap();
         assert!(text.is_empty());
         assert_eq!(meta["wiki"], "frwikisource");
+    }
+
+    fn http_err(msg: &str) -> ConnectorError {
+        ConnectorError::Http(msg.into())
+    }
+
+    #[test]
+    fn merge_live_discover_both_err_returns_first_err() {
+        let err = merge_live_discover(
+            Err(http_err("search down")),
+            Err(http_err("links down")),
+        );
+        assert!(matches!(err, Err(ConnectorError::Http(ref m)) if m == "search down"));
+    }
+
+    #[test]
+    fn merge_live_discover_one_ok_with_titles_keeps_titles() {
+        let titles = merge_live_discover(
+            Ok(vec!["Correspondance".into()]),
+            Err(http_err("links down")),
+        )
+        .unwrap();
+        assert_eq!(titles, vec!["Correspondance".to_string()]);
+    }
+
+    #[test]
+    fn merge_live_discover_both_ok_empty_returns_empty() {
+        let titles = merge_live_discover(Ok(vec![]), Ok(vec![])).unwrap();
+        assert!(titles.is_empty());
     }
 
     #[test]
