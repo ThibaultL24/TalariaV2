@@ -6,6 +6,8 @@ pub struct WikiSectionSpan {
     pub ordinal: i32,
     pub title: String,
     pub wikitext: String,
+    pub start_offset: i32,
+    pub end_offset: i32,
 }
 
 /// Split wikitext on `== Heading ==` (and deeper) markers.
@@ -13,38 +15,87 @@ pub struct WikiSectionSpan {
 pub fn split_wiki_sections(wikitext: &str) -> Vec<WikiSectionSpan> {
     let mut sections = Vec::new();
     let mut current_title = "Lead".to_string();
-    let mut current_body = String::new();
     let mut ordinal = 0i32;
+    let mut body_start = 0usize;
+    let mut byte_pos = 0usize;
 
     for line in wikitext.lines() {
+        let line_end = byte_pos + line.len();
+        let nl_len = newline_len(wikitext, line_end);
+
         if let Some(title) = parse_heading(line) {
-            let body = current_body.trim();
-            if !body.is_empty() || ordinal == 0 {
-                sections.push(WikiSectionSpan {
+            let raw = wikitext.get(body_start..byte_pos).unwrap_or("");
+            if !raw.trim().is_empty() || ordinal == 0 {
+                push_section(
+                    &mut sections,
+                    wikitext,
                     ordinal,
-                    title: current_title.clone(),
-                    wikitext: body.to_string(),
-                });
+                    current_title.clone(),
+                    body_start,
+                    byte_pos,
+                );
                 ordinal += 1;
             }
             current_title = title;
-            current_body.clear();
+            body_start = line_end + nl_len;
+            byte_pos = body_start;
             continue;
         }
-        current_body.push_str(line);
-        current_body.push('\n');
+        byte_pos = line_end + nl_len;
     }
 
-    let body = current_body.trim();
-    if !body.is_empty() || sections.is_empty() {
-        sections.push(WikiSectionSpan {
+    let raw = wikitext.get(body_start..).unwrap_or("");
+    if !raw.trim().is_empty() || sections.is_empty() {
+        push_section(
+            &mut sections,
+            wikitext,
             ordinal,
-            title: current_title,
-            wikitext: body.to_string(),
-        });
+            current_title,
+            body_start,
+            wikitext.len(),
+        );
     }
 
     sections
+}
+
+fn push_section(
+    sections: &mut Vec<WikiSectionSpan>,
+    wikitext: &str,
+    ordinal: i32,
+    title: String,
+    body_start: usize,
+    body_end: usize,
+) {
+    let raw = wikitext.get(body_start..body_end).unwrap_or("");
+    let body = raw.trim();
+    let leading = raw.len() - raw.trim_start().len();
+    let start_byte = body_start + leading;
+    let end_byte = start_byte + body.len();
+    sections.push(WikiSectionSpan {
+        ordinal,
+        title,
+        wikitext: body.to_string(),
+        start_offset: char_offset(wikitext, start_byte),
+        end_offset: char_offset(wikitext, end_byte),
+    });
+}
+
+fn newline_len(s: &str, at: usize) -> usize {
+    let rest = s.get(at..).unwrap_or("");
+    if rest.starts_with("\r\n") {
+        2
+    } else if rest.starts_with('\n') {
+        1
+    } else {
+        0
+    }
+}
+
+fn char_offset(s: &str, byte: usize) -> i32 {
+    s.get(..byte)
+        .map(|prefix| prefix.chars().count() as i32)
+        .unwrap_or_else(|| s.chars().count() as i32)
 }
 
 fn parse_heading(line: &str) -> Option<String> {
