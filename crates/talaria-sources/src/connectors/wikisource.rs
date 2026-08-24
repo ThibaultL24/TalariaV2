@@ -31,6 +31,10 @@ impl WikisourceConnector {
         })
     }
 
+    fn cap(&self) -> u32 {
+        self.max_docs.min(15)
+    }
+
     pub fn document_from_title(title: &str) -> DiscoveredDocument {
         Self::parse_discover_from_sitelink(title)
     }
@@ -66,7 +70,7 @@ impl WikisourceConnector {
     }
 
     async fn search_titles(&self, label: &str) -> Result<Vec<String>, ConnectorError> {
-        let limit = self.max_docs.to_string();
+        let limit = self.cap().to_string();
         let response = self
             .http
             .get(API)
@@ -369,7 +373,7 @@ impl SourceConnector for WikisourceConnector {
             titles.retain(|title| !is_skipped_discover_title(title));
         }
 
-        titles.truncate(self.max_docs as usize);
+        titles.truncate(self.cap() as usize);
         let documents = titles
             .into_iter()
             .map(|title| Self::document_from_title(&title))
@@ -564,6 +568,18 @@ mod tests {
         let page = conn.discover(&subject, None).await.unwrap();
         assert_eq!(page.documents.len(), 1);
         assert_eq!(page.documents[0].title, "Correspondance de Napoléon");
+    }
+
+    #[tokio::test]
+    async fn discover_clamps_to_fifteen_even_when_max_docs_higher() {
+        let mut conn = WikisourceConnector::new().unwrap();
+        conn.max_docs = 100;
+        let ids = (1..=20)
+            .map(|n| ("frwikisource".into(), format!("Doc {n}")))
+            .collect();
+        let subject = napoleon_with_ids(ids);
+        let page = conn.discover(&subject, None).await.unwrap();
+        assert_eq!(page.documents.len(), 15);
     }
 
     #[tokio::test]
