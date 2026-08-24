@@ -151,12 +151,36 @@ fn snak_label(snak: Option<&Value>) -> Option<String> {
             .and_then(Value::as_str)
             .map(strip_html_tags)
             .filter(|s| !s.is_empty()),
-        "wikibase-entityid" => datavalue
-            .pointer("/value/id")
+        "monolingualtext" => datavalue
+            .pointer("/value/text")
             .and_then(Value::as_str)
-            .map(str::to_string),
+            .map(strip_html_tags)
+            .filter(|s| !s.is_empty()),
+        "wikibase-entityid" => entity_value_label(datavalue.get("value")),
         _ => None,
     }
+}
+
+/// Human-readable label from an expanded entity-id value; QIDs alone are not attribution.
+fn entity_value_label(value: Option<&Value>) -> Option<String> {
+    let value = value?;
+    if let Some(text) = value.get("text").and_then(Value::as_str) {
+        let cleaned = strip_html_tags(text);
+        if !cleaned.is_empty() {
+            return Some(cleaned);
+        }
+    }
+    label_from_labels_map(value.get("labels"))
+}
+
+fn label_from_labels_map(labels: Option<&Value>) -> Option<String> {
+    let labels = labels?.as_object()?;
+    labels
+        .get("en")
+        .or_else(|| labels.values().next())
+        .and_then(|entry| entry.get("value").and_then(Value::as_str))
+        .map(strip_html_tags)
+        .filter(|s| !s.is_empty())
 }
 
 fn depicts_from_entity(entity: &Value) -> Vec<String> {
@@ -228,5 +252,26 @@ mod tests {
         assert!(a.attribution_text.contains("Louvre"));
         assert_eq!(a.depicts_qids, ["Q517"]);
         assert_eq!(a.rights_normalized, "open");
+    }
+
+    #[test]
+    fn mediainfo_p170_qid_without_label_falls_back_to_extmetadata() {
+        let entity = serde_json::json!({"id":"M456","statements":{
+            "P170":[{"mainsnak":{"snaktype":"value","property":"P170","datavalue":{
+                "type":"wikibase-entityid",
+                "value":{"entity-type":"item","numeric-id":1,"id":"Q1"}
+            }}}]
+        }});
+        let info = serde_json::json!([{
+            "thumburl":"https://upload.wikimedia.org/thumb/y.jpg",
+            "mime":"image/jpeg",
+            "extmetadata":{
+                "Artist":{"value":"Louvre"},
+                "LicenseShortName":{"value":"CC BY-SA 4.0"}
+            }
+        }]);
+        let a = parse_mediainfo(&entity, Some(&info)).unwrap();
+        assert!(a.attribution_text.contains("Louvre"));
+        assert!(!a.attribution_text.contains("Q1"));
     }
 }
