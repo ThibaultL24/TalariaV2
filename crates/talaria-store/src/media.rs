@@ -20,8 +20,16 @@ pub struct MediaAssetInsert {
     pub corpus_document_id: Option<Uuid>,
 }
 
-pub async fn upsert_media_asset(pool: &PgPool, row: &MediaAssetInsert) -> anyhow::Result<Uuid> {
-    let sql = if row.mid.is_some() {
+fn is_pg_unique_violation(err: &anyhow::Error) -> bool {
+    err.downcast_ref::<sqlx::Error>()
+        .and_then(sqlx::Error::as_database_error)
+        .and_then(|db| db.code())
+        .map(|code| code == "23505")
+        .unwrap_or(false)
+}
+
+async fn insert_on_mid(pool: &PgPool, row: &MediaAssetInsert) -> anyhow::Result<Uuid> {
+    let id: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO media_assets (
             commons_file, mid, sha1, mime, license, attribution_text,
@@ -42,8 +50,28 @@ pub async fn upsert_media_asset(pool: &PgPool, row: &MediaAssetInsert) -> anyhow
             entity_id = EXCLUDED.entity_id,
             corpus_document_id = EXCLUDED.corpus_document_id
         RETURNING id
-        "#
-    } else {
+        "#,
+    )
+    .bind(&row.commons_file)
+    .bind(&row.mid)
+    .bind(&row.sha1)
+    .bind(&row.mime)
+    .bind(&row.license)
+    .bind(&row.attribution_text)
+    .bind(&row.thumb_url)
+    .bind(&row.depicts_qids)
+    .bind(&row.revision_id)
+    .bind(&row.rights_normalized)
+    .bind(&row.entity_id)
+    .bind(&row.corpus_document_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(id)
+}
+
+async fn insert_on_file_sha1(pool: &PgPool, row: &MediaAssetInsert) -> anyhow::Result<Uuid> {
+    let id: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO media_assets (
             commons_file, mid, sha1, mime, license, attribution_text,
@@ -63,26 +91,39 @@ pub async fn upsert_media_asset(pool: &PgPool, row: &MediaAssetInsert) -> anyhow
             entity_id = EXCLUDED.entity_id,
             corpus_document_id = EXCLUDED.corpus_document_id
         RETURNING id
-        "#
-    };
-
-    let id: Uuid = sqlx::query_scalar(sql)
-        .bind(&row.commons_file)
-        .bind(&row.mid)
-        .bind(&row.sha1)
-        .bind(&row.mime)
-        .bind(&row.license)
-        .bind(&row.attribution_text)
-        .bind(&row.thumb_url)
-        .bind(&row.depicts_qids)
-        .bind(&row.revision_id)
-        .bind(&row.rights_normalized)
-        .bind(&row.entity_id)
-        .bind(&row.corpus_document_id)
-        .fetch_one(pool)
-        .await?;
+        "#,
+    )
+    .bind(&row.commons_file)
+    .bind(&row.mid)
+    .bind(&row.sha1)
+    .bind(&row.mime)
+    .bind(&row.license)
+    .bind(&row.attribution_text)
+    .bind(&row.thumb_url)
+    .bind(&row.depicts_qids)
+    .bind(&row.revision_id)
+    .bind(&row.rights_normalized)
+    .bind(&row.entity_id)
+    .bind(&row.corpus_document_id)
+    .fetch_one(pool)
+    .await?;
 
     Ok(id)
+}
+
+pub async fn upsert_media_asset(pool: &PgPool, row: &MediaAssetInsert) -> anyhow::Result<Uuid> {
+    let first = if row.mid.is_some() {
+        insert_on_mid(pool, row).await
+    } else {
+        insert_on_file_sha1(pool, row).await
+    };
+    match first {
+        Ok(id) => Ok(id),
+        Err(e) if is_pg_unique_violation(&e) && row.mid.is_some() => {
+            insert_on_file_sha1(pool, row).await
+        }
+        Err(e) => Err(e),
+    }
 }
 
 #[cfg(test)]
@@ -109,6 +150,11 @@ mod tests {
         assert!(prod.contains("ON CONFLICT (mid) WHERE mid IS NOT NULL DO UPDATE SET"));
         assert!(prod.contains("ON CONFLICT (commons_file, sha1) DO UPDATE SET"));
         assert!(prod.contains("RETURNING id"));
+        assert!(
+            prod.contains("is_pg_unique_violation") || prod.contains("23505"),
+            "production source must detect Postgres unique violations"
+        );
+        assert!(prod.contains("insert_on_file_sha1"));
     }
 
     #[test]
