@@ -21,15 +21,10 @@ use talaria_sources::extractors::{
 };
 use talaria_sources::connectors::net::send_retrying;
 use talaria_sources::{
-<<<<<<< HEAD
-    dated_wikilink_titles, first_year_in_window, is_followable_map_title, is_plausible_place_label,
-    lifespan_year_window, load_seed_titles, merge_seed_titles, place_hint_from_title,
-    resolve_place_offline, DensityProgress, DensityTargets, ResolvedSubject,
-=======
-    dated_wikilink_titles, first_year_in_window, has_military_signal, is_plausible_place_label,
-    keep_military_typed_event, lifespan_year_window, load_seed_titles, merge_seed_titles,
-    place_hint_from_title, resolve_place_offline, DensityProgress, DensityTargets, ResolvedSubject,
->>>>>>> 139d330bf46b4f4b13318e4536bd284b49df5b3a
+    dated_wikilink_titles, first_year_in_window, has_military_signal, is_followable_map_title,
+    is_plausible_place_label, keep_military_typed_event, lifespan_year_window, load_seed_titles,
+    merge_seed_titles, place_hint_from_title, resolve_place_offline, DensityProgress,
+    DensityTargets, ResolvedSubject,
 };
 use talaria_store::{
     add_claim_support, apply_coords_to_event, apply_place_to_quality_event, connect,
@@ -555,6 +550,7 @@ pub async fn run_lot_e_density_ingest(
                     end_offset: text.len() as i32,
                     clause_index: None,
                     ordinal: 0,
+                    metadata: serde_json::json!({}),
                 },
             )
             .await?;
@@ -1670,6 +1666,7 @@ async fn ingest_memory_document(
             end_offset: text.len() as i32,
             clause_index: None,
             ordinal: 0,
+            metadata: serde_json::json!({}),
         },
     )
     .await?;

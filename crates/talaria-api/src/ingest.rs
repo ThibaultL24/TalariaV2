@@ -318,6 +318,7 @@ pub async fn run_ingest_quality(
                         end_offset: fetched.text.len() as i32,
                         clause_index: None,
                         ordinal: 0,
+                        metadata: serde_json::json!({}),
                     },
                 )
                 .await?;
@@ -434,6 +435,7 @@ pub async fn ingest_wdqs_events(
             end_offset: text.len() as i32,
             clause_index: None,
             ordinal: 0,
+            metadata: serde_json::json!({}),
         },
     )
     .await?;

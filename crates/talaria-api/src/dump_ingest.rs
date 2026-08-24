@@ -594,6 +594,7 @@ async fn persist_one_document(
                             end_offset: frag.end_offset,
                             clause_index: None,
                             ordinal: frag.ordinal,
+                            metadata: serde_json::json!({}),
                         },
                     )
                     .await?;

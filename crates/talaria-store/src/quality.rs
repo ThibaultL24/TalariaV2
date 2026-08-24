@@ -120,6 +120,7 @@ pub struct DocumentFragmentInsert {
     pub end_offset: i32,
     pub clause_index: Option<i32>,
     pub ordinal: i32,
+    pub metadata: serde_json::Value,
 }
 
 pub async fn insert_document_fragment(
@@ -131,9 +132,9 @@ pub async fn insert_document_fragment(
             r#"
             INSERT INTO document_fragments (
                 snapshot_id, fragment_kind, parent_fragment_id, sentence_id,
-                text, start_offset, end_offset, clause_index, ordinal
+                text, start_offset, end_offset, clause_index, ordinal, metadata
             )
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
             ON CONFLICT (snapshot_id, ordinal) WHERE fragment_kind = 'sentence'
             DO NOTHING
             RETURNING id
@@ -148,6 +149,7 @@ pub async fn insert_document_fragment(
         .bind(frag.end_offset)
         .bind(frag.clause_index)
         .bind(frag.ordinal)
+        .bind(&frag.metadata)
         .fetch_optional(pool)
         .await?;
         if let Some((id,)) = row {
@@ -171,9 +173,9 @@ pub async fn insert_document_fragment(
             r#"
             INSERT INTO document_fragments (
                 snapshot_id, fragment_kind, parent_fragment_id, sentence_id,
-                text, start_offset, end_offset, clause_index, ordinal
+                text, start_offset, end_offset, clause_index, ordinal, metadata
             )
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
             ON CONFLICT (parent_fragment_id, clause_index) WHERE fragment_kind = 'clause'
             DO NOTHING
             RETURNING id
@@ -188,6 +190,7 @@ pub async fn insert_document_fragment(
         .bind(frag.end_offset)
         .bind(frag.clause_index)
         .bind(frag.ordinal)
+        .bind(&frag.metadata)
         .fetch_optional(pool)
         .await?;
         if let Some((id,)) = row {
@@ -210,9 +213,9 @@ pub async fn insert_document_fragment(
         r#"
         INSERT INTO document_fragments (
             snapshot_id, fragment_kind, parent_fragment_id, sentence_id,
-            text, start_offset, end_offset, clause_index, ordinal
+            text, start_offset, end_offset, clause_index, ordinal, metadata
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
         RETURNING id
         "#,
     )
@@ -225,6 +228,7 @@ pub async fn insert_document_fragment(
     .bind(frag.end_offset)
     .bind(frag.clause_index)
     .bind(frag.ordinal)
+    .bind(&frag.metadata)
     .fetch_one(pool)
     .await?;
     Ok(id)
@@ -942,4 +946,49 @@ pub async fn reject_if_singleton_exists(
     )
     .await?;
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn insert_document_fragment_binds_metadata_as_tenth_param() {
+        let src = include_str!("quality.rs");
+        let prod = src.split("#[cfg(test)]").next().expect("prod source");
+        let tenth = prod.matches("VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)").count();
+        assert_eq!(
+            tenth, 3,
+            "all three INSERT branches must bind metadata as $10"
+        );
+        assert!(prod.contains("text, start_offset, end_offset, clause_index, ordinal, metadata"));
+    }
+
+    #[test]
+    fn document_fragment_insert_carries_json_metadata() {
+        let frag = DocumentFragmentInsert {
+            snapshot_id: Uuid::nil(),
+            fragment_kind: "section".into(),
+            parent_fragment_id: None,
+            sentence_id: None,
+            text: "== Life ==".into(),
+            start_offset: 0,
+            end_offset: 10,
+            clause_index: None,
+            ordinal: 0,
+            metadata: serde_json::json!({"heading": "Life"}),
+        };
+        assert_eq!(frag.metadata["heading"], "Life");
+        assert_eq!(frag.fragment_kind, "section");
+    }
+
+    #[test]
+    fn migration_023_extends_fragment_kinds_and_adds_metadata() {
+        let sql = include_str!("../../../migrations/023_wiki_fragment_metadata.sql");
+        assert!(sql.contains("'section'"));
+        assert!(sql.contains("'infobox'"));
+        assert!(sql.contains("metadata JSONB NOT NULL DEFAULT '{}'::jsonb"));
+        assert!(sql.contains("document_fragments_fragment_kind_check"));
+        assert!(sql.contains("document_fragments_clause_check"));
+    }
 }
