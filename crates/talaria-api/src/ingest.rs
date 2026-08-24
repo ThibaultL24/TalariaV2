@@ -27,7 +27,8 @@ use talaria_store::{
     find_active_quality_event_by_occurrence_key, finish_discovery_run,
     get_event_candidate_by_fingerprint, insert_document_fragment, insert_document_snapshot,
     insert_quality_canonical_event, link_claim_to_event, mark_candidate_assembled,
-    mark_discovered_skipped, mark_discovered_snapshotted, quality_lifespan_years,
+    mark_discovered_corpus_document, mark_discovered_skipped, mark_discovered_snapshotted,
+    quality_lifespan_years,
     reinforce_quality_event, reject_if_singleton_exists, start_discovery_run,
     update_event_candidate_judgment, update_entity_qid, upsert_discovered_document,
     upsert_entity_with_kind, upsert_event_candidate, upsert_quality_claim,
@@ -357,14 +358,16 @@ pub async fn run_ingest_quality(
                         &kind,
                         &fetched.raw_metadata,
                     )? {
-                        crate::corpus_ingest::persist_normalized(
-                            &pool,
-                            &kind,
-                            &doc,
-                            &normalized,
-                            Some(snapshot_id),
-                        )
-                        .await?;
+                        let (corpus_id, _snapshot_id, _snapshot_new) =
+                            crate::corpus_ingest::persist_normalized(
+                                &pool,
+                                &kind,
+                                &doc,
+                                &normalized,
+                                Some(snapshot_id),
+                            )
+                            .await?;
+                        mark_discovered_corpus_document(&pool, doc_id, corpus_id).await?;
                     }
                     continue;
                 }
@@ -1083,6 +1086,19 @@ mod wikisource_skip_tests {
         assert!(skip_event_extractors(&SourceKind::Wikisource));
         assert!(!skip_event_extractors(&SourceKind::Wikipedia));
         assert!(!skip_event_extractors(&SourceKind::Gallica));
+    }
+
+    #[test]
+    fn skip_event_extractors_branch_links_discovered_to_corpus() {
+        let source = include_str!("ingest.rs");
+        let branch = source
+            .split("if skip_event_extractors(&kind)")
+            .nth(1)
+            .expect("skip_event_extractors branch");
+        assert!(
+            branch.contains("mark_discovered_corpus_document"),
+            "skip-extractor branch should link discovered docs to corpus rows"
+        );
     }
 
     #[test]
