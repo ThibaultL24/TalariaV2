@@ -18,6 +18,7 @@ pub mod pool;
 pub mod profiles;
 pub mod quality;
 pub mod sentences;
+pub mod wikibase;
 pub mod wiki_pages;
 pub mod wiki_sections;
 
@@ -108,6 +109,7 @@ pub use sentences::{
     list_sentences_for_dump_mine, list_sentences_for_extraction, replace_sentences_for_page,
     SentenceRecord, SentenceRow,
 };
+pub use wikibase::{upsert_wikibase_statement, WikibaseStatementInsert};
 pub use wiki_pages::{
     list_pages_for_sentence_split, store_extracted_page, WikiPageRecord, WikiPageRow,
 };
