@@ -1,6 +1,8 @@
 // crates/talaria-text/src/fragments.rs
 //! Split Wikipedia wikitext into infobox, section, and sentence fragments.
 
+use std::collections::HashMap;
+
 use crate::infobox::{extract_wikilinks, parse_infobox_fields, WikiLink};
 use crate::sections::{split_wiki_sections, WikiSectionSpan};
 use crate::sentences::split_sentences;
@@ -42,6 +44,21 @@ pub fn extract_refs(wikitext: &str) -> Vec<FragmentCitation> {
         .into_iter()
         .map(|r| r.citation)
         .collect()
+}
+
+/// Fill `qid` on wikilinks whose `target_title` (then `surface`) is in `titles`.
+/// Unmatched links keep `qid: None`.
+pub fn apply_title_qids(frags: &mut [WikiContentFragment], titles: &HashMap<String, String>) {
+    for frag in frags {
+        for link in &mut frag.internal_links {
+            if let Some(qid) = titles
+                .get(&link.target_title)
+                .or_else(|| titles.get(&link.surface))
+            {
+                link.qid = Some(qid.clone());
+            }
+        }
+    }
 }
 
 pub fn fragment_wikitext(wikitext: &str) -> Vec<WikiContentFragment> {
@@ -316,5 +333,48 @@ Il régna jusqu'en 1814.
         assert!(crown.internal_links.iter().any(|l| l.target_title == "Paris"));
         assert!(crown.citations.iter().any(|c| c.text.contains("Tulard")));
         assert!(frags.iter().filter(|f| f.kind == "sentence").count() >= 2);
+    }
+
+    #[test]
+    fn apply_title_qids_fills_matched_links_and_leaves_unmatched_none() {
+        let mut frags = fragment_wikitext(NAP);
+        let mut titles = std::collections::HashMap::new();
+        titles.insert("Paris".into(), "Q90".into());
+        apply_title_qids(&mut frags, &titles);
+        let paris = frags
+            .iter()
+            .flat_map(|f| &f.internal_links)
+            .find(|l| l.target_title == "Paris")
+            .expect("Paris link");
+        assert_eq!(paris.qid.as_deref(), Some("Q90"));
+        let ajaccio = frags
+            .iter()
+            .flat_map(|f| &f.internal_links)
+            .find(|l| l.target_title == "Ajaccio")
+            .expect("Ajaccio link");
+        assert_eq!(ajaccio.qid, None);
+    }
+
+    #[test]
+    fn apply_title_qids_matches_surface_when_target_missing() {
+        let mut frags = vec![WikiContentFragment {
+            kind: "sentence",
+            parent_section_ordinal: None,
+            ordinal: 0,
+            text: "Paris".into(),
+            start_offset: 0,
+            end_offset: 5,
+            section_path: vec!["Lead".into()],
+            internal_links: vec![FragmentLink {
+                surface: "Paris".into(),
+                target_title: "Paris, France".into(),
+                qid: None,
+            }],
+            citations: Vec::new(),
+        }];
+        let mut titles = std::collections::HashMap::new();
+        titles.insert("Paris".into(), "Q90".into());
+        apply_title_qids(&mut frags, &titles);
+        assert_eq!(frags[0].internal_links[0].qid.as_deref(), Some("Q90"));
     }
 }

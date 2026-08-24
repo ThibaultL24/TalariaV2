@@ -1,16 +1,29 @@
 // crates/talaria-sources/src/wiki_fragments.rs
+use std::collections::HashMap;
+
 use talaria_store::DocumentFragmentInsert;
-use talaria_text::fragment_wikitext;
+use talaria_text::{apply_title_qids, fragment_wikitext};
 use uuid::Uuid;
 
 /// Map wikitext fragments to store inserts. Parent ids stay `None`;
 /// sentence `metadata.parent_section_ordinal` is how the caller wires parents.
 pub fn fragment_inserts(snapshot_id: Uuid, wikitext: &str) -> Vec<DocumentFragmentInsert> {
+    fragment_inserts_with_titles(snapshot_id, wikitext, &HashMap::new())
+}
+
+pub fn fragment_inserts_with_titles(
+    snapshot_id: Uuid,
+    wikitext: &str,
+    titles: &HashMap<String, String>,
+) -> Vec<DocumentFragmentInsert> {
+    let mut parsed = fragment_wikitext(wikitext);
+    apply_title_qids(&mut parsed, titles);
+
     let mut infoboxes = Vec::new();
     let mut sections = Vec::new();
     let mut sentences = Vec::new();
 
-    for f in fragment_wikitext(wikitext) {
+    for f in parsed {
         let insert = DocumentFragmentInsert {
             snapshot_id,
             fragment_kind: f.kind.to_string(),
@@ -138,5 +151,33 @@ mod tests {
         assert!(inserts[..first_sentence]
             .iter()
             .all(|i| i.fragment_kind == "infobox" || i.fragment_kind == "section"));
+    }
+
+    #[test]
+    fn injected_title_qids_land_in_metadata() {
+        let wikitext = "Napoléon fut couronné à [[Paris]] le 2 décembre 1804.\n";
+        let mut titles = std::collections::HashMap::new();
+        titles.insert("Paris".into(), "Q90".into());
+        let inserts = fragment_inserts_with_titles(uuid::Uuid::nil(), wikitext, &titles);
+        let paris_qid = inserts.iter().find_map(|i| {
+            i.metadata
+                .get("internal_links")?
+                .as_array()?
+                .iter()
+                .find(|l| l.get("target_title").and_then(|v| v.as_str()) == Some("Paris"))
+                .and_then(|l| l.get("qid").and_then(|v| v.as_str()))
+                .map(str::to_string)
+        });
+        assert_eq!(paris_qid.as_deref(), Some("Q90"));
+        let unmatched = fragment_inserts(uuid::Uuid::nil(), wikitext);
+        let unmatched_qid = unmatched.iter().find_map(|i| {
+            i.metadata
+                .get("internal_links")?
+                .as_array()?
+                .iter()
+                .find(|l| l.get("target_title").and_then(|v| v.as_str()) == Some("Paris"))
+                .and_then(|l| l.get("qid"))
+        });
+        assert_eq!(unmatched_qid, Some(&serde_json::Value::Null));
     }
 }

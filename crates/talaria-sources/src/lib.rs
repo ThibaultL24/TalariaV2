@@ -67,7 +67,7 @@ pub use seeds::{
     merge_seed_titles, merge_seed_titles_for, subject_surname,
 };
 pub use types::{DiscoveredDocument, ExternalEntityRef, SourceMetadata, TypedTimeLite};
-pub use wiki_fragments::fragment_inserts;
+pub use wiki_fragments::{fragment_inserts, fragment_inserts_with_titles};
 
 pub use connectors::{
     normalize_bnf_notice, normalize_europeana_item, normalize_ia_item, normalize_openalex_work,
