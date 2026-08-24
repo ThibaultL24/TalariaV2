@@ -877,7 +877,7 @@ async fn persist_lot_e_fragments(
     snapshot_id: Uuid,
     payload: &crate::wiki_persist::WikipediaSnapshotPayload,
 ) -> anyhow::Result<(Uuid, Vec<(Uuid, String)>)> {
-    if payload.source_form == "wiki" {
+    if crate::wiki_persist::wikipedia_quality_uses_wiki_fragments(Some(payload.source_form)) {
         if let Ok(set) =
             crate::wiki_persist::persist_wiki_fragments(pool, snapshot_id, &payload.text).await
         {

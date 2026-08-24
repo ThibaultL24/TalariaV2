@@ -26,6 +26,17 @@ pub fn looks_like_wikitext(text: &str) -> bool {
     text.contains("{{") || text.contains("\n==") || text.starts_with("==")
 }
 
+/// Skip re-insert when the snapshot already has fragments (`existing_frags == 0`).
+pub fn should_insert_wiki_fragments(existing_count: i64) -> bool {
+    existing_count == 0
+}
+
+/// Quality ingest / Lot E: persist wiki fragments unless `source_form` is plaintext.
+/// Dump files still use [`looks_like_wikitext`].
+pub fn wikipedia_quality_uses_wiki_fragments(source_form: Option<&str>) -> bool {
+    source_form != Some("plain")
+}
+
 pub fn pageprops_qid(page: &serde_json::Value) -> Option<String> {
     page.pointer("/pageprops/wikibase_item")
         .and_then(|v| v.as_str())
@@ -185,6 +196,17 @@ pub async fn persist_wiki_fragments(
     snapshot_id: Uuid,
     wikitext: &str,
 ) -> anyhow::Result<WikiFragmentSet> {
+    let existing: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint FROM document_fragments WHERE snapshot_id = $1
+        "#,
+    )
+    .bind(snapshot_id)
+    .fetch_one(pool)
+    .await?;
+    if !should_insert_wiki_fragments(existing) {
+        return existing_wiki_fragment_set(pool, snapshot_id).await;
+    }
     let inserts = talaria_sources::fragment_inserts(snapshot_id, wikitext);
     let mut section_ids = HashMap::<i32, Uuid>::new();
     let mut first_sentence = None;
@@ -217,6 +239,39 @@ pub async fn persist_wiki_fragments(
         first_sentence,
         sentences,
         total,
+    })
+}
+
+async fn existing_wiki_fragment_set(
+    pool: &sqlx::PgPool,
+    snapshot_id: Uuid,
+) -> anyhow::Result<WikiFragmentSet> {
+    let sentences: Vec<(Uuid, String)> = sqlx::query_as(
+        r#"
+        SELECT id, text FROM document_fragments
+        WHERE snapshot_id = $1 AND fragment_kind = 'sentence'
+        ORDER BY ordinal ASC
+        "#,
+    )
+    .bind(snapshot_id)
+    .fetch_all(pool)
+    .await?;
+    let total: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint FROM document_fragments WHERE snapshot_id = $1
+        "#,
+    )
+    .bind(snapshot_id)
+    .fetch_one(pool)
+    .await?;
+    let first_sentence = sentences
+        .first()
+        .map(|(id, _)| *id)
+        .ok_or_else(|| anyhow::anyhow!("no sentence fragments"))?;
+    Ok(WikiFragmentSet {
+        first_sentence,
+        sentences,
+        total: total as usize,
     })
 }
 
@@ -314,6 +369,30 @@ mod tests {
         assert_eq!(
             fragment_id_for_clause("no match", &sentences, fallback),
             fallback
+        );
+    }
+
+    #[test]
+    fn skip_insert_when_snapshot_already_has_fragments() {
+        assert!(should_insert_wiki_fragments(0));
+        assert!(!should_insert_wiki_fragments(1));
+        assert!(!should_insert_wiki_fragments(12));
+    }
+
+    #[test]
+    fn quality_ingest_wikipedia_without_wikitext_heuristic() {
+        let lead = "Napoleon Bonaparte was born in Ajaccio in 1769 and later crowned emperor.";
+        assert!(
+            !looks_like_wikitext(lead),
+            "looks_like_wikitext stays dump-only"
+        );
+        assert!(wikipedia_quality_uses_wiki_fragments(Some("wiki")));
+        assert!(wikipedia_quality_uses_wiki_fragments(None));
+        assert!(!wikipedia_quality_uses_wiki_fragments(Some("plain")));
+        let inserts = talaria_sources::fragment_inserts(Uuid::nil(), lead);
+        assert!(
+            inserts.iter().any(|i| i.fragment_kind == "sentence"),
+            "lead-only wikitext without {{{{ or == must still fragment"
         );
     }
 }

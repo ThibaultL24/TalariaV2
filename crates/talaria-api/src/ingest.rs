@@ -306,9 +306,9 @@ pub async fn run_ingest_quality(
                 metrics.documents_snapshotted += 1;
 
                 let is_wiki = kind == SourceKind::Wikipedia
-                    && fetched.raw_metadata.get("source_form").and_then(|v| v.as_str())
-                        != Some("plain")
-                    && crate::wiki_persist::looks_like_wikitext(&fetched.text);
+                    && crate::wiki_persist::wikipedia_quality_uses_wiki_fragments(
+                        fetched.raw_metadata.get("source_form").and_then(|v| v.as_str()),
+                    );
                 let (frag_id, sentences) = if is_wiki {
                     match crate::wiki_persist::persist_wiki_fragments(
                         &pool,
