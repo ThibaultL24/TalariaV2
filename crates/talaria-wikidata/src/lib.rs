@@ -12,8 +12,8 @@ pub use claims::{
 };
 pub use client::{WikidataClient, WikidataSearchHit};
 pub use dump::{
-    for_each_entity, slugify, stream_humans, DumpIngestStats, WikidataHuman, WikidataProfileRef,
-    WikidataSitelink,
+    for_each_entity, slugify, stream_entities_for_qids, stream_humans, DumpIngestStats,
+    WikidataHuman, WikidataProfileRef, WikidataSitelink,
 };
 pub use geocode::{geocode_place_label, GeocodedPlace};
 pub use promote::promote_event;
