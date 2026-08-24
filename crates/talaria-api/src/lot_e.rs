@@ -1404,28 +1404,6 @@ fn snak_qid(snak: &serde_json::Value) -> Option<String> {
         .map(str::to_string)
 }
 
-fn snak_time_year(snak: &serde_json::Value) -> Option<i32> {
-    snak.pointer("/datavalue/value/time")
-        .and_then(|v| v.as_str())
-        .and_then(parse_wd_year)
-}
-
-fn claim_year(claim: &serde_json::Value) -> Option<i32> {
-    snak_time_year(claim.get("mainsnak")?)
-        .or_else(|| {
-            claim
-                .pointer("/qualifiers/P580/0/datavalue/value/time")
-                .and_then(|v| v.as_str())
-                .and_then(parse_wd_year)
-        })
-        .or_else(|| {
-            claim
-                .pointer("/qualifiers/P585/0/datavalue/value/time")
-                .and_then(|v| v.as_str())
-                .and_then(parse_wd_year)
-        })
-}
-
 fn is_military_occupation_qid(qid: &str) -> bool {
     matches!(
         qid,
@@ -1502,6 +1480,8 @@ pub(crate) async fn fetch_wikidata_subject_meta(
         .cloned()
         .ok_or_else(|| anyhow::anyhow!("missing wikidata entity {qid}"))?;
 
+    let parsed = talaria_wikidata::parse_entity_claims(&entity);
+
     let sitelink_key = format!("{lang}wiki");
     let wiki_title = entity
         .pointer(&format!("/sitelinks/{sitelink_key}/title"))
@@ -1511,16 +1491,8 @@ pub(crate) async fn fetch_wikidata_subject_meta(
         .map(str::to_string);
 
     let claims = entity.get("claims").cloned().unwrap_or(serde_json::json!({}));
-    let birth_year = claims
-        .get("P569")
-        .and_then(|a| a.as_array())
-        .and_then(|a| a.first())
-        .and_then(claim_year);
-    let death_year = claims
-        .get("P570")
-        .and_then(|a| a.as_array())
-        .and_then(|a| a.first())
-        .and_then(claim_year);
+    let birth_year = talaria_wikidata::identity_year(&parsed, "P569");
+    let death_year = talaria_wikidata::identity_year(&parsed, "P570");
 
     let mut related_qids: Vec<String> = Vec::new();
     let mut occupation_qids: Vec<String> = Vec::new();
@@ -1633,7 +1605,6 @@ pub(crate) async fn fetch_wikidata_subject_meta(
         tokio::time::sleep(Duration::from_millis(150)).await;
     }
 
-    let parsed = talaria_wikidata::parse_entity_claims(&entity);
     if let Some(pool) = pool {
         persist_parsed_wikibase_statements(pool, &parsed).await?;
     }

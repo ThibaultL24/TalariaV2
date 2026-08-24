@@ -7,7 +7,9 @@ mod promote;
 mod search_rank;
 mod time;
 
-pub use claims::{parse_entity_claims, promoted_statement_lines, ParsedStatement, StatementInsert};
+pub use claims::{
+    identity_year, parse_entity_claims, promoted_statement_lines, ParsedStatement, StatementInsert,
+};
 pub use client::{WikidataClient, WikidataSearchHit};
 pub use dump::{
     for_each_entity, slugify, stream_humans, DumpIngestStats, WikidataHuman, WikidataProfileRef,

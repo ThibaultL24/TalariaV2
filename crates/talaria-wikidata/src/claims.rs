@@ -54,6 +54,16 @@ pub fn parse_entity_claims(entity: &Value) -> Vec<ParsedStatement> {
     parsed
 }
 
+/// Active identity year (P569/P570): preferred beats normal; deprecated is excluded.
+pub fn identity_year(parsed: &[ParsedStatement], property: &str) -> Option<i32> {
+    parsed.iter().find_map(|stmt| {
+        if stmt.insert.property != property || stmt.insert.rank == "deprecated" {
+            return None;
+        }
+        stmt.event.as_ref()?.2
+    })
+}
+
 pub fn promoted_statement_lines(parsed: &[ParsedStatement]) -> String {
     let mut lines = Vec::new();
     for stmt in parsed {
@@ -443,6 +453,69 @@ mod tests {
             promoted_statement_lines(&parsed),
             "STATEMENT\tbirth\tborn_in\t1769\t"
         );
+        assert_eq!(identity_year(&parsed, "P569"), Some(1769));
+    }
+
+    #[test]
+    fn preferred_p569_wins_lifespan_year_over_normal() {
+        let entity = json!({
+            "id": "Q1",
+            "lastrevid": 2,
+            "claims": {
+                "P569": [
+                    {
+                        "id": "Q1$norm",
+                        "rank": "normal",
+                        "mainsnak": {
+                            "snaktype": "value",
+                            "property": "P569",
+                            "datavalue": {
+                                "value": { "time": "+1768-01-01T00:00:00Z", "precision": 9 }
+                            }
+                        }
+                    },
+                    {
+                        "id": "Q1$pref",
+                        "rank": "preferred",
+                        "mainsnak": {
+                            "snaktype": "value",
+                            "property": "P569",
+                            "datavalue": {
+                                "value": { "time": "+1769-08-15T00:00:00Z", "precision": 11 }
+                            }
+                        }
+                    }
+                ]
+            }
+        });
+        let parsed = parse_entity_claims(&entity);
+        assert_eq!(identity_year(&parsed, "P569"), Some(1769));
+    }
+
+    #[test]
+    fn deprecated_p569_is_excluded_from_lifespan_year() {
+        let entity = json!({
+            "id": "Q1",
+            "lastrevid": 4,
+            "claims": {
+                "P569": [{
+                    "id": "Q1$dep",
+                    "rank": "deprecated",
+                    "mainsnak": {
+                        "snaktype": "value",
+                        "property": "P569",
+                        "datavalue": {
+                            "value": { "time": "+1768-01-01T00:00:00Z", "precision": 9 }
+                        }
+                    }
+                }]
+            }
+        });
+        let parsed = parse_entity_claims(&entity);
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].insert.rank, "deprecated");
+        assert!(parsed[0].event.is_some());
+        assert_eq!(identity_year(&parsed, "P569"), None);
     }
 
     #[test]
