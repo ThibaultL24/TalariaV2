@@ -14,6 +14,7 @@ mod stub;
 mod theses_fr;
 mod wikidata;
 mod wikipedia;
+mod wikisource;
 
 pub use fixture::FixtureConnector;
 pub use gallica::GallicaConnector;
@@ -36,6 +37,9 @@ pub use theses_fr::{
 };
 pub use wikidata::{WikidataSourceConnector, WikidataSourceConnectorConfig};
 pub use wikipedia::{WikipediaConnector, WikipediaConnectorConfig};
+pub use wikisource::{
+    classify_genre, parse_search_titles, parse_siteinfo_namespaces, WikisourceConnector,
+};
 
 use std::sync::Arc;
 
