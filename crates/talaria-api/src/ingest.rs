@@ -130,7 +130,7 @@ pub async fn run_ingest_quality(
 
     if live {
         if let Some(q) = subject.qid.clone() {
-            match crate::lot_e::fetch_wikidata_subject_meta(&q, &config.wiki_lang).await {
+            match crate::lot_e::fetch_wikidata_subject_meta(&q, &config.wiki_lang, Some(&pool)).await {
                 Ok(meta) => {
                     if !meta.occupations.is_empty() {
                         subject.occupations = meta.occupations;
@@ -273,6 +273,13 @@ pub async fn run_ingest_quality(
                         continue;
                     }
                 };
+                if kind == SourceKind::Wikidata {
+                    crate::lot_e::persist_wikibase_entity_statements(
+                        &pool,
+                        &fetched.raw_metadata,
+                    )
+                    .await;
+                }
                 let _ = counters.record_call(&budgets);
                 let _ = counters.record_document(kind.as_str(), &budgets, fetched.content_bytes);
 

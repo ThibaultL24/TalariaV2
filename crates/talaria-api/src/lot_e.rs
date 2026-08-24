@@ -35,8 +35,8 @@ use talaria_store::{
     get_place_geocode, reinforce_quality_event, reject_if_singleton_exists, run_migrations,
     update_event_candidate_judgment, upsert_entity_with_kind, upsert_event_candidate,
     upsert_place_geocode,
-    upsert_quality_claim, DocumentFragmentInsert, DocumentSnapshotInsert, EventCandidateInsert,
-    QualityClaimInsert, QualityEventInsert,
+    upsert_quality_claim, upsert_wikibase_statement, DocumentFragmentInsert, DocumentSnapshotInsert,
+    EventCandidateInsert, QualityClaimInsert, QualityEventInsert, WikibaseStatementInsert,
 };
 
 use crate::cli_helpers::open_db_for_subject;
@@ -302,7 +302,7 @@ pub async fn run_lot_e_density_ingest(
     }
     let (by, dy, _, _) = quality_lifespan_years(&pool, subject_id).await?;
     let wd_meta = match qid {
-        Some(q) => match fetch_wikidata_subject_meta(q, lang).await {
+        Some(q) => match fetch_wikidata_subject_meta(q, lang, Some(&pool)).await {
             Ok(meta) => meta,
             Err(e) => {
                 tracing::warn!(error = %e, %q, "wikidata subject meta failed — continuing without it");
@@ -1443,9 +1443,47 @@ fn is_military_occupation_qid(qid: &str) -> bool {
     )
 }
 
+pub(crate) async fn persist_wikibase_entity_statements(
+    pool: &sqlx::PgPool,
+    entity: &serde_json::Value,
+) {
+    let parsed = talaria_wikidata::parse_entity_claims(entity);
+    persist_parsed_wikibase_statements(pool, &parsed).await;
+}
+
+pub(crate) async fn persist_parsed_wikibase_statements(
+    pool: &sqlx::PgPool,
+    parsed: &[talaria_wikidata::ParsedStatement],
+) {
+    for stmt in parsed {
+        let Some(revision_id) = stmt.insert.revision_id.clone() else {
+            continue;
+        };
+        let row = WikibaseStatementInsert {
+            qid: stmt.insert.qid.clone(),
+            guid: stmt.insert.guid.clone(),
+            property: stmt.insert.property.clone(),
+            rank: stmt.insert.rank.clone(),
+            snaktype: stmt.insert.snaktype.clone(),
+            value_json: stmt.insert.value_json.clone(),
+            qualifiers_json: stmt.insert.qualifiers_json.clone(),
+            references_json: stmt.insert.references_json.clone(),
+            revision_id: Some(revision_id),
+        };
+        if let Err(e) = upsert_wikibase_statement(pool, &row).await {
+            tracing::warn!(
+                error = %e,
+                guid = %stmt.insert.guid,
+                "wikibase statement upsert failed"
+            );
+        }
+    }
+}
+
 pub(crate) async fn fetch_wikidata_subject_meta(
     qid: &str,
     lang: &str,
+    pool: Option<&sqlx::PgPool>,
 ) -> anyhow::Result<WikidataSubjectMeta> {
     let client = wiki_http_client()?;
     let resp = send_retrying(
@@ -1600,53 +1638,11 @@ pub(crate) async fn fetch_wikidata_subject_meta(
         tokio::time::sleep(Duration::from_millis(150)).await;
     }
 
-    let label_of = |pid: &str| -> Option<String> {
-        claims
-            .get(pid)
-            .and_then(|a| a.as_array())
-            .and_then(|a| a.first())
-            .and_then(|s| s.get("mainsnak"))
-            .and_then(snak_qid)
-            .and_then(|q| labels.get(&q).cloned())
-    };
-
-    let mut lines = Vec::new();
-    if let Some(y) = birth_year {
-        let place = label_of("P19").unwrap_or_default();
-        lines.push(format!("STATEMENT\tbirth\tborn_in\t{y}\t{place}"));
+    let parsed = talaria_wikidata::parse_entity_claims(&entity);
+    if let Some(pool) = pool {
+        persist_parsed_wikibase_statements(pool, &parsed).await;
     }
-    if let Some(y) = death_year {
-        let place = label_of("P20").unwrap_or_default();
-        lines.push(format!("STATEMENT\tdeath\tdied_in\t{y}\t{place}"));
-    }
-    const MAP: &[(&str, &str, &str)] = &[
-        ("P26", "marriage", "married"),
-        ("P39", "office", "held_office"),
-        ("P69", "education", "studied_at"),
-        ("P108", "office", "worked_at"),
-        ("P551", "residence", "resided_in"),
-        ("P937", "residence", "worked_in"),
-        ("P166", "award", "awarded"),
-        ("P800", "publication", "created"),
-        ("P101", "office", "field_of_work"),
-        ("P119", "burial", "buried_at"),
-    ];
-    for (pid, etype, pred) in MAP {
-        let Some(arr) = claims.get(*pid).and_then(|v| v.as_array()) else {
-            continue;
-        };
-        for stmt in arr.iter().take(12) {
-            let q = stmt.get("mainsnak").and_then(snak_qid);
-            let place = q.as_ref().and_then(|id| labels.get(id)).cloned().unwrap_or_default();
-            let year = claim_year(stmt)
-                .map(|y| y.to_string())
-                .unwrap_or_default();
-            if year.is_empty() && place.is_empty() {
-                continue;
-            }
-            lines.push(format!("STATEMENT\t{etype}\t{pred}\t{year}\t{place}"));
-        }
-    }
+    let statements_text = talaria_wikidata::promoted_statement_lines(&parsed);
 
     Ok(WikidataSubjectMeta {
         birth_year,
@@ -1654,7 +1650,7 @@ pub(crate) async fn fetch_wikidata_subject_meta(
         occupations,
         wiki_title,
         related_titles,
-        statements_text: lines.join("\n"),
+        statements_text,
     })
 }
 

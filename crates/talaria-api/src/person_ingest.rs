@@ -74,7 +74,7 @@ pub async fn run_person_ingest(
     }
 
     if let Some(qid) = resolved_qid.as_deref() {
-        match crate::lot_e::fetch_wikidata_subject_meta(qid, wiki_lang).await {
+        match crate::lot_e::fetch_wikidata_subject_meta(qid, wiki_lang, Some(&pool)).await {
             Ok(meta) if !meta.statements_text.is_empty() => {
                 let (doc, raw) = statements_to_raw_items(subject, &meta.statements_text);
                 let wd_uri = format!("https://www.wikidata.org/wiki/{qid}");

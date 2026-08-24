@@ -113,7 +113,8 @@ pub async fn run_corpus_ingest(
     };
     if live {
         if let Some(q) = subject.qid.clone() {
-            if let Ok(meta) = crate::lot_e::fetch_wikidata_subject_meta(&q, &config.wiki_lang).await
+            if let Ok(meta) =
+                crate::lot_e::fetch_wikidata_subject_meta(&q, &config.wiki_lang, Some(&pool)).await
             {
                 if !meta.occupations.is_empty() {
                     subject.occupations = meta.occupations;

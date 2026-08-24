@@ -17,6 +17,7 @@ talaria-quality = { path = "../talaria-quality" }
 talaria-judge = { path = "../talaria-judge" }
 talaria-store = { path = "../talaria-store" }
 talaria-text = { path = "../talaria-text" }
+talaria-wikidata = { path = "../talaria-wikidata" }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
