@@ -92,11 +92,45 @@ mod tests {
             ordinals, unique,
             "sentence ordinals must be unique for the snapshot unique index"
         );
-        for s in sentences {
+        for s in &sentences {
             assert!(s.parent_fragment_id.is_none());
             assert!(s.clause_index.is_none());
-            assert!(s.metadata.get("parent_section_ordinal").is_some());
         }
+        let section_ord = |title: &str| {
+            inserts
+                .iter()
+                .find(|i| {
+                    i.fragment_kind == "section"
+                        && i.metadata
+                            .get("section_path")
+                            .and_then(|v| v.as_array())
+                            .and_then(|a| a.first())
+                            .and_then(|v| v.as_str())
+                            == Some(title)
+                })
+                .map(|i| i.ordinal)
+                .expect("section title in helper fixture")
+        };
+        let a_ord = section_ord("A");
+        let b_ord = section_ord("B");
+        assert_ne!(a_ord, b_ord);
+        let parent_ord = |title: &str| {
+            sentences
+                .iter()
+                .find(|s| {
+                    s.metadata
+                        .get("section_path")
+                        .and_then(|v| v.as_array())
+                        .and_then(|a| a.first())
+                        .and_then(|v| v.as_str())
+                        == Some(title)
+                })
+                .and_then(|s| s.metadata.get("parent_section_ordinal"))
+                .and_then(|v| v.as_i64())
+                .expect("numeric parent_section_ordinal")
+        };
+        assert_eq!(parent_ord("A"), a_ord as i64);
+        assert_eq!(parent_ord("B"), b_ord as i64);
         let first_sentence = inserts
             .iter()
             .position(|i| i.fragment_kind == "sentence")

@@ -300,6 +300,22 @@ mod tests {
     }
 
     #[test]
+    fn prefers_revision_wikitext_from_star_slot() {
+        let page = json!({
+            "extract": "plain biography",
+            "pageprops": {"wikibase_item": "Q517"},
+            "revisions": [{
+                "revid": 1,
+                "slots": {"main": {"*": "== Life ==\nHe was born in Ajaccio."}}
+            }]
+        });
+        let (text, meta) = select_fetch_text(page, "plain biography".into());
+        assert_eq!(text, "== Life ==\nHe was born in Ajaccio.");
+        assert_eq!(meta["plain_extract"], "plain biography");
+        assert!(meta.get("source_form").is_none());
+    }
+
+    #[test]
     fn falls_back_to_plain_extract_when_wikitext_missing() {
         let page = json!({
             "extract": "plain biography",
