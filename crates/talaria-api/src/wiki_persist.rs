@@ -191,6 +191,19 @@ pub async fn insert_wiki_fragments(
         .first_sentence)
 }
 
+/// Stamp `needs_review` when Wikisource proofread quality is problematic.
+pub fn merge_proofread_metadata(
+    inserts: &mut [DocumentFragmentInsert],
+    wikitext: &str,
+) {
+    if !talaria_sources::connectors::proofread_needs_review(wikitext) {
+        return;
+    }
+    for ins in inserts.iter_mut() {
+        ins.metadata["needs_review"] = serde_json::Value::Bool(true);
+    }
+}
+
 pub async fn persist_wiki_fragments(
     pool: &sqlx::PgPool,
     snapshot_id: Uuid,
@@ -207,7 +220,8 @@ pub async fn persist_wiki_fragments(
     if !should_insert_wiki_fragments(existing) {
         return existing_wiki_fragment_set(pool, snapshot_id).await;
     }
-    let inserts = talaria_sources::fragment_inserts(snapshot_id, wikitext);
+    let mut inserts = talaria_sources::fragment_inserts(snapshot_id, wikitext);
+    merge_proofread_metadata(&mut inserts, wikitext);
     let mut section_ids = HashMap::<i32, Uuid>::new();
     let mut first_sentence = None;
     let mut sentences = Vec::new();
@@ -377,6 +391,21 @@ mod tests {
         assert!(should_insert_wiki_fragments(0));
         assert!(!should_insert_wiki_fragments(1));
         assert!(!should_insert_wiki_fragments(12));
+    }
+
+    #[test]
+    fn problematic_proofread_marks_fragment_needs_review() {
+        let wikitext = "{{PR|problematic}}\nFirst sentence is long enough.\n";
+        let mut inserts = talaria_sources::fragment_inserts(Uuid::nil(), wikitext);
+        merge_proofread_metadata(&mut inserts, wikitext);
+        let sentences: Vec<_> = inserts
+            .iter()
+            .filter(|i| i.fragment_kind == "sentence")
+            .collect();
+        assert!(!sentences.is_empty());
+        assert!(sentences.iter().all(|i| {
+            i.metadata.get("needs_review") == Some(&serde_json::Value::Bool(true))
+        }));
     }
 
     #[test]

@@ -322,12 +322,18 @@ fn page_id_external(metadata: &Value) -> Option<String> {
     }
 }
 
+/// True when ProofreadPage / `{{PR}}` marks the page as problematic.
+pub fn proofread_needs_review(wikitext: &str) -> bool {
+    let has_marker = wikitext.contains("{{PR") || wikitext.contains("ProofreadPage");
+    has_marker && wikitext.to_ascii_lowercase().contains("problematic")
+}
+
 fn proofread_level(wikitext: &str) -> Option<String> {
     let has_marker = wikitext.contains("{{PR") || wikitext.contains("ProofreadPage");
     if !has_marker {
         return None;
     }
-    if wikitext.to_ascii_lowercase().contains("problematic") {
+    if proofread_needs_review(wikitext) {
         Some("problematic".into())
     } else {
         Some("proofread".into())
@@ -771,6 +777,13 @@ mod tests {
     fn merge_live_discover_both_ok_empty_returns_empty() {
         let titles = merge_live_discover(Ok(vec![]), Ok(vec![])).unwrap();
         assert!(titles.is_empty());
+    }
+
+    #[test]
+    fn proofread_needs_review_detects_pr_problematic() {
+        assert!(proofread_needs_review("{{PR|problematic}}\nbody"));
+        assert!(!proofread_needs_review("{{PR|proofread}}\nbody"));
+        assert!(!proofread_needs_review("plain text with the word problematic"));
     }
 
     #[test]

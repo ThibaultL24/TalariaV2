@@ -353,6 +353,19 @@ pub async fn run_ingest_quality(
                 };
 
                 if skip_event_extractors(&kind) {
+                    if let Some(normalized) = crate::corpus_ingest::extract_normalized(
+                        &kind,
+                        &fetched.raw_metadata,
+                    )? {
+                        crate::corpus_ingest::persist_normalized(
+                            &pool,
+                            &kind,
+                            &doc,
+                            &normalized,
+                            Some(snapshot_id),
+                        )
+                        .await?;
+                    }
                     continue;
                 }
 
@@ -1070,5 +1083,20 @@ mod wikisource_skip_tests {
         assert!(skip_event_extractors(&SourceKind::Wikisource));
         assert!(!skip_event_extractors(&SourceKind::Wikipedia));
         assert!(!skip_event_extractors(&SourceKind::Gallica));
+    }
+
+    #[test]
+    fn skip_event_extractors_still_extracts_wikisource_normalized_corpus() {
+        use talaria_sources::connectors::{normalize_wikisource, WikisourceConnector};
+        assert!(skip_event_extractors(&SourceKind::Wikisource));
+        let doc = WikisourceConnector::document_from_title("Lettre à Joséphine");
+        let n = normalize_wikisource(&doc, "Ma chère Joséphine,", &serde_json::json!({"page_id": 1}))
+            .unwrap();
+        let meta = serde_json::json!({"normalized": n});
+        let extracted = crate::corpus_ingest::extract_normalized(&SourceKind::Wikisource, &meta)
+            .unwrap()
+            .expect("normalized payload");
+        assert_eq!(extracted.source_kind, SourceKind::Wikisource);
+        assert_eq!(extracted.external_id, "1");
     }
 }

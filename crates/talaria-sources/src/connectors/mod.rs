@@ -37,7 +37,7 @@ pub use wikidata::{WikidataSourceConnector, WikidataSourceConnectorConfig};
 pub use wikipedia::{WikipediaConnector, WikipediaConnectorConfig};
 pub use wikisource::{
     WikisourceConnector, classify_genre, normalize_wikisource, parse_fetch_page,
-    parse_search_titles, parse_siteinfo_namespaces,
+    parse_search_titles, parse_siteinfo_namespaces, proofread_needs_review,
 };
 
 use std::sync::Arc;

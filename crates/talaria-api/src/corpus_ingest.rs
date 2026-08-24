@@ -330,7 +330,16 @@ pub async fn run_corpus_ingest(
                     continue;
                 };
                 let (corpus_id, snapshot_id, snapshot_new) =
-                    persist_normalized(&pool, &kind, &doc, &normalized).await?;
+                    persist_normalized(&pool, &kind, &doc, &normalized, None).await?;
+
+                if kind == SourceKind::Wikisource && !normalized.snapshot_text.trim().is_empty() {
+                    crate::wiki_persist::persist_wiki_fragments(
+                        &pool,
+                        snapshot_id,
+                        &normalized.snapshot_text,
+                    )
+                    .await?;
+                }
 
                 mark_discovered_corpus_document(&pool, discovered_id, corpus_id).await?;
                 mark_discovered_snapshotted(&pool, discovered_id, snapshot_id).await?;
@@ -384,7 +393,7 @@ pub async fn run_corpus_ingest(
     Ok(pretty)
 }
 
-fn extract_normalized(
+pub(crate) fn extract_normalized(
     kind: &SourceKind,
     raw_metadata: &serde_json::Value,
 ) -> anyhow::Result<Option<NormalizedCorpusDocument>> {
@@ -455,12 +464,77 @@ fn extract_normalized(
     }
 }
 
-async fn persist_normalized(
+pub(crate) async fn persist_normalized(
     pool: &sqlx::PgPool,
     kind: &SourceKind,
     discovered: &DiscoveredDocument,
     n: &NormalizedCorpusDocument,
+    existing_snapshot: Option<Uuid>,
 ) -> anyhow::Result<(Uuid, Uuid, bool)> {
+    let corpus_id = upsert_corpus_from_normalized(pool, n).await?;
+
+    let hash = n.content_fingerprint();
+    let source_uri = n
+        .canonical_url
+        .clone()
+        .unwrap_or_else(|| format!("{}:{}", kind.as_str(), n.external_id));
+    let content_hash_key = hash.clone();
+
+    let (snapshot_id, snapshot_new) = if let Some(snapshot_id) = existing_snapshot {
+        (snapshot_id, false)
+    } else {
+        let before = talaria_store::count_corpus_snapshots(pool, corpus_id).await?;
+        let snapshot_id = insert_document_snapshot(
+            pool,
+            &DocumentSnapshotInsert {
+                source_type: kind.as_str().into(),
+                source_uri,
+                source_identifier: Some(n.external_id.clone()),
+                language: n.language.clone().unwrap_or_else(|| "fr".into()),
+                title: Some(n.title.clone()),
+                content_hash: content_hash_key.clone(),
+                revision_id: n.revision_token.clone(),
+                wiki_page_id: None,
+                raw_document_id: None,
+                text: if n.rights_normalized == AccessLevel::Open
+                    || n.access_level == AccessLevel::MetadataOnly
+                {
+                    n.snapshot_text.clone()
+                } else {
+                    String::new()
+                },
+                metadata: serde_json::json!({
+                    "corpus_document_id": corpus_id,
+                    "discovered_external_id": discovered.external_id,
+                    "discovered_source_kind": discovered.source_kind.as_str(),
+                    "discovered_canonical_url": discovered.canonical_url,
+                    "full_text_available": n.full_text_available,
+                    "access_level": n.access_level.as_str(),
+                    "academic_status": n.academic_status.as_str(),
+                    "epistemic": "bibliographic_resource",
+                }),
+            },
+        )
+        .await?;
+        let after = talaria_store::count_corpus_snapshots(pool, corpus_id).await?;
+        (snapshot_id, after > before)
+    };
+    link_corpus_snapshot(
+        pool,
+        corpus_id,
+        snapshot_id,
+        n.revision_token.as_deref(),
+        &content_hash_key,
+    )
+    .await?;
+
+    Ok((corpus_id, snapshot_id, snapshot_new))
+}
+
+async fn upsert_corpus_from_normalized(
+    pool: &sqlx::PgPool,
+    n: &NormalizedCorpusDocument,
+) -> anyhow::Result<Uuid> {
     let (corpus_id, _) = upsert_corpus_document(
         pool,
         &CorpusDocumentInsert {
@@ -521,62 +595,7 @@ async fn persist_normalized(
         })
         .collect();
     replace_document_subjects(pool, corpus_id, &subjects).await?;
-
-    let hash = n.content_fingerprint();
-    let source_uri = n
-        .canonical_url
-        .clone()
-        .unwrap_or_else(|| format!("{}:{}", kind.as_str(), n.external_id));
-    // content_hash identity = fingerprint alone (already includes revision axes).
-    let content_hash_key = hash.clone();
-
-    // Detect reuse: same hash already linked?
-    let before = talaria_store::count_corpus_snapshots(pool, corpus_id).await?;
-    let snapshot_id = insert_document_snapshot(
-        pool,
-        &DocumentSnapshotInsert {
-            source_type: kind.as_str().into(),
-            source_uri,
-            source_identifier: Some(n.external_id.clone()),
-            language: n.language.clone().unwrap_or_else(|| "fr".into()),
-            title: Some(n.title.clone()),
-            content_hash: content_hash_key.clone(),
-            revision_id: n.revision_token.clone(),
-            wiki_page_id: None,
-            raw_document_id: None,
-            // Metadata-only / open metadata: store projection, never remote PDF bytes.
-            text: if n.rights_normalized == AccessLevel::Open
-                || n.access_level == AccessLevel::MetadataOnly
-            {
-                n.snapshot_text.clone()
-            } else {
-                String::new()
-            },
-            metadata: serde_json::json!({
-                "corpus_document_id": corpus_id,
-                "discovered_external_id": discovered.external_id,
-                "discovered_source_kind": discovered.source_kind.as_str(),
-                "discovered_canonical_url": discovered.canonical_url,
-                "full_text_available": n.full_text_available,
-                "access_level": n.access_level.as_str(),
-                "academic_status": n.academic_status.as_str(),
-                "epistemic": "bibliographic_resource",
-            }),
-        },
-    )
-    .await?;
-    link_corpus_snapshot(
-        pool,
-        corpus_id,
-        snapshot_id,
-        n.revision_token.as_deref(),
-        &content_hash_key,
-    )
-    .await?;
-    let after = talaria_store::count_corpus_snapshots(pool, corpus_id).await?;
-    let snapshot_new = after > before;
-
-    Ok((corpus_id, snapshot_id, snapshot_new))
+    Ok(corpus_id)
 }
 
 fn to_discovered_insert(run_id: Uuid, doc: &DiscoveredDocument) -> DiscoveredDocumentInsert {
