@@ -21,7 +21,29 @@ pub struct MediaAssetInsert {
 }
 
 pub async fn upsert_media_asset(pool: &PgPool, row: &MediaAssetInsert) -> anyhow::Result<Uuid> {
-    let id: Uuid = sqlx::query_scalar(
+    let sql = if row.mid.is_some() {
+        r#"
+        INSERT INTO media_assets (
+            commons_file, mid, sha1, mime, license, attribution_text,
+            thumb_url, depicts_qids, revision_id, rights_normalized,
+            entity_id, corpus_document_id
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        ON CONFLICT (mid) WHERE mid IS NOT NULL DO UPDATE SET
+            commons_file = EXCLUDED.commons_file,
+            sha1 = EXCLUDED.sha1,
+            mime = EXCLUDED.mime,
+            license = EXCLUDED.license,
+            attribution_text = EXCLUDED.attribution_text,
+            thumb_url = EXCLUDED.thumb_url,
+            depicts_qids = EXCLUDED.depicts_qids,
+            revision_id = EXCLUDED.revision_id,
+            rights_normalized = EXCLUDED.rights_normalized,
+            entity_id = EXCLUDED.entity_id,
+            corpus_document_id = EXCLUDED.corpus_document_id
+        RETURNING id
+        "#
+    } else {
         r#"
         INSERT INTO media_assets (
             commons_file, mid, sha1, mime, license, attribution_text,
@@ -41,22 +63,24 @@ pub async fn upsert_media_asset(pool: &PgPool, row: &MediaAssetInsert) -> anyhow
             entity_id = EXCLUDED.entity_id,
             corpus_document_id = EXCLUDED.corpus_document_id
         RETURNING id
-        "#,
-    )
-    .bind(&row.commons_file)
-    .bind(&row.mid)
-    .bind(&row.sha1)
-    .bind(&row.mime)
-    .bind(&row.license)
-    .bind(&row.attribution_text)
-    .bind(&row.thumb_url)
-    .bind(&row.depicts_qids)
-    .bind(&row.revision_id)
-    .bind(&row.rights_normalized)
-    .bind(&row.entity_id)
-    .bind(&row.corpus_document_id)
-    .fetch_one(pool)
-    .await?;
+        "#
+    };
+
+    let id: Uuid = sqlx::query_scalar(sql)
+        .bind(&row.commons_file)
+        .bind(&row.mid)
+        .bind(&row.sha1)
+        .bind(&row.mime)
+        .bind(&row.license)
+        .bind(&row.attribution_text)
+        .bind(&row.thumb_url)
+        .bind(&row.depicts_qids)
+        .bind(&row.revision_id)
+        .bind(&row.rights_normalized)
+        .bind(&row.entity_id)
+        .bind(&row.corpus_document_id)
+        .fetch_one(pool)
+        .await?;
 
     Ok(id)
 }
@@ -79,9 +103,10 @@ mod tests {
     }
 
     #[test]
-    fn upsert_conflicts_on_commons_file_and_sha1() {
+    fn upsert_conflicts_on_mid_or_commons_file_and_sha1() {
         let src = include_str!("media.rs");
         let prod = src.split("#[cfg(test)]").next().expect("prod source");
+        assert!(prod.contains("ON CONFLICT (mid) WHERE mid IS NOT NULL DO UPDATE SET"));
         assert!(prod.contains("ON CONFLICT (commons_file, sha1) DO UPDATE SET"));
         assert!(prod.contains("RETURNING id"));
     }
