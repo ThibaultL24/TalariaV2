@@ -43,6 +43,7 @@ pub struct WikidataHuman {
 #[derive(Debug, Default)]
 pub struct DumpIngestStats {
     pub entities_seen: usize,
+    pub entities_emitted: usize,
     pub humans_seen: usize,
     pub humans_emitted: usize,
     pub labels_cached: usize,
@@ -81,6 +82,7 @@ pub fn stream_humans(
         match materialize_human(&entity, &labels) {
             Ok(human) if profiles_resolved(&human) => {
                 on_human(human)?;
+                stats.entities_emitted += 1;
                 stats.humans_emitted += 1;
             }
             Ok(_) | Err(_) => pending.push(entity),
@@ -95,6 +97,7 @@ pub fn stream_humans(
         }
         let human = materialize_human(&entity, &labels)?;
         on_human(human)?;
+        stats.entities_emitted += 1;
         stats.humans_emitted += 1;
     }
 
@@ -119,8 +122,12 @@ pub fn stream_entities_for_qids(
             stats.humans_seen += 1;
         }
         if keep.contains(qid) {
+            let human = is_human(&entity);
             on_entity(entity)?;
-            stats.humans_emitted += 1;
+            stats.entities_emitted += 1;
+            if human {
+                stats.humans_emitted += 1;
+            }
         }
         Ok(())
     })?;
@@ -348,9 +355,7 @@ mod tests {
         assert_eq!(humans[0].birth_year, Some(-44));
     }
 
-    #[test]
-    fn streams_kept_qids_with_full_claims() {
-        let mut file = NamedTempFile::new().unwrap();
+    fn napoleon_paris_dump(file: &mut NamedTempFile) {
         writeln!(
             file,
             r#"[
@@ -359,10 +364,16 @@ mod tests {
 ]"#
         )
         .unwrap();
+    }
+
+    #[test]
+    fn streams_kept_qids_with_full_claims() {
+        let mut file = NamedTempFile::new().unwrap();
+        napoleon_paris_dump(&mut file);
 
         let keep = HashSet::from(["Q517".to_string()]);
         let mut received = Vec::new();
-        stream_entities_for_qids(file.path(), &keep, |entity| {
+        let stats = stream_entities_for_qids(file.path(), &keep, |entity| {
             received.push(entity);
             Ok(())
         })
@@ -370,6 +381,8 @@ mod tests {
 
         assert_eq!(received.len(), 1);
         assert_eq!(received[0]["id"], "Q517");
+        assert_eq!(stats.entities_emitted, 1);
+        assert_eq!(stats.humans_emitted, 1);
         assert!(
             received[0].get("claims").is_some(),
             "callback must receive full entity JSON including claims"
@@ -379,5 +392,23 @@ mod tests {
             Some(&Value::String("Q90".into()))
         );
         assert!(received.iter().all(|e| e["id"] != "Q90"));
+    }
+
+    #[test]
+    fn neighborhood_stats_count_places_separately_from_humans() {
+        let mut file = NamedTempFile::new().unwrap();
+        napoleon_paris_dump(&mut file);
+
+        let keep = HashSet::from(["Q90".to_string(), "Q517".to_string()]);
+        let mut received = Vec::new();
+        let stats = stream_entities_for_qids(file.path(), &keep, |entity| {
+            received.push(entity);
+            Ok(())
+        })
+        .unwrap();
+
+        assert_eq!(received.len(), 2);
+        assert_eq!(stats.entities_emitted, 2);
+        assert_eq!(stats.humans_emitted, 1);
     }
 }
