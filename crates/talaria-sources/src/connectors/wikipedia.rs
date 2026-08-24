@@ -42,15 +42,21 @@ impl WikipediaConnector {
         format!("https://{lang}.wikipedia.org/w/api.php")
     }
 
-    async fn fetch_extract(&self, lang: &str, title: &str) -> Result<(String, Value), ConnectorError> {
+    async fn fetch_extract(
+        &self,
+        lang: &str,
+        title: &str,
+    ) -> Result<(String, Value), ConnectorError> {
         let response = self
             .http
             .get(Self::api(lang))
             .query(&[
                 ("action", "query"),
-                ("prop", "extracts|info|pageprops"),
+                ("prop", "extracts|info|pageprops|revisions"),
                 ("explaintext", "1"),
                 ("exlimit", "1"),
+                ("rvprop", "content|ids"),
+                ("rvslots", "main"),
                 ("titles", title),
                 ("format", "json"),
                 ("redirects", "1"),
@@ -80,7 +86,7 @@ impl WikipediaConnector {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
-        Ok((extract, page.clone()))
+        Ok(select_fetch_text(page.clone(), extract))
     }
 
     async fn search_titles(
@@ -221,10 +227,15 @@ impl SourceConnector for WikipediaConnector {
             .and_then(|v| v.as_u64())
             .map(|n| n.to_string());
         let bytes = text.len() as u64;
+        let content_type = if page.get("source_form").and_then(|v| v.as_str()) == Some("plain") {
+            "text/plain"
+        } else {
+            "text/x-wiki"
+        };
         Ok(FetchedDocument {
             discovered: document.clone(),
             revision_id: revid,
-            content_type: "text/plain".into(),
+            content_type: content_type.into(),
             text,
             raw_metadata: page,
             license: Some("CC BY-SA".into()),
@@ -237,5 +248,66 @@ impl SourceConnector for WikipediaConnector {
             ok: true,
             detail: format!("langs={:?}", self.config.languages),
         })
+    }
+}
+
+fn revision_wikitext(page: &Value) -> Option<String> {
+    let rev = page.get("revisions")?.as_array()?.first()?;
+    let from_slot = rev
+        .pointer("/slots/main")
+        .and_then(|slot| slot.get("content").or_else(|| slot.get("*")))
+        .and_then(|v| v.as_str());
+    let from_rev = rev
+        .get("content")
+        .or_else(|| rev.get("*"))
+        .and_then(|v| v.as_str());
+    from_slot
+        .or(from_rev)
+        .map(str::to_string)
+        .filter(|s| !s.is_empty())
+}
+
+fn select_fetch_text(mut page: Value, extract: String) -> (String, Value) {
+    page["plain_extract"] = Value::String(extract.clone());
+    if let Some(wikitext) = revision_wikitext(&page) {
+        (wikitext, page)
+    } else {
+        page["source_form"] = Value::String("plain".into());
+        (extract, page)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn prefers_revision_wikitext_over_extract() {
+        let page = json!({
+            "extract": "plain biography",
+            "pageprops": {"wikibase_item": "Q517"},
+            "revisions": [{
+                "revid": 1,
+                "slots": {"main": {"content": "== Life ==\nHe was born in Ajaccio."}}
+            }]
+        });
+        let (text, meta) = select_fetch_text(page, "plain biography".into());
+        assert_eq!(text, "== Life ==\nHe was born in Ajaccio.");
+        assert_eq!(meta["plain_extract"], "plain biography");
+        assert_eq!(meta["pageprops"]["wikibase_item"], "Q517");
+        assert!(meta.get("source_form").is_none());
+    }
+
+    #[test]
+    fn falls_back_to_plain_extract_when_wikitext_missing() {
+        let page = json!({
+            "extract": "plain biography",
+            "pageprops": {"wikibase_item": "Q517"}
+        });
+        let (text, meta) = select_fetch_text(page, "plain biography".into());
+        assert_eq!(text, "plain biography");
+        assert_eq!(meta["source_form"], "plain");
+        assert_eq!(meta["plain_extract"], "plain biography");
     }
 }

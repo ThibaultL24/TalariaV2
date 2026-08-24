@@ -2245,6 +2245,7 @@ dependencies = [
  "sha2",
  "talaria-judge",
  "talaria-quality",
+ "talaria-store",
  "talaria-text",
  "thiserror",
  "tokio",
