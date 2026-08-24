@@ -1,5 +1,17 @@
 // crates/talaria-sources/src/connectors/commons.rs
+use std::collections::HashSet;
+
+use async_trait::async_trait;
 use serde_json::Value;
+
+use crate::connector::{
+    ConnectorError, ConnectorHealth, DiscoveryCursor, DiscoveryPage, FetchedDocument,
+    SourceConnector,
+};
+use crate::connectors::catalog::http_client;
+use crate::kinds::{DiscoveryMethod, DocumentType, SourceKind};
+use crate::plan::ResolvedSubject;
+use crate::types::{DiscoveredDocument, ExternalEntityRef, SourceMetadata};
 
 /// Parsed Commons MediaInfo + imageinfo metadata (no binary fetch).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -223,9 +235,302 @@ fn normalize_rights(license: Option<&str>) -> String {
     }
 }
 
+const API: &str = "https://commons.wikimedia.org/w/api.php";
+const CONNECTOR_VERSION: &str = "commons:mediainfo_v1";
+const UNLICENSED: &str = "unlicensed or missing attribution";
+const ID_SYSTEMS: &[&str] = &["commons", "commonswiki", "p18", "p1442", "p109"];
+
+/// Commons MediaInfo connector (metadata + thumb URL; never original bytes).
+pub struct CommonsConnector {
+    pub http: reqwest::Client,
+    pub max_docs: u32,
+}
+
+impl CommonsConnector {
+    pub fn new() -> anyhow::Result<Self> {
+        Ok(Self {
+            http: http_client()?,
+            max_docs: 10,
+        })
+    }
+
+    fn cap(&self) -> usize {
+        self.max_docs.min(10) as usize
+    }
+
+    pub fn document_from_p18(title: &str) -> DiscoveredDocument {
+        let file_title = ensure_file_title(title);
+        let canonical = format!(
+            "https://commons.wikimedia.org/wiki/{}",
+            file_title.replace(' ', "_")
+        );
+        DiscoveredDocument {
+            source_kind: SourceKind::WikimediaCommons,
+            external_id: file_title.clone(),
+            canonical_url: Some(canonical),
+            title: file_title.clone(),
+            language: None,
+            document_type: DocumentType::MediaCaption,
+            subject_links: vec![ExternalEntityRef {
+                system: "commons".into(),
+                id: file_title.clone(),
+                label: Some(file_title),
+            }],
+            publication_time: None,
+            discovery_method: DiscoveryMethod::IdentifierLookup,
+            relevance_score: 0.9,
+            source_metadata: SourceMetadata::default(),
+        }
+    }
+
+    async fn fetch_wbgetentities(&self, mid: &str) -> Result<Value, ConnectorError> {
+        self.http
+            .get(API)
+            .query(&[
+                ("action", "wbgetentities"),
+                ("ids", mid),
+                ("format", "json"),
+            ])
+            .send()
+            .await
+            .map_err(|e| ConnectorError::Http(e.to_string()))?
+            .error_for_status()
+            .map_err(|e| ConnectorError::Http(e.to_string()))?
+            .json::<Value>()
+            .await
+            .map_err(|e| ConnectorError::Parse(e.to_string()))
+    }
+
+    async fn fetch_imageinfo(&self, title: &str) -> Result<Value, ConnectorError> {
+        self.http
+            .get(API)
+            .query(&[
+                ("action", "query"),
+                ("titles", title),
+                ("prop", "imageinfo|revisions"),
+                ("iiprop", "url|size|mime|sha1|extmetadata"),
+                ("iiurlwidth", "640"),
+                ("format", "json"),
+            ])
+            .send()
+            .await
+            .map_err(|e| ConnectorError::Http(e.to_string()))?
+            .error_for_status()
+            .map_err(|e| ConnectorError::Http(e.to_string()))?
+            .json::<Value>()
+            .await
+            .map_err(|e| ConnectorError::Parse(e.to_string()))
+    }
+}
+
+/// Filenames from Wikidata P18 / P1442 / P109 mainsnak strings or File-titled items.
+pub fn parse_p18_filenames(claims: &Value) -> Vec<String> {
+    let obj = claims.get("claims").unwrap_or(claims);
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+    for pid in ["P18", "P1442", "P109"] {
+        let Some(arr) = obj.get(pid).and_then(Value::as_array) else {
+            continue;
+        };
+        for stmt in arr {
+            if let Some(name) = filename_from_mainsnak(stmt.get("mainsnak")) {
+                if seen.insert(name.clone()) {
+                    out.push(name);
+                }
+            }
+        }
+    }
+    out
+}
+
+fn filename_from_mainsnak(snak: Option<&Value>) -> Option<String> {
+    let snak = snak?;
+    if snak.get("snaktype").and_then(Value::as_str) != Some("value") {
+        return None;
+    }
+    let dv = snak.get("datavalue")?;
+    if let Some(s) = dv.get("value").and_then(Value::as_str) {
+        let trimmed = s.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    let value = dv.get("value")?;
+    if let Some(title) = value.get("title").and_then(Value::as_str) {
+        if title.len() >= 5 && title[..5].eq_ignore_ascii_case("file:") {
+            return Some(title.to_string());
+        }
+    }
+    if let Some(id) = value.get("id").and_then(Value::as_str) {
+        if id.len() >= 5 && id[..5].eq_ignore_ascii_case("file:") {
+            return Some(id.to_string());
+        }
+    }
+    None
+}
+
+fn is_mid(s: &str) -> bool {
+    let s = s.trim();
+    s.len() >= 2 && s.as_bytes()[0] == b'M' && s[1..].chars().all(|c| c.is_ascii_digit())
+}
+
+fn ensure_file_title(title: &str) -> String {
+    let t = title.trim();
+    if is_mid(t) {
+        return t.to_string();
+    }
+    if t.len() >= 5 && t[..5].eq_ignore_ascii_case("file:") {
+        format!("File:{}", &t[5..])
+    } else {
+        format!("File:{t}")
+    }
+}
+
+fn is_commons_system(system: &str) -> bool {
+    ID_SYSTEMS.iter().any(|s| system.eq_ignore_ascii_case(s))
+}
+
+fn strip_original_url(imageinfo: &mut Value) {
+    if let Some(arr) = imageinfo.as_array_mut() {
+        for item in arr {
+            if let Some(obj) = item.as_object_mut() {
+                obj.remove("url");
+            }
+        }
+    } else if let Some(obj) = imageinfo.as_object_mut() {
+        obj.remove("url");
+    }
+}
+
+fn entity_from_wbgetentities(json: &Value, mid: &str) -> Option<Value> {
+    json.pointer(&format!("/entities/{mid}")).cloned()
+}
+
+fn page_from_query(json: &Value) -> Option<&Value> {
+    json.pointer("/query/pages")
+        .and_then(Value::as_object)
+        .and_then(|pages| pages.values().next())
+}
+
+fn fetched_from_asset(
+    document: &DiscoveredDocument,
+    entity: Value,
+    mut imageinfo: Value,
+    asset: &CommonsAsset,
+) -> FetchedDocument {
+    strip_original_url(&mut imageinfo);
+    let raw_metadata = serde_json::json!({
+        "entity": entity,
+        "imageinfo": imageinfo,
+        "thumburl": asset.thumb_url,
+        "commons_file": asset.commons_file,
+        "mid": asset.mid,
+    });
+    FetchedDocument {
+        discovered: document.clone(),
+        revision_id: asset.revision_id.clone(),
+        content_type: "application/json".into(),
+        text: asset.attribution_text.clone(),
+        raw_metadata,
+        license: asset.license.clone(),
+        content_bytes: asset.attribution_text.len() as u64,
+    }
+}
+
+#[async_trait]
+impl SourceConnector for CommonsConnector {
+    fn source_kind(&self) -> SourceKind {
+        SourceKind::WikimediaCommons
+    }
+
+    fn connector_version(&self) -> &str {
+        CONNECTOR_VERSION
+    }
+
+    async fn discover(
+        &self,
+        subject: &ResolvedSubject,
+        cursor: Option<DiscoveryCursor>,
+    ) -> Result<DiscoveryPage, ConnectorError> {
+        if cursor.map(|c| c.offset).unwrap_or(0) > 0 {
+            return Ok(DiscoveryPage {
+                documents: vec![],
+                next_cursor: None,
+            });
+        }
+
+        let mut titles = Vec::new();
+        let mut seen = HashSet::new();
+        for (system, id) in &subject.known_identifiers {
+            if !is_commons_system(system) {
+                continue;
+            }
+            let id = id.trim();
+            if id.is_empty() || !seen.insert(id.to_string()) {
+                continue;
+            }
+            titles.push(id.to_string());
+        }
+        titles.truncate(self.cap());
+        let documents = titles
+            .into_iter()
+            .map(|t| Self::document_from_p18(&t))
+            .collect();
+        Ok(DiscoveryPage {
+            documents,
+            next_cursor: None,
+        })
+    }
+
+    async fn fetch(
+        &self,
+        document: &DiscoveredDocument,
+    ) -> Result<FetchedDocument, ConnectorError> {
+        let (entity, imageinfo) = if is_mid(&document.external_id) {
+            let json = self.fetch_wbgetentities(&document.external_id).await?;
+            let entity = entity_from_wbgetentities(&json, &document.external_id)
+                .ok_or_else(|| ConnectorError::Parse(UNLICENSED.into()))?;
+            (entity, Value::Null)
+        } else {
+            let title = ensure_file_title(&document.external_id);
+            let json = self.fetch_imageinfo(&title).await?;
+            let page =
+                page_from_query(&json).ok_or_else(|| ConnectorError::Parse(UNLICENSED.into()))?;
+            let imageinfo = page.get("imageinfo").cloned().unwrap_or(Value::Null);
+            let mid = page
+                .pointer("/pageprops/wikibase_item")
+                .and_then(Value::as_str);
+            let entity = serde_json::json!({
+                "id": mid,
+                "title": page.get("title").and_then(Value::as_str).unwrap_or(&title),
+            });
+            (entity, imageinfo)
+        };
+
+        let imageinfo_ref = if imageinfo.is_null() {
+            None
+        } else {
+            Some(&imageinfo)
+        };
+        let asset = parse_mediainfo(&entity, imageinfo_ref)
+            .ok_or_else(|| ConnectorError::Parse(UNLICENSED.into()))?;
+        Ok(fetched_from_asset(document, entity, imageinfo, &asset))
+    }
+
+    async fn healthcheck(&self) -> Result<ConnectorHealth, ConnectorError> {
+        Ok(ConnectorHealth {
+            ok: true,
+            detail: "commons.wikimedia.org Action API".into(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::connector::SourceConnector;
+    use crate::kinds::{DocumentType, SourceKind};
+    use crate::plan::ResolvedSubject;
 
     #[test]
     fn mediainfo_requires_attribution() {
@@ -273,5 +578,105 @@ mod tests {
         let a = parse_mediainfo(&entity, Some(&info)).unwrap();
         assert!(a.attribution_text.contains("Louvre"));
         assert!(!a.attribution_text.contains("Q1"));
+    }
+
+    #[test]
+    fn document_from_p18_normalizes_file_prefix_and_canonical_url() {
+        let d = CommonsConnector::document_from_p18("File:x.jpg");
+        assert_eq!(d.source_kind, SourceKind::WikimediaCommons);
+        assert_eq!(d.document_type, DocumentType::MediaCaption);
+        assert_eq!(
+            d.canonical_url.as_deref(),
+            Some("https://commons.wikimedia.org/wiki/File:x.jpg")
+        );
+        let bare = CommonsConnector::document_from_p18("x.jpg");
+        assert_eq!(
+            bare.canonical_url.as_deref(),
+            Some("https://commons.wikimedia.org/wiki/File:x.jpg")
+        );
+    }
+
+    fn subject_with_ids(ids: Vec<(String, String)>) -> ResolvedSubject {
+        ResolvedSubject {
+            entity_id: None,
+            qid: Some("Q517".into()),
+            label: "Napoléon".into(),
+            languages: vec!["fr".into()],
+            birth_year: Some(1769),
+            death_year: Some(1821),
+            countries: vec!["France".into()],
+            occupations: vec![],
+            known_identifiers: ids,
+        }
+    }
+
+    #[tokio::test]
+    async fn discover_empty_without_identifiers() {
+        let conn = CommonsConnector::new().unwrap();
+        let page = conn.discover(&subject_with_ids(vec![]), None).await.unwrap();
+        assert!(page.documents.is_empty());
+    }
+
+    #[tokio::test]
+    async fn discover_from_known_identifiers() {
+        let conn = CommonsConnector::new().unwrap();
+        let page = conn
+            .discover(
+                &subject_with_ids(vec![
+                    ("wikidata".into(), "Q517".into()),
+                    ("commons".into(), "File:Napoleon.jpg".into()),
+                    ("P18".into(), "Portrait.png".into()),
+                    ("commonswiki".into(), "File:Signature.svg".into()),
+                ]),
+                None,
+            )
+            .await
+            .unwrap();
+        assert_eq!(page.documents.len(), 3);
+        assert!(page
+            .documents
+            .iter()
+            .all(|d| d.source_kind == SourceKind::WikimediaCommons));
+        assert!(page
+            .documents
+            .iter()
+            .all(|d| d.document_type == DocumentType::MediaCaption));
+    }
+
+    #[test]
+    fn parse_p18_filenames_from_fixture_claims() {
+        let claims = serde_json::json!({
+            "P18": [{"mainsnak": {"snaktype": "value", "datavalue": {
+                "type": "string", "value": "Napoleon Bonaparte.jpg"
+            }}}],
+            "P1442": [{"mainsnak": {"snaktype": "value", "datavalue": {
+                "type": "string", "value": "File:Napoleon grave.jpg"
+            }}}],
+            "P109": [{"mainsnak": {"snaktype": "value", "datavalue": {
+                "type": "wikibase-entityid",
+                "value": {"id": "Q1", "title": "File:Napoleon Signature.svg"}
+            }}}],
+            "P31": [{"mainsnak": {"snaktype": "value", "datavalue": {
+                "type": "string", "value": "not-an-image.jpg"
+            }}}]
+        });
+        let files = parse_p18_filenames(&claims);
+        assert_eq!(
+            files,
+            vec![
+                "Napoleon Bonaparte.jpg".to_string(),
+                "File:Napoleon grave.jpg".to_string(),
+                "File:Napoleon Signature.svg".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn live_registry_marks_commons_implemented() {
+        let reg = crate::connectors::default_registry(None, true).unwrap();
+        let entry = reg
+            .get(&SourceKind::WikimediaCommons)
+            .expect("commons registered");
+        assert!(entry.implemented);
     }
 }

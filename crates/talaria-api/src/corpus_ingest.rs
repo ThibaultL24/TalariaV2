@@ -122,6 +122,10 @@ pub async fn run_corpus_ingest(
                 }
                 subject.birth_year = meta.birth_year;
                 subject.death_year = meta.death_year;
+                crate::lot_e::append_commons_known_identifiers(
+                    &mut subject.known_identifiers,
+                    &meta.commons_files,
+                );
             }
         }
     }

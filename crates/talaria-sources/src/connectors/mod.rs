@@ -18,7 +18,7 @@ mod wikipedia;
 mod wikisource;
 
 pub use bnf::{BnfConfig, BnfConnector, normalize_bnf_notice};
-pub use commons::{CommonsAsset, parse_mediainfo};
+pub use commons::{CommonsAsset, CommonsConnector, parse_mediainfo, parse_p18_filenames};
 pub use europeana::{EuropeanaConfig, EuropeanaConnector, normalize_europeana_item};
 pub use fixture::FixtureConnector;
 pub use gallica::GallicaConnector;
@@ -422,6 +422,14 @@ pub fn default_registry_with_corpus(
             connector: Some(Arc::new(wikisource)),
             config_notes: "Wikisource FR Action API (public)".into(),
         });
+        let commons = CommonsConnector::new()?;
+        reg.register(ConnectorRegistration {
+            kind: SourceKind::WikimediaCommons,
+            implemented: true,
+            capabilities: caps_stub(&SourceKind::WikimediaCommons),
+            connector: Some(Arc::new(commons)),
+            config_notes: "Wikimedia Commons Action API (public)".into(),
+        });
         let hal_conn = HalConnector::new()?;
         reg.register(ConnectorRegistration {
             kind: SourceKind::Hal,
@@ -521,6 +529,7 @@ pub fn default_registry_with_corpus(
         register_stub(&mut reg, SourceKind::InternetArchive, "enable with --live");
         register_stub(&mut reg, SourceKind::Gallica, "enable with --live");
         register_stub(&mut reg, SourceKind::Wikisource, "enable with --live");
+        register_stub(&mut reg, SourceKind::WikimediaCommons, "enable with --live");
         register_stub(&mut reg, SourceKind::Hal, "enable with --live");
         register_stub(&mut reg, SourceKind::Persee, "enable with --live");
         register_stub(&mut reg, SourceKind::ThesesFr, "enable with --live");
@@ -535,7 +544,6 @@ pub fn default_registry_with_corpus(
 
     // Remaining Lot C/D — interfaces only until fetch/parse/extract exist.
     for kind in [
-        SourceKind::WikimediaCommons,
         SourceKind::Viaf,
         SourceKind::Isni,
         SourceKind::IdRef,
@@ -543,11 +551,7 @@ pub fn default_registry_with_corpus(
         SourceKind::OpenEdition,
         SourceKind::Sudoc,
     ] {
-        let notes = match kind {
-            SourceKind::WikimediaCommons => "Wikimedia remainder",
-            _ => "alignment layer — not yet wired",
-        };
-        register_stub(&mut reg, kind, notes);
+        register_stub(&mut reg, kind, "alignment layer — not yet wired");
     }
 
     // Register corpus connectors supplied by the caller (override stubs when present).

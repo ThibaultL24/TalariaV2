@@ -339,6 +339,7 @@ pub async fn run_lot_e_density_ingest(
             .map(|q| vec![("wikidata".into(), q.to_string())])
             .unwrap_or_default(),
     };
+    append_commons_known_identifiers(&mut subject_res.known_identifiers, &wd_meta.commons_files);
 
     tracing::info!(
         occupations = ?subject_res.occupations,
@@ -1328,6 +1329,26 @@ pub(crate) struct WikidataSubjectMeta {
     pub(crate) wiki_title: Option<String>,
     pub(crate) related_titles: Vec<String>,
     pub(crate) statements_text: String,
+    pub(crate) commons_files: Vec<String>,
+}
+
+pub(crate) fn append_commons_known_identifiers(
+    ids: &mut Vec<(String, String)>,
+    files: &[String],
+) {
+    for file in files.iter().take(10) {
+        let file = file.trim();
+        if file.is_empty() {
+            continue;
+        }
+        if ids
+            .iter()
+            .any(|(sys, val)| sys.eq_ignore_ascii_case("commons") && val == file)
+        {
+            continue;
+        }
+        ids.push(("commons".into(), file.to_string()));
+    }
 }
 
 fn wiki_http_client() -> anyhow::Result<reqwest::Client> {
@@ -1491,6 +1512,7 @@ pub(crate) async fn fetch_wikidata_subject_meta(
         .map(str::to_string);
 
     let claims = entity.get("claims").cloned().unwrap_or(serde_json::json!({}));
+    let commons_files = talaria_sources::parse_p18_filenames(&claims);
     let birth_year = talaria_wikidata::identity_year(&parsed, "P569");
     let death_year = talaria_wikidata::identity_year(&parsed, "P570");
 
@@ -1617,6 +1639,7 @@ pub(crate) async fn fetch_wikidata_subject_meta(
         wiki_title,
         related_titles,
         statements_text,
+        commons_files,
     })
 }
 
@@ -1787,7 +1810,7 @@ pub fn connector_status_json() -> String {
         "wikipedia": "extraction_ready",
         "wikidata": "fetch_ready",
         "wikisource": "extraction_ready",
-        "commons": "stub",
+        "commons": "extraction_ready",
         "fixture": "production_ready",
         "bnf": "extraction_ready",
         "gallica": "extraction_ready",
@@ -1805,7 +1828,7 @@ pub fn connector_status_json() -> String {
         "isni": "metadata_only",
         "openalex": "extraction_ready",
         "crossref": "stub",
-        "note": "Executable with --live from explorer search or ingest-quality: wikipedia, wikidata, wikisource, hal, persee, gallica, theses_fr, open_library, open_alex, internet_archive, bnf. Europeana needs EUROPEANA_API_KEY. Commons remains a stub."
+        "note": "Executable with --live from explorer search or ingest-quality: wikipedia, wikidata, wikisource, commons, hal, persee, gallica, theses_fr, open_library, open_alex, internet_archive, bnf. Europeana needs EUROPEANA_API_KEY. VIAF/ISNI remain stubs."
     }))
     .unwrap_or_else(|_| "{}".into())
 }
@@ -2357,6 +2380,6 @@ mod connector_status_tests {
     fn connector_status_marks_wikisource_extraction_ready() {
         let v: serde_json::Value = serde_json::from_str(&connector_status_json()).unwrap();
         assert_eq!(v["wikisource"], "extraction_ready");
-        assert_eq!(v["commons"], "stub");
+        assert_eq!(v["commons"], "extraction_ready");
     }
 }

@@ -11,7 +11,7 @@ use talaria_quality::{
     DerivedLabelProjections, EntityKind, EvidencePtr, ExistingCandidateAction,
     EXTRACTOR_EPISTEMIC_STATUS, GazetteerResolver, GateContext, Mention, ASSEMBLER_V1,
 };
-use talaria_sources::connectors::{default_registry, FixtureConnector};
+use talaria_sources::connectors::{default_registry, parse_mediainfo, FixtureConnector};
 use talaria_sources::extractors::{
     claim_fingerprint, default_extractor_stack, CandidateExtractor, ClaimKey, ExtractorInput,
     StructuredStatementExtractor,
@@ -20,7 +20,8 @@ use talaria_sources::wdqs::{
     events_from_fixture_dir, events_to_statement_text, fetch_events_for_person,
 };
 use talaria_sources::{
-    plan_sources, BudgetCounters, DiscoveredDocument, IngestBudgets, ResolvedSubject, SourceKind,
+    plan_sources, BudgetCounters, ConnectorError, DiscoveredDocument, IngestBudgets,
+    ResolvedSubject, SourceKind,
 };
 use talaria_store::{
     add_claim_support, density_report_counts,
@@ -31,9 +32,9 @@ use talaria_store::{
     quality_lifespan_years,
     reinforce_quality_event, reject_if_singleton_exists, start_discovery_run,
     update_event_candidate_judgment, update_entity_qid, upsert_discovered_document,
-    upsert_entity_with_kind, upsert_event_candidate, upsert_quality_claim,
+    upsert_entity_with_kind, upsert_event_candidate, upsert_media_asset, upsert_quality_claim,
     DiscoveredDocumentInsert, DiscoveryRunInsert, DocumentFragmentInsert, DocumentSnapshotInsert,
-    EventCandidateInsert, QualityClaimInsert, QualityEventInsert,
+    EventCandidateInsert, MediaAssetInsert, QualityClaimInsert, QualityEventInsert,
 };
 use uuid::Uuid;
 
@@ -56,6 +57,7 @@ pub struct IngestMetrics {
     pub events_created: u64,
     pub events_reinforced: u64,
     pub connector_errors: u64,
+    pub commons_unlicensed: u64,
     pub loss_reasons: std::collections::BTreeMap<String, u64>,
 }
 
@@ -138,6 +140,10 @@ pub async fn run_ingest_quality(
                     }
                     subject.birth_year = meta.birth_year.or(subject.birth_year);
                     subject.death_year = meta.death_year;
+                    crate::lot_e::append_commons_known_identifiers(
+                        &mut subject.known_identifiers,
+                        &meta.commons_files,
+                    );
                 }
                 Err(e) => tracing::warn!(error = %e, %q, "wikidata occupations unavailable"),
             }
@@ -267,6 +273,15 @@ pub async fn run_ingest_quality(
                 let fetched = match connector.fetch(&doc).await {
                     Ok(f) => f,
                     Err(e) => {
+                        if kind == SourceKind::WikimediaCommons
+                            && matches!(&e, ConnectorError::Parse(msg) if msg.contains("unlicensed"))
+                        {
+                            metrics.commons_unlicensed += 1;
+                            metrics.documents_skipped += 1;
+                            metrics.bump_loss("commons_unlicensed");
+                            mark_discovered_skipped(&pool, doc_id, "commons_unlicensed").await?;
+                            continue;
+                        }
                         tracing::warn!(error = %e, id = %doc.external_id, "fetch failed");
                         metrics.connector_errors += 1;
                         metrics.bump_loss("connector_fetch_failed");
@@ -292,7 +307,11 @@ pub async fn run_ingest_quality(
                 let snapshot_id = insert_document_snapshot(
                     &pool,
                     &DocumentSnapshotInsert {
-                        source_type: kind.as_str().into(),
+                        source_type: if kind == SourceKind::WikimediaCommons {
+                            "commons".into()
+                        } else {
+                            kind.as_str().into()
+                        },
                         source_uri,
                         source_identifier: Some(doc.external_id.clone()),
                         language: doc.language.clone().unwrap_or_else(|| "en".into()),
@@ -312,6 +331,11 @@ pub async fn run_ingest_quality(
                 .await?;
                 mark_discovered_snapshotted(&pool, doc_id, snapshot_id).await?;
                 metrics.documents_snapshotted += 1;
+
+                if kind == SourceKind::WikimediaCommons {
+                    persist_commons_media_asset(&pool, subject.entity_id, &fetched).await?;
+                    continue;
+                }
 
                 let is_wiki = persist_as_wiki_fragments(&kind)
                     && (kind != SourceKind::Wikipedia
@@ -455,7 +479,43 @@ fn persist_as_wiki_fragments(kind: &SourceKind) -> bool {
 }
 
 fn skip_event_extractors(kind: &SourceKind) -> bool {
-    matches!(kind, SourceKind::Wikisource)
+    matches!(
+        kind,
+        SourceKind::Wikisource | SourceKind::WikimediaCommons
+    )
+}
+
+async fn persist_commons_media_asset(
+    pool: &sqlx::PgPool,
+    entity_id: Option<Uuid>,
+    fetched: &talaria_sources::FetchedDocument,
+) -> anyhow::Result<()> {
+    let Some(entity) = fetched.raw_metadata.get("entity") else {
+        return Ok(());
+    };
+    let imageinfo = fetched.raw_metadata.get("imageinfo");
+    let Some(asset) = parse_mediainfo(entity, imageinfo) else {
+        return Ok(());
+    };
+    upsert_media_asset(
+        pool,
+        &MediaAssetInsert {
+            commons_file: asset.commons_file,
+            mid: asset.mid,
+            sha1: asset.sha1,
+            mime: asset.mime,
+            license: asset.license,
+            attribution_text: asset.attribution_text,
+            thumb_url: asset.thumb_url,
+            depicts_qids: asset.depicts_qids,
+            revision_id: asset.revision_id,
+            rights_normalized: asset.rights_normalized,
+            entity_id,
+            corpus_document_id: None,
+        },
+    )
+    .await?;
+    Ok(())
 }
 
 fn filter_includes_wikidata(sources: &[String]) -> bool {
@@ -606,6 +666,7 @@ fn metrics_to_json(m: &IngestMetrics) -> serde_json::Value {
         "events_created": m.events_created,
         "events_reinforced": m.events_reinforced,
         "connector_errors": m.connector_errors,
+        "commons_unlicensed": m.commons_unlicensed,
         "loss_reasons": m.loss_reasons,
     })
 }
@@ -1084,8 +1145,15 @@ mod wikisource_skip_tests {
         assert!(persist_as_wiki_fragments(&SourceKind::Wikipedia));
         assert!(!persist_as_wiki_fragments(&SourceKind::Gallica));
         assert!(skip_event_extractors(&SourceKind::Wikisource));
+        assert!(skip_event_extractors(&SourceKind::WikimediaCommons));
         assert!(!skip_event_extractors(&SourceKind::Wikipedia));
         assert!(!skip_event_extractors(&SourceKind::Gallica));
+    }
+
+    #[test]
+    fn skip_event_extractors_true_for_commons() {
+        assert!(skip_event_extractors(&SourceKind::WikimediaCommons));
+        assert!(skip_event_extractors(&SourceKind::Wikisource));
     }
 
     #[test]
