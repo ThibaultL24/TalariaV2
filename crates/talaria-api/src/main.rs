@@ -29,6 +29,7 @@ mod person_ingest;
 mod place_conflict;
 mod quality;
 mod routes;
+mod wiki_persist;
 mod wikidata_ingest;
 
 use clap::Parser;

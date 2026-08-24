@@ -305,47 +305,94 @@ pub async fn run_ingest_quality(
                 mark_discovered_snapshotted(&pool, doc_id, snapshot_id).await?;
                 metrics.documents_snapshotted += 1;
 
-                // Sentence fragment covering whole doc for evidence pointers.
-                let frag_id = insert_document_fragment(
-                    &pool,
-                    &DocumentFragmentInsert {
+                let is_wiki = kind == SourceKind::Wikipedia
+                    && fetched.raw_metadata.get("source_form").and_then(|v| v.as_str())
+                        != Some("plain")
+                    && crate::wiki_persist::looks_like_wikitext(&fetched.text);
+                let (frag_id, sentences) = if is_wiki {
+                    match crate::wiki_persist::persist_wiki_fragments(
+                        &pool,
                         snapshot_id,
-                        fragment_kind: "sentence".into(),
-                        parent_fragment_id: None,
-                        sentence_id: None,
-                        text: fetched.text.clone(),
-                        start_offset: 0,
-                        end_offset: fetched.text.len() as i32,
-                        clause_index: None,
-                        ordinal: 0,
-                        metadata: serde_json::json!({}),
-                    },
-                )
-                .await?;
-                metrics.fragments += 1;
-
-                let input = ExtractorInput {
-                    text: fetched.text.clone(),
-                    page_title: Some(label.to_string()),
-                    subject_label: Some(label.to_string()),
-                    document_type: doc.document_type.as_str().to_string(),
-                    subject_death_year: subject.death_year,
-                    ..Default::default()
+                        &fetched.text,
+                    )
+                    .await
+                    {
+                        Ok(set) => {
+                            metrics.fragments += set.total as u64;
+                            (set.first_sentence, set.sentences)
+                        }
+                        Err(_) => {
+                            let frag_id = insert_document_fragment(
+                                &pool,
+                                &blob_fragment(snapshot_id, &fetched.text),
+                            )
+                            .await?;
+                            metrics.fragments += 1;
+                            (frag_id, vec![(frag_id, fetched.text.clone())])
+                        }
+                    }
+                } else {
+                    let frag_id = insert_document_fragment(
+                        &pool,
+                        &blob_fragment(snapshot_id, &fetched.text),
+                    )
+                    .await?;
+                    metrics.fragments += 1;
+                    (frag_id, vec![(frag_id, fetched.text.clone())])
                 };
 
-                let mut raws = Vec::new();
-                for ex in &extractor_refs {
-                    raws.extend(ex.extract(&input));
-                }
+                let plain = fetched
+                    .raw_metadata
+                    .get("plain_extract")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| {
+                        if is_wiki {
+                            talaria_text::wikitext_to_plain(&fetched.text)
+                        } else {
+                            fetched.text.clone()
+                        }
+                    });
+                let wikitext = is_wiki.then(|| fetched.text.clone());
 
-                for raw in raws {
+                let attached = if kind == SourceKind::Wikipedia {
+                    crate::wiki_persist::run_wiki_extractors(
+                        &extractor_refs,
+                        Some(label.to_string()),
+                        Some(label.to_string()),
+                        doc.document_type.as_str().to_string(),
+                        subject.death_year,
+                        wikitext,
+                        Vec::new(),
+                        &plain,
+                        &sentences,
+                        frag_id,
+                    )
+                } else {
+                    let input = ExtractorInput {
+                        text: fetched.text.clone(),
+                        page_title: Some(label.to_string()),
+                        subject_label: Some(label.to_string()),
+                        document_type: doc.document_type.as_str().to_string(),
+                        subject_death_year: subject.death_year,
+                        ..Default::default()
+                    };
+                    let mut raws = Vec::new();
+                    for ex in &extractor_refs {
+                        raws.extend(ex.extract(&input));
+                    }
+                    raws.into_iter().map(|r| (frag_id, r)).collect()
+                };
+
+                for (fid, raw) in attached {
                     process_raw_candidate(
                         &pool,
                         config,
                         &subject,
                         subject_id,
                         snapshot_id,
-                        frag_id,
+                        fid,
                         kind.as_str(),
                         &raw,
                         &resolver,
@@ -471,6 +518,21 @@ pub async fn ingest_wdqs_events(
         .await?;
     }
     Ok(metrics)
+}
+
+fn blob_fragment(snapshot_id: Uuid, text: &str) -> DocumentFragmentInsert {
+    DocumentFragmentInsert {
+        snapshot_id,
+        fragment_kind: "sentence".into(),
+        parent_fragment_id: None,
+        sentence_id: None,
+        text: text.to_string(),
+        start_offset: 0,
+        end_offset: text.len() as i32,
+        clause_index: None,
+        ordinal: 0,
+        metadata: serde_json::json!({}),
+    }
 }
 
 fn to_discovered_insert(run_id: Uuid, doc: &DiscoveredDocument) -> DiscoveredDocumentInsert {

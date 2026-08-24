@@ -174,7 +174,25 @@ pub fn plan_record(
     }
     RecordPlan::Ready {
         snapshot: snapshot_spec(record, source_kind),
-        fragments: sentence_fragments(&record.text),
+        fragments: planned_fragments(source_kind, &record.text),
+    }
+}
+
+fn planned_fragments(source_kind: &str, text: &str) -> Vec<FragmentSpec> {
+    if source_kind.eq_ignore_ascii_case("wikipedia")
+        && crate::wiki_persist::looks_like_wikitext(text)
+    {
+        talaria_sources::fragment_inserts(Uuid::nil(), text)
+            .into_iter()
+            .map(|ins| FragmentSpec {
+                text: ins.text,
+                start_offset: ins.start_offset,
+                end_offset: ins.end_offset,
+                ordinal: ins.ordinal,
+            })
+            .collect()
+    } else {
+        sentence_fragments(text)
     }
 }
 
@@ -581,23 +599,35 @@ async fn persist_one_document(
             .await?;
             let existing_frags = count_sentence_fragments(pool, snapshot_id).await?;
             if existing_frags == 0 {
-                for frag in &fragments {
-                    insert_document_fragment(
+                let wiki_ok = opts.source_kind.eq_ignore_ascii_case("wikipedia")
+                    && crate::wiki_persist::looks_like_wikitext(&snapshot.text)
+                    && crate::wiki_persist::persist_wiki_fragments(
                         pool,
-                        &DocumentFragmentInsert {
-                            snapshot_id,
-                            fragment_kind: "sentence".into(),
-                            parent_fragment_id: None,
-                            sentence_id: None,
-                            text: frag.text.clone(),
-                            start_offset: frag.start_offset,
-                            end_offset: frag.end_offset,
-                            clause_index: None,
-                            ordinal: frag.ordinal,
-                            metadata: serde_json::json!({}),
-                        },
+                        snapshot_id,
+                        &snapshot.text,
                     )
-                    .await?;
+                    .await
+                    .is_ok();
+                let still_empty = count_sentence_fragments(pool, snapshot_id).await? == 0;
+                if !wiki_ok && still_empty {
+                    for frag in &fragments {
+                        insert_document_fragment(
+                            pool,
+                            &DocumentFragmentInsert {
+                                snapshot_id,
+                                fragment_kind: "sentence".into(),
+                                parent_fragment_id: None,
+                                sentence_id: None,
+                                text: frag.text.clone(),
+                                start_offset: frag.start_offset,
+                                end_offset: frag.end_offset,
+                                clause_index: None,
+                                ordinal: frag.ordinal,
+                                metadata: serde_json::json!({}),
+                            },
+                        )
+                        .await?;
+                    }
                 }
             }
             let unchanged = existed.is_some() && existing_frags > 0;
@@ -700,6 +730,45 @@ mod tests {
 
     fn fixture_path() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/dumps/mini_events.jsonl")
+    }
+
+    #[test]
+    fn wikipedia_wikitext_plan_emits_more_fragments_than_plain_sentences() {
+        let wikitext = "== A ==\nFirst sentence is long enough.\n\n== B ==\nSecond sentence is also long enough.\n";
+        let nap = rec("n", "Napoleon", wikitext);
+        let sentence_n = sentence_fragments(wikitext).len();
+        match plan_record(&nap, "wikipedia", None, None) {
+            RecordPlan::Ready { fragments, .. } => {
+                assert!(
+                    fragments.len() > sentence_n,
+                    "expected section+sentence fragments, got {} vs sentence-only {}",
+                    fragments.len(),
+                    sentence_n
+                );
+            }
+            other => panic!("expected Ready, got {other:?}"),
+        }
+        match plan_record(
+            &rec(
+                "p",
+                "Napoleon",
+                "Napoleon Bonaparte was born on 15 August 1769 in Ajaccio.",
+            ),
+            "jsonl",
+            None,
+            None,
+        ) {
+            RecordPlan::Ready { fragments, .. } => {
+                assert_eq!(
+                    fragments.len(),
+                    sentence_fragments(
+                        "Napoleon Bonaparte was born on 15 August 1769 in Ajaccio."
+                    )
+                    .len()
+                );
+            }
+            other => panic!("expected Ready, got {other:?}"),
+        }
     }
 
     #[test]

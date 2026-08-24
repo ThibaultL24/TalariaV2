@@ -99,7 +99,7 @@ async fn fetch_wikipedia_extract_rest(
     client: &reqwest::Client,
     lang: &str,
     title: &str,
-) -> anyhow::Result<(String, String, Option<String>, Option<(f64, f64)>, Option<String>)> {
+) -> anyhow::Result<WikipediaPage> {
     let title_path = title.replace(' ', "_");
     let mut html_url = reqwest::Url::parse(&format!("https://{lang}.wikipedia.org"))?;
     {
@@ -138,22 +138,39 @@ async fn fetch_wikipedia_extract_rest(
             }
         }
     }
-    Ok((resolved, extract, None, coords, None))
+    Ok(WikipediaPage {
+        title: resolved,
+        extract,
+        revid: None,
+        coords,
+        wikitext: None,
+        qid: None,
+    })
+}
+
+struct WikipediaPage {
+    title: String,
+    extract: String,
+    revid: Option<String>,
+    coords: Option<(f64, f64)>,
+    wikitext: Option<String>,
+    qid: Option<String>,
 }
 
 async fn fetch_wikipedia_extract(
     lang: &str,
     title: &str,
-) -> anyhow::Result<(String, String, Option<String>, Option<(f64, f64)>, Option<String>)> {
+) -> anyhow::Result<WikipediaPage> {
     let client = wiki_http_client()?;
     let api = format!("https://{lang}.wikipedia.org/w/api.php");
     let action = send_retrying(
         client.get(&api).query(&[
             ("action", "query"),
-            ("prop", "extracts|info|coordinates|revisions"),
+            ("prop", "extracts|info|coordinates|revisions|pageprops"),
             ("explaintext", "1"),
             ("exlimit", "1"),
-            ("rvprop", "content"),
+            ("ppprop", "wikibase_item"),
+            ("rvprop", "content|ids"),
             ("rvslots", "main"),
             ("titles", title),
             ("format", "json"),
@@ -204,8 +221,16 @@ async fn fetch_wikipedia_extract(
                     Some((lat, lon))
                 });
             let wikitext = revision_wikitext(page);
-            if !extract.is_empty() {
-                return Ok((resolved, extract, revid, coords, wikitext));
+            let qid = crate::wiki_persist::pageprops_qid(page);
+            if !extract.is_empty() || wikitext.as_ref().is_some_and(|s| !s.is_empty()) {
+                return Ok(WikipediaPage {
+                    title: resolved,
+                    extract,
+                    revid,
+                    coords,
+                    wikitext,
+                    qid,
+                });
             }
         }
         Ok(resp) if resp.status().as_u16() == 429 || resp.status().as_u16() == 503 => {
@@ -228,10 +253,18 @@ async fn fetch_wikipedia_extract(
 
 fn revision_wikitext(page: &serde_json::Value) -> Option<String> {
     let rev = page.get("revisions")?.as_array()?.first()?;
-    if let Some(text) = rev.pointer("/slots/main/*").and_then(|v| v.as_str()) {
-        return Some(text.to_string());
-    }
-    rev.get("*").and_then(|v| v.as_str()).map(str::to_string)
+    let from_slot = rev
+        .pointer("/slots/main")
+        .and_then(|slot| slot.get("content").or_else(|| slot.get("*")))
+        .and_then(|v| v.as_str());
+    let from_rev = rev
+        .get("content")
+        .or_else(|| rev.get("*"))
+        .and_then(|v| v.as_str());
+    from_slot
+        .or(from_rev)
+        .map(str::to_string)
+        .filter(|s| !s.is_empty())
 }
 
 #[derive(Debug, Default)]
@@ -476,17 +509,26 @@ pub async fn run_lot_e_density_ingest(
             }
 
             metrics.titles_attempted += 1;
-            let (resolved_title, text, revid, page_coords, wikitext) =
-                match fetch_wikipedia_extract(current_lang, &title).await {
-                    Ok(v) => v,
-                    Err(e) => {
-                        tracing::warn!(%title, lang=%current_lang, error=%e, "fetch failed");
-                        metrics.titles_failed += 1;
-                        metrics.bump("fetch_failed");
-                        tokio::time::sleep(Duration::from_millis(200)).await;
-                        continue;
-                    }
-                };
+            let fetched = match fetch_wikipedia_extract(current_lang, &title).await {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!(%title, lang=%current_lang, error=%e, "fetch failed");
+                    metrics.titles_failed += 1;
+                    metrics.bump("fetch_failed");
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                    continue;
+                }
+            };
+            let resolved_title = fetched.title;
+            let extract = fetched.extract;
+            let revid = fetched.revid;
+            let page_coords = fetched.coords;
+            let wikitext = fetched.wikitext;
+            let payload = crate::wiki_persist::wikipedia_snapshot_payload(
+                &extract,
+                wikitext.as_deref(),
+                fetched.qid.as_deref(),
+            );
             metrics.titles_fetched += 1;
             // Be polite to Wikimedia — search-triggered density must not stampede.
             tokio::time::sleep(Duration::from_millis(2000)).await;
@@ -507,7 +549,7 @@ pub async fn run_lot_e_density_ingest(
                 );
             }
 
-            let hash = content_hash(&text);
+            let hash = content_hash(&payload.text);
             let snapshot_id = insert_document_snapshot(
             &pool,
             &DocumentSnapshotInsert {
@@ -528,32 +570,31 @@ pub async fn run_lot_e_density_ingest(
                 revision_id: revid,
                 wiki_page_id: None,
                 raw_document_id: None,
-                text: text.clone(),
+                text: payload.text.clone(),
                 metadata: serde_json::json!({
                     "seed": true,
                     "lot": "E",
                     "page_coords": page_coords.map(|(la, lo)| serde_json::json!({"lat": la, "lon": lo})),
+                    "plain_extract": payload.plain_extract,
+                    "qid": payload.qid,
+                    "source_form": payload.source_form,
+                    "lang": current_lang,
                 }),
             },
         )
         .await?;
 
-            let frag_id = insert_document_fragment(
+            let (frag_id, sentences) = persist_lot_e_fragments(
                 &pool,
-                &DocumentFragmentInsert {
-                    snapshot_id,
-                    fragment_kind: "sentence".into(),
-                    parent_fragment_id: None,
-                    sentence_id: None,
-                    text: text.clone(),
-                    start_offset: 0,
-                    end_offset: text.len() as i32,
-                    clause_index: None,
-                    ordinal: 0,
-                    metadata: serde_json::json!({}),
-                },
+                snapshot_id,
+                &payload,
             )
             .await?;
+            let plain = if payload.plain_extract.is_empty() {
+                talaria_text::wikitext_to_plain(&payload.text)
+            } else {
+                payload.plain_extract.clone()
+            };
 
             // Keep Wikidata lifespan sticky — quality refresh may still be the noisy singleton.
             let (by2, _, _, _) = quality_lifespan_years(&pool, subject_id).await?;
@@ -570,31 +611,29 @@ pub async fn run_lot_e_density_ingest(
                 .filter(|s| is_plausible_place_label(s))
                 .collect::<Vec<_>>();
 
-            let input = ExtractorInput {
-                text: text.clone(),
-                page_title: Some(resolved_title.clone()),
-                subject_label: Some(subject.to_string()),
-                document_type: "article".into(),
-                subject_death_year: subject_res.death_year,
-                wikitext: wikitext.clone(),
+            let mut attached = crate::wiki_persist::run_wiki_extractors(
+                &extractor_refs,
+                Some(resolved_title.clone()),
+                Some(subject.to_string()),
+                "article".into(),
+                subject_res.death_year,
+                wikitext.clone(),
                 known_places,
-            };
-
-            let mut raws = Vec::new();
-            for ex in &extractor_refs {
-                raws.extend(ex.extract(&input));
-            }
-            raws.retain(|r| keep_extracted_raw(r, &resolved_title, subject));
+                &plain,
+                &sentences,
+                frag_id,
+            );
+            attached.retain(|(_, r)| keep_extracted_raw(r, &resolved_title, subject));
 
             if campaign_page_title(&resolved_title)
-                && !raws.iter().any(|r| {
+                && !attached.iter().any(|(_, r)| {
                     r.extractor_id == "military_campaign"
                         && r.object_surface.as_deref() == Some(resolved_title.as_str())
                 })
             {
                 if let Some(place) = place_hint_from_title(&resolved_title) {
                     if let Some(year) =
-                        first_year_in(&text, subject_res.birth_year, subject_res.death_year)
+                        first_year_in(&plain, subject_res.birth_year, subject_res.death_year)
                     {
                         let event_type = event_type_from_page_title(&resolved_title);
                         let predicate = match event_type {
@@ -602,7 +641,9 @@ pub async fn run_lot_e_density_ingest(
                             "siege" => "besieged",
                             _ => "fought_at",
                         };
-                        raws.push(talaria_sources::extractors::RawCandidate {
+                        attached.push((
+                            frag_id,
+                            talaria_sources::extractors::RawCandidate {
                             event_type: event_type.into(),
                             predicate: predicate.into(),
                             subject_surface: subject.into(),
@@ -619,28 +660,42 @@ pub async fn run_lot_e_density_ingest(
                             is_posthumous: false,
                             lat: None,
                             lon: None,
-                        });
+                        },
+                        ));
                     }
                 }
             }
 
             let mil = has_military_signal(&subject_res.occupations, None);
-            raws.retain(|r| {
+            attached.retain(|(_, r)| {
                 keep_military_typed_event(&r.event_type, &r.clause_text, subject, mil)
             });
             if crate::llm::judge_enabled() {
-                raws = crate::llm::judge_raw_candidates(subject, &subject_res.occupations, raws)
-                    .await;
+                let raws: Vec<_> = attached.into_iter().map(|(_, r)| r).collect();
+                let judged =
+                    crate::llm::judge_raw_candidates(subject, &subject_res.occupations, raws)
+                        .await;
+                attached = judged
+                    .into_iter()
+                    .map(|r| {
+                        let fid = crate::wiki_persist::fragment_id_for_clause(
+                            &r.clause_text,
+                            &sentences,
+                            frag_id,
+                        );
+                        (fid, r)
+                    })
+                    .collect();
             }
 
-            for raw in raws {
+            for (fid, raw) in attached {
                 process_one(
                     &pool,
                     config,
                     &subject_res,
                     subject_id,
                     snapshot_id,
-                    frag_id,
+                    fid,
                     &raw,
                     &resolver,
                     &projections,
@@ -815,6 +870,42 @@ fn discover_linked_titles(text: &str) -> Vec<String> {
         }
     }
     out
+}
+
+async fn persist_lot_e_fragments(
+    pool: &sqlx::PgPool,
+    snapshot_id: Uuid,
+    payload: &crate::wiki_persist::WikipediaSnapshotPayload,
+) -> anyhow::Result<(Uuid, Vec<(Uuid, String)>)> {
+    if payload.source_form == "wiki" {
+        if let Ok(set) =
+            crate::wiki_persist::persist_wiki_fragments(pool, snapshot_id, &payload.text).await
+        {
+            return Ok((set.first_sentence, set.sentences));
+        }
+    }
+    let text = if payload.plain_extract.is_empty() {
+        payload.text.as_str()
+    } else {
+        payload.plain_extract.as_str()
+    };
+    let id = insert_document_fragment(
+        pool,
+        &DocumentFragmentInsert {
+            snapshot_id,
+            fragment_kind: "sentence".into(),
+            parent_fragment_id: None,
+            sentence_id: None,
+            text: text.to_string(),
+            start_offset: 0,
+            end_offset: text.len() as i32,
+            clause_index: None,
+            ordinal: 0,
+            metadata: serde_json::json!({}),
+        },
+    )
+    .await?;
+    Ok((id, vec![(id, text.to_string())]))
 }
 
 #[allow(clippy::too_many_arguments)]
