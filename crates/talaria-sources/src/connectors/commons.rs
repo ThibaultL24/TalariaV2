@@ -307,7 +307,7 @@ impl CommonsConnector {
             .query(&[
                 ("action", "query"),
                 ("titles", title),
-                ("prop", "imageinfo|revisions"),
+                ("prop", "imageinfo|pageprops"),
                 ("iiprop", "url|size|mime|sha1|extmetadata"),
                 ("iiurlwidth", "640"),
                 ("format", "json"),
@@ -321,6 +321,106 @@ impl CommonsConnector {
             .await
             .map_err(|e| ConnectorError::Parse(e.to_string()))
     }
+}
+
+/// `query.pages.*.images[].title` starting with `File:` (cap 10).
+pub fn parse_wiki_page_images(query_json: &Value) -> Vec<String> {
+    let Some(pages) = query_json.pointer("/query/pages").and_then(Value::as_object) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+    for page in pages.values() {
+        let Some(images) = page.get("images").and_then(Value::as_array) else {
+            continue;
+        };
+        for img in images {
+            let Some(title) = img.get("title").and_then(Value::as_str) else {
+                continue;
+            };
+            let title = title.trim();
+            if !looks_like_file_ns(title) {
+                continue;
+            }
+            if seen.insert(title.to_string()) {
+                out.push(title.to_string());
+                if out.len() >= 10 {
+                    return out;
+                }
+            }
+        }
+    }
+    out
+}
+
+/// `[[File:…]]` / `[[Fichier:…]]` / `[[Image:…]]` targets, normalized to `File:` (cap 10).
+pub fn file_titles_from_wikitext(wikitext: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+    let mut rest = wikitext;
+    while let Some(start) = rest.find("[[") {
+        let after = &rest[start + 2..];
+        let Some(end) = after.find("]]") else {
+            break;
+        };
+        let inner = after[..end].trim();
+        rest = &after[end + 2..];
+        let target = inner.split('|').next().unwrap_or(inner).trim();
+        let Some(file) = file_title_from_link_target(target) else {
+            continue;
+        };
+        if seen.insert(file.clone()) {
+            out.push(file);
+            if out.len() >= 10 {
+                break;
+            }
+        }
+    }
+    out
+}
+
+/// `sitelinks.commonswiki.title` when it is a `File:` page (not a category/gallery).
+pub fn commonswiki_file_sitelink(entity: &Value) -> Option<String> {
+    let title = entity
+        .pointer("/sitelinks/commonswiki/title")
+        .and_then(Value::as_str)?
+        .trim();
+    if looks_like_file_ns(title) {
+        Some(title.to_string())
+    } else {
+        None
+    }
+}
+
+/// Page title used to request imageinfo for a MediaInfo entity.
+fn title_from_entity(entity: &Value) -> Option<String> {
+    if let Some(t) = entity
+        .get("title")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        return Some(ensure_file_title(t));
+    }
+    let labels = entity.get("labels")?.as_object()?;
+    for key in ["en", "mul", "fr"] {
+        if let Some(v) = labels
+            .get(key)
+            .and_then(|e| e.get("value"))
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| looks_like_file_ns(s))
+        {
+            return Some(ensure_file_title(v));
+        }
+    }
+    labels.values().find_map(|e| {
+        e.get("value")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| looks_like_file_ns(s))
+            .map(ensure_file_title)
+    })
 }
 
 /// Filenames from Wikidata P18 / P1442 / P109 mainsnak strings or File-titled items.
@@ -374,16 +474,37 @@ fn is_mid(s: &str) -> bool {
     s.len() >= 2 && s.as_bytes()[0] == b'M' && s[1..].chars().all(|c| c.is_ascii_digit())
 }
 
+fn looks_like_file_ns(s: &str) -> bool {
+    let l = s.to_ascii_lowercase();
+    l.starts_with("file:") || l.starts_with("fichier:") || l.starts_with("image:")
+}
+
+fn file_title_from_link_target(target: &str) -> Option<String> {
+    let t = target.trim();
+    let lower = t.to_ascii_lowercase();
+    let skip = if lower.starts_with("file:") {
+        5
+    } else if lower.starts_with("fichier:") {
+        8
+    } else if lower.starts_with("image:") {
+        6
+    } else {
+        return None;
+    };
+    let rest = t.get(skip..)?.trim();
+    if rest.is_empty() {
+        None
+    } else {
+        Some(format!("File:{rest}"))
+    }
+}
+
 fn ensure_file_title(title: &str) -> String {
     let t = title.trim();
     if is_mid(t) {
         return t.to_string();
     }
-    if t.len() >= 5 && t[..5].eq_ignore_ascii_case("file:") {
-        format!("File:{}", &t[5..])
-    } else {
-        format!("File:{t}")
-    }
+    file_title_from_link_target(t).unwrap_or_else(|| format!("File:{t}"))
 }
 
 fn is_commons_system(system: &str) -> bool {
@@ -410,6 +531,19 @@ fn page_from_query(json: &Value) -> Option<&Value> {
     json.pointer("/query/pages")
         .and_then(Value::as_object)
         .and_then(|pages| pages.values().next())
+}
+
+fn imageinfo_from_page(page: Option<&Value>) -> Value {
+    page.and_then(|p| p.get("imageinfo").cloned())
+        .unwrap_or(Value::Null)
+}
+
+fn stub_file_entity(title: &str, page: &Value, mid: Option<&str>) -> Value {
+    let page_title = page.get("title").and_then(Value::as_str).unwrap_or(title);
+    match mid {
+        Some(m) => serde_json::json!({"id": m, "title": page_title}),
+        None => serde_json::json!({"title": page_title}),
+    }
 }
 
 fn fetched_from_asset(
@@ -490,29 +624,35 @@ impl SourceConnector for CommonsConnector {
             let json = self.fetch_wbgetentities(&document.external_id).await?;
             let entity = entity_from_wbgetentities(&json, &document.external_id)
                 .ok_or_else(|| ConnectorError::Parse(UNLICENSED.into()))?;
-            (entity, Value::Null)
+            let imageinfo = match title_from_entity(&entity) {
+                Some(title) => {
+                    let q = self.fetch_imageinfo(&title).await?;
+                    imageinfo_from_page(page_from_query(&q))
+                }
+                None => Value::Null,
+            };
+            (entity, imageinfo)
         } else {
             let title = ensure_file_title(&document.external_id);
             let json = self.fetch_imageinfo(&title).await?;
             let page =
                 page_from_query(&json).ok_or_else(|| ConnectorError::Parse(UNLICENSED.into()))?;
-            let imageinfo = page.get("imageinfo").cloned().unwrap_or(Value::Null);
+            let imageinfo = imageinfo_from_page(Some(page));
             let mid = page
                 .pointer("/pageprops/wikibase_item")
-                .and_then(Value::as_str);
-            let entity = serde_json::json!({
-                "id": mid,
-                "title": page.get("title").and_then(Value::as_str).unwrap_or(&title),
-            });
+                .and_then(Value::as_str)
+                .filter(|id| is_mid(id));
+            let entity = if let Some(mid) = mid {
+                let ejson = self.fetch_wbgetentities(mid).await?;
+                entity_from_wbgetentities(&ejson, mid)
+                    .unwrap_or_else(|| stub_file_entity(&title, page, Some(mid)))
+            } else {
+                stub_file_entity(&title, page, None)
+            };
             (entity, imageinfo)
         };
 
-        let imageinfo_ref = if imageinfo.is_null() {
-            None
-        } else {
-            Some(&imageinfo)
-        };
-        let asset = parse_mediainfo(&entity, imageinfo_ref)
+        let asset = parse_mediainfo(&entity, Some(&imageinfo))
             .ok_or_else(|| ConnectorError::Parse(UNLICENSED.into()))?;
         Ok(fetched_from_asset(document, entity, imageinfo, &asset))
     }
@@ -557,6 +697,105 @@ mod tests {
         assert!(a.attribution_text.contains("Louvre"));
         assert_eq!(a.depicts_qids, ["Q517"]);
         assert_eq!(a.rights_normalized, "open");
+    }
+
+    #[test]
+    fn parse_mediainfo_merges_entity_p180_and_imageinfo_artist() {
+        let entity = serde_json::json!({
+            "id": "M99",
+            "title": "File:Portrait.jpg",
+            "statements": {
+                "P180":[{"mainsnak":{"datavalue":{"value":{"id":"Q517"}}}}]
+            }
+        });
+        let imageinfo = serde_json::json!([{
+            "thumburl": "https://upload.wikimedia.org/thumb/p.jpg",
+            "url": "https://upload.wikimedia.org/original/p.jpg",
+            "extmetadata": {
+                "Artist": {"value": "Jacques-Louis David"},
+                "LicenseShortName": {"value": "Public domain"}
+            }
+        }]);
+        let a = parse_mediainfo(&entity, Some(&imageinfo)).unwrap();
+        assert_eq!(a.depicts_qids, ["Q517"]);
+        assert!(a.attribution_text.contains("Jacques-Louis David"));
+        assert_eq!(title_from_entity(&entity).as_deref(), Some("File:Portrait.jpg"));
+    }
+
+    #[test]
+    fn title_from_entity_uses_file_label_when_title_missing() {
+        let entity = serde_json::json!({
+            "id": "M2",
+            "labels": {"en": {"value": "File:FromLabel.png"}}
+        });
+        assert_eq!(
+            title_from_entity(&entity).as_deref(),
+            Some("File:FromLabel.png")
+        );
+    }
+
+    #[test]
+    fn fetch_imageinfo_requests_pageprops() {
+        let src = include_str!("commons.rs");
+        assert!(src.contains("imageinfo|pageprops"));
+        assert!(!src
+            .split("fn fetch_imageinfo")
+            .nth(1)
+            .unwrap()
+            .split("impl SourceConnector")
+            .next()
+            .unwrap()
+            .contains("imageinfo|revisions"));
+    }
+
+    #[test]
+    fn parse_wiki_page_images_file_titles_capped() {
+        let mut images = Vec::new();
+        for i in 1..=12 {
+            images.push(serde_json::json!({"ns": 6, "title": format!("File:f{i}.jpg")}));
+        }
+        images.push(serde_json::json!({"ns": 6, "title": "Category:Skip"}));
+        let json = serde_json::json!({"query": {"pages": {"1": {
+            "title": "Napoleon",
+            "images": images
+        }}}});
+        let files = parse_wiki_page_images(&json);
+        assert_eq!(files.len(), 10);
+        assert!(files.iter().all(|t| t.starts_with("File:")));
+        assert!(!files.iter().any(|t| t.contains("Skip")));
+    }
+
+    #[test]
+    fn file_titles_from_wikitext_file_fichier_image() {
+        let wt = "See [[File:A.jpg|thumb|x]] and [[Fichier:B.png]] plus [[Image:C.svg|20px]] and [[Paris]].";
+        assert_eq!(
+            file_titles_from_wikitext(wt),
+            vec![
+                "File:A.jpg".to_string(),
+                "File:B.png".to_string(),
+                "File:C.svg".to_string(),
+            ]
+        );
+        let many: String = (1..=12)
+            .map(|i| format!("[[File:n{i}.jpg]]"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert_eq!(file_titles_from_wikitext(&many).len(), 10);
+    }
+
+    #[test]
+    fn commonswiki_file_sitelink_file_only() {
+        let file = serde_json::json!({
+            "sitelinks": {"commonswiki": {"title": "File:Napoleon.jpg"}}
+        });
+        assert_eq!(
+            commonswiki_file_sitelink(&file).as_deref(),
+            Some("File:Napoleon.jpg")
+        );
+        let cat = serde_json::json!({
+            "sitelinks": {"commonswiki": {"title": "Category:Napoleon"}}
+        });
+        assert!(commonswiki_file_sitelink(&cat).is_none());
     }
 
     #[test]

@@ -71,7 +71,8 @@ pub use wiki_fragments::{fragment_inserts, fragment_inserts_with_titles};
 
 pub use connectors::{
     normalize_bnf_notice, normalize_europeana_item, normalize_ia_item, normalize_openalex_work,
-    normalize_these_detail, normalize_wikisource, parse_mediainfo, parse_p18_filenames, BnfConfig,
+    normalize_these_detail, normalize_wikisource, parse_mediainfo, parse_p18_filenames,
+    parse_wiki_page_images, file_titles_from_wikitext, commonswiki_file_sitelink, BnfConfig,
     BnfConnector, CommonsAsset, CommonsConnector, CorpusConnectors, EuropeanaConfig,
     EuropeanaConnector, InternetArchiveConfig, InternetArchiveConnector, OpenAlexConfig,
     OpenAlexConnector, ThesesFrConfig, ThesesFrConnector,

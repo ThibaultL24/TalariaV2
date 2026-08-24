@@ -525,6 +525,12 @@ pub async fn run_lot_e_density_ingest(
             let revid = fetched.revid;
             let page_coords = fetched.coords;
             let wikitext = fetched.wikitext;
+            if let Some(wt) = wikitext.as_deref() {
+                append_commons_known_identifiers(
+                    &mut subject_res.known_identifiers,
+                    &talaria_sources::file_titles_from_wikitext(wt),
+                );
+            }
             let payload = crate::wiki_persist::wikipedia_snapshot_payload(
                 &extract,
                 wikitext.as_deref(),
@@ -1419,6 +1425,61 @@ mod parse_wd_year_tests {
     }
 }
 
+#[cfg(test)]
+mod parse_p18_commons_discovery_tests {
+    use super::append_commons_known_identifiers;
+
+    #[test]
+    fn parse_p18_filenames_plus_commonswiki_sitelink() {
+        let claims = serde_json::json!({
+            "P18": [{"mainsnak": {"snaktype": "value", "datavalue": {
+                "type": "string", "value": "Napoleon Bonaparte.jpg"
+            }}}]
+        });
+        let mut files = talaria_sources::parse_p18_filenames(&claims);
+        let entity = serde_json::json!({
+            "sitelinks": {"commonswiki": {"title": "File:Napoleon_portrait.jpg"}}
+        });
+        if let Some(sl) = talaria_sources::commonswiki_file_sitelink(&entity) {
+            files.push(sl);
+        }
+        let mut ids = vec![];
+        append_commons_known_identifiers(&mut ids, &files);
+        assert_eq!(
+            ids,
+            vec![
+                ("commons".into(), "Napoleon Bonaparte.jpg".into()),
+                ("commons".into(), "File:Napoleon_portrait.jpg".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_p18_fetch_meta_appends_commonswiki_file_sitelink() {
+        let src = include_str!("lot_e.rs");
+        assert!(src.contains("let mut commons_files = talaria_sources::parse_p18_filenames"));
+        assert!(src.contains("talaria_sources::commonswiki_file_sitelink(&entity)"));
+    }
+
+    #[test]
+    fn parse_p18_wikipedia_loop_appends_wikitext_file_titles() {
+        let src = include_str!("lot_e.rs");
+        let after = src
+            .split("let wikitext = fetched.wikitext;")
+            .nth(1)
+            .expect("wikitext assignment");
+        let before_payload = after.split("let payload = ").next().expect("payload");
+        assert!(before_payload.contains("file_titles_from_wikitext"));
+        assert!(before_payload.contains("append_commons_known_identifiers"));
+        let mut ids = vec![];
+        append_commons_known_identifiers(
+            &mut ids,
+            &talaria_sources::file_titles_from_wikitext("[[File:A.jpg|thumb]] [[Paris]]"),
+        );
+        assert_eq!(ids, vec![("commons".into(), "File:A.jpg".into())]);
+    }
+}
+
 fn snak_qid(snak: &serde_json::Value) -> Option<String> {
     snak.pointer("/datavalue/value/id")
         .and_then(|v| v.as_str())
@@ -1512,7 +1573,12 @@ pub(crate) async fn fetch_wikidata_subject_meta(
         .map(str::to_string);
 
     let claims = entity.get("claims").cloned().unwrap_or(serde_json::json!({}));
-    let commons_files = talaria_sources::parse_p18_filenames(&claims);
+    let mut commons_files = talaria_sources::parse_p18_filenames(&claims);
+    if let Some(file) = talaria_sources::commonswiki_file_sitelink(&entity) {
+        if !commons_files.iter().any(|f| f == &file) {
+            commons_files.push(file);
+        }
+    }
     let birth_year = talaria_wikidata::identity_year(&parsed, "P569");
     let death_year = talaria_wikidata::identity_year(&parsed, "P570");
 
