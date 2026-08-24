@@ -1,13 +1,13 @@
 // crates/talaria-sources/src/connectors/mod.rs
+mod bnf;
 mod catalog;
 mod europeana;
 mod fixture;
 mod gallica;
 mod hal;
 mod internet_archive;
-mod open_library;
-mod bnf;
 pub mod net;
+mod open_library;
 mod openalex;
 mod persee;
 mod stub;
@@ -16,29 +16,27 @@ mod wikidata;
 mod wikipedia;
 mod wikisource;
 
+pub use bnf::{BnfConfig, BnfConnector, normalize_bnf_notice};
+pub use europeana::{EuropeanaConfig, EuropeanaConnector, normalize_europeana_item};
 pub use fixture::FixtureConnector;
 pub use gallica::GallicaConnector;
-pub use hal::{normalize_hal_doc, HalConnector, CONNECTOR_VERSION as HAL_VERSION};
-pub use persee::{normalize_persee_record, PerseeConnector, CONNECTOR_VERSION as PERSEE_VERSION};
+pub use hal::{CONNECTOR_VERSION as HAL_VERSION, HalConnector, normalize_hal_doc};
+pub use internet_archive::{InternetArchiveConfig, InternetArchiveConnector, normalize_ia_item};
 pub use open_library::OpenLibraryConnector;
-pub use bnf::{normalize_bnf_notice, BnfConfig, BnfConnector};
-pub use europeana::{normalize_europeana_item, EuropeanaConfig, EuropeanaConnector};
-pub use internet_archive::{
-    normalize_ia_item, InternetArchiveConfig, InternetArchiveConnector,
-};
 pub use openalex::{
-    normalize_openalex_work, openalex_debate_query, OpenAlexConfig, OpenAlexConnector,
-    CONNECTOR_VERSION as OPENALEX_VERSION,
+    CONNECTOR_VERSION as OPENALEX_VERSION, OpenAlexConfig, OpenAlexConnector,
+    normalize_openalex_work, openalex_debate_query,
 };
+pub use persee::{CONNECTOR_VERSION as PERSEE_VERSION, PerseeConnector, normalize_persee_record};
 pub use stub::StubConnector;
 pub use theses_fr::{
-    normalize_these_detail, ThesesFrConfig, ThesesFrConnector,
-    CONNECTOR_VERSION as THESES_FR_VERSION,
+    CONNECTOR_VERSION as THESES_FR_VERSION, ThesesFrConfig, ThesesFrConnector,
+    normalize_these_detail,
 };
 pub use wikidata::{WikidataSourceConnector, WikidataSourceConnectorConfig};
 pub use wikipedia::{WikipediaConnector, WikipediaConnectorConfig};
 pub use wikisource::{
-    classify_genre, parse_search_titles, parse_siteinfo_namespaces, WikisourceConnector,
+    WikisourceConnector, classify_genre, parse_search_titles, parse_siteinfo_namespaces,
 };
 
 use std::sync::Arc;
@@ -413,6 +411,14 @@ pub fn default_registry_with_corpus(
             connector: Some(Arc::new(gallica)),
             config_notes: "Gallica SRU (public)".into(),
         });
+        let wikisource = WikisourceConnector::new()?;
+        reg.register(ConnectorRegistration {
+            kind: SourceKind::Wikisource,
+            implemented: true,
+            capabilities: caps_stub(&SourceKind::Wikisource),
+            connector: Some(Arc::new(wikisource)),
+            config_notes: "Wikisource FR Action API (public)".into(),
+        });
         let hal_conn = HalConnector::new()?;
         reg.register(ConnectorRegistration {
             kind: SourceKind::Hal,
@@ -439,7 +445,11 @@ pub fn default_registry_with_corpus(
                     config_notes: "theses.fr search (public)".into(),
                 });
             }
-            Err(_) => register_stub(&mut reg, SourceKind::ThesesFr, "theses.fr connector init failed"),
+            Err(_) => register_stub(
+                &mut reg,
+                SourceKind::ThesesFr,
+                "theses.fr connector init failed",
+            ),
         }
         let mut oa_cfg = OpenAlexConfig::default();
         oa_cfg.api_key = std::env::var("OPENALEX_API_KEY")
@@ -458,7 +468,11 @@ pub fn default_registry_with_corpus(
                     config_notes: "OpenAlex works API (public)".into(),
                 });
             }
-            Err(_) => register_stub(&mut reg, SourceKind::OpenAlex, "OpenAlex connector init failed"),
+            Err(_) => register_stub(
+                &mut reg,
+                SourceKind::OpenAlex,
+                "OpenAlex connector init failed",
+            ),
         }
         match BnfConnector::new(BnfConfig::default()) {
             Ok(conn) => {
@@ -503,6 +517,7 @@ pub fn default_registry_with_corpus(
         register_stub(&mut reg, SourceKind::OpenLibrary, "enable with --live");
         register_stub(&mut reg, SourceKind::InternetArchive, "enable with --live");
         register_stub(&mut reg, SourceKind::Gallica, "enable with --live");
+        register_stub(&mut reg, SourceKind::Wikisource, "enable with --live");
         register_stub(&mut reg, SourceKind::Hal, "enable with --live");
         register_stub(&mut reg, SourceKind::Persee, "enable with --live");
         register_stub(&mut reg, SourceKind::ThesesFr, "enable with --live");
@@ -517,7 +532,6 @@ pub fn default_registry_with_corpus(
 
     // Remaining Lot C/D — interfaces only until fetch/parse/extract exist.
     for kind in [
-        SourceKind::Wikisource,
         SourceKind::WikimediaCommons,
         SourceKind::Viaf,
         SourceKind::Isni,
@@ -527,7 +541,7 @@ pub fn default_registry_with_corpus(
         SourceKind::Sudoc,
     ] {
         let notes = match kind {
-            SourceKind::Wikisource | SourceKind::WikimediaCommons => "Wikimedia remainder",
+            SourceKind::WikimediaCommons => "Wikimedia remainder",
             _ => "alignment layer — not yet wired",
         };
         register_stub(&mut reg, kind, notes);
