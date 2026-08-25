@@ -530,7 +530,17 @@ fn filter_includes_wikidata(sources: &[String]) -> bool {
         .any(|source| SourceKind::parse(source) == SourceKind::Wikidata)
 }
 
-/// Lot E / Wikimedia identity harvest for default `--live` and wiki `--sources`.
+/// Lot E Wikipedia/Wikidata dense extraction for default `--live` and identity `--sources`.
+pub fn live_run_lot_e(sources: Option<&[String]>) -> bool {
+    sources
+        .map(|s| {
+            s.iter()
+                .any(|k| matches!(k.as_str(), "wikidata" | "wikipedia"))
+        })
+        .unwrap_or(true)
+}
+
+/// Wikimedia harvest (incl. commons/wikisource) when any wiki `--sources` are requested.
 pub fn live_run_wikimedia(sources: Option<&[String]>) -> bool {
     sources
         .map(|s| {
@@ -1223,7 +1233,24 @@ mod wikisource_skip_tests {
 
 #[cfg(test)]
 mod live_cli_filter_tests {
-    use super::{live_quality_sources, live_run_wikimedia};
+    use super::{live_quality_sources, live_run_lot_e, live_run_wikimedia};
+
+    #[test]
+    fn live_run_lot_e_none_true() {
+        assert!(live_run_lot_e(None));
+    }
+
+    #[test]
+    fn live_run_lot_e_wikipedia_true() {
+        let sources = ["wikipedia".to_string()];
+        assert!(live_run_lot_e(Some(&sources)));
+    }
+
+    #[test]
+    fn live_run_lot_e_commons_false() {
+        let sources = ["commons".to_string()];
+        assert!(!live_run_lot_e(Some(&sources)));
+    }
 
     #[test]
     fn live_run_wikimedia_none_true() {

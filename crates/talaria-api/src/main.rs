@@ -284,7 +284,7 @@ async fn main() -> anyhow::Result<()> {
             }
             if live {
                 let corpus_sources = crate::corpus_ingest::live_corpus_providers();
-                let run_wikimedia = ingest::live_run_wikimedia(sources.as_deref());
+                let run_lot_e = ingest::live_run_lot_e(sources.as_deref());
                 let corpus_sources_requested: Option<Vec<String>> = sources.as_ref().map(|s| {
                     s.iter()
                         .filter(|k| corpus_sources.iter().any(|live| live == *k))
@@ -296,7 +296,7 @@ async fn main() -> anyhow::Result<()> {
                     .map(|v| !v.is_empty())
                     .unwrap_or(true);
 
-                if run_wikimedia {
+                if run_lot_e {
                     println!("\n📡 Phase 1/3 — Wikipedia / Wikidata (dense extraction)…");
                     let seeds = match seed_list.clone() {
                         Some(path) => path,
