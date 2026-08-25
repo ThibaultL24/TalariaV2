@@ -296,6 +296,12 @@ pub async fn run_ingest_quality(
                     )
                     .await?;
                 }
+                if kind == SourceKind::Wikipedia {
+                    crate::lot_e::append_commons_known_identifiers(
+                        &mut subject.known_identifiers,
+                        &talaria_sources::file_titles_from_wikitext(&fetched.text),
+                    );
+                }
                 let _ = counters.record_call(&budgets);
                 let _ = counters.record_document(kind.as_str(), &budgets, fetched.content_bytes);
 
@@ -522,6 +528,36 @@ fn filter_includes_wikidata(sources: &[String]) -> bool {
     sources
         .iter()
         .any(|source| SourceKind::parse(source) == SourceKind::Wikidata)
+}
+
+/// Lot E / Wikimedia identity harvest for default `--live` and wiki `--sources`.
+pub fn live_run_wikimedia(sources: Option<&[String]>) -> bool {
+    sources
+        .map(|s| {
+            s.iter().any(|k| {
+                matches!(
+                    k.as_str(),
+                    "wikidata" | "wikipedia" | "wikisource" | "commons"
+                )
+            })
+        })
+        .unwrap_or(true)
+}
+
+const LIVE_QUALITY_WIKI_SOURCES: &[&str] = &["wikisource", "commons", "wikidata"];
+
+/// Catalog filter plus wikisource/commons/wikidata when the user did not exclude them.
+pub fn live_quality_sources(sources: Option<&[String]>, corpus_filter: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = corpus_filter.to_vec();
+    for name in LIVE_QUALITY_WIKI_SOURCES {
+        let include = sources
+            .map(|requested| requested.iter().any(|k| k.as_str() == *name))
+            .unwrap_or(true);
+        if include && !out.iter().any(|k| k == *name) {
+            out.push((*name).to_string());
+        }
+    }
+    out
 }
 
 /// WDQS harvest: P710 / P1344 participation plus biography (never P607 war fan-out).
@@ -1182,5 +1218,63 @@ mod wikisource_skip_tests {
             .expect("normalized payload");
         assert_eq!(extracted.source_kind, SourceKind::Wikisource);
         assert_eq!(extracted.external_id, "1");
+    }
+}
+
+#[cfg(test)]
+mod live_cli_filter_tests {
+    use super::{live_quality_sources, live_run_wikimedia};
+
+    #[test]
+    fn live_run_wikimedia_none_true() {
+        assert!(live_run_wikimedia(None));
+    }
+
+    #[test]
+    fn live_run_wikimedia_commons_true() {
+        let sources = ["commons".to_string()];
+        assert!(live_run_wikimedia(Some(&sources)));
+    }
+
+    #[test]
+    fn live_run_wikimedia_hal_false() {
+        let sources = ["hal".to_string()];
+        assert!(!live_run_wikimedia(Some(&sources)));
+    }
+
+    #[test]
+    fn live_quality_sources_default_includes_commons_and_wikisource() {
+        let catalog = ["hal".to_string()];
+        let sources = live_quality_sources(None, &catalog);
+        assert!(sources.iter().any(|s| s == "hal"));
+        assert!(sources.iter().any(|s| s == "commons"));
+        assert!(sources.iter().any(|s| s == "wikisource"));
+        assert!(sources.iter().any(|s| s == "wikidata"));
+    }
+
+    #[test]
+    fn live_quality_sources_hal_only_does_not_add_commons() {
+        let catalog = ["hal".to_string()];
+        let requested = ["hal".to_string()];
+        let sources = live_quality_sources(Some(&requested), &catalog);
+        assert_eq!(sources, vec!["hal".to_string()]);
+        assert!(!sources.iter().any(|s| s == "commons"));
+        assert!(!sources.iter().any(|s| s == "wikisource"));
+    }
+
+    #[test]
+    fn live_quality_wikipedia_fetch_appends_file_titles() {
+        let src = include_str!("ingest.rs");
+        let after_wd = src
+            .split("if kind == SourceKind::Wikidata {")
+            .nth(1)
+            .expect("wikidata persist");
+        let wiki_branch = after_wd
+            .split("if kind == SourceKind::Wikipedia {")
+            .nth(1)
+            .expect("wikipedia file titles");
+        let body = wiki_branch.split('}').next().expect("branch body");
+        assert!(body.contains("file_titles_from_wikitext(&fetched.text)"));
+        assert!(body.contains("append_commons_known_identifiers"));
     }
 }

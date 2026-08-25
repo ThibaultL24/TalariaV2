@@ -284,9 +284,7 @@ async fn main() -> anyhow::Result<()> {
             }
             if live {
                 let corpus_sources = crate::corpus_ingest::live_corpus_providers();
-                let run_wikimedia = sources.as_ref().map(|s| {
-                    s.iter().any(|k| matches!(k.as_str(), "wikidata" | "wikipedia"))
-                }).unwrap_or(true);
+                let run_wikimedia = ingest::live_run_wikimedia(sources.as_deref());
                 let corpus_sources_requested: Option<Vec<String>> = sources.as_ref().map(|s| {
                     s.iter()
                         .filter(|k| corpus_sources.iter().any(|live| live == *k))
@@ -326,12 +324,12 @@ async fn main() -> anyhow::Result<()> {
                     ingest::print_density_snapshot(&config, &subject).await;
                 }
 
+                let corpus_filter = if sources.is_some() {
+                    corpus_sources_requested.clone().unwrap_or_default()
+                } else {
+                    corpus_sources.clone()
+                };
                 if run_corpus {
-                    let corpus_filter = if sources.is_some() {
-                        corpus_sources_requested.clone().unwrap_or_default()
-                    } else {
-                        corpus_sources.clone()
-                    };
                     println!("\n📚 Phase 2/3 — Corpus bibliography (HAL, Persée, Gallica…)…");
                     match corpus_ingest::run_corpus_ingest(
                         &config,
@@ -348,13 +346,17 @@ async fn main() -> anyhow::Result<()> {
                         Ok(report) => println!("{report}"),
                         Err(error) => tracing::warn!(error = %error, "corpus bibliography ingest failed"),
                     }
+                }
 
+                let quality_sources =
+                    ingest::live_quality_sources(sources.as_deref(), &corpus_filter);
+                if !quality_sources.is_empty() {
                     println!("\n🔎 Phase 3/3 — Catalog quality extract (no Wikipedia re-crawl)…");
                     let report = ingest::run_ingest_quality(
                         &config,
                         &subject,
                         qid.as_deref(),
-                        Some(corpus_filter),
+                        Some(quality_sources),
                         fixture,
                         live,
                     )
