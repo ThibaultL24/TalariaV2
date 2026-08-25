@@ -3,7 +3,7 @@
 
 use anyhow::{anyhow, Context, Result};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
@@ -43,6 +43,7 @@ pub struct WikidataHuman {
 #[derive(Debug, Default)]
 pub struct DumpIngestStats {
     pub entities_seen: usize,
+    pub entities_emitted: usize,
     pub humans_seen: usize,
     pub humans_emitted: usize,
     pub labels_cached: usize,
@@ -81,6 +82,7 @@ pub fn stream_humans(
         match materialize_human(&entity, &labels) {
             Ok(human) if profiles_resolved(&human) => {
                 on_human(human)?;
+                stats.entities_emitted += 1;
                 stats.humans_emitted += 1;
             }
             Ok(_) | Err(_) => pending.push(entity),
@@ -95,9 +97,40 @@ pub fn stream_humans(
         }
         let human = materialize_human(&entity, &labels)?;
         on_human(human)?;
+        stats.entities_emitted += 1;
         stats.humans_emitted += 1;
     }
 
+    Ok(stats)
+}
+
+/// Stream a Wikidata dump and emit **full** entity JSON for QIDs in `keep`.
+/// Never occupation-only structs. Callers must pass a neighborhood set — do not
+/// default to the whole `latest-all` dump.
+pub fn stream_entities_for_qids(
+    path: &Path,
+    keep: &HashSet<String>,
+    mut on_entity: impl FnMut(Value) -> Result<()>,
+) -> Result<DumpIngestStats> {
+    let mut stats = DumpIngestStats::default();
+    for_each_entity(path, |entity| {
+        stats.entities_seen += 1;
+        let Some(qid) = entity.get("id").and_then(Value::as_str) else {
+            return Ok(());
+        };
+        if is_human(&entity) {
+            stats.humans_seen += 1;
+        }
+        if keep.contains(qid) {
+            let human = is_human(&entity);
+            on_entity(entity)?;
+            stats.entities_emitted += 1;
+            if human {
+                stats.humans_emitted += 1;
+            }
+        }
+        Ok(())
+    })?;
     Ok(stats)
 }
 
@@ -216,13 +249,14 @@ fn claim_item_ids(entity: &Value, property: &str) -> Vec<String> {
 fn claim_year(entity: &Value, property: &str) -> Option<i32> {
     let claims = entity.get("claims")?.get(property)?.as_array()?;
     for claim in claims {
-        let time = claim
+        let Some(time) = claim
             .pointer("/mainsnak/datavalue/value/time")
-            .and_then(Value::as_str)?;
-        // "+1769-08-15T00:00:00Z" / "-0500-00-00T00:00:00Z"
-        let year_str = time.trim_start_matches('+').split('-').next()?;
-        if let Ok(year) = year_str.parse::<i32>() {
-            return Some(year);
+            .and_then(Value::as_str)
+        else {
+            continue;
+        };
+        if let Some(parsed) = crate::time::parse_wikibase_time(time, None, None) {
+            return Some(parsed.year);
         }
     }
     None
@@ -271,6 +305,7 @@ pub fn slugify(label: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
     use std::io::Write;
     use tempfile::NamedTempFile;
 
@@ -297,5 +332,83 @@ mod tests {
         assert_eq!(humans[0].qid, "Q1744");
         assert_eq!(humans[0].profiles[0].slug, "politician");
         assert_eq!(humans[0].sitelinks[0].title, "Madonna");
+    }
+
+    #[test]
+    fn claim_year_parses_bce_via_stream_humans() {
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(
+            file,
+            r#"[
+{{"type":"item","id":"Q1048","labels":{{"en":{{"language":"en","value":"Julius Caesar"}}}},"claims":{{"P31":[{{"mainsnak":{{"datavalue":{{"value":{{"id":"Q5"}}}}}}}}],"P569":[{{"mainsnak":{{"snaktype":"novalue"}}}},{{"mainsnak":{{"datavalue":{{"value":{{"time":"-0044-03-15T00:00:00Z"}}}}}}}}]}}}}
+]"#
+        )
+        .unwrap();
+
+        let mut humans = Vec::new();
+        stream_humans(file.path(), 0, |h| {
+            humans.push(h);
+            Ok(())
+        })
+        .unwrap();
+
+        assert_eq!(humans[0].birth_year, Some(-44));
+    }
+
+    fn napoleon_paris_dump(file: &mut NamedTempFile) {
+        writeln!(
+            file,
+            r#"[
+{{"type":"item","id":"Q90","labels":{{"en":{{"language":"en","value":"Paris"}}}}}},
+{{"type":"item","id":"Q517","labels":{{"en":{{"language":"en","value":"Napoleon"}}}},"claims":{{"P31":[{{"mainsnak":{{"datavalue":{{"value":{{"id":"Q5"}}}}}}}}],"P551":[{{"mainsnak":{{"datavalue":{{"value":{{"id":"Q90"}}}}}}}}]}}}}
+]"#
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn streams_kept_qids_with_full_claims() {
+        let mut file = NamedTempFile::new().unwrap();
+        napoleon_paris_dump(&mut file);
+
+        let keep = HashSet::from(["Q517".to_string()]);
+        let mut received = Vec::new();
+        let stats = stream_entities_for_qids(file.path(), &keep, |entity| {
+            received.push(entity);
+            Ok(())
+        })
+        .unwrap();
+
+        assert_eq!(received.len(), 1);
+        assert_eq!(received[0]["id"], "Q517");
+        assert_eq!(stats.entities_emitted, 1);
+        assert_eq!(stats.humans_emitted, 1);
+        assert!(
+            received[0].get("claims").is_some(),
+            "callback must receive full entity JSON including claims"
+        );
+        assert_eq!(
+            received[0].pointer("/claims/P551/0/mainsnak/datavalue/value/id"),
+            Some(&Value::String("Q90".into()))
+        );
+        assert!(received.iter().all(|e| e["id"] != "Q90"));
+    }
+
+    #[test]
+    fn neighborhood_stats_count_places_separately_from_humans() {
+        let mut file = NamedTempFile::new().unwrap();
+        napoleon_paris_dump(&mut file);
+
+        let keep = HashSet::from(["Q90".to_string(), "Q517".to_string()]);
+        let mut received = Vec::new();
+        let stats = stream_entities_for_qids(file.path(), &keep, |entity| {
+            received.push(entity);
+            Ok(())
+        })
+        .unwrap();
+
+        assert_eq!(received.len(), 2);
+        assert_eq!(stats.entities_emitted, 2);
+        assert_eq!(stats.humans_emitted, 1);
     }
 }

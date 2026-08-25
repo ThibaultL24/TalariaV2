@@ -66,58 +66,9 @@ impl WikidataSourceConnector {
     }
 
     fn statements_to_text(entity: &Value) -> String {
-        let mut lines = Vec::new();
-        let Some(claims) = entity.get("claims").and_then(|c| c.as_object()) else {
-            return String::new();
-        };
-        // Map a few high-value properties to event-like STATEMENT lines.
-        const MAP: &[(&str, &str, &str)] = &[
-            ("P569", "birth", "born_in"),
-            ("P570", "death", "died_in"),
-            ("P19", "birth", "born_in"),
-            ("P20", "death", "died_in"),
-            ("P26", "marriage", "married"),
-            ("P39", "office", "held_office"),
-            ("P551", "residence", "resided_in"),
-            ("P69", "education", "studied_at"),
-            ("P800", "publication", "published"),
-        ];
-        for (pid, etype, pred) in MAP {
-            let Some(arr) = claims.get(*pid).and_then(|v| v.as_array()) else {
-                continue;
-            };
-            for stmt in arr {
-                let time = stmt
-                    .pointer("/qualifiers/P580/0/datavalue/value/time")
-                    .or_else(|| stmt.pointer("/qualifiers/P585/0/datavalue/value/time"))
-                    .or_else(|| stmt.pointer("/qualifiers/P577/0/datavalue/value/time"))
-                    .or_else(|| stmt.pointer("/mainsnak/datavalue/value/time"))
-                    .and_then(|v| v.as_str())
-                    .and_then(parse_wikidata_year)
-                    .map(|y| y.to_string())
-                    .unwrap_or_else(|| "".into());
-                let place = stmt
-                    .pointer("/qualifiers/P276/0/datavalue/value/id")
-                    .or_else(|| stmt.pointer("/mainsnak/datavalue/value/id"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                if *pid == "P19" || *pid == "P20" {
-                    // place of birth/death — year may be on P569/P570 separately
-                    lines.push(format!("STATEMENT\t{etype}\t{pred}\t\t{place}"));
-                } else if !time.is_empty() || !place.is_empty() {
-                    lines.push(format!("STATEMENT\t{etype}\t{pred}\t{time}\t{place}"));
-                }
-            }
-        }
-        lines.join("\n")
+        let parsed = talaria_wikidata::parse_entity_claims(entity);
+        talaria_wikidata::promoted_statement_lines(&parsed)
     }
-}
-
-fn parse_wikidata_year(time: &str) -> Option<i32> {
-    // +1769-08-15T00:00:00Z
-    let t = time.trim().trim_start_matches('+');
-    let year: i32 = t.get(0..4)?.parse().ok()?;
-    Some(year)
 }
 
 #[async_trait]
@@ -201,7 +152,7 @@ impl SourceConnector for WikidataSourceConnector {
         Ok(FetchedDocument {
             discovered: document.clone(),
             revision_id: lastrevid,
-            content_type: "application/x-talaria-statements".into(),
+            content_type: "application/vnd.wikibase.entity+json".into(),
             text,
             raw_metadata: entity,
             license: Some("CC0".into()),
@@ -214,5 +165,46 @@ impl SourceConnector for WikidataSourceConnector {
             ok: true,
             detail: "wikidata api client ready".into(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn statements_text_is_promoted_lines_only() {
+        let entity = json!({
+            "id": "Q517",
+            "lastrevid": 1,
+            "claims": {
+                "P551": [{
+                    "id": "Q517$p551",
+                    "rank": "normal",
+                    "mainsnak": {
+                        "snaktype": "value",
+                        "property": "P551",
+                        "datavalue": { "value": { "id": "Q90" } }
+                    },
+                    "qualifiers": {
+                        "P580": [{
+                            "datavalue": { "value": { "time": "+1804-01-01T00:00:00Z", "precision": 9 } }
+                        }]
+                    }
+                }],
+                "P106": [{
+                    "id": "Q517$p106",
+                    "rank": "normal",
+                    "mainsnak": {
+                        "snaktype": "value",
+                        "property": "P106",
+                        "datavalue": { "value": { "id": "Q82955" } }
+                    }
+                }]
+            }
+        });
+        let text = WikidataSourceConnector::statements_to_text(&entity);
+        assert_eq!(text, "STATEMENT\tresidence\tresided_in\t1804\tQ90");
     }
 }

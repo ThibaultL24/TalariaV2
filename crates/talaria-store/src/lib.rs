@@ -10,6 +10,7 @@ pub mod dump_runs;
 pub mod entities;
 pub mod intuition;
 pub mod judgments;
+pub mod media;
 pub mod multi_source;
 pub mod phrase_candidates;
 pub mod person_events;
@@ -18,6 +19,7 @@ pub mod pool;
 pub mod profiles;
 pub mod quality;
 pub mod sentences;
+pub mod wikibase;
 pub mod wiki_pages;
 pub mod wiki_sections;
 
@@ -66,6 +68,7 @@ pub use intuition::{
     IntuitionPublicationRow, QualityConflictRow, SoftClaimExportRow,
 };
 pub use judgments::insert_judgment;
+pub use media::{upsert_media_asset, MediaAssetInsert};
 pub use multi_source::{
     add_claim_support, density_report_counts, finish_discovery_run, link_claim_to_event,
     list_place_labels_for_occurrence_stem, mark_discovered_skipped, mark_discovered_snapshotted,
@@ -108,6 +111,7 @@ pub use sentences::{
     list_sentences_for_dump_mine, list_sentences_for_extraction, replace_sentences_for_page,
     SentenceRecord, SentenceRow,
 };
+pub use wikibase::{upsert_wikibase_statement, WikibaseStatementInsert};
 pub use wiki_pages::{
     list_pages_for_sentence_split, store_extracted_page, WikiPageRecord, WikiPageRow,
 };

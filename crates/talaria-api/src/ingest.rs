@@ -11,7 +11,7 @@ use talaria_quality::{
     DerivedLabelProjections, EntityKind, EvidencePtr, ExistingCandidateAction,
     EXTRACTOR_EPISTEMIC_STATUS, GazetteerResolver, GateContext, Mention, ASSEMBLER_V1,
 };
-use talaria_sources::connectors::{default_registry, FixtureConnector};
+use talaria_sources::connectors::{default_registry, parse_mediainfo, FixtureConnector};
 use talaria_sources::extractors::{
     claim_fingerprint, default_extractor_stack, CandidateExtractor, ClaimKey, ExtractorInput,
     StructuredStatementExtractor,
@@ -20,19 +20,21 @@ use talaria_sources::wdqs::{
     events_from_fixture_dir, events_to_statement_text, fetch_events_for_person,
 };
 use talaria_sources::{
-    plan_sources, BudgetCounters, DiscoveredDocument, IngestBudgets, ResolvedSubject, SourceKind,
+    plan_sources, BudgetCounters, ConnectorError, DiscoveredDocument, IngestBudgets,
+    ResolvedSubject, SourceKind,
 };
 use talaria_store::{
     add_claim_support, density_report_counts,
     find_active_quality_event_by_occurrence_key, finish_discovery_run,
     get_event_candidate_by_fingerprint, insert_document_fragment, insert_document_snapshot,
     insert_quality_canonical_event, link_claim_to_event, mark_candidate_assembled,
-    mark_discovered_skipped, mark_discovered_snapshotted, quality_lifespan_years,
+    mark_discovered_corpus_document, mark_discovered_skipped, mark_discovered_snapshotted,
+    quality_lifespan_years,
     reinforce_quality_event, reject_if_singleton_exists, start_discovery_run,
     update_event_candidate_judgment, update_entity_qid, upsert_discovered_document,
-    upsert_entity_with_kind, upsert_event_candidate, upsert_quality_claim,
+    upsert_entity_with_kind, upsert_event_candidate, upsert_media_asset, upsert_quality_claim,
     DiscoveredDocumentInsert, DiscoveryRunInsert, DocumentFragmentInsert, DocumentSnapshotInsert,
-    EventCandidateInsert, QualityClaimInsert, QualityEventInsert,
+    EventCandidateInsert, MediaAssetInsert, QualityClaimInsert, QualityEventInsert,
 };
 use uuid::Uuid;
 
@@ -55,6 +57,7 @@ pub struct IngestMetrics {
     pub events_created: u64,
     pub events_reinforced: u64,
     pub connector_errors: u64,
+    pub commons_unlicensed: u64,
     pub loss_reasons: std::collections::BTreeMap<String, u64>,
 }
 
@@ -130,8 +133,12 @@ pub async fn run_ingest_quality(
 
     if live {
         if let Some(q) = subject.qid.clone() {
-            match crate::lot_e::fetch_wikidata_subject_meta(&q, &config.wiki_lang).await {
+            match crate::lot_e::fetch_wikidata_subject_meta(&q, &config.wiki_lang, Some(&pool)).await {
                 Ok(meta) => {
+                    crate::lot_e::append_wikidata_meta_identifiers(
+                        &mut subject.known_identifiers,
+                        &meta,
+                    );
                     if !meta.occupations.is_empty() {
                         subject.occupations = meta.occupations;
                     }
@@ -266,6 +273,15 @@ pub async fn run_ingest_quality(
                 let fetched = match connector.fetch(&doc).await {
                     Ok(f) => f,
                     Err(e) => {
+                        if kind == SourceKind::WikimediaCommons
+                            && matches!(&e, ConnectorError::Parse(msg) if msg.contains("unlicensed"))
+                        {
+                            metrics.commons_unlicensed += 1;
+                            metrics.documents_skipped += 1;
+                            metrics.bump_loss("commons_unlicensed");
+                            mark_discovered_skipped(&pool, doc_id, "commons_unlicensed").await?;
+                            continue;
+                        }
                         tracing::warn!(error = %e, id = %doc.external_id, "fetch failed");
                         metrics.connector_errors += 1;
                         metrics.bump_loss("connector_fetch_failed");
@@ -273,6 +289,19 @@ pub async fn run_ingest_quality(
                         continue;
                     }
                 };
+                if kind == SourceKind::Wikidata {
+                    crate::lot_e::persist_wikibase_entity_statements(
+                        &pool,
+                        &fetched.raw_metadata,
+                    )
+                    .await?;
+                }
+                if kind == SourceKind::Wikipedia {
+                    crate::lot_e::append_commons_known_identifiers(
+                        &mut subject.known_identifiers,
+                        &talaria_sources::file_titles_from_wikitext(&fetched.text),
+                    );
+                }
                 let _ = counters.record_call(&budgets);
                 let _ = counters.record_document(kind.as_str(), &budgets, fetched.content_bytes);
 
@@ -284,7 +313,11 @@ pub async fn run_ingest_quality(
                 let snapshot_id = insert_document_snapshot(
                     &pool,
                     &DocumentSnapshotInsert {
-                        source_type: kind.as_str().into(),
+                        source_type: if kind == SourceKind::WikimediaCommons {
+                            "commons".into()
+                        } else {
+                            kind.as_str().into()
+                        },
                         source_uri,
                         source_identifier: Some(doc.external_id.clone()),
                         language: doc.language.clone().unwrap_or_else(|| "en".into()),
@@ -305,46 +338,122 @@ pub async fn run_ingest_quality(
                 mark_discovered_snapshotted(&pool, doc_id, snapshot_id).await?;
                 metrics.documents_snapshotted += 1;
 
-                // Sentence fragment covering whole doc for evidence pointers.
-                let frag_id = insert_document_fragment(
-                    &pool,
-                    &DocumentFragmentInsert {
-                        snapshot_id,
-                        fragment_kind: "sentence".into(),
-                        parent_fragment_id: None,
-                        sentence_id: None,
-                        text: fetched.text.clone(),
-                        start_offset: 0,
-                        end_offset: fetched.text.len() as i32,
-                        clause_index: None,
-                        ordinal: 0,
-                    },
-                )
-                .await?;
-                metrics.fragments += 1;
-
-                let input = ExtractorInput {
-                    text: fetched.text.clone(),
-                    page_title: Some(label.to_string()),
-                    subject_label: Some(label.to_string()),
-                    document_type: doc.document_type.as_str().to_string(),
-                    subject_death_year: subject.death_year,
-                    ..Default::default()
-                };
-
-                let mut raws = Vec::new();
-                for ex in &extractor_refs {
-                    raws.extend(ex.extract(&input));
+                if kind == SourceKind::WikimediaCommons {
+                    persist_commons_media_asset(&pool, subject.entity_id, &fetched).await?;
+                    continue;
                 }
 
-                for raw in raws {
+                let is_wiki = persist_as_wiki_fragments(&kind)
+                    && (kind != SourceKind::Wikipedia
+                        || crate::wiki_persist::wikipedia_quality_uses_wiki_fragments(
+                            fetched
+                                .raw_metadata
+                                .get("source_form")
+                                .and_then(|v| v.as_str()),
+                        ));
+                let (frag_id, sentences) = if is_wiki {
+                    match crate::wiki_persist::persist_wiki_fragments(
+                        &pool,
+                        snapshot_id,
+                        &fetched.text,
+                    )
+                    .await
+                    {
+                        Ok(set) => {
+                            metrics.fragments += set.total as u64;
+                            (set.first_sentence, set.sentences)
+                        }
+                        Err(_) => {
+                            let frag_id = insert_document_fragment(
+                                &pool,
+                                &blob_fragment(snapshot_id, &fetched.text),
+                            )
+                            .await?;
+                            metrics.fragments += 1;
+                            (frag_id, vec![(frag_id, fetched.text.clone())])
+                        }
+                    }
+                } else {
+                    let frag_id = insert_document_fragment(
+                        &pool,
+                        &blob_fragment(snapshot_id, &fetched.text),
+                    )
+                    .await?;
+                    metrics.fragments += 1;
+                    (frag_id, vec![(frag_id, fetched.text.clone())])
+                };
+
+                if skip_event_extractors(&kind) {
+                    if let Some(normalized) = crate::corpus_ingest::extract_normalized(
+                        &kind,
+                        &fetched.raw_metadata,
+                    )? {
+                        let (corpus_id, _snapshot_id, _snapshot_new) =
+                            crate::corpus_ingest::persist_normalized(
+                                &pool,
+                                &kind,
+                                &doc,
+                                &normalized,
+                                Some(snapshot_id),
+                            )
+                            .await?;
+                        mark_discovered_corpus_document(&pool, doc_id, corpus_id).await?;
+                    }
+                    continue;
+                }
+
+                let plain = fetched
+                    .raw_metadata
+                    .get("plain_extract")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| {
+                        if is_wiki {
+                            talaria_text::wikitext_to_plain(&fetched.text)
+                        } else {
+                            fetched.text.clone()
+                        }
+                    });
+                let wikitext = is_wiki.then(|| fetched.text.clone());
+
+                let attached = if kind == SourceKind::Wikipedia {
+                    crate::wiki_persist::run_wiki_extractors(
+                        &extractor_refs,
+                        Some(label.to_string()),
+                        Some(label.to_string()),
+                        doc.document_type.as_str().to_string(),
+                        subject.death_year,
+                        wikitext,
+                        Vec::new(),
+                        &plain,
+                        &sentences,
+                        frag_id,
+                    )
+                } else {
+                    let input = ExtractorInput {
+                        text: fetched.text.clone(),
+                        page_title: Some(label.to_string()),
+                        subject_label: Some(label.to_string()),
+                        document_type: doc.document_type.as_str().to_string(),
+                        subject_death_year: subject.death_year,
+                        ..Default::default()
+                    };
+                    let mut raws = Vec::new();
+                    for ex in &extractor_refs {
+                        raws.extend(ex.extract(&input));
+                    }
+                    raws.into_iter().map(|r| (frag_id, r)).collect()
+                };
+
+                for (fid, raw) in attached {
                     process_raw_candidate(
                         &pool,
                         config,
                         &subject,
                         subject_id,
                         snapshot_id,
-                        frag_id,
+                        fid,
                         kind.as_str(),
                         &raw,
                         &resolver,
@@ -371,10 +480,99 @@ pub async fn run_ingest_quality(
     Ok(report)
 }
 
+fn persist_as_wiki_fragments(kind: &SourceKind) -> bool {
+    matches!(kind, SourceKind::Wikipedia | SourceKind::Wikisource)
+}
+
+fn skip_event_extractors(kind: &SourceKind) -> bool {
+    matches!(
+        kind,
+        SourceKind::Wikisource | SourceKind::WikimediaCommons
+    )
+}
+
+async fn persist_commons_media_asset(
+    pool: &sqlx::PgPool,
+    entity_id: Option<Uuid>,
+    fetched: &talaria_sources::FetchedDocument,
+) -> anyhow::Result<()> {
+    let Some(entity) = fetched.raw_metadata.get("entity") else {
+        return Ok(());
+    };
+    let imageinfo = fetched.raw_metadata.get("imageinfo");
+    let Some(asset) = parse_mediainfo(entity, imageinfo) else {
+        return Ok(());
+    };
+    upsert_media_asset(
+        pool,
+        &MediaAssetInsert {
+            commons_file: asset.commons_file,
+            mid: asset.mid,
+            sha1: asset.sha1,
+            mime: asset.mime,
+            license: asset.license,
+            attribution_text: asset.attribution_text,
+            thumb_url: asset.thumb_url,
+            depicts_qids: asset.depicts_qids,
+            revision_id: asset.revision_id,
+            rights_normalized: asset.rights_normalized,
+            entity_id,
+            corpus_document_id: None,
+        },
+    )
+    .await?;
+    Ok(())
+}
+
 fn filter_includes_wikidata(sources: &[String]) -> bool {
     sources
         .iter()
         .any(|source| SourceKind::parse(source) == SourceKind::Wikidata)
+}
+
+/// Lot E Wikipedia/Wikidata dense extraction for default `--live` and identity `--sources`.
+pub fn live_run_lot_e(sources: Option<&[String]>) -> bool {
+    sources
+        .map(|s| {
+            s.iter()
+                .any(|k| matches!(k.as_str(), "wikidata" | "wikipedia"))
+        })
+        .unwrap_or(true)
+}
+
+/// Wikimedia harvest (incl. commons/wikisource) when any wiki `--sources` are requested.
+pub fn live_run_wikimedia(sources: Option<&[String]>) -> bool {
+    sources
+        .map(|s| {
+            s.iter().any(|k| {
+                matches!(
+                    k.as_str(),
+                    "wikidata" | "wikipedia" | "wikisource" | "commons" | "wikimedia_commons"
+                )
+            })
+        })
+        .unwrap_or(true)
+}
+
+const LIVE_QUALITY_WIKI_SOURCES: &[&str] = &["wikisource", "commons", "wikidata"];
+
+/// Catalog filter plus wikisource/commons/wikidata when the user did not exclude them.
+pub fn live_quality_sources(sources: Option<&[String]>, corpus_filter: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = corpus_filter.to_vec();
+    for name in LIVE_QUALITY_WIKI_SOURCES {
+        let include = sources
+            .map(|requested| {
+                requested.iter().any(|k| {
+                    k.as_str() == *name
+                        || (*name == "commons" && k.as_str() == "wikimedia_commons")
+                })
+            })
+            .unwrap_or(true);
+        if include && !out.iter().any(|k| k == *name) {
+            out.push((*name).to_string());
+        }
+    }
+    out
 }
 
 /// WDQS harvest: P710 / P1344 participation plus biography (never P607 war fan-out).
@@ -434,6 +632,7 @@ pub async fn ingest_wdqs_events(
             end_offset: text.len() as i32,
             clause_index: None,
             ordinal: 0,
+            metadata: serde_json::json!({}),
         },
     )
     .await?;
@@ -471,6 +670,21 @@ pub async fn ingest_wdqs_events(
     Ok(metrics)
 }
 
+fn blob_fragment(snapshot_id: Uuid, text: &str) -> DocumentFragmentInsert {
+    DocumentFragmentInsert {
+        snapshot_id,
+        fragment_kind: "sentence".into(),
+        parent_fragment_id: None,
+        sentence_id: None,
+        text: text.to_string(),
+        start_offset: 0,
+        end_offset: text.len() as i32,
+        clause_index: None,
+        ordinal: 0,
+        metadata: serde_json::json!({}),
+    }
+}
+
 fn to_discovered_insert(run_id: Uuid, doc: &DiscoveredDocument) -> DiscoveredDocumentInsert {
     DiscoveredDocumentInsert {
         run_id,
@@ -503,6 +717,7 @@ fn metrics_to_json(m: &IngestMetrics) -> serde_json::Value {
         "events_created": m.events_created,
         "events_reinforced": m.events_reinforced,
         "connector_errors": m.connector_errors,
+        "commons_unlicensed": m.commons_unlicensed,
         "loss_reasons": m.loss_reasons,
     })
 }
@@ -968,4 +1183,130 @@ pub async fn print_density_snapshot(config: &AppConfig, subject: &str) {
         "  ↳ {subject}: {} quality events  ({} map_eligible / {} timeline_eligible)",
         counts.accepted_events, counts.map_eligible, counts.timeline_eligible,
     );
+}
+
+#[cfg(test)]
+mod wikisource_skip_tests {
+    use super::{persist_as_wiki_fragments, skip_event_extractors};
+    use talaria_sources::SourceKind;
+
+    #[test]
+    fn wikisource_persists_wiki_fragments_but_skips_event_extractors() {
+        assert!(persist_as_wiki_fragments(&SourceKind::Wikisource));
+        assert!(persist_as_wiki_fragments(&SourceKind::Wikipedia));
+        assert!(!persist_as_wiki_fragments(&SourceKind::Gallica));
+        assert!(skip_event_extractors(&SourceKind::Wikisource));
+        assert!(skip_event_extractors(&SourceKind::WikimediaCommons));
+        assert!(!skip_event_extractors(&SourceKind::Wikipedia));
+        assert!(!skip_event_extractors(&SourceKind::Gallica));
+    }
+
+    #[test]
+    fn skip_event_extractors_true_for_commons() {
+        assert!(skip_event_extractors(&SourceKind::WikimediaCommons));
+        assert!(skip_event_extractors(&SourceKind::Wikisource));
+    }
+
+    #[test]
+    fn skip_event_extractors_branch_links_discovered_to_corpus() {
+        let source = include_str!("ingest.rs");
+        let branch = source
+            .split("if skip_event_extractors(&kind)")
+            .nth(1)
+            .expect("skip_event_extractors branch");
+        assert!(
+            branch.contains("mark_discovered_corpus_document"),
+            "skip-extractor branch should link discovered docs to corpus rows"
+        );
+    }
+
+    #[test]
+    fn skip_event_extractors_still_extracts_wikisource_normalized_corpus() {
+        use talaria_sources::connectors::{normalize_wikisource, WikisourceConnector};
+        assert!(skip_event_extractors(&SourceKind::Wikisource));
+        let doc = WikisourceConnector::document_from_title("Lettre à Joséphine");
+        let n = normalize_wikisource(&doc, "Ma chère Joséphine,", &serde_json::json!({"page_id": 1}))
+            .unwrap();
+        let meta = serde_json::json!({"normalized": n});
+        let extracted = crate::corpus_ingest::extract_normalized(&SourceKind::Wikisource, &meta)
+            .unwrap()
+            .expect("normalized payload");
+        assert_eq!(extracted.source_kind, SourceKind::Wikisource);
+        assert_eq!(extracted.external_id, "1");
+    }
+}
+
+#[cfg(test)]
+mod live_cli_filter_tests {
+    use super::{live_quality_sources, live_run_lot_e, live_run_wikimedia};
+
+    #[test]
+    fn live_run_lot_e_none_true() {
+        assert!(live_run_lot_e(None));
+    }
+
+    #[test]
+    fn live_run_lot_e_wikipedia_true() {
+        let sources = ["wikipedia".to_string()];
+        assert!(live_run_lot_e(Some(&sources)));
+    }
+
+    #[test]
+    fn live_run_lot_e_commons_false() {
+        let sources = ["commons".to_string()];
+        assert!(!live_run_lot_e(Some(&sources)));
+    }
+
+    #[test]
+    fn live_run_wikimedia_none_true() {
+        assert!(live_run_wikimedia(None));
+    }
+
+    #[test]
+    fn live_run_wikimedia_commons_true() {
+        let sources = ["commons".to_string()];
+        assert!(live_run_wikimedia(Some(&sources)));
+    }
+
+    #[test]
+    fn live_run_wikimedia_hal_false() {
+        let sources = ["hal".to_string()];
+        assert!(!live_run_wikimedia(Some(&sources)));
+    }
+
+    #[test]
+    fn live_quality_sources_default_includes_commons_and_wikisource() {
+        let catalog = ["hal".to_string()];
+        let sources = live_quality_sources(None, &catalog);
+        assert!(sources.iter().any(|s| s == "hal"));
+        assert!(sources.iter().any(|s| s == "commons"));
+        assert!(sources.iter().any(|s| s == "wikisource"));
+        assert!(sources.iter().any(|s| s == "wikidata"));
+    }
+
+    #[test]
+    fn live_quality_sources_hal_only_does_not_add_commons() {
+        let catalog = ["hal".to_string()];
+        let requested = ["hal".to_string()];
+        let sources = live_quality_sources(Some(&requested), &catalog);
+        assert_eq!(sources, vec!["hal".to_string()]);
+        assert!(!sources.iter().any(|s| s == "commons"));
+        assert!(!sources.iter().any(|s| s == "wikisource"));
+    }
+
+    #[test]
+    fn live_quality_wikipedia_fetch_appends_file_titles() {
+        let src = include_str!("ingest.rs");
+        let after_wd = src
+            .split("if kind == SourceKind::Wikidata {")
+            .nth(1)
+            .expect("wikidata persist");
+        let wiki_branch = after_wd
+            .split("if kind == SourceKind::Wikipedia {")
+            .nth(1)
+            .expect("wikipedia file titles");
+        let body = wiki_branch.split('}').next().expect("branch body");
+        assert!(body.contains("file_titles_from_wikitext(&fetched.text)"));
+        assert!(body.contains("append_commons_known_identifiers"));
+    }
 }

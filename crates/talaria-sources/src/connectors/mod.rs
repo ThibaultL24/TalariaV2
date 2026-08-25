@@ -17,27 +17,33 @@ mod wikidata;
 mod wikipedia;
 mod wikisource;
 
-pub use bnf::{normalize_bnf_notice, BnfConfig, BnfConnector};
-pub use commons::WikimediaCommonsConnector;
-pub use europeana::{normalize_europeana_item, EuropeanaConfig, EuropeanaConnector};
+pub use bnf::{BnfConfig, BnfConnector, normalize_bnf_notice};
+pub use commons::{
+    CommonsAsset, CommonsConnector, commonswiki_file_sitelink, file_titles_from_wikitext,
+    listed_files_from_commons_sitelink, parse_mediainfo, parse_p18_filenames, parse_wiki_page_images,
+};
+pub use europeana::{EuropeanaConfig, EuropeanaConnector, normalize_europeana_item};
 pub use fixture::FixtureConnector;
 pub use gallica::GallicaConnector;
-pub use hal::{normalize_hal_doc, HalConnector, CONNECTOR_VERSION as HAL_VERSION};
-pub use internet_archive::{normalize_ia_item, InternetArchiveConfig, InternetArchiveConnector};
+pub use hal::{CONNECTOR_VERSION as HAL_VERSION, HalConnector, normalize_hal_doc};
+pub use internet_archive::{InternetArchiveConfig, InternetArchiveConnector, normalize_ia_item};
 pub use open_library::OpenLibraryConnector;
 pub use openalex::{
-    normalize_openalex_work, openalex_debate_query, OpenAlexConfig, OpenAlexConnector,
-    CONNECTOR_VERSION as OPENALEX_VERSION,
+    CONNECTOR_VERSION as OPENALEX_VERSION, OpenAlexConfig, OpenAlexConnector,
+    normalize_openalex_work, openalex_debate_query,
 };
-pub use persee::{normalize_persee_record, PerseeConnector, CONNECTOR_VERSION as PERSEE_VERSION};
+pub use persee::{CONNECTOR_VERSION as PERSEE_VERSION, PerseeConnector, normalize_persee_record};
 pub use stub::StubConnector;
 pub use theses_fr::{
-    normalize_these_detail, ThesesFrConfig, ThesesFrConnector,
-    CONNECTOR_VERSION as THESES_FR_VERSION,
+    CONNECTOR_VERSION as THESES_FR_VERSION, ThesesFrConfig, ThesesFrConnector,
+    normalize_these_detail,
 };
 pub use wikidata::{WikidataSourceConnector, WikidataSourceConnectorConfig};
 pub use wikipedia::{WikipediaConnector, WikipediaConnectorConfig};
-pub use wikisource::{WikisourceConnector, WikisourceConnectorConfig};
+pub use wikisource::{
+    WikisourceConnector, classify_genre, normalize_wikisource, parse_fetch_page,
+    parse_search_titles, parse_siteinfo_namespaces, proofread_needs_review,
+};
 
 use std::sync::Arc;
 
@@ -73,52 +79,6 @@ fn caps_wikidata() -> SourceCapabilities {
         default_confidence_ocr: 0.0,
         identifiers: vec!["qid".into()],
         document_types: vec![DocumentType::StructuredStatement],
-    }
-}
-
-fn caps_wikisource() -> SourceCapabilities {
-    SourceCapabilities {
-        access_mode: SourceAccessMode::Api,
-        authority_tier: AuthorityTier::CommunityCatalog,
-        provides_text: true,
-        provides_structured_statements: false,
-        provides_coordinates: false,
-        provides_identifiers: true,
-        provides_full_text: true,
-        provides_ocr: true,
-        provides_iiif: false,
-        provides_audiovisual: false,
-        provides_authority_alignment: true,
-        license_notes: "CC BY-SA".into(),
-        default_confidence_structured: 0.68,
-        default_confidence_ocr: 0.55,
-        identifiers: vec!["title".into(), "pageid".into()],
-        document_types: vec![
-            DocumentType::BookOcr,
-            DocumentType::Correspondence,
-            DocumentType::Manuscript,
-        ],
-    }
-}
-
-fn caps_commons() -> SourceCapabilities {
-    SourceCapabilities {
-        access_mode: SourceAccessMode::Api,
-        authority_tier: AuthorityTier::CommunityCatalog,
-        provides_text: true,
-        provides_structured_statements: true,
-        provides_coordinates: true,
-        provides_identifiers: true,
-        provides_full_text: false,
-        provides_ocr: false,
-        provides_iiif: false,
-        provides_audiovisual: true,
-        provides_authority_alignment: true,
-        license_notes: "per-file Commons license".into(),
-        default_confidence_structured: 0.7,
-        default_confidence_ocr: 0.0,
-        identifiers: vec!["title".into()],
-        document_types: vec![DocumentType::MediaCaption],
     }
 }
 
@@ -433,22 +393,6 @@ pub fn default_registry_with_corpus(
             connector: Some(Arc::new(wp)),
             config_notes: "Wikipedia MediaWiki API extracts".into(),
         });
-        let ws = WikisourceConnector::new(WikisourceConnectorConfig::default())?;
-        reg.register(ConnectorRegistration {
-            kind: SourceKind::Wikisource,
-            implemented: true,
-            capabilities: caps_wikisource(),
-            connector: Some(Arc::new(ws)),
-            config_notes: "Wikisource MediaWiki API extracts (en/fr)".into(),
-        });
-        let commons = WikimediaCommonsConnector::new()?;
-        reg.register(ConnectorRegistration {
-            kind: SourceKind::WikimediaCommons,
-            implemented: true,
-            capabilities: caps_commons(),
-            connector: Some(Arc::new(commons)),
-            config_notes: "Wikimedia Commons search + imageinfo/coordinates".into(),
-        });
         let ol = OpenLibraryConnector::new()?;
         reg.register(ConnectorRegistration {
             kind: SourceKind::OpenLibrary,
@@ -472,6 +416,22 @@ pub fn default_registry_with_corpus(
             capabilities: stub_capabilities(SourceKind::Gallica),
             connector: Some(Arc::new(gallica)),
             config_notes: "Gallica SRU (public)".into(),
+        });
+        let wikisource = WikisourceConnector::new()?;
+        reg.register(ConnectorRegistration {
+            kind: SourceKind::Wikisource,
+            implemented: true,
+            capabilities: caps_stub(&SourceKind::Wikisource),
+            connector: Some(Arc::new(wikisource)),
+            config_notes: "Wikisource FR Action API (public)".into(),
+        });
+        let commons = CommonsConnector::new()?;
+        reg.register(ConnectorRegistration {
+            kind: SourceKind::WikimediaCommons,
+            implemented: true,
+            capabilities: caps_stub(&SourceKind::WikimediaCommons),
+            connector: Some(Arc::new(commons)),
+            config_notes: "Wikimedia Commons Action API (public)".into(),
         });
         let hal_conn = HalConnector::new()?;
         reg.register(ConnectorRegistration {
@@ -561,12 +521,7 @@ pub fn default_registry_with_corpus(
             ),
         }
     } else {
-        for kind in [
-            SourceKind::Wikidata,
-            SourceKind::Wikipedia,
-            SourceKind::Wikisource,
-            SourceKind::WikimediaCommons,
-        ] {
+        for kind in [SourceKind::Wikidata, SourceKind::Wikipedia] {
             register_stub(
                 &mut reg,
                 kind,
@@ -576,6 +531,8 @@ pub fn default_registry_with_corpus(
         register_stub(&mut reg, SourceKind::OpenLibrary, "enable with --live");
         register_stub(&mut reg, SourceKind::InternetArchive, "enable with --live");
         register_stub(&mut reg, SourceKind::Gallica, "enable with --live");
+        register_stub(&mut reg, SourceKind::Wikisource, "enable with --live");
+        register_stub(&mut reg, SourceKind::WikimediaCommons, "enable with --live");
         register_stub(&mut reg, SourceKind::Hal, "enable with --live");
         register_stub(&mut reg, SourceKind::Persee, "enable with --live");
         register_stub(&mut reg, SourceKind::ThesesFr, "enable with --live");

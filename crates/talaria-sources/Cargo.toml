@@ -15,7 +15,9 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 talaria-quality = { path = "../talaria-quality" }
 talaria-judge = { path = "../talaria-judge" }
+talaria-store = { path = "../talaria-store" }
 talaria-text = { path = "../talaria-text" }
+talaria-wikidata = { path = "../talaria-wikidata" }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

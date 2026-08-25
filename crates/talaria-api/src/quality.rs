@@ -309,6 +309,7 @@ pub async fn run_quality_fixture(
                 end_offset,
                 clause_index: None,
                 ordinal: ordinal as i32,
+                metadata: serde_json::json!({}),
             },
         )
         .await?;
@@ -334,6 +335,7 @@ pub async fn run_quality_fixture(
                     end_offset: ex.clause_end_offset,
                     clause_index: Some(ex.clause_index),
                     ordinal: ex.clause_index,
+                    metadata: serde_json::json!({}),
                 },
             )
             .await?;
@@ -578,6 +580,7 @@ pub async fn inject_adversarial_candidate(
             end_offset: text.len() as i32,
             clause_index: None,
             ordinal: 0,
+            metadata: serde_json::json!({}),
         },
     )
     .await?;
@@ -784,6 +787,7 @@ pub async fn run_quality_supersede_death(
             end_offset: text.len() as i32,
             clause_index: None,
             ordinal: 0,
+            metadata: serde_json::json!({}),
         },
     )
     .await?;

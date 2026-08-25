@@ -1,9 +1,9 @@
 // crates/talaria-sources/tests/lot_c_catalog.rs
-use talaria_sources::connectors::{
-    normalize_europeana_item, normalize_ia_item, GallicaConnector, OpenLibraryConnector,
-};
-use talaria_sources::extractors::{default_extractor_stack, ExtractorInput};
 use talaria_sources::ResolvedSubject;
+use talaria_sources::connectors::{
+    GallicaConnector, OpenLibraryConnector, normalize_europeana_item, normalize_ia_item,
+};
+use talaria_sources::extractors::{ExtractorInput, default_extractor_stack};
 
 fn napoleon() -> ResolvedSubject {
     ResolvedSubject {
@@ -184,51 +184,8 @@ fn wikisource_parses_search_titles() {
             ]
         }
     });
-    let hits = talaria_sources::connectors::WikisourceConnector::parse_search_titles(&payload);
+    let hits = talaria_sources::connectors::parse_search_titles(&payload);
     assert_eq!(hits.len(), 2);
-    assert_eq!(hits[0].0, "Author:Napoleon Bonaparte");
-    assert_eq!(hits[1].1, 0);
-}
-
-#[test]
-fn commons_caption_keeps_lifespan_geotag_and_drops_modern_photo() {
-    let subject = napoleon();
-    let payload = serde_json::json!({
-        "query": {
-            "pages": {
-                "1": {
-                    "ns": 6,
-                    "title": "File:Napoleon at Austerlitz.jpg",
-                    "coordinates": [{"lat": 49.15, "lon": 16.76}],
-                    "imageinfo": [{
-                        "descriptionurl": "https://commons.wikimedia.org/wiki/File:Napoleon_at_Austerlitz.jpg",
-                        "extmetadata": {
-                            "ImageDescription": {"value": "<p>Napoleon at Austerlitz in 1805</p>"},
-                            "DateTimeOriginal": {"value": "1805"}
-                        }
-                    }]
-                },
-                "2": {
-                    "ns": 6,
-                    "title": "File:Napoleon souvenir mug.jpg",
-                    "imageinfo": [{
-                        "descriptionurl": "https://commons.wikimedia.org/wiki/File:Napoleon_souvenir_mug.jpg",
-                        "extmetadata": {
-                            "ImageDescription": {"value": "Tourist mug of Napoleon"},
-                            "DateTimeOriginal": {"value": "2019"}
-                        }
-                    }]
-                }
-            }
-        }
-    });
-    let docs = talaria_sources::connectors::WikimediaCommonsConnector::parse_generator_pages(
-        &subject, &payload,
-    );
-    assert_eq!(docs.len(), 1);
-    assert_eq!(docs[0].external_id, "File:Napoleon at Austerlitz.jpg");
-    let notice = docs[0].source_metadata.raw["notice"].as_str().unwrap();
-    assert!(notice.contains("STATEMENT"));
-    assert!(notice.contains("Austerlitz"));
-    assert!(notice.contains("1805"));
+    assert_eq!(hits[0], "Author:Napoleon Bonaparte");
+    assert_eq!(hits[1], "Memorial de Sainte-Helene");
 }
