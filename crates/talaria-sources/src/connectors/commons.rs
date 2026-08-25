@@ -321,6 +321,36 @@ impl CommonsConnector {
             .await
             .map_err(|e| ConnectorError::Parse(e.to_string()))
     }
+
+    /// One `prop=images` request (no `imcontinue`) for a category/gallery sitelink.
+    async fn fetch_page_images(&self, title: &str) -> Result<Value, ConnectorError> {
+        self.http
+            .get(API)
+            .query(&[
+                ("action", "query"),
+                ("titles", title),
+                ("prop", "images"),
+                ("imlimit", "10"),
+                ("format", "json"),
+            ])
+            .send()
+            .await
+            .map_err(|e| ConnectorError::Http(e.to_string()))?
+            .error_for_status()
+            .map_err(|e| ConnectorError::Http(e.to_string()))?
+            .json::<Value>()
+            .await
+            .map_err(|e| ConnectorError::Parse(e.to_string()))
+    }
+
+    async fn listed_files_for_identifier(&self, id: &str) -> Vec<String> {
+        if looks_like_category_or_gallery(id) {
+            let json = self.fetch_page_images(id).await.ok();
+            listed_files_from_commons_sitelink(id, json.as_ref())
+        } else {
+            vec![id.to_string()]
+        }
+    }
 }
 
 /// `query.pages.*.images[].title` starting with `File:` (cap 10).
@@ -390,6 +420,28 @@ pub fn commonswiki_file_sitelink(entity: &Value) -> Option<String> {
     } else {
         None
     }
+}
+
+/// Listed files for a Commons sitelink. Category/gallery needs `prop=images` JSON; do not invent.
+pub fn listed_files_from_commons_sitelink(
+    sitelink_title: &str,
+    images_json: Option<&Value>,
+) -> Vec<String> {
+    let title = sitelink_title.trim();
+    if title.is_empty() {
+        return Vec::new();
+    }
+    let folded = title.to_ascii_lowercase();
+    if folded.starts_with("file:") || folded.starts_with("fichier:") {
+        return vec![title.to_string()];
+    }
+    if looks_like_category_or_gallery(title) {
+        return match images_json {
+            Some(json) => parse_wiki_page_images(json),
+            None => Vec::new(),
+        };
+    }
+    Vec::new()
 }
 
 /// Page title used to request imageinfo for a MediaInfo entity.
@@ -477,6 +529,11 @@ fn is_mid(s: &str) -> bool {
 fn looks_like_file_ns(s: &str) -> bool {
     let l = s.to_ascii_lowercase();
     l.starts_with("file:") || l.starts_with("fichier:") || l.starts_with("image:")
+}
+
+fn looks_like_category_or_gallery(s: &str) -> bool {
+    let l = s.to_ascii_lowercase();
+    l.starts_with("category:") || l.starts_with("gallery:") || l.starts_with("galerie:")
 }
 
 fn file_title_from_link_target(target: &str) -> Option<String> {
@@ -600,12 +657,21 @@ impl SourceConnector for CommonsConnector {
                 continue;
             }
             let id = id.trim();
-            if id.is_empty() || !seen.insert(id.to_string()) {
+            if id.is_empty() {
                 continue;
             }
-            titles.push(id.to_string());
+            for file in self.listed_files_for_identifier(id).await {
+                if seen.insert(file.clone()) {
+                    titles.push(file);
+                    if titles.len() >= self.cap() {
+                        break;
+                    }
+                }
+            }
+            if titles.len() >= self.cap() {
+                break;
+            }
         }
-        titles.truncate(self.cap());
         let documents = titles
             .into_iter()
             .map(|t| Self::document_from_p18(&t))
@@ -796,6 +862,36 @@ mod tests {
             "sitelinks": {"commonswiki": {"title": "Category:Napoleon"}}
         });
         assert!(commonswiki_file_sitelink(&cat).is_none());
+    }
+
+    #[test]
+    fn listed_files_from_commons_sitelink_file_and_category_fixture() {
+        assert_eq!(
+            listed_files_from_commons_sitelink("File:Napoleon.jpg", None),
+            vec!["File:Napoleon.jpg".to_string()]
+        );
+        assert_eq!(
+            listed_files_from_commons_sitelink("Fichier:Portrait.png", None),
+            vec!["Fichier:Portrait.png".to_string()]
+        );
+        assert!(listed_files_from_commons_sitelink("Category:Napoleon", None).is_empty());
+        assert!(listed_files_from_commons_sitelink("Gallery:Portraits", None).is_empty());
+        let images = serde_json::json!({"query": {"pages": {"1": {
+            "images": [
+                {"title": "File:A.jpg"},
+                {"title": "File:B.jpg"},
+                {"title": "Category:Skip"}
+            ]
+        }}}});
+        assert_eq!(
+            listed_files_from_commons_sitelink("Category:Napoleon", Some(&images)),
+            vec!["File:A.jpg".to_string(), "File:B.jpg".to_string()]
+        );
+        assert_eq!(
+            listed_files_from_commons_sitelink("Galerie:Portraits", Some(&images)).len(),
+            2
+        );
+        assert!(listed_files_from_commons_sitelink("User:Foo", Some(&images)).is_empty());
     }
 
     #[test]

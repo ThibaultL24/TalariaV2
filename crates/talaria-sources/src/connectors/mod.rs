@@ -20,7 +20,7 @@ mod wikisource;
 pub use bnf::{BnfConfig, BnfConnector, normalize_bnf_notice};
 pub use commons::{
     CommonsAsset, CommonsConnector, commonswiki_file_sitelink, file_titles_from_wikitext,
-    parse_mediainfo, parse_p18_filenames, parse_wiki_page_images,
+    listed_files_from_commons_sitelink, parse_mediainfo, parse_p18_filenames, parse_wiki_page_images,
 };
 pub use europeana::{EuropeanaConfig, EuropeanaConnector, normalize_europeana_item};
 pub use fixture::FixtureConnector;

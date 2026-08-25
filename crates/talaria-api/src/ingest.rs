@@ -135,15 +135,15 @@ pub async fn run_ingest_quality(
         if let Some(q) = subject.qid.clone() {
             match crate::lot_e::fetch_wikidata_subject_meta(&q, &config.wiki_lang, Some(&pool)).await {
                 Ok(meta) => {
+                    crate::lot_e::append_wikidata_meta_identifiers(
+                        &mut subject.known_identifiers,
+                        &meta,
+                    );
                     if !meta.occupations.is_empty() {
                         subject.occupations = meta.occupations;
                     }
                     subject.birth_year = meta.birth_year.or(subject.birth_year);
                     subject.death_year = meta.death_year;
-                    crate::lot_e::append_commons_known_identifiers(
-                        &mut subject.known_identifiers,
-                        &meta.commons_files,
-                    );
                 }
                 Err(e) => tracing::warn!(error = %e, %q, "wikidata occupations unavailable"),
             }

@@ -339,7 +339,7 @@ pub async fn run_lot_e_density_ingest(
             .map(|q| vec![("wikidata".into(), q.to_string())])
             .unwrap_or_default(),
     };
-    append_commons_known_identifiers(&mut subject_res.known_identifiers, &wd_meta.commons_files);
+    append_wikidata_meta_identifiers(&mut subject_res.known_identifiers, &wd_meta);
 
     tracing::info!(
         occupations = ?subject_res.occupations,
@@ -1336,6 +1336,25 @@ pub(crate) struct WikidataSubjectMeta {
     pub(crate) related_titles: Vec<String>,
     pub(crate) statements_text: String,
     pub(crate) commons_files: Vec<String>,
+    pub(crate) frwikisource_title: Option<String>,
+}
+
+pub(crate) fn append_system_known_identifier(
+    ids: &mut Vec<(String, String)>,
+    system: &str,
+    value: &str,
+) {
+    let value = value.trim();
+    if value.is_empty() {
+        return;
+    }
+    if ids
+        .iter()
+        .any(|(sys, val)| sys.eq_ignore_ascii_case(system) && val == value)
+    {
+        return;
+    }
+    ids.push((system.to_string(), value.to_string()));
 }
 
 pub(crate) fn append_commons_known_identifiers(
@@ -1343,18 +1362,27 @@ pub(crate) fn append_commons_known_identifiers(
     files: &[String],
 ) {
     for file in files.iter().take(10) {
-        let file = file.trim();
-        if file.is_empty() {
-            continue;
-        }
-        if ids
-            .iter()
-            .any(|(sys, val)| sys.eq_ignore_ascii_case("commons") && val == file)
-        {
-            continue;
-        }
-        ids.push(("commons".into(), file.to_string()));
+        append_system_known_identifier(ids, "commons", file);
     }
+}
+
+pub(crate) fn append_wikidata_meta_identifiers(
+    ids: &mut Vec<(String, String)>,
+    meta: &WikidataSubjectMeta,
+) {
+    append_commons_known_identifiers(ids, &meta.commons_files);
+    if let Some(title) = &meta.frwikisource_title {
+        append_system_known_identifier(ids, "frwikisource", title);
+    }
+}
+
+fn frwikisource_sitelink_title(entity: &serde_json::Value) -> Option<String> {
+    entity
+        .pointer("/sitelinks/frwikisource/title")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 fn wiki_http_client() -> anyhow::Result<reqwest::Client> {
@@ -1480,6 +1508,31 @@ mod parse_p18_commons_discovery_tests {
     }
 }
 
+#[cfg(test)]
+mod frwikisource_sitelink_tests {
+    use super::{append_system_known_identifier, frwikisource_sitelink_title};
+
+    #[test]
+    fn frwikisource_sitelink_copied_into_known_identifiers() {
+        let entity = serde_json::json!({
+            "sitelinks": {"frwikisource": {"title": "Auteur:Napoléon Ier"}}
+        });
+        let mut ids = vec![("wikidata".into(), "Q517".into())];
+        if let Some(title) = frwikisource_sitelink_title(&entity) {
+            append_system_known_identifier(&mut ids, "frwikisource", &title);
+        }
+        assert!(ids.contains(&("frwikisource".into(), "Auteur:Napoléon Ier".into())));
+        assert!(frwikisource_sitelink_title(&serde_json::json!({"sitelinks": {}})).is_none());
+    }
+
+    #[test]
+    fn fetch_wikidata_subject_meta_reads_frwikisource_sitelink() {
+        let src = include_str!("lot_e.rs");
+        assert!(src.contains("let frwikisource_title = frwikisource_sitelink_title(&entity);"));
+        assert!(src.contains("append_wikidata_meta_identifiers"));
+    }
+}
+
 fn snak_qid(snak: &serde_json::Value) -> Option<String> {
     snak.pointer("/datavalue/value/id")
         .and_then(|v| v.as_str())
@@ -1578,7 +1631,22 @@ pub(crate) async fn fetch_wikidata_subject_meta(
         if !commons_files.iter().any(|f| f == &file) {
             commons_files.push(file);
         }
+    } else if let Some(title) = entity
+        .pointer("/sitelinks/commonswiki/title")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        let folded = title.to_ascii_lowercase();
+        if (folded.starts_with("category:")
+            || folded.starts_with("gallery:")
+            || folded.starts_with("galerie:"))
+            && !commons_files.iter().any(|f| f == title)
+        {
+            commons_files.push(title.to_string());
+        }
     }
+    let frwikisource_title = frwikisource_sitelink_title(&entity);
     let birth_year = talaria_wikidata::identity_year(&parsed, "P569");
     let death_year = talaria_wikidata::identity_year(&parsed, "P570");
 
@@ -1706,6 +1774,7 @@ pub(crate) async fn fetch_wikidata_subject_meta(
         related_titles,
         statements_text,
         commons_files,
+        frwikisource_title,
     })
 }
 
