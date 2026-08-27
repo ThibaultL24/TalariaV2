@@ -66,6 +66,41 @@ pub fn event_candidate_from_item(
     }
 }
 
+/// Role cues in a verbatim span — never inferred from a synthetic "{subject} | type | title" line.
+pub fn quote_supports_follow_role(event_type: &str, quote: &str) -> bool {
+    if quote.contains(" | ") && quote.matches('|').count() >= 2 {
+        return false;
+    }
+    let q = quote.to_lowercase();
+    let cues: &[&str] = match event_type {
+        "battle" => &[
+            "fought",
+            "commanded",
+            "defeated",
+            "wounded",
+            "captured",
+            "besieged",
+            "retreated",
+            "surrendered",
+            "led the",
+        ],
+        "diplomatic" => &["signed", "negotiated", "ratified", "concluded"],
+        "residence" => &["lived", "resided", "stayed", "inhabited", "exiled"],
+        _ => &[
+            "fought",
+            "commanded",
+            "lived",
+            "signed",
+            "married",
+            "crowned",
+            "visited",
+            "travelled",
+            "traveled",
+        ],
+    };
+    cues.iter().any(|cue| q.contains(cue))
+}
+
 pub fn classify_item(
     subject: &str,
     aliases: &[String],
@@ -76,13 +111,15 @@ pub fn classify_item(
 ) -> AttributionMatch {
     let alias_refs: Vec<&str> = aliases.iter().map(String::as_str).collect();
     let role_supported_by_evidence = structured_source
-        || alias_refs
-            .iter()
-            .any(|a| item.quoted_text.to_lowercase().contains(&a.to_lowercase()))
-        || item
-            .quoted_text
-            .to_lowercase()
-            .contains(&subject.to_lowercase());
+        || (from_followed_page && quote_supports_follow_role(&item.event_type, &item.quoted_text))
+        || (!from_followed_page
+            && (alias_refs
+                .iter()
+                .any(|a| item.quoted_text.to_lowercase().contains(&a.to_lowercase()))
+                || item
+                    .quoted_text
+                    .to_lowercase()
+                    .contains(&subject.to_lowercase())));
     classify_attribution(&AttributionInput {
         subject,
         aliases: &alias_refs,
@@ -122,7 +159,22 @@ pub fn judge_item(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use talaria_quality::{RejectionCode, TypedTime};
+    use talaria_quality::{
+        auto_accept_attribution, GroundedItem, Lane, RejectionCode, TypedTime,
+    };
+
+    fn follow_item(quote: &str, event_type: &str, year: i32) -> GroundedItem {
+        GroundedItem {
+            lane: Lane::Fact,
+            event_type: event_type.into(),
+            role: "direct".into(),
+            year: Some(year),
+            place_surface: Some("Plevna".into()),
+            summary: "Siege of Plevna".into(),
+            quoted_text: quote.into(),
+            confidence: 0.88,
+        }
+    }
 
     fn anecdote_candidate(year: i32) -> EventCandidate {
         let frag = Uuid::nil();
@@ -173,5 +225,63 @@ mod tests {
             }
             other => panic!("expected Reject, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn synthetic_follow_pipe_line_is_not_role_evidence() {
+        assert!(!quote_supports_follow_role(
+            "battle",
+            "Victor Hugo | battle | Siege of Plevna | 1877 | Plevna"
+        ));
+        let m = classify_item(
+            "Victor Hugo",
+            &[],
+            &follow_item(
+                "Victor Hugo | battle | Siege of Plevna | 1877 | Plevna",
+                "battle",
+                1877,
+            ),
+            "Siege of Plevna",
+            true,
+            false,
+        );
+        assert_eq!(m, AttributionMatch::Unattributed);
+        assert!(!auto_accept_attribution(m));
+    }
+
+    #[test]
+    fn followed_hugo_name_mention_without_role_verb_is_unattributed() {
+        let m = classify_item(
+            "Victor Hugo",
+            &["Hugo".into()],
+            &follow_item(
+                "Among later commemorations, Victor Hugo is named on a plaque at Plevna.",
+                "battle",
+                1877,
+            ),
+            "Siege of Plevna",
+            true,
+            false,
+        );
+        assert_eq!(m, AttributionMatch::Unattributed);
+        assert!(!auto_accept_attribution(m));
+    }
+
+    #[test]
+    fn followed_napoleon_sentence_with_defeat_supports_battle_role() {
+        let m = classify_item(
+            "Napoleon",
+            &[],
+            &follow_item(
+                "Napoleon's French army was defeated by the Duke of Wellington.",
+                "battle",
+                1815,
+            ),
+            "Battle of Waterloo",
+            true,
+            false,
+        );
+        assert_eq!(m, AttributionMatch::DirectNameMatch);
+        assert!(auto_accept_attribution(m));
     }
 }

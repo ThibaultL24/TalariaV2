@@ -139,24 +139,39 @@ fn year_from_text(text: &str) -> Option<i32> {
     talaria_sources::first_year_in_window(text, 1000, 2099)?.parse().ok()
 }
 
+/// Verbatim sentence that mentions the subject (not a synthetic title line).
+pub fn mention_sentence<'a>(extract: &'a str, subject: &str) -> Option<&'a str> {
+    let mut start = 0;
+    let bytes = extract.as_bytes();
+    for (i, ch) in extract.char_indices() {
+        let is_end = ch == '.' || ch == '!' || ch == '?';
+        let last = i + ch.len_utf8() == extract.len();
+        if !is_end && !last {
+            continue;
+        }
+        let end = if is_end { i + ch.len_utf8() } else { extract.len() };
+        let sent = extract.get(start..end).unwrap_or("");
+        if subject_mentioned(sent, subject) {
+            return Some(sent.trim());
+        }
+        start = end;
+        while start < bytes.len() && bytes[start].is_ascii_whitespace() {
+            start += 1;
+        }
+    }
+    None
+}
+
 pub fn follow_page_to_extract(
     subject: &str,
     title: &str,
     extract: &str,
     coords: Option<(f64, f64)>,
 ) -> Option<(String, RawExtractItem, Option<(f64, f64)>)> {
-    if !subject_mentioned(extract, subject) {
-        return None;
-    }
+    let quote = mention_sentence(extract, subject)?;
     let event_type = event_type_from_title(title);
     let year = year_from_text(extract).or_else(|| year_from_text(title));
     let place = place_hint_from_title(title);
-    let quote = format!(
-        "{subject} | {event_type} | {title} | {} | {}",
-        year.map(|y| y.to_string()).unwrap_or_default(),
-        place.as_deref().unwrap_or("")
-    );
-    let doc = format!("{quote}\n{extract}");
     let item = RawExtractItem {
         lane: "fact".into(),
         event_type,
@@ -164,10 +179,10 @@ pub fn follow_page_to_extract(
         year,
         place_surface: place,
         summary: title.to_string(),
-        quoted_text: quote,
+        quoted_text: quote.to_string(),
         confidence: 0.88,
     };
-    Some((doc, item, coords))
+    Some((extract.to_string(), item, coords))
 }
 
 #[cfg(test)]
@@ -232,6 +247,27 @@ mod tests {
         assert_eq!(item.place_surface.as_deref(), Some("Waterloo"));
         let got = accept_items("Napoleon", &doc, [item]);
         assert_eq!(got.len(), 1);
+        assert!(
+            !got[0].quoted_text.contains('|'),
+            "follow quote must be page text, not a synthetic pipe line"
+        );
+        assert!(extract.contains(&got[0].quoted_text) || {
+            talaria_quality::quote_is_grounded(extract, &got[0].quoted_text)
+        });
+    }
+
+    #[test]
+    fn follow_page_quote_is_verbatim_extract_span() {
+        let extract = "The Battle of Waterloo was fought on Sunday 18 June 1815 near Waterloo. Napoleon's French army was defeated by the Duke of Wellington.";
+        let (_, item, _) = follow_page_to_extract(
+            "Napoleon",
+            "Battle of Waterloo",
+            extract,
+            None,
+        )
+        .expect("pin");
+        assert!(!item.quoted_text.contains("Napoleon | battle |"));
+        assert!(extract.contains(item.quoted_text.trim()) || extract.contains(&item.quoted_text));
     }
 
     #[test]
@@ -244,5 +280,26 @@ mod tests {
             Some((50.680, 4.412)),
         )
         .is_none());
+    }
+
+    #[test]
+    fn victor_hugo_followed_battle_title_is_not_role_supported() {
+        let extract =
+            "The siege was fought in 1877. Victor Hugo is named among later commemorations.";
+        let (doc, item, _) =
+            follow_page_to_extract("Victor Hugo", "Siege of Plevna", extract, None).expect("mention");
+        assert!(!item.quoted_text.contains('|'));
+        let got = accept_items("Victor Hugo", &doc, [item]);
+        assert_eq!(got.len(), 1);
+        let m = crate::person_ingest::gating::classify_item(
+            "Victor Hugo",
+            &[],
+            &got[0],
+            "Siege of Plevna",
+            true,
+            false,
+        );
+        assert_eq!(m, talaria_quality::AttributionMatch::Unattributed);
+        assert!(!talaria_quality::auto_accept_attribution(m));
     }
 }

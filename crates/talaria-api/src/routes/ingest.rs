@@ -101,7 +101,7 @@ fn resolve_seed_list(subject: &str) -> anyhow::Result<PathBuf> {
 }
 
 fn parse_entity_id_from_report(report: &Value) -> Option<Uuid> {
-    for nested_key in ["explorer", "corpus", "agora"] {
+    for nested_key in ["explorer", "person", "corpus", "agora"] {
         if let Some(nested) = report.get(nested_key) {
             if let Some(id) = parse_entity_id_from_report(nested) {
                 return Some(id);
@@ -215,29 +215,35 @@ async fn start_lane_ingest(
         ));
     }
 
-    let entity_id = upsert_entity_with_kind(
-        &state.pool,
-        &state.config.wiki_lang,
-        &subject,
-        "person",
-    )
-    .await
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": format!("entity_upsert: {e}") })),
+    // Explorer/person: UUID only after QID resolve inside run_person_ingest.
+    let entity_id = if lane == LANE_EXPLORER {
+        None
+    } else {
+        let id = upsert_entity_with_kind(
+            &state.pool,
+            &state.config.wiki_lang,
+            &subject,
+            "person",
         )
-    })?;
-    if let Some(qid) = body
-        .qid
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        if let Err(error) = update_entity_qid(&state.pool, entity_id, qid).await {
-            tracing::warn!(%error, "qid update failed at ingest start");
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("entity_upsert: {e}") })),
+            )
+        })?;
+        if let Some(qid) = body
+            .qid
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            if let Err(error) = update_entity_qid(&state.pool, id, qid).await {
+                tracing::warn!(%error, "qid update failed at ingest start");
+            }
         }
-    }
+        Some(id)
+    };
 
     let job_id = Uuid::new_v4();
     let job = IngestJob {
@@ -246,7 +252,7 @@ async fn start_lane_ingest(
         subject: subject.clone(),
         qid: body.qid.clone(),
         status: "queued".into(),
-        entity_id: Some(entity_id),
+        entity_id,
         report: None,
         error: None,
     };
@@ -334,7 +340,7 @@ async fn start_lane_ingest(
         "status": "queued",
         "subject": subject,
         "qid": body.qid,
-        "entity_id": entity_id,
+        "entity_id": entity_id.map(|id| id.to_string()),
         "timeline_events": 0,
         "map_events": 0,
         "deduped": false,
@@ -477,6 +483,22 @@ mod tests {
     use crate::corpus_ingest::explorer_fact_providers;
 
     #[test]
+    fn explorer_queued_job_has_null_entity_until_report() {
+        let job = IngestJob {
+            id: Uuid::nil(),
+            lane: LANE_EXPLORER.into(),
+            subject: "Victor Hugo".into(),
+            qid: None,
+            status: "queued".into(),
+            entity_id: None,
+            report: None,
+            error: None,
+        };
+        let Json(body) = job_started_response(&job, false, json!({}));
+        assert!(body.get("entity_id").unwrap().is_null());
+    }
+
+    #[test]
     fn start_response_exposes_entity_id_before_dump() {
         let entity_id = Uuid::parse_str("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa").unwrap();
         let job = IngestJob {
@@ -492,6 +514,17 @@ mod tests {
         let Json(body) = job_started_response(&job, false, json!({ "x": 1 }));
         assert_eq!(
             body.get("entity_id").and_then(|v| v.as_str()).unwrap(),
+            "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        );
+    }
+
+    #[test]
+    fn entity_id_reads_nested_person_report() {
+        let report = json!({
+            "person": { "entity_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" }
+        });
+        assert_eq!(
+            parse_entity_id_from_report(&report).unwrap().to_string(),
             "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
         );
     }
