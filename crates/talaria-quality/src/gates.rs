@@ -14,6 +14,7 @@ pub enum RejectionCode {
     MissingEvidence,
     DuplicateCandidate,
     CompetingPlace,
+    SubjectNotAttributed,
 }
 
 impl RejectionCode {
@@ -28,6 +29,7 @@ impl RejectionCode {
             Self::MissingEvidence => "missing_evidence",
             Self::DuplicateCandidate => "duplicate_candidate",
             Self::CompetingPlace => "competing_place",
+            Self::SubjectNotAttributed => "subject_not_attributed",
         }
     }
 
@@ -42,6 +44,7 @@ impl RejectionCode {
             "missing_evidence" => Self::MissingEvidence,
             "duplicate_candidate" => Self::DuplicateCandidate,
             "competing_place" => Self::CompetingPlace,
+            "subject_not_attributed" => Self::SubjectNotAttributed,
             _ => return None,
         })
     }

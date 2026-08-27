@@ -2,6 +2,7 @@
 //! Quality gate between extraction and canonical events.
 
 mod analyzer;
+mod attribution;
 mod assertion;
 mod fingerprint;
 mod gates;
@@ -14,6 +15,10 @@ mod resolve;
 mod resume;
 mod time_typed;
 
+pub use attribution::{
+    attribution_gate_decision, auto_accept_attribution, classify_attribution, AttributionInput,
+    AttributionMatch,
+};
 pub use analyzer::{
     split_clauses, ClauseAnalyzeInput, ClauseAnalyzer, ClauseExtraction, CosmosClauseAnalyzer,
     CosmosJudgment, CosmosTuple, DeterministicClauseAnalyzer, HeuristicCosmosAnalyzer,
