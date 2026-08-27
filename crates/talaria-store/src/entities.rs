@@ -156,6 +156,103 @@ pub async fn find_entity_by_wikipedia_title(
     Ok(row)
 }
 
+/// Trim, uppercase, and validate `Q` + digits (e.g. `"q517"` → `"Q517"`).
+pub fn normalize_qid(qid: &str) -> Option<String> {
+    let trimmed = qid.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let upper = trimmed.to_uppercase();
+    let digits = upper.strip_prefix('Q')?;
+    if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    Some(upper)
+}
+
+async fn insert_entity_alias(
+    pool: &PgPool,
+    entity_id: Uuid,
+    surface: &str,
+    language: &str,
+) -> anyhow::Result<()> {
+    let surface = surface.trim();
+    if surface.is_empty() {
+        return Ok(());
+    }
+    sqlx::query(
+        r#"
+        INSERT INTO entity_aliases (entity_id, surface, language)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (language, surface, entity_id) DO NOTHING
+        "#,
+    )
+    .bind(entity_id)
+    .bind(surface)
+    .bind(language)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+fn typed_surface_is_distinct(
+    typed_surface: &str,
+    wikipedia_title: &str,
+    wikidata_label: &str,
+    canonical_name: Option<&str>,
+) -> bool {
+    let surface = typed_surface.trim();
+    if surface.is_empty() {
+        return false;
+    }
+    let matches = |other: &str| !other.trim().is_empty() && surface.eq_ignore_ascii_case(other.trim());
+    !matches(wikipedia_title)
+        && !matches(wikidata_label)
+        && !canonical_name.is_some_and(|name| matches(name))
+}
+
+/// Resolve or create a person entity by Wikidata QID; record the user-typed surface as an alias.
+pub async fn upsert_person_by_qid(
+    pool: &PgPool,
+    qid: &str,
+    wikidata_label: &str,
+    wiki_lang: &str,
+    wikipedia_title: &str,
+    typed_surface: &str,
+) -> anyhow::Result<Uuid> {
+    let qid = normalize_qid(qid).ok_or_else(|| anyhow::anyhow!("invalid qid: {qid}"))?;
+
+    if let Some(existing) = find_entity_by_qid(pool, &qid).await? {
+        if typed_surface_is_distinct(
+            typed_surface,
+            &existing.wikipedia_title,
+            wikidata_label,
+            existing.canonical_name.as_deref(),
+        ) {
+            insert_entity_alias(pool, existing.id, typed_surface, wiki_lang).await?;
+        }
+        return Ok(existing.id);
+    }
+
+    let id = upsert_entity_from_wikidata(
+        pool,
+        &qid,
+        wikidata_label,
+        wiki_lang,
+        wikipedia_title,
+    )
+    .await?;
+    if typed_surface_is_distinct(
+        typed_surface,
+        wikipedia_title,
+        wikidata_label,
+        Some(wikidata_label),
+    ) {
+        insert_entity_alias(pool, id, typed_surface, wiki_lang).await?;
+    }
+    Ok(id)
+}
+
 /// Resolve entity by QID, then by Wikipedia sitelink; create surface if missing.
 pub async fn upsert_entity_from_wikidata(
     pool: &PgPool,
@@ -241,7 +338,22 @@ pub fn person_match_sql(pattern_n: usize, folded_n: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::fold_latin_accents;
+    use super::{fold_latin_accents, normalize_qid};
+
+    #[test]
+    fn normalize_qid_accepts_lowercase() {
+        assert_eq!(normalize_qid("q517").as_deref(), Some("Q517"));
+        assert_eq!(normalize_qid(" Q517 ").as_deref(), Some("Q517"));
+    }
+
+    #[test]
+    fn normalize_qid_rejects_invalid() {
+        assert_eq!(normalize_qid("LotD"), None);
+        assert_eq!(normalize_qid(""), None);
+        assert_eq!(normalize_qid("   "), None);
+        assert_eq!(normalize_qid("Q"), None);
+        assert_eq!(normalize_qid("Q517abc"), None);
+    }
 
     #[test]
     fn folds_honore_de_balzac() {
