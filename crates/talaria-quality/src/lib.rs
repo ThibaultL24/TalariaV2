@@ -9,6 +9,7 @@ mod gates;
 mod grounding;
 mod model;
 mod occurrence;
+mod places;
 mod overlay;
 mod projections;
 mod resolve;
@@ -38,6 +39,7 @@ pub use assertion::{
     competing_places, occurrence_stem_for_event, ABSTAIN_COMPETING_PLACE, EXTRACTOR_EPISTEMIC_STATUS,
 };
 pub use occurrence::{occurrence_key, occurrence_key_for_event};
+pub use places::{place_query, PlaceQuery};
 pub use overlay::{
     overlay_effect, parse_overlay_verdicts, OverlayEffect, OverlayItem, OverlayVerdict,
 };
