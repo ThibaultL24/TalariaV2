@@ -85,8 +85,8 @@ pub use places::{
     list_place_labels_needing_geocode, upsert_place_geocode, PlaceGeocodeRow,
 };
 pub use person_events::{
-    find_active_person_event_by_occurrence, insert_person_event, insert_person_quote_evidence,
-    reinforce_person_event, upsert_raw_wikidata_document, upsert_raw_wikipedia_document,
+    evidence_hash, find_active_person_event_by_occurrence, insert_person_event,
+    insert_person_quote_evidence, upsert_raw_wikidata_document, upsert_raw_wikipedia_document,
     PersonEventInsert,
 };
 pub use pool::{connect, run_migrations, DbPool};

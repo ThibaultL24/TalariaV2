@@ -18,9 +18,8 @@ use talaria_sources::wdqs::{fetch_events_for_person, WdqsEvent};
 use talaria_wikidata::WikidataClient;
 use talaria_store::{
     apply_coords_to_event, find_active_person_event_by_occurrence, insert_claim,
-    insert_claim_evidence, insert_person_event, insert_person_quote_evidence,
-    reinforce_person_event, update_entity_qid, upsert_raw_wikidata_document,
-    upsert_raw_wikipedia_document, ClaimInsert, PersonEventInsert,
+    insert_claim_evidence, insert_person_event, insert_person_quote_evidence, update_entity_qid,
+    upsert_raw_wikidata_document, upsert_raw_wikipedia_document, ClaimInsert, PersonEventInsert,
 };
 use uuid::Uuid;
 
@@ -200,7 +199,6 @@ async fn persist_fact(
         primary_object,
     );
     if let Some(existing) = find_active_person_event_by_occurrence(pool, entity_id, &occ).await? {
-        reinforce_person_event(pool, existing).await?;
         insert_person_quote_evidence(
             pool,
             existing,

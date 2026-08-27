@@ -2261,7 +2261,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "hex",
  "serde_json",
+ "sha2",
  "sqlx",
  "talaria-core",
  "tokio",

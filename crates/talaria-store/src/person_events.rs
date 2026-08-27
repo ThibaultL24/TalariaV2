@@ -2,8 +2,22 @@
 //! Persist pipeline='person' facts (Explorer) with quote-only evidence.
 
 use chrono::{DateTime, Utc};
+use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use uuid::Uuid;
+
+/// sha256 hex of `v1|{raw}|{locator}|{quote}` (empty `raw` when document id is None).
+pub fn evidence_hash(
+    raw_document_id: Option<Uuid>,
+    locator: &str,
+    quote_or_statement: &str,
+) -> String {
+    let raw = raw_document_id
+        .map(|id| id.to_string())
+        .unwrap_or_default();
+    let payload = format!("v1|{raw}|{locator}|{quote_or_statement}");
+    hex::encode(Sha256::digest(payload.as_bytes()))
+}
 
 #[derive(Debug, Clone)]
 pub struct PersonEventInsert {
@@ -43,21 +57,6 @@ pub async fn find_active_person_event_by_occurrence(
     .fetch_optional(pool)
     .await?;
     Ok(id)
-}
-
-pub async fn reinforce_person_event(pool: &PgPool, event_id: Uuid) -> anyhow::Result<()> {
-    sqlx::query(
-        r#"
-        UPDATE canonical_events SET
-            source_count = source_count + 1,
-            evidence_count = evidence_count + 1
-        WHERE id = $1 AND pipeline = 'person'
-        "#,
-    )
-    .bind(event_id)
-    .execute(pool)
-    .await?;
-    Ok(())
 }
 
 pub async fn insert_person_event(pool: &PgPool, event: &PersonEventInsert) -> anyhow::Result<Uuid> {
@@ -142,12 +141,16 @@ pub async fn insert_person_quote_evidence(
     raw_document_id: Option<Uuid>,
     confidence: f64,
 ) -> anyhow::Result<Uuid> {
-    let id = sqlx::query_scalar(
+    let locator = "";
+    let hash = evidence_hash(raw_document_id, locator, quoted_text);
+    let inserted: Option<Uuid> = sqlx::query_scalar(
         r#"
         INSERT INTO event_evidence (
-            canonical_event_id, sentence_id, quoted_text, raw_document_id, confidence, evidence_type
+            canonical_event_id, sentence_id, quoted_text, raw_document_id,
+            confidence, evidence_type, source_locator, evidence_hash
         )
-        VALUES ($1, NULL, $2, $3, $4, 'llm_quote')
+        VALUES ($1, NULL, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT ON CONSTRAINT uq_event_evidence_dedup DO NOTHING
         RETURNING id
         "#,
     )
@@ -155,9 +158,29 @@ pub async fn insert_person_quote_evidence(
     .bind(quoted_text)
     .bind(raw_document_id)
     .bind(confidence)
+    .bind("llm_quote")
+    .bind(locator)
+    .bind(&hash)
+    .fetch_optional(pool)
+    .await?;
+    if let Some(id) = inserted {
+        return Ok(id);
+    }
+    let existing = sqlx::query_scalar(
+        r#"
+        SELECT id FROM event_evidence
+        WHERE canonical_event_id = $1
+          AND raw_document_id IS NOT DISTINCT FROM $2
+          AND evidence_hash = $3
+        LIMIT 1
+        "#,
+    )
+    .bind(event_id)
+    .bind(raw_document_id)
+    .bind(&hash)
     .fetch_one(pool)
     .await?;
-    Ok(id)
+    Ok(existing)
 }
 
 pub async fn upsert_raw_wikipedia_document(
@@ -206,4 +229,27 @@ pub async fn upsert_raw_wikidata_document(
     .fetch_one(pool)
     .await?;
     Ok(id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn same_inputs_same_hash() {
+        let id = Uuid::nil();
+        assert_eq!(
+            evidence_hash(Some(id), "span:0-10", "quote"),
+            evidence_hash(Some(id), "span:0-10", "quote")
+        );
+    }
+
+    #[test]
+    fn different_quote_different_hash() {
+        let id = Uuid::nil();
+        assert_ne!(
+            evidence_hash(Some(id), "span:0-10", "a"),
+            evidence_hash(Some(id), "span:0-10", "b")
+        );
+    }
 }
