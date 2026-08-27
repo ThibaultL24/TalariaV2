@@ -1,6 +1,8 @@
 // crates/talaria-api/src/routes/events.rs
 use axum::{
     extract::{Path, Query, State},
+    http::StatusCode,
+    response::IntoResponse,
     Json,
 };
 use serde::Deserialize;
@@ -16,7 +18,7 @@ pub struct TimelineQuery {
     pub person: Option<String>,
     pub profile_slug: Option<String>,
     pub period_slug: Option<String>,
-    /// `quality` (default), `legacy`, or omit for all active pipelines.
+    /// Defaults to `person`. `quality` and `legacy` are retired (HTTP 400).
     pub pipeline: Option<String>,
     #[serde(default = "default_limit")]
     pub limit: i64,
@@ -35,6 +37,9 @@ pub struct GeoJsonQuery {
     pub limit: i64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RetiredPipeline;
+
 fn default_pipeline() -> Option<String> {
     Some("person".into())
 }
@@ -47,15 +52,29 @@ fn default_true() -> bool {
     true
 }
 
-fn resolve_pipeline(explicit: &Option<String>) -> Option<String> {
-    explicit.clone().or_else(default_pipeline)
+fn resolve_pipeline(explicit: &Option<String>) -> Result<Option<String>, RetiredPipeline> {
+    match explicit.as_deref() {
+        Some("quality") | Some("legacy") => Err(RetiredPipeline),
+        Some(_) => Ok(explicit.clone()),
+        None => Ok(default_pipeline()),
+    }
+}
+
+fn retired_pipeline_response() -> impl IntoResponse {
+    (
+        StatusCode::BAD_REQUEST,
+        Json(json!({ "error": "pipeline_retired", "use": "person" })),
+    )
 }
 
 pub async fn timeline(
     State(state): State<AppState>,
     Query(query): Query<TimelineQuery>,
-) -> Json<Value> {
-    let pipeline = resolve_pipeline(&query.pipeline);
+) -> impl IntoResponse {
+    let pipeline = match resolve_pipeline(&query.pipeline) {
+        Ok(pipeline) => pipeline,
+        Err(RetiredPipeline) => return retired_pipeline_response().into_response(),
+    };
     let events = talaria_store::list_timeline_events(
         &state.pool,
         query.entity_id,
@@ -72,13 +91,17 @@ pub async fn timeline(
         "events": events.iter().map(event_to_json).collect::<Vec<_>>(),
         "count": events.len(),
     }))
+    .into_response()
 }
 
 pub async fn geojson(
     State(state): State<AppState>,
     Query(query): Query<GeoJsonQuery>,
-) -> Json<Value> {
-    let pipeline = resolve_pipeline(&query.pipeline);
+) -> impl IntoResponse {
+    let pipeline = match resolve_pipeline(&query.pipeline) {
+        Ok(pipeline) => pipeline,
+        Err(RetiredPipeline) => return retired_pipeline_response().into_response(),
+    };
     let events = talaria_store::list_geojson_events(
         &state.pool,
         query.entity_id,
@@ -101,6 +124,7 @@ pub async fn geojson(
         "type": "FeatureCollection",
         "features": features,
     }))
+    .into_response()
 }
 
 pub async fn evidence(State(state): State<AppState>, Path(event_id): Path<Uuid>) -> Json<Value> {
@@ -338,8 +362,8 @@ fn event_to_json(event: &CanonicalEventRow) -> Value {
         "title": event.title,
         "summary": event.summary,
         "start_time": event.start_time,
+        "time": event.time_json,
         "place_label": event.place_label,
-        "confidence": event.confidence,
         "map_eligible": event.map_eligible,
         "coordinates": coords_json(event),
     })
@@ -363,8 +387,8 @@ fn geojson_feature(event: &CanonicalEventRow) -> Option<Value> {
             "title": event.title,
             "summary": event.summary,
             "start_time": event.start_time,
+            "time": event.time_json,
             "place_label": event.place_label,
-            "confidence": event.confidence,
         }
     }))
 }
@@ -373,5 +397,38 @@ fn coords_json(event: &CanonicalEventRow) -> Value {
     match (event.lat, event.lon) {
         (Some(lat), Some(lon)) => json!({ "lat": lat, "lon": lon }),
         _ => Value::Null,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn timeline_and_map_default_to_the_person_pipeline() {
+        assert_eq!(
+            resolve_pipeline(&None).expect("default pipeline").as_deref(),
+            Some("person")
+        );
+    }
+
+    #[test]
+    fn retired_quality_pipeline_is_rejected() {
+        assert!(resolve_pipeline(&Some("quality".into())).is_err());
+    }
+
+    #[test]
+    fn retired_legacy_pipeline_is_rejected() {
+        assert!(resolve_pipeline(&Some("legacy".into())).is_err());
+    }
+
+    #[test]
+    fn explicit_person_pipeline_still_wins() {
+        assert_eq!(
+            resolve_pipeline(&Some("person".into()))
+                .expect("person allowed")
+                .as_deref(),
+            Some("person")
+        );
     }
 }
