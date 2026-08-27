@@ -30,22 +30,91 @@ CREATE INDEX IF NOT EXISTS idx_canonical_events_timeline_eligible
     ON canonical_events (entity_id)
     WHERE is_active AND pipeline = 'person' AND timeline_eligible;
 
+-- Unique person indexes only when no colliding active person rows (rebuild creates after purge).
 DROP INDEX IF EXISTS uq_canonical_active_occurrence;
-CREATE UNIQUE INDEX IF NOT EXISTS uq_canonical_active_occurrence
-    ON canonical_events (entity_id, occurrence_key)
-    WHERE is_active AND pipeline = 'person' AND occurrence_key IS NOT NULL;
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relname = 'uq_canonical_active_occurrence' AND n.nspname = 'public'
+    ) THEN
+        RETURN;
+    END IF;
+    IF (
+        SELECT count(*) FROM (
+            SELECT entity_id, occurrence_key
+            FROM canonical_events
+            WHERE is_active AND pipeline = 'person' AND occurrence_key IS NOT NULL
+            GROUP BY entity_id, occurrence_key
+            HAVING count(*) > 1
+        ) s
+    ) = 0 THEN
+        CREATE UNIQUE INDEX uq_canonical_active_occurrence
+            ON canonical_events (entity_id, occurrence_key)
+            WHERE is_active AND pipeline = 'person' AND occurrence_key IS NOT NULL;
+    ELSE
+        RAISE NOTICE 'uq_canonical_active_occurrence skipped: duplicate active person occurrence_keys; rebuild-person-pipeline will create after purge';
+    END IF;
+END $$;
 
 DROP INDEX IF EXISTS uq_canonical_active_singleton_birth_death;
-CREATE UNIQUE INDEX IF NOT EXISTS uq_canonical_active_singleton_birth_death
-    ON canonical_events (entity_id, event_type)
-    WHERE is_active
-      AND pipeline = 'person'
-      AND event_type IN ('birth', 'death');
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relname = 'uq_canonical_active_singleton_birth_death' AND n.nspname = 'public'
+    ) THEN
+        RETURN;
+    END IF;
+    IF (
+        SELECT count(*) FROM (
+            SELECT entity_id, event_type
+            FROM canonical_events
+            WHERE is_active
+              AND pipeline = 'person'
+              AND event_type IN ('birth', 'death')
+            GROUP BY entity_id, event_type
+            HAVING count(*) > 1
+        ) s
+    ) = 0 THEN
+        CREATE UNIQUE INDEX uq_canonical_active_singleton_birth_death
+            ON canonical_events (entity_id, event_type)
+            WHERE is_active
+              AND pipeline = 'person'
+              AND event_type IN ('birth', 'death');
+    ELSE
+        RAISE NOTICE 'uq_canonical_active_singleton_birth_death skipped: duplicate active person birth/death; rebuild-person-pipeline will create after purge';
+    END IF;
+END $$;
 
 DROP INDEX IF EXISTS uq_canonical_events_active_fingerprint;
-CREATE UNIQUE INDEX IF NOT EXISTS uq_canonical_events_active_fingerprint
-    ON canonical_events (fingerprint)
-    WHERE is_active AND fingerprint IS NOT NULL AND pipeline = 'person';
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relname = 'uq_canonical_events_active_fingerprint' AND n.nspname = 'public'
+    ) THEN
+        RETURN;
+    END IF;
+    IF (
+        SELECT count(*) FROM (
+            SELECT fingerprint
+            FROM canonical_events
+            WHERE is_active AND fingerprint IS NOT NULL AND pipeline = 'person'
+            GROUP BY fingerprint
+            HAVING count(*) > 1
+        ) s
+    ) = 0 THEN
+        CREATE UNIQUE INDEX uq_canonical_events_active_fingerprint
+            ON canonical_events (fingerprint)
+            WHERE is_active AND fingerprint IS NOT NULL AND pipeline = 'person';
+    ELSE
+        RAISE NOTICE 'uq_canonical_events_active_fingerprint skipped: duplicate active person fingerprints; rebuild-person-pipeline will create after purge';
+    END IF;
+END $$;
 
 DROP INDEX IF EXISTS uq_canonical_events_active_person_occurrence;
 
@@ -102,11 +171,23 @@ WHERE evidence_hash IS NULL;
 
 DO $$
 BEGIN
-    IF NOT EXISTS (
+    IF EXISTS (
         SELECT 1 FROM pg_constraint WHERE conname = 'uq_event_evidence_dedup'
     ) THEN
+        RETURN;
+    END IF;
+    IF (
+        SELECT count(*) FROM (
+            SELECT canonical_event_id, raw_document_id, evidence_hash
+            FROM event_evidence
+            GROUP BY canonical_event_id, raw_document_id, evidence_hash
+            HAVING count(*) > 1
+        ) s
+    ) = 0 THEN
         ALTER TABLE event_evidence
             ADD CONSTRAINT uq_event_evidence_dedup
             UNIQUE NULLS NOT DISTINCT (canonical_event_id, raw_document_id, evidence_hash);
+    ELSE
+        RAISE NOTICE 'uq_event_evidence_dedup skipped: colliding evidence groups after md5 backfill; rebuild-person-pipeline will create after purge';
     END IF;
 END $$;
