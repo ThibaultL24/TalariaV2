@@ -17,7 +17,7 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use super::AppState;
-use crate::corpus_ingest::{self, explorer_fact_providers, live_corpus_providers};
+use crate::corpus_ingest::{self, live_corpus_providers};
 use crate::historiography;
 use crate::lot_e::write_minimal_seed_list;
 use talaria_store::{density_report_counts, update_entity_qid, upsert_entity_with_kind};
@@ -373,32 +373,13 @@ async fn run_explorer_lane(
     )
     .await?;
 
-    let sister_wiki_facts = match crate::ingest::run_ingest_quality(
-        config,
-        subject,
-        qid,
-        Some(explorer_fact_providers()),
-        false,
-        true,
-    )
-    .await
-    {
-        Ok(text) => parse_json_report(&text),
-        Err(error) => {
-            tracing::warn!(error = %error, "explorer sister-wiki fact ingest failed");
-            json!({ "error": error.to_string() })
-        }
-    };
-
-    let entity_id = parse_entity_id_from_report(&person)
-        .or_else(|| parse_entity_id_from_report(&sister_wiki_facts));
+    let entity_id = parse_entity_id_from_report(&person);
 
     Ok(json!({
         "lane": LANE_EXPLORER,
         "purpose": lane_purpose(LANE_EXPLORER),
         "pipeline": "person",
         "person": person,
-        "sister_wiki_facts": sister_wiki_facts,
         "subject": {
             "entity_id": entity_id.map(|id| id.to_string()),
             "label": subject,
@@ -440,10 +421,6 @@ async fn run_agora_lane(
         "entity_id": corpus_json.get("subject_entity_id")
             .or_else(|| hist_json.get("entity_id")),
     }))
-}
-
-fn parse_json_report(text: &str) -> Value {
-    serde_json::from_str(text).unwrap_or_else(|_| json!({ "raw": text }))
 }
 
 fn lane_purpose(lane: &str) -> &'static str {
@@ -497,6 +474,7 @@ pub async fn get_ingest_job(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::corpus_ingest::explorer_fact_providers;
 
     #[test]
     fn start_response_exposes_entity_id_before_dump() {

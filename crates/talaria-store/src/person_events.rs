@@ -134,14 +134,88 @@ pub async fn insert_person_event(pool: &PgPool, event: &PersonEventInsert) -> an
     Ok(id)
 }
 
+#[derive(Debug, Clone)]
+pub struct PersonCandidateInsert {
+    pub subject_surface: String,
+    pub subject_entity_id: Uuid,
+    pub event_type: String,
+    pub predicate: String,
+    pub time_json: serde_json::Value,
+    pub place_label: Option<String>,
+    pub evidence_ptrs: serde_json::Value,
+    pub extractor_version: String,
+    pub fingerprint: String,
+    pub occurrence_key: String,
+    pub primary_object: Option<String>,
+    pub action_role: Option<String>,
+    pub status: String,
+    pub rejection_codes: Vec<String>,
+    pub judgment_json: serde_json::Value,
+    pub raw_document_id: Uuid,
+}
+
+/// Insert an `event_candidates` row for person ingest (nullable snapshot/fragment).
+pub async fn insert_person_candidate(
+    pool: &PgPool,
+    c: &PersonCandidateInsert,
+) -> anyhow::Result<Uuid> {
+    let row: Option<(Uuid,)> = sqlx::query_as(
+        r#"
+        INSERT INTO event_candidates (
+            snapshot_id, fragment_id, clause_index,
+            subject_surface, subject_entity_id, event_type, predicate, time_json,
+            place_mentions, object_mentions, participant_mentions,
+            place_entity_id, place_label, evidence_ptrs,
+            extractor_version, fingerprint, occurrence_key, primary_object, action_role,
+            status, rejection_codes, judgment_json, raw_document_id
+        )
+        VALUES (
+            NULL, NULL, 0,
+            $1,$2,$3,$4,$5,'[]'::jsonb,'[]'::jsonb,'[]'::jsonb,
+            NULL,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16
+        )
+        ON CONFLICT (fingerprint) DO NOTHING
+        RETURNING id
+        "#,
+    )
+    .bind(&c.subject_surface)
+    .bind(c.subject_entity_id)
+    .bind(&c.event_type)
+    .bind(&c.predicate)
+    .bind(&c.time_json)
+    .bind(&c.place_label)
+    .bind(&c.evidence_ptrs)
+    .bind(&c.extractor_version)
+    .bind(&c.fingerprint)
+    .bind(&c.occurrence_key)
+    .bind(&c.primary_object)
+    .bind(&c.action_role)
+    .bind(&c.status)
+    .bind(&c.rejection_codes)
+    .bind(&c.judgment_json)
+    .bind(c.raw_document_id)
+    .fetch_optional(pool)
+    .await?;
+    if let Some((id,)) = row {
+        return Ok(id);
+    }
+    let existing: Uuid =
+        sqlx::query_scalar(r#"SELECT id FROM event_candidates WHERE fingerprint = $1"#)
+            .bind(&c.fingerprint)
+            .fetch_one(pool)
+            .await?;
+    Ok(existing)
+}
+
 pub async fn insert_person_quote_evidence(
     pool: &PgPool,
     event_id: Uuid,
     quoted_text: &str,
     raw_document_id: Option<Uuid>,
     confidence: f64,
+    source_locator: &str,
 ) -> anyhow::Result<Uuid> {
-    let locator = "";
+    let locator = source_locator;
     let hash = evidence_hash(raw_document_id, locator, quoted_text);
     let inserted: Option<Uuid> = sqlx::query_scalar(
         r#"
