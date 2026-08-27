@@ -136,6 +136,18 @@ fn implausible_age(event_type: &str, age: i32, evidence: &str) -> bool {
     }
 }
 
+/// Whether an event type implies the subject was physically present (participatory).
+/// About-subject types (publications, commemorations, awards) do not.
+pub fn event_implies_subject_presence(event_type: &str, predicate: &str) -> bool {
+    match event_type {
+        "publication" | "commemoration" | "award" => false,
+        _ => match predicate {
+            "commemorated_at" | "published" | "awarded" => false,
+            _ => true,
+        },
+    }
+}
+
 pub fn apply_gates(candidate: &EventCandidate, ctx: &GateContext) -> GateDecision {
     let mut rejects = Vec::new();
 
@@ -187,7 +199,10 @@ pub fn apply_gates(candidate: &EventCandidate, ctx: &GateContext) -> GateDecisio
     }
 
     if let (Some(ey), Some(dy)) = (event_year, ctx.subject_death_year) {
-        if ey > dy && candidate.event_type != "death" {
+        if ey > dy
+            && candidate.event_type != "death"
+            && event_implies_subject_presence(&candidate.event_type, &candidate.predicate)
+        {
             rejects.push(RejectionCode::EventAfterSubjectDeath);
         }
         // Death after known death year is also after-death for a second death attempt.
@@ -407,5 +422,43 @@ mod tests {
         assert!(event_type_is_map_locus("arrival"));
         assert!(event_type_is_map_locus("residence"));
         assert!(!event_type_is_map_locus("historical_fact"));
+    }
+
+    #[test]
+    fn participatory_anecdote_after_death_is_rejected() {
+        let c = base_candidate("anecdote", 1981);
+        let ctx = GateContext {
+            subject_birth_year: Some(1754),
+            subject_death_year: Some(1793),
+            ..Default::default()
+        };
+        let codes = apply_gates(&c, &ctx).codes();
+        assert!(codes.contains(&"event_after_subject_death".into()));
+    }
+
+    #[test]
+    fn commemoration_after_death_is_not_lifespan_rejected() {
+        let c = base_candidate("commemoration", 1840);
+        let ctx = GateContext {
+            subject_birth_year: Some(1754),
+            subject_death_year: Some(1793),
+            ..Default::default()
+        };
+        assert!(!apply_gates(&c, &ctx)
+            .codes()
+            .contains(&"event_after_subject_death".into()));
+    }
+
+    #[test]
+    fn arrival_before_birth_is_still_rejected() {
+        let c = base_candidate("arrival", 1450);
+        let ctx = GateContext {
+            subject_birth_year: Some(1451),
+            subject_death_year: Some(1506),
+            ..Default::default()
+        };
+        assert!(apply_gates(&c, &ctx)
+            .codes()
+            .contains(&"event_before_subject_birth".into()));
     }
 }
