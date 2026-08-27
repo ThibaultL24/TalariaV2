@@ -296,20 +296,133 @@ mod tests {
         let t = parse_typed_time(Some(&s));
         assert_eq!(t.year_for_gates(), Some(-30), "{t:?}");
     }
+
+    #[test]
+    fn time_to_json_exact_year_uses_kind_exact_not_year() {
+        let t = TypedTime::Exact {
+            year: 1805,
+            month: None,
+            day: None,
+            surface: Some("1805".into()),
+        };
+        let v = time_to_json(&t);
+        assert_eq!(v["kind"], "exact");
+        assert_eq!(v["precision"], "year");
+        assert_eq!(v["start"], "1805");
+        assert!(v.get("end").unwrap().is_null() || v["end"] == serde_json::Value::Null);
+        assert_eq!(v["calendar"], "gregorian");
+        assert_eq!(v["surface"], "1805");
+    }
+
+    #[test]
+    fn time_to_json_never_uses_precision_as_kind() {
+        let t = TypedTime::Exact {
+            year: 1805,
+            month: Some(3),
+            day: None,
+            surface: Some("March 1805".into()),
+        };
+        let v = time_to_json(&t);
+        assert_eq!(v["kind"], "exact");
+        assert_eq!(v["precision"], "month");
+        assert_eq!(v["start"], "1805-03");
+    }
+
+    #[test]
+    fn start_time_year_projects_to_january_first_not_june() {
+        let t = TypedTime::Exact {
+            year: 1805,
+            month: None,
+            day: None,
+            surface: Some("1805".into()),
+        };
+        let dt = start_time_from_typed(&t).expect("projection");
+        assert_eq!(dt.format("%Y-%m-%d").to_string(), "1805-01-01");
+    }
+
+    #[test]
+    fn start_time_month_projects_to_day_one() {
+        let t = TypedTime::Exact {
+            year: 1805,
+            month: Some(3),
+            day: None,
+            surface: Some("March 1805".into()),
+        };
+        let dt = start_time_from_typed(&t).expect("projection");
+        assert_eq!(dt.format("%Y-%m-%d").to_string(), "1805-03-01");
+    }
 }
 
 /// Serialise a `TypedTime` to a JSON value for storage in `canonical_events.time_json`.
 pub fn time_to_json(time: &TypedTime) -> serde_json::Value {
-    serde_json::to_value(time).unwrap_or_else(|_| serde_json::json!({"kind":"unknown"}))
+    match time {
+        TypedTime::Exact {
+            year,
+            month,
+            day,
+            surface,
+        } => {
+            let precision = if day.is_some() {
+                "day"
+            } else if month.is_some() {
+                "month"
+            } else {
+                "year"
+            };
+            serde_json::json!({
+                "kind": "exact",
+                "start": format_exact_start(*year, *month, *day),
+                "end": serde_json::Value::Null,
+                "precision": precision,
+                "calendar": "gregorian",
+                "surface": surface,
+            })
+        }
+        TypedTime::Range {
+            start_year,
+            end_year,
+            surface,
+        } => serde_json::json!({
+            "kind": "range",
+            "start": start_year.to_string(),
+            "end": end_year.to_string(),
+            "precision": "year",
+            "calendar": "gregorian",
+            "surface": surface,
+        }),
+        TypedTime::Approx { year, surface } => serde_json::json!({
+            "kind": "approx",
+            "start": year.to_string(),
+            "end": serde_json::Value::Null,
+            "precision": "year",
+            "calendar": "gregorian",
+            "surface": surface,
+        }),
+        TypedTime::Unknown { surface } => serde_json::json!({
+            "kind": "unknown",
+            "start": serde_json::Value::Null,
+            "end": serde_json::Value::Null,
+            "calendar": "gregorian",
+            "surface": surface,
+        }),
+    }
+}
+
+fn format_exact_start(year: i32, month: Option<u32>, day: Option<u32>) -> String {
+    match (month, day) {
+        (Some(m), Some(d)) => format!("{year}-{m:02}-{d:02}"),
+        (Some(m), None) => format!("{year}-{m:02}"),
+        _ => year.to_string(),
+    }
 }
 
 /// Convert a `TypedTime` to a `DateTime<Utc>` suitable for `start_time` columns.
-/// Uses mid-year / mid-month defaults for partial dates to keep ordering sensible.
+/// Year-only → 1 January; month-only → day 1 of that month; full day → that date.
 pub fn start_time_from_typed(time: &TypedTime) -> Option<chrono::DateTime<chrono::Utc>> {
     match time {
         TypedTime::Exact { year, month, day, .. } => {
-            let m = month.unwrap_or(6);
-            let d = day.unwrap_or(15);
+            let m = month.unwrap_or(1);
+            let d = day.unwrap_or(1);
             chrono::NaiveDate::from_ymd_opt(*year, m, d)
                 .and_then(|nd| nd.and_hms_opt(0, 0, 0))
                 .map(|n| chrono::DateTime::from_naive_utc_and_offset(n, chrono::Utc))
