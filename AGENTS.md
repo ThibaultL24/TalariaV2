@@ -31,7 +31,7 @@ Talaria Engine is a Rust workspace (Wikipedia dump → sentences → phrase-cand
 
 | Surface | Contract |
 |---|---|
-| `canonical_events.pipeline` | Only `'person'` (schema CHECK). |
+| `canonical_events.pipeline` | CHECK `(pipeline IN ('legacy', 'person'))`, DEFAULT `'person'`. Dump/judge writes `'legacy'`. Explorer ingest writes `'person'`. Never `'quality'`. |
 | HTTP timeline / geojson | Default `pipeline=person` when omitted. |
 | `?pipeline=quality` or `?pipeline=legacy` | **400** `{ "error": "pipeline_retired", "use": "person" }` — never silent empty. |
 | Explorer search-bar ingest | `run_explorer_lane` → **`run_person_ingest` only** (`routes/ingest.rs`). No `run_ingest_quality` on the explorer path. |
@@ -53,7 +53,7 @@ talaria admin rebuild-person-pipeline \
 ```
 Purges canonical scope, merges QID duplicates, verifies invariants. **No `TRUNCATE` in migrations.** Re-ingest is a separate explicit step (or `--reingest-subjects`).
 
-**Offline dump tools (not explorer API):** The Wikipedia dump chain (`extract-pages` → `split-sentences` → `cosmos-extract` → `judge-candidates`) and fixture CLIs (`quality-napoleon-demo`, `quality-fixture`, `ingest-quality` in `main.rs`) are **offline/dev tools** for corpus work. They do **not** drive the explorer, HTTP ingest, or map/timeline. Do not wire them back into `run_explorer_lane` or default API queries.
+**Offline dump tools (not explorer API):** The Wikipedia dump chain (`extract-pages` → `split-sentences` → `cosmos-extract` → `judge-candidates`) writes `pipeline='legacy'` and does **not** drive the explorer, HTTP ingest, or map/timeline. Fixture CLIs (`quality-napoleon-demo`, `quality-fixture`, `ingest-quality`) assemble into `'person'` — they no longer write a separate `'quality'` lane. Do not wire dump/judge back into `run_explorer_lane` or default API queries.
 
 - Migrations `006`–`027`: structure only; rebuild `talaria-store` after adding migrations.
 - CLI (explorer-facing): search-bar ingest via HTTP; operator rebuild above.

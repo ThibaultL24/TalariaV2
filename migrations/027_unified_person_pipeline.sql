@@ -1,12 +1,12 @@
 -- migrations/027_unified_person_pipeline.sql
 -- Structure only. Purge is talaria admin rebuild-person-pipeline.
 
--- Pipeline check: NOT VALID so existing legacy/quality/person rows do not fail migrate.
--- Rebuild command will VALIDATE after purge.
+-- Dump/judge writes 'legacy'; explorer writes 'person'. DEFAULT is explorer.
+-- NOT VALID so existing quality rows do not fail migrate. Rebuild VALIDATEs after purge.
 ALTER TABLE canonical_events DROP CONSTRAINT IF EXISTS canonical_events_pipeline_check;
 ALTER TABLE canonical_events
     ADD CONSTRAINT canonical_events_pipeline_check
-    CHECK (pipeline = 'person') NOT VALID;
+    CHECK (pipeline IN ('legacy', 'person')) NOT VALID;
 ALTER TABLE canonical_events ALTER COLUMN pipeline SET DEFAULT 'person';
 
 -- Recreate quality/person partial indexes on pipeline = 'person'.

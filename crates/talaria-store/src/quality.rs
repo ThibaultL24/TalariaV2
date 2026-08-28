@@ -495,14 +495,14 @@ pub async fn quality_report_counts(pool: &PgPool) -> anyhow::Result<QualityRepor
     .fetch_one(pool)
     .await?;
     let quality_events_active: i64 = sqlx::query_scalar(
-        r#"SELECT COUNT(*)::bigint FROM canonical_events WHERE pipeline = 'quality' AND is_active"#,
+        r#"SELECT COUNT(*)::bigint FROM canonical_events WHERE pipeline = 'person' AND is_active"#,
     )
     .fetch_one(pool)
     .await?;
     let quality_events_map_eligible: i64 = sqlx::query_scalar(
         r#"
         SELECT COUNT(*)::bigint FROM canonical_events
-        WHERE pipeline = 'quality' AND is_active AND map_eligible
+        WHERE pipeline = 'person' AND is_active AND map_eligible
         "#,
     )
     .fetch_one(pool)
@@ -598,7 +598,7 @@ pub async fn quality_lifespan_years(
         r#"
         SELECT start_time FROM canonical_events
         WHERE entity_id = $1 AND event_type = 'birth'
-          AND pipeline = 'quality' AND is_active
+          AND pipeline = 'person' AND is_active
         LIMIT 1
         "#,
     )
@@ -610,7 +610,7 @@ pub async fn quality_lifespan_years(
         r#"
         SELECT start_time FROM canonical_events
         WHERE entity_id = $1 AND event_type = 'death'
-          AND pipeline = 'quality' AND is_active
+          AND pipeline = 'person' AND is_active
         LIMIT 1
         "#,
     )
@@ -660,7 +660,7 @@ pub struct QualityEventInsert {
     pub evidence_count: i32,
 }
 
-/// Append-only insert for quality pipeline. Never mutates prior rows in place.
+/// Append-only insert into the person lane. Never mutates prior rows in place.
 pub async fn insert_quality_canonical_event(
     pool: &PgPool,
     event: &QualityEventInsert,
@@ -671,7 +671,7 @@ pub async fn insert_quality_canonical_event(
             r#"
             UPDATE canonical_events
             SET is_active = false
-            WHERE id = $1 AND pipeline = 'quality'
+            WHERE id = $1 AND pipeline = 'person'
             "#,
         )
         .bind(old_id)
@@ -692,7 +692,7 @@ pub async fn insert_quality_canonical_event(
             VALUES (
                 $1,$2,$3,$4,$5,$6,$7,$8,$9,
                 ST_SetSRID(ST_MakePoint($10,$11),4326)::geography,
-                $12,$13,$14,$15,$16,$17,$18,$19,$20,$21,true,$22,$23,$24,'quality',$25
+                $12,$13,$14,$15,$16,$17,$18,$19,$20,$21,true,$22,$23,$24,'person',$25
             )
             RETURNING id
             "#,
@@ -735,7 +735,7 @@ pub async fn insert_quality_canonical_event(
                 assembler_version, pipeline, event_candidate_id
             )
             VALUES (
-                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,true,$20,$21,$22,'quality',$23
+                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,true,$20,$21,$22,'person',$23
             )
             RETURNING id
             "#,
@@ -785,7 +785,7 @@ pub async fn find_active_quality_event_by_fingerprint(
     let id: Option<Uuid> = sqlx::query_scalar(
         r#"
         SELECT id FROM canonical_events
-        WHERE fingerprint = $1 AND pipeline = 'quality' AND is_active
+        WHERE fingerprint = $1 AND pipeline = 'person' AND is_active
         LIMIT 1
         "#,
     )
@@ -806,7 +806,7 @@ pub async fn find_active_quality_event_by_occurrence_key(
         SELECT id FROM canonical_events
         WHERE entity_id = $1
           AND occurrence_key = $2
-          AND pipeline = 'quality'
+          AND pipeline = 'person'
           AND is_active
         LIMIT 1
         "#,
@@ -825,7 +825,7 @@ pub async fn reinforce_quality_event(pool: &PgPool, event_id: Uuid) -> anyhow::R
         UPDATE canonical_events SET
             source_count = source_count + 1,
             evidence_count = evidence_count + 1
-        WHERE id = $1 AND pipeline = 'quality'
+        WHERE id = $1 AND pipeline = 'person'
         "#,
     )
     .bind(event_id)
@@ -854,7 +854,7 @@ pub async fn apply_place_to_quality_event(
             map_eligible = true,
             location_precision = $6,
             uncertainty_radius_m = $7
-        WHERE id = $1 AND pipeline = 'quality' AND is_active
+        WHERE id = $1 AND pipeline = 'person' AND is_active
         "#,
     )
     .bind(event_id)
@@ -878,7 +878,7 @@ pub async fn find_active_singleton(
         r#"
         SELECT id FROM canonical_events
         WHERE entity_id = $1 AND event_type = $2
-          AND pipeline = 'quality' AND is_active
+          AND pipeline = 'person' AND is_active
         LIMIT 1
         "#,
     )
@@ -898,7 +898,7 @@ pub async fn count_active_quality_by_type(
         r#"
         SELECT COUNT(*)::bigint FROM canonical_events
         WHERE entity_id = $1 AND event_type = $2
-          AND pipeline = 'quality' AND is_active
+          AND pipeline = 'person' AND is_active
         "#,
     )
     .bind(entity_id)

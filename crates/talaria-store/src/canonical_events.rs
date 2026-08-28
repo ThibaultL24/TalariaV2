@@ -65,25 +65,35 @@ pub async fn find_existing_event(
     Ok(id)
 }
 
+/// Judge/dump writers must set pipeline explicitly; DEFAULT after 027 is `'person'`.
+const INSERT_CANONICAL_EVENT_WITH_GEOM: &str = r#"
+            INSERT INTO canonical_events (
+                entity_id, event_type, epistemic_status, title, summary, start_time, time_json,
+                place_label, geom, confidence, map_eligible, pipeline
+            )
+            VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8,
+                ST_SetSRID(ST_MakePoint($9, $10), 4326)::geography,
+                $11, $12, 'legacy'
+            )
+            RETURNING id
+            "#;
+
+const INSERT_CANONICAL_EVENT_NO_GEOM: &str = r#"
+            INSERT INTO canonical_events (
+                entity_id, event_type, epistemic_status, title, summary, start_time, time_json,
+                place_label, confidence, map_eligible, pipeline
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'legacy')
+            RETURNING id
+            "#;
+
 pub async fn insert_canonical_event(
     pool: &PgPool,
     event: &CanonicalEventInsert,
 ) -> anyhow::Result<Uuid> {
     let id: Uuid = if event.map_eligible {
-        sqlx::query_scalar(
-            r#"
-            INSERT INTO canonical_events (
-                entity_id, event_type, epistemic_status, title, summary, start_time, time_json,
-                place_label, geom, confidence, map_eligible
-            )
-            VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8,
-                ST_SetSRID(ST_MakePoint($9, $10), 4326)::geography,
-                $11, $12
-            )
-            RETURNING id
-            "#,
-        )
+        sqlx::query_scalar(INSERT_CANONICAL_EVENT_WITH_GEOM)
         .bind(event.entity_id)
         .bind(&event.event_type)
         .bind(&event.epistemic_status)
@@ -99,16 +109,7 @@ pub async fn insert_canonical_event(
         .fetch_one(pool)
         .await?
     } else {
-        sqlx::query_scalar(
-            r#"
-            INSERT INTO canonical_events (
-                entity_id, event_type, epistemic_status, title, summary, start_time, time_json,
-                place_label, confidence, map_eligible
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-            RETURNING id
-            "#,
-        )
+        sqlx::query_scalar(INSERT_CANONICAL_EVENT_NO_GEOM)
         .bind(event.entity_id)
         .bind(&event.event_type)
         .bind(&event.epistemic_status)
@@ -510,4 +511,27 @@ pub async fn refresh_event_source_refs(
     .await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn judge_insert_sql_binds_legacy_pipeline() {
+        for sql in [INSERT_CANONICAL_EVENT_WITH_GEOM, INSERT_CANONICAL_EVENT_NO_GEOM] {
+            assert!(
+                sql.contains("pipeline"),
+                "insert must name pipeline column"
+            );
+            assert!(
+                sql.contains("'legacy'"),
+                "dump/judge rows must not inherit DEFAULT person"
+            );
+            assert!(
+                !sql.contains("'person'"),
+                "judge insert must not write the explorer lane"
+            );
+        }
+    }
 }

@@ -104,6 +104,8 @@ pub async fn rebuild_person_pipeline(
         "{remaining_dups} duplicate qid groups remain after merge"
     );
 
+    ensure_deferred_pipeline_constraints(&mut tx).await?;
+
     tx.commit().await?;
 
     println!("rebuild complete: canonical_events=0, unique qid index present");
@@ -393,6 +395,78 @@ async fn detach_canonical_event_fks(tx: &mut Transaction<'_, Postgres>) -> anyho
     )
     .execute(&mut **tx)
     .await?;
+    Ok(())
+}
+
+/// Finish indexes/constraints 027 skipped when live data had collisions.
+async fn ensure_deferred_pipeline_constraints(
+    tx: &mut Transaction<'_, Postgres>,
+) -> anyhow::Result<()> {
+    sqlx::query("ALTER TABLE canonical_events DROP CONSTRAINT IF EXISTS canonical_events_pipeline_check")
+        .execute(&mut **tx)
+        .await?;
+    sqlx::query(
+        r#"
+        ALTER TABLE canonical_events
+            ADD CONSTRAINT canonical_events_pipeline_check
+            CHECK (pipeline IN ('legacy', 'person')) NOT VALID
+        "#,
+    )
+    .execute(&mut **tx)
+    .await?;
+    sqlx::query("ALTER TABLE canonical_events ALTER COLUMN pipeline SET DEFAULT 'person'")
+        .execute(&mut **tx)
+        .await?;
+    sqlx::query("ALTER TABLE canonical_events VALIDATE CONSTRAINT canonical_events_pipeline_check")
+        .execute(&mut **tx)
+        .await?;
+
+    sqlx::query(
+        r#"
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_canonical_active_occurrence
+            ON canonical_events (entity_id, occurrence_key)
+            WHERE is_active AND pipeline = 'person' AND occurrence_key IS NOT NULL
+        "#,
+    )
+    .execute(&mut **tx)
+    .await?;
+    sqlx::query(
+        r#"
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_canonical_active_singleton_birth_death
+            ON canonical_events (entity_id, event_type)
+            WHERE is_active
+              AND pipeline = 'person'
+              AND event_type IN ('birth', 'death')
+        "#,
+    )
+    .execute(&mut **tx)
+    .await?;
+    sqlx::query(
+        r#"
+        CREATE UNIQUE INDEX IF NOT EXISTS uq_canonical_events_active_fingerprint
+            ON canonical_events (fingerprint)
+            WHERE is_active AND fingerprint IS NOT NULL AND pipeline = 'person'
+        "#,
+    )
+    .execute(&mut **tx)
+    .await?;
+    sqlx::query(
+        r#"
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint WHERE conname = 'uq_event_evidence_dedup'
+            ) THEN
+                ALTER TABLE event_evidence
+                    ADD CONSTRAINT uq_event_evidence_dedup
+                    UNIQUE NULLS NOT DISTINCT (canonical_event_id, raw_document_id, evidence_hash);
+            END IF;
+        END $$
+        "#,
+    )
+    .execute(&mut **tx)
+    .await?;
+
     Ok(())
 }
 

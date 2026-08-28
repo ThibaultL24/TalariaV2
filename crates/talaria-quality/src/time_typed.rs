@@ -351,6 +351,27 @@ mod tests {
         let dt = start_time_from_typed(&t).expect("projection");
         assert_eq!(dt.format("%Y-%m-%d").to_string(), "1805-03-01");
     }
+
+    #[test]
+    fn start_time_range_year_projects_to_january_first() {
+        let t = TypedTime::Range {
+            start_year: 1804,
+            end_year: 1815,
+            surface: Some("1804–1815".into()),
+        };
+        let dt = start_time_from_typed(&t).expect("projection");
+        assert_eq!(dt.format("%Y-%m-%d").to_string(), "1804-01-01");
+    }
+
+    #[test]
+    fn start_time_approx_year_projects_to_january_first() {
+        let t = TypedTime::Approx {
+            year: 1799,
+            surface: Some("c. 1799".into()),
+        };
+        let dt = start_time_from_typed(&t).expect("projection");
+        assert_eq!(dt.format("%Y-%m-%d").to_string(), "1799-01-01");
+    }
 }
 
 /// Serialise a `TypedTime` to a JSON value for storage in `canonical_events.time_json`.
@@ -416,19 +437,21 @@ fn format_exact_start(year: i32, month: Option<u32>, day: Option<u32>) -> String
     }
 }
 
+fn utc_ymd(year: i32, month: u32, day: u32) -> Option<chrono::DateTime<chrono::Utc>> {
+    chrono::NaiveDate::from_ymd_opt(year, month, day)
+        .and_then(|nd| nd.and_hms_opt(0, 0, 0))
+        .map(|n| chrono::DateTime::from_naive_utc_and_offset(n, chrono::Utc))
+}
+
 /// Convert a `TypedTime` to a `DateTime<Utc>` suitable for `start_time` columns.
 /// Year-only → 1 January; month-only → day 1 of that month; full day → that date.
 pub fn start_time_from_typed(time: &TypedTime) -> Option<chrono::DateTime<chrono::Utc>> {
     match time {
         TypedTime::Exact { year, month, day, .. } => {
-            let m = month.unwrap_or(1);
-            let d = day.unwrap_or(1);
-            chrono::NaiveDate::from_ymd_opt(*year, m, d)
-                .and_then(|nd| nd.and_hms_opt(0, 0, 0))
-                .map(|n| chrono::DateTime::from_naive_utc_and_offset(n, chrono::Utc))
+            utc_ymd(*year, month.unwrap_or(1), day.unwrap_or(1))
         }
-        _ => time
-            .year_for_gates()
-            .and_then(|y| parse_time_surface(&y.to_string()).map(|p| p.start)),
+        TypedTime::Range { start_year, .. } => utc_ymd(*start_year, 1, 1),
+        TypedTime::Approx { year, .. } => utc_ymd(*year, 1, 1),
+        TypedTime::Unknown { .. } => None,
     }
 }
