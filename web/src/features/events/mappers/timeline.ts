@@ -17,19 +17,33 @@ export interface TimelineItem {
   isVisibleOnMap?: boolean;
 }
 
+function timelineEventYear(event: TimelineEvent): number | null {
+  const fromTimeStart = event.time?.start;
+  if (fromTimeStart) {
+    const year = Number.parseInt(fromTimeStart.slice(0, 4), 10);
+    if (Number.isFinite(year)) return year;
+  }
+  if (!event.start_time) return null;
+  const year = Number.parseInt(event.start_time.slice(0, 4), 10);
+  return Number.isFinite(year) ? year : null;
+}
+
+function timelineEventDateLabel(event: TimelineEvent): string {
+  if (event.time?.surface) return event.time.surface;
+  return formatDateLabel(event.time?.start ?? event.start_time);
+}
+
 export function mapTimelineEventToItem(event: TimelineEvent): TimelineItem {
-  const year = event.start_time ? Number.parseInt(event.start_time.slice(0, 4), 10) : null;
   return {
     id: event.id,
     title: event.title,
-    dateLabel: formatDateLabel(event.start_time),
+    dateLabel: timelineEventDateLabel(event),
     eventType: eventTypeLabel(event.event_type),
     eventTypeKey: event.event_type,
     epistemicStatus: epistemicStatusLabel(event.epistemic_status),
     epistemicStatusKey: event.epistemic_status,
-    confidence: event.confidence,
     place: event.place_label ?? undefined,
-    year: Number.isFinite(year ?? NaN) ? year : null,
+    year: timelineEventYear(event),
     isVisibleOnMap: event.map_eligible,
   };
 }

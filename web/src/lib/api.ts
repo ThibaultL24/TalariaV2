@@ -1,6 +1,15 @@
 // web/src/lib/api.ts
 import type { EntityProfile, SearchSuggestion } from "@/lib/schemas/entity";
 
+export interface EventTime {
+  kind: "exact" | "range" | "approx" | "unknown";
+  start?: string | null;
+  end?: string | null;
+  precision?: "day" | "month" | "year";
+  calendar?: string;
+  surface?: string | null;
+}
+
 export interface TimelineEvent {
   id: string;
   entity_id: string;
@@ -9,9 +18,10 @@ export interface TimelineEvent {
   epistemic_status: string;
   title: string;
   summary?: string | null;
+  time?: EventTime;
   start_time?: string | null;
   place_label?: string | null;
-  confidence: number;
+  confidence?: number;
   map_eligible: boolean;
   coordinates?: { lat: number; lon: number } | null;
 }
