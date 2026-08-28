@@ -76,13 +76,15 @@ Dev mock pipeline (no dump required if pages already extracted):
 # or with dump: DUMP=/mnt/wiki-dump/dumps/enwiki-....xml.bz2 ./scripts/dev-pipeline.sh 1000
 ```
 
-Dense Napoleon demo (cultural events in Talaria; opinion `claims` lane for Intuition):
+Offline dump density measurement (Napoleon fixture — **not** explorer/person ingest):
 
 ```bash
 ./scripts/seed_napoleon_pipeline.sh
-curl "http://localhost:8080/api/v1/timeline?person=Napoleon"
-curl "http://localhost:8080/api/v1/events/geojson?person=Napoleon"
+# Expected ballpark on the offline dump path: ~250+ Napoleon canonical_events, ~50+ places.
+# Density output: SQL reports printed by the script (see AGENTS.md).
 ```
+
+Results stay on the dump/legacy path — they do **not** populate `pipeline='person'` or appear in the explorer. For map/timeline, ingest via the web search bar or `POST /api/v1/ingest/explorer` with `{"subject":"Napoleon","qid":"Q517"}` before querying timeline/geojson.
 
 Cultural biography / places / evidence stay in Postgres (`canonical_events`). Table `claims` is reserved for avis/théories exportable to Intuition — not for map facts.
 

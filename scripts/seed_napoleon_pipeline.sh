@@ -129,5 +129,6 @@ else
 fi
 
 echo
-echo "Try: curl 'http://localhost:8080/api/v1/timeline?person=Napoleon&limit=500'"
-echo "     curl 'http://localhost:8080/api/v1/events/geojson?person=Napoleon&limit=500'"
+echo "Done. See SQL density reports above."
+echo "This offline dump path does not populate pipeline='person'."
+echo "For explorer map/timeline: search-bar ingest or POST /api/v1/ingest/explorer with subject + qid."
