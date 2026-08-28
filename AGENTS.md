@@ -79,14 +79,13 @@ Purges canonical scope, merges QID duplicates, verifies invariants. **No `TRUNCA
 - Occurrence identity uses `occurrence_key` (subject+type+role+time+place+primary object…), not display title.
 - Seed lists / gazetteer aliases are data, not Napoleon-hardcoded gate rules.
 
-### Napoleon density demo
-Ingests **real English Wikipedia extracts** via the **person pipeline** (search-bar or CLI person ingest), keeps years in **1765–1865**, and leaves opinion rows in `claims` only.
+### Offline dump density measurement (Napoleon fixture)
+**Not explorer/person ingest.** `./scripts/seed_napoleon_pipeline.sh` rebuilds a synthetic Wikipedia dump and runs the **offline dump chain** (`extract-pages` → `split-sentences` → `cosmos-extract --mock` → `judge-candidates` → `dump-mine`). It ingests real-style English Wikipedia extracts for Napoleon-related pages, filters years to **1765–1865**, seeds opinion rows in `claims` only, and prints SQL density reports at the end. Results stay on the dump path — they do **not** populate `pipeline='person'` or drive search-bar ingest.
 
 ```bash
 ./scripts/seed_napoleon_pipeline.sh
 # Expected ballpark after precision filters: ~250+ Napoleon canonical_events, ~50+ places, 0 modern citation noise
-curl 'http://localhost:8080/api/v1/timeline?person=Napoleon&limit=500'
-curl 'http://localhost:8080/api/v1/events/geojson?person=Napoleon&limit=500'
+# Density output: SQL reports printed by the script (not timeline/geojson — those are the explorer contract for pipeline=person)
 ```
 
 Event families include battle, diplomatic, meeting, residence, marriage/divorce, exile, office, travel — cultural facts only.
