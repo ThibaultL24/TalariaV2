@@ -271,6 +271,11 @@ pub enum Commands {
         #[arg(long, help = "Broadcast to Intuition testnet (needs INTUITION_PRIVATE_KEY)")]
         live: bool,
     },
+    /// Operator admin actions (destructive rebuild is explicit)
+    Admin {
+        #[command(subcommand)]
+        action: AdminAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -379,6 +384,21 @@ pub enum DumpAction {
         version: String,
         #[arg(long, default_value = "0")]
         limit: usize,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum AdminAction {
+    /// Count, optionally wipe canonical events + merge duplicate QIDs (not a migration)
+    RebuildPersonPipeline {
+        #[arg(long, help = "Actually merge duplicates and TRUNCATE events (irreversible)")]
+        confirm_destruction: bool,
+        #[arg(
+            long,
+            default_value = "rebuild-manifest.json",
+            help = "JSON snapshot of counts and sample ids (written only with --confirm-destruction)"
+        )]
+        backup_manifest: PathBuf,
     },
 }
 

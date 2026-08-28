@@ -28,12 +28,13 @@ mod narrative_dossier;
 mod person_ingest;
 mod place_conflict;
 mod quality;
+mod rebuild;
 mod routes;
 mod wiki_persist;
 mod wikidata_ingest;
 
 use clap::Parser;
-use cli::{Cli, Commands, DumpAction};
+use cli::{AdminAction, Cli, Commands, DumpAction};
 use talaria_core::AppConfig;
 use tracing_subscriber::EnvFilter;
 
@@ -451,6 +452,15 @@ async fn main() -> anyhow::Result<()> {
         Commands::IntuitionPublish { subject, live } => {
             intuition::run_intuition_publish(&config, &subject, live).await?
         }
+        Commands::Admin { action } => match action {
+            AdminAction::RebuildPersonPipeline {
+                confirm_destruction,
+                backup_manifest,
+            } => {
+                rebuild::rebuild_person_pipeline(&config, confirm_destruction, &backup_manifest)
+                    .await?
+            }
+        },
     }
 
     Ok(())
