@@ -45,12 +45,26 @@ function partitionFeatures(collection: TalariaFeatureCollection): {
   };
 }
 
+const unclusteredMaps = new WeakSet<Map>();
+
+function removeLayer(map: Map, id: string): void {
+  if (map.getLayer(id)) map.removeLayer(id);
+}
+
+function dropClusteredEventsSource(map: Map): void {
+  removeLayer(map, "cluster-count");
+  removeLayer(map, "clusters");
+  removeLayer(map, "selected-event");
+  removeLayer(map, "unclustered-events");
+  if (map.getSource("events")) map.removeSource("events");
+}
+
 function ensureEventLayers(map: Map, isDark: boolean): void {
   const L = getExplorerEventLayers(isDark);
-  tryAddLayer(map, L.clustersLayer);
+  removeLayer(map, "cluster-count");
+  removeLayer(map, "clusters");
   tryAddLayer(map, L.unclusteredEventsLayer);
   tryAddLayer(map, L.selectedEventLayer);
-  tryAddLayer(map, L.clusterCountLayer);
   tryAddLayer(map, L.anecdotesLayer);
   tryAddLayer(map, L.selectedAnecdoteLayer);
 }
@@ -66,25 +80,29 @@ export function MapSourceManager({ map, data }: MapSourceManagerProps) {
 
       const collection = data ? ensureFeatureIds(data) : EMPTY_COLLECTION;
       const parts = partitionFeatures(collection);
-      const existing = map.getSource("events");
       const existingAnecdotes = map.getSource("anecdotes");
 
-      if (!existing) {
+      if (map.getSource("events") && !unclusteredMaps.has(map)) {
+        dropClusteredEventsSource(map);
+      }
+
+      const eventsSource = map.getSource("events");
+      if (!eventsSource) {
         map.addSource("events", {
           type: "geojson",
           data: parts.events,
-          cluster: true,
-          clusterMaxZoom: 12,
-          clusterRadius: 50,
+          promoteId: "id",
         });
+        unclusteredMaps.add(map);
       } else {
-        (existing as GeoJSONSource).setData(parts.events);
+        (eventsSource as GeoJSONSource).setData(parts.events);
       }
 
       if (!existingAnecdotes) {
         map.addSource("anecdotes", {
           type: "geojson",
           data: parts.anecdotes,
+          promoteId: "id",
         });
       } else {
         (existingAnecdotes as GeoJSONSource).setData(parts.anecdotes);

@@ -1,9 +1,15 @@
 // crates/talaria-api/src/person_ingest/extract.rs
 //! LLM prose extract vs structured Wikidata/WDQS/follow-page rules.
 
-use talaria_quality::RawExtractItem;
+use std::collections::HashSet;
+
+use talaria_quality::{parse_typed_time, typed_time_year, RawExtractItem};
+use talaria_sources::extractors::{
+    default_extractor_stack, keep_extracted_raw, ExtractorInput, RawCandidate,
+};
 use talaria_sources::place_hint_from_title;
 use talaria_sources::wdqs::WdqsEvent;
+use talaria_sources::first_year_in_window;
 
 use super::collect::subject_mentioned;
 use crate::llm::{self, LlmExtractItem};
@@ -25,6 +31,80 @@ pub fn split_chunks(text: &str, max: usize) -> Vec<String> {
     }
     if !buf.is_empty() {
         out.push(buf);
+    }
+    out
+}
+
+fn year_from_raw(raw: &RawCandidate) -> Option<i32> {
+    raw.time_surface
+        .as_deref()
+        .map(|s| parse_typed_time(Some(s)))
+        .and_then(|t| typed_time_year(&t))
+        .or_else(|| {
+            first_year_in_window(
+                raw.time_surface.as_deref().unwrap_or(raw.clause_text.as_str()),
+                1000,
+                2099,
+            )?
+            .parse()
+            .ok()
+        })
+}
+
+/// Deterministic biography extract — used when the LLM returns nothing.
+pub fn extract_wiki_rules(
+    subject: &str,
+    title: &str,
+    text: &str,
+    death_year: Option<i32>,
+) -> Vec<RawExtractItem> {
+    let input = ExtractorInput {
+        text: text.to_string(),
+        page_title: Some(title.to_string()),
+        subject_label: Some(subject.to_string()),
+        document_type: "article".into(),
+        subject_death_year: death_year,
+        ..Default::default()
+    };
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for extractor in default_extractor_stack() {
+        for raw in extractor.extract(&input) {
+            if raw.is_posthumous || !keep_extracted_raw(&raw, title, subject) {
+                continue;
+            }
+            let year = year_from_raw(&raw);
+            if year.is_none() && raw.place_surface.is_none() {
+                continue;
+            }
+            let quote = raw.clause_text.trim();
+            if quote.is_empty() {
+                continue;
+            }
+            let key = format!(
+                "{}|{:?}|{:?}",
+                raw.event_type,
+                year,
+                raw.place_surface.as_deref().unwrap_or("")
+            );
+            if !seen.insert(key) {
+                continue;
+            }
+            out.push(RawExtractItem {
+                lane: "fact".into(),
+                event_type: raw.event_type,
+                role: if raw.predicate.is_empty() {
+                    "direct".into()
+                } else {
+                    raw.predicate
+                },
+                year,
+                place_surface: raw.place_surface,
+                summary: quote.chars().take(160).collect(),
+                quoted_text: quote.to_string(),
+                confidence: 0.82,
+            });
+        }
     }
     out
 }
@@ -139,6 +219,28 @@ fn year_from_text(text: &str) -> Option<i32> {
     talaria_sources::first_year_in_window(text, 1000, 2099)?.parse().ok()
 }
 
+fn title_is_military_action(title: &str) -> bool {
+    let l = title.to_lowercase();
+    l.contains("battle")
+        || l.contains("bataille")
+        || l.contains("siege")
+        || l.contains("siège")
+        || l.contains("campagne")
+        || l.contains("campaign of")
+}
+
+fn first_sentence(extract: &str) -> Option<&str> {
+    let trimmed = extract.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let end = trimmed
+        .find(['.', '!', '?'])
+        .map(|i| i + 1)
+        .unwrap_or(trimmed.len());
+    Some(trimmed.get(..end)?.trim()).filter(|s| !s.is_empty())
+}
+
 /// Verbatim sentence that mentions the subject (not a synthetic title line).
 pub fn mention_sentence<'a>(extract: &'a str, subject: &str) -> Option<&'a str> {
     let mut start = 0;
@@ -167,8 +269,15 @@ pub fn follow_page_to_extract(
     title: &str,
     extract: &str,
     coords: Option<(f64, f64)>,
+    military_subject: bool,
 ) -> Option<(String, RawExtractItem, Option<(f64, f64)>)> {
-    let quote = mention_sentence(extract, subject)?;
+    let quote = mention_sentence(extract, subject).or_else(|| {
+        if military_subject && title_is_military_action(title) {
+            first_sentence(extract)
+        } else {
+            None
+        }
+    })?;
     let event_type = event_type_from_title(title);
     let year = year_from_text(extract).or_else(|| year_from_text(title));
     let place = place_hint_from_title(title);
@@ -207,6 +316,30 @@ mod tests {
     }
 
     #[test]
+    fn wiki_rules_extract_louis_xiv_dated_places() {
+        let items = extract_wiki_rules(
+            "Louis XIV",
+            "Louis XIV",
+            "Louis XIV est sacré le 7 juin 1654 en la cathédrale de Reims.\n\
+             À partir de 1682, Louis XIV dirige son royaume depuis le château de Versailles.\n\
+             Le 7 novembre 1659, Louis XIV signe le traité des Pyrénées.",
+            Some(1715),
+        );
+        assert!(
+            items.iter().any(|i| i.year == Some(1654)
+                && i.place_surface.as_deref().is_some_and(|p| p.contains("Reims"))),
+            "missing Reims: {items:?}"
+        );
+        assert!(
+            items.iter().any(|i| i.year == Some(1682)
+                && i.place_surface
+                    .as_deref()
+                    .is_some_and(|p| p.to_lowercase().contains("versailles"))),
+            "missing Versailles: {items:?}"
+        );
+    }
+
+    #[test]
     fn year_from_wdqs_iso_date() {
         assert_eq!(year_from_wdqs_date("1805-12-02"), Some(1805));
         assert_eq!(year_from_wdqs_date(""), None);
@@ -240,6 +373,7 @@ mod tests {
             "Battle of Waterloo",
             extract,
             Some((50.680, 4.412)),
+            true,
         )
         .expect("pin");
         assert_eq!(coords, Some((50.680, 4.412)));
@@ -264,6 +398,7 @@ mod tests {
             "Battle of Waterloo",
             extract,
             None,
+            true,
         )
         .expect("pin");
         assert!(!item.quoted_text.contains("Napoleon | battle |"));
@@ -278,8 +413,18 @@ mod tests {
             "Battle of Waterloo",
             extract,
             Some((50.680, 4.412)),
+            false,
         )
         .is_none());
+        let pinned = follow_page_to_extract(
+            "Napoleon",
+            "Battle of Waterloo",
+            extract,
+            Some((50.680, 4.412)),
+            true,
+        )
+        .expect("military pin uses title even without name");
+        assert_eq!(pinned.1.event_type, "battle");
     }
 
     #[test]
@@ -287,7 +432,8 @@ mod tests {
         let extract =
             "The siege was fought in 1877. Victor Hugo is named among later commemorations.";
         let (doc, item, _) =
-            follow_page_to_extract("Victor Hugo", "Siege of Plevna", extract, None).expect("mention");
+            follow_page_to_extract("Victor Hugo", "Siege of Plevna", extract, None, false)
+                .expect("mention");
         assert!(!item.quoted_text.contains('|'));
         let got = accept_items("Victor Hugo", &doc, [item]);
         assert_eq!(got.len(), 1);
@@ -297,6 +443,7 @@ mod tests {
             &got[0],
             "Siege of Plevna",
             true,
+            false,
             false,
         );
         assert_eq!(m, talaria_quality::AttributionMatch::Unattributed);

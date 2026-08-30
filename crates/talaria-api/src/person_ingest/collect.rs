@@ -21,6 +21,24 @@ pub fn follow_budget(max_documents: u32) -> u32 {
     max_documents.max(8).min(400)
 }
 
+pub fn follow_titles_from_page_links(links: &[String], cap: u32) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+    for title in links {
+        if out.len() as u32 >= cap {
+            break;
+        }
+        if !should_pin_follow_title(title) {
+            continue;
+        }
+        let key = title.to_lowercase();
+        if seen.insert(key) {
+            out.push(title.clone());
+        }
+    }
+    out
+}
+
 pub fn follow_titles_from_wdqs(events: &[WdqsEvent], cap: u32) -> Vec<String> {
     let mut out = Vec::new();
     let mut seen = HashSet::new();
@@ -86,7 +104,10 @@ pub fn should_pin_follow_title(title: &str) -> bool {
     is_followable_map_title(title) && !is_overview_title(title)
 }
 
-pub async fn fetch_wiki_extract(lang: &str, title: &str) -> anyhow::Result<(String, String)> {
+pub async fn fetch_wiki_extract(
+    lang: &str,
+    title: &str,
+) -> anyhow::Result<(String, String, Vec<String>)> {
     let client = reqwest::Client::builder()
         .user_agent("TalariaEngine/0.1 (person-ingest)")
         .timeout(std::time::Duration::from_secs(45))
@@ -96,9 +117,11 @@ pub async fn fetch_wiki_extract(lang: &str, title: &str) -> anyhow::Result<(Stri
         .get(&url)
         .query(&[
             ("action", "query"),
-            ("prop", "extracts"),
+            ("prop", "extracts|links"),
             ("explaintext", "1"),
             ("exlimit", "1"),
+            ("plnamespace", "0"),
+            ("pllimit", "500"),
             ("titles", title),
             ("format", "json"),
             ("redirects", "1"),
@@ -132,7 +155,17 @@ pub async fn fetch_wiki_extract(lang: &str, title: &str) -> anyhow::Result<(Stri
     if extract.trim().is_empty() {
         anyhow::bail!("wikipedia extract empty for {title}");
     }
-    Ok((resolved, extract))
+    let links = page
+        .get("links")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|row| row.get("title")?.as_str())
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    Ok((resolved, extract, links))
 }
 
 pub async fn fetch_wiki_page(
@@ -203,6 +236,23 @@ mod tests {
         assert_eq!(follow_budget(0), 8);
         assert_eq!(follow_budget(9_000), 400);
         assert!(follow_budget(400) > 80);
+    }
+
+    #[test]
+    fn page_links_keep_battles_and_drop_lists() {
+        let titles = follow_titles_from_page_links(
+            &[
+                "Battle of the Dunes".into(),
+                "List of battles of Louis XIV".into(),
+                "Treaty of Nijmegen".into(),
+                "Victor Hugo".into(),
+            ],
+            40,
+        );
+        assert!(titles.contains(&"Battle of the Dunes".into()));
+        assert!(titles.contains(&"Treaty of Nijmegen".into()));
+        assert!(!titles.iter().any(|t| t.starts_with("List of")));
+        assert!(!titles.iter().any(|t| t == "Victor Hugo"));
     }
 
     #[test]

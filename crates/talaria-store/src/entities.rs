@@ -51,7 +51,10 @@ pub async fn search_local_entities(
             e.canonical_name,
             COUNT(ce.id)::bigint AS event_count
         FROM entities e
-        LEFT JOIN canonical_events ce ON ce.entity_id = e.id
+        LEFT JOIN canonical_events ce
+          ON ce.entity_id = e.id
+         AND ce.is_active
+         AND ce.pipeline = 'person'
         WHERE (
             e.qid ILIKE $1
             OR {predicate}
@@ -84,7 +87,10 @@ pub async fn get_entity(pool: &PgPool, entity_id: Uuid) -> anyhow::Result<Option
             e.canonical_name,
             COUNT(ce.id)::bigint AS event_count
         FROM entities e
-        LEFT JOIN canonical_events ce ON ce.entity_id = e.id
+        LEFT JOIN canonical_events ce
+          ON ce.entity_id = e.id
+         AND ce.is_active
+         AND ce.pipeline = 'person'
         WHERE e.id = $1
         GROUP BY e.id
         "#,
@@ -106,9 +112,13 @@ pub async fn find_entity_by_qid(pool: &PgPool, qid: &str) -> anyhow::Result<Opti
             e.canonical_name,
             COUNT(ce.id)::bigint AS event_count
         FROM entities e
-        LEFT JOIN canonical_events ce ON ce.entity_id = e.id
+        LEFT JOIN canonical_events ce
+          ON ce.entity_id = e.id
+         AND ce.is_active
+         AND ce.pipeline = 'person'
         WHERE e.qid ILIKE $1
         GROUP BY e.id
+        ORDER BY event_count DESC, e.created_at ASC
         LIMIT 1
         "#,
     )
@@ -367,5 +377,12 @@ mod tests {
         let sql = super::person_match_sql(2, 3);
         assert!(sql.contains("entity_aliases"));
         assert!(sql.contains("translate"));
+    }
+
+    #[test]
+    fn local_search_counts_person_pipeline_only() {
+        let src = include_str!("entities.rs");
+        assert!(src.contains("ce.pipeline = 'person'"));
+        assert!(src.contains("AND ce.is_active"));
     }
 }

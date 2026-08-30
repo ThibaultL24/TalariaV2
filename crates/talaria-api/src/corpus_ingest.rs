@@ -106,8 +106,19 @@ pub async fn run_corpus_ingest(
     let pool = connect(config).await?;
     run_migrations(&pool).await?;
 
-    let subject_id =
-        upsert_entity_with_kind(&pool, &config.wiki_lang, subject_label, "person").await?;
+    let subject_id = if let Some(qid) = qid.map(str::trim).filter(|value| !value.is_empty()) {
+        talaria_store::upsert_person_by_qid(
+            &pool,
+            qid,
+            subject_label,
+            &config.wiki_lang,
+            subject_label,
+            subject_label,
+        )
+        .await?
+    } else {
+        upsert_entity_with_kind(&pool, &config.wiki_lang, subject_label, "person").await?
+    };
     let mut subject = ResolvedSubject {
         entity_id: Some(subject_id),
         qid: qid.map(str::to_string),

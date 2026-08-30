@@ -5,8 +5,10 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use chrono::Datelike;
 use serde::Deserialize;
 use serde_json::{json, Value};
+use talaria_quality::{explorer_headline, explorer_summary, is_human_place_label};
 use talaria_store::CanonicalEventRow;
 use uuid::Uuid;
 
@@ -88,7 +90,7 @@ pub async fn timeline(
     .unwrap_or_default();
 
     Json(json!({
-        "events": events.iter().map(event_to_json).collect::<Vec<_>>(),
+        "events": events.iter().map(|event| event_to_json(event)).collect::<Vec<_>>(),
         "count": events.len(),
     }))
     .into_response()
@@ -138,7 +140,16 @@ pub async fn evidence(State(state): State<AppState>, Path(event_id): Path<Uuid>)
     }))
 }
 
-pub async fn detail(State(state): State<AppState>, Path(event_id): Path<Uuid>) -> Json<Value> {
+#[derive(Debug, Deserialize)]
+pub struct DetailQuery {
+    pub lang: Option<String>,
+}
+
+pub async fn detail(
+    State(state): State<AppState>,
+    Path(event_id): Path<Uuid>,
+    Query(query): Query<DetailQuery>,
+) -> Json<Value> {
     let Some(event) = talaria_store::get_canonical_event(&state.pool, event_id)
         .await
         .ok()
@@ -199,6 +210,13 @@ pub async fn detail(State(state): State<AppState>, Path(event_id): Path<Uuid>) -
         })
         .or_else(|| event.summary.clone());
 
+    let recap_lang = query
+        .lang
+        .as_deref()
+        .map(str::trim)
+        .filter(|lang| !lang.is_empty())
+        .unwrap_or(wiki_lang.as_str());
+
     let dossier = crate::narrative_dossier::build_event_dossier(
         &state.pool,
         &event,
@@ -206,7 +224,7 @@ pub async fn detail(State(state): State<AppState>, Path(event_id): Path<Uuid>) -
         &narrative,
         &evidence_rows,
         wikipedia_title.as_deref(),
-        &wiki_lang,
+        recap_lang,
         state.offline_only,
     )
     .await;
@@ -352,6 +370,32 @@ fn evidence_to_json(row: &talaria_store::EventEvidenceRow) -> Value {
     })
 }
 
+fn event_year(event: &CanonicalEventRow) -> Option<i32> {
+    event.start_time.map(|time| time.year())
+}
+
+fn display_place(event: &CanonicalEventRow) -> Option<&str> {
+    event
+        .place_label
+        .as_deref()
+        .filter(|place| is_human_place_label(place))
+}
+
+fn display_title(event: &CanonicalEventRow) -> String {
+    explorer_headline(
+        &event.person_name,
+        &event.event_type,
+        event_year(event),
+        event.place_label.as_deref(),
+        None,
+        event.summary.as_deref(),
+    )
+}
+
+fn display_summary(event: &CanonicalEventRow) -> Option<String> {
+    explorer_summary(None, event.summary.as_deref())
+}
+
 fn event_to_json(event: &CanonicalEventRow) -> Value {
     json!({
         "id": event.id,
@@ -359,11 +403,11 @@ fn event_to_json(event: &CanonicalEventRow) -> Value {
         "person": event.person_name,
         "event_type": event.event_type,
         "epistemic_status": event.epistemic_status,
-        "title": event.title,
-        "summary": event.summary,
+        "title": display_title(event),
+        "summary": display_summary(event),
         "start_time": event.start_time,
         "time": event.time_json,
-        "place_label": event.place_label,
+        "place_label": display_place(event),
         "map_eligible": event.map_eligible,
         "coordinates": coords_json(event),
     })
@@ -384,11 +428,11 @@ fn geojson_feature(event: &CanonicalEventRow) -> Option<Value> {
             "person": event.person_name,
             "event_type": event.event_type,
             "epistemic_status": event.epistemic_status,
-            "title": event.title,
-            "summary": event.summary,
+            "title": display_title(event),
+            "summary": display_summary(event),
             "start_time": event.start_time,
             "time": event.time_json,
-            "place_label": event.place_label,
+            "place_label": display_place(event),
         }
     }))
 }
@@ -430,5 +474,63 @@ mod tests {
                 .as_deref(),
             Some("person")
         );
+    }
+
+    fn row(event_type: &str, title: &str, summary: &str, place: Option<&str>) -> CanonicalEventRow {
+        CanonicalEventRow {
+            id: Uuid::nil(),
+            entity_id: Uuid::nil(),
+            person_name: "Donald Trump".into(),
+            event_type: event_type.into(),
+            epistemic_status: "attested".into(),
+            title: title.into(),
+            summary: Some(summary.into()),
+            start_time: None,
+            time_json: serde_json::json!({"kind":"unknown"}),
+            place_label: place.map(str::to_string),
+            confidence: 0.5,
+            map_eligible: true,
+            lat: Some(0.0),
+            lon: Some(0.0),
+        }
+    }
+
+    #[test]
+    fn card_shows_the_sentence_not_the_machine_title() {
+        let event = row(
+            "marriage",
+            "Trump — marriage (1977) @ Siena",
+            "In 1977, Trump married Ivana Zelníčková",
+            Some("Siena"),
+        );
+        assert_eq!(
+            display_title(&event),
+            "In 1977, Trump married Ivana Zelníčková"
+        );
+        assert_eq!(display_place(&event), Some("Siena"));
+    }
+
+    #[test]
+    fn map_keeps_coords_even_when_the_title_is_a_machine_template() {
+        let event = row(
+            "education",
+            "Napoleon — education (1784) @ Paris",
+            "Napoleon — education (1784) @ Paris",
+            Some("Paris"),
+        );
+        assert!(geojson_feature(&event).is_some());
+        assert_eq!(display_place(&event), Some("Paris"));
+    }
+
+    #[test]
+    fn qid_place_is_hidden_from_the_card_not_from_the_map() {
+        let event = row(
+            "notable_event",
+            "Trump — notable_event (2024) @ Q127421251",
+            "Trump | notable_event | occurred | 2024 | Q127421251",
+            Some("Q127421251"),
+        );
+        assert!(geojson_feature(&event).is_some());
+        assert!(display_place(&event).is_none());
     }
 }

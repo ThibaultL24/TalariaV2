@@ -311,6 +311,7 @@ pub fn is_followable_map_title(title: &str) -> bool {
     }
     let lower = title.to_lowercase();
     const GEO: &[&str] = &[
+        "battle",
         "bataille",
         "siège",
         "siege",
@@ -331,6 +332,12 @@ pub fn is_followable_map_title(title: &str) -> bool {
         "abbaye",
         "citadelle",
         "place de",
+        "palace",
+        "edict",
+        "édit de",
+        "edit de",
+        "couronnement",
+        "coronation",
     ];
     if GEO.iter().any(|p| lower.contains(p)) {
         return true;
@@ -435,6 +442,8 @@ mod tests {
     #[test]
     fn followable_map_titles_skip_other_people_and_museums() {
         assert!(is_followable_map_title("Château de Versailles"));
+        assert!(is_followable_map_title("Palace of Versailles"));
+        assert!(is_followable_map_title("Edict of Nantes"));
         assert!(is_followable_map_title("Bataille de Fleurus"));
         assert!(is_followable_map_title("Traité des Pyrénées"));
         assert!(!is_followable_map_title("Anne d'Autriche (1601-1666)"));

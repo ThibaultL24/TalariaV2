@@ -3,13 +3,15 @@
 
 use serde_json::json;
 use talaria_quality::{
-    auto_accept_attribution, occurrence_key_for_event, start_time_from_typed, time_to_json,
-    AttributionMatch, CandidateStatus, GateContext, GateDecision, GroundedItem, TypedTime,
+    auto_accept_attribution, event_type_is_map_locus, explorer_headline, occurrence_key_for_event,
+    start_time_from_typed, time_to_json, AttributionMatch, CandidateStatus, GateContext,
+    GateDecision, GroundedItem, TypedTime,
 };
 use talaria_store::{
-    find_active_person_event_by_occurrence, insert_claim, insert_claim_evidence,
-    insert_person_candidate, insert_person_event, insert_person_quote_evidence,
-    mark_candidate_assembled, ClaimInsert, PersonCandidateInsert, PersonEventInsert,
+    find_active_person_event_by_fingerprint, find_active_person_event_by_occurrence, insert_claim,
+    insert_claim_evidence, insert_person_candidate, insert_person_event,
+    insert_person_quote_evidence, mark_candidate_assembled, ClaimInsert, PersonCandidateInsert,
+    PersonEventInsert,
 };
 use uuid::Uuid;
 
@@ -29,7 +31,29 @@ pub struct PersistMeta<'a> {
     pub page_title: &'a str,
     pub from_followed_page: bool,
     pub structured_source: bool,
+    pub military_subject: bool,
     pub aliases: &'a [String],
+}
+
+fn person_event_fingerprint(entity_id: Uuid, occurrence_key: &str) -> String {
+    format!("{entity_id}|{occurrence_key}")
+}
+
+async fn find_existing_person_event(
+    pool: &sqlx::PgPool,
+    entity_id: Uuid,
+    occurrence_key: &str,
+) -> anyhow::Result<Option<Uuid>> {
+    if let Some(id) =
+        find_active_person_event_by_occurrence(pool, entity_id, occurrence_key).await?
+    {
+        return Ok(Some(id));
+    }
+    find_active_person_event_by_fingerprint(
+        pool,
+        &person_event_fingerprint(entity_id, occurrence_key),
+    )
+    .await
 }
 
 fn attribution_label(m: AttributionMatch) -> &'static str {
@@ -38,6 +62,7 @@ fn attribution_label(m: AttributionMatch) -> &'static str {
         AttributionMatch::AliasMatch => "alias_match",
         AttributionMatch::TitleSubjectMatch => "title_subject_match",
         AttributionMatch::StructuredParticipantMatch => "structured_participant_match",
+        AttributionMatch::FollowedMilitaryAction => "followed_military_action",
         AttributionMatch::CoreferenceMatch => "coreference_match",
         AttributionMatch::Unattributed => "unattributed",
     }
@@ -93,9 +118,7 @@ pub async fn persist_gated_item(
         });
     }
 
-    if let Some(existing) =
-        find_active_person_event_by_occurrence(pool, entity_id, occurrence_key).await?
-    {
+    if let Some(existing) = find_existing_person_event(pool, entity_id, occurrence_key).await? {
         insert_person_quote_evidence(
             pool,
             existing,
@@ -112,19 +135,15 @@ pub async fn persist_gated_item(
         });
     }
 
-    let map_eligible = coords.is_some();
-    let year_label = item
-        .year
-        .map(|y| y.to_string())
-        .unwrap_or_else(|| "undated".into());
     let place_label = item.place_surface.clone();
-    let title = format!(
-        "{subject} — {} ({year_label}){}",
-        item.event_type,
-        place_label
-            .as_deref()
-            .map(|p| format!(" @ {p}"))
-            .unwrap_or_default()
+    let map_eligible = coords.is_some() && event_type_is_map_locus(&item.event_type);
+    let title = explorer_headline(
+        subject,
+        &item.event_type,
+        item.year,
+        item.place_surface.as_deref(),
+        Some(item.quoted_text.as_str()),
+        Some(item.summary.as_str()),
     );
     let event_id = insert_person_event(
         pool,
@@ -141,7 +160,7 @@ pub async fn persist_gated_item(
             lon: coords.map(|c| c.1),
             confidence: item.confidence,
             map_eligible,
-            fingerprint: occurrence_key.to_string(),
+            fingerprint: person_event_fingerprint(entity_id, occurrence_key),
             occurrence_key: occurrence_key.to_string(),
             occurrence_stem: None,
             predicate: item.role.clone(),
@@ -190,6 +209,7 @@ pub async fn persist_fact_item(
         meta.page_title,
         meta.from_followed_page,
         meta.structured_source,
+        meta.military_subject,
     );
     let decision = gating::judge_item(&candidate, ctx, attribution);
     let coords = typing::resolve_coords(item.place_surface.as_deref(), meta.coords).await;

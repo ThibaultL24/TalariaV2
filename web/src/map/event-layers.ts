@@ -39,16 +39,15 @@ export const unclusteredEventsLayer: CircleLayerSpecification = {
   id: "unclustered-events",
   type: "circle",
   source: "events",
-  filter: ["!", ["has", "point_count"]],
   paint: {
     "circle-radius": [
       "interpolate",
       ["linear"],
       ["coalesce", ["get", "confidence"], ["get", "confidence_score"], 0.5],
       0,
-      5,
+      8,
       1,
-      9,
+      14,
     ],
     "circle-color": mapLibreLegendColorExpr() as unknown as string,
     "circle-stroke-width": 1.5,
@@ -61,7 +60,7 @@ export const selectedEventLayer: CircleLayerSpecification = {
   id: "selected-event",
   type: "circle",
   source: "events",
-  filter: ["==", ["get", "id"], ""],
+  filter: ["==", ["id"], ""],
   paint: {
     "circle-radius": 13,
     "circle-color": "#5b77be",
@@ -105,9 +104,9 @@ export const unclusteredEventsLayerDark: CircleLayerSpecification = {
       ["linear"],
       ["coalesce", ["get", "confidence"], ["get", "confidence_score"], 0.5],
       0,
-      5,
+      8,
       1,
-      9,
+      14,
     ],
     "circle-color": mapLibreLegendColorExpr() as unknown as string,
     "circle-stroke-width": 1.5,
@@ -132,7 +131,7 @@ export const anecdotesLayer: CircleLayerSpecification = {
   type: "circle",
   source: "anecdotes",
   paint: {
-    "circle-radius": 7,
+    "circle-radius": 10,
     "circle-color": mapLibreLegendColorExpr() as unknown as string,
     "circle-stroke-width": 1.5,
     "circle-stroke-color": "#4a3728",
@@ -143,7 +142,7 @@ export const anecdotesLayer: CircleLayerSpecification = {
 export const anecdotesLayerDark: CircleLayerSpecification = {
   ...anecdotesLayer,
   paint: {
-    "circle-radius": 7,
+    "circle-radius": 10,
     "circle-color": mapLibreLegendColorExpr() as unknown as string,
     "circle-stroke-width": 1.5,
     "circle-stroke-color": D.pointStroke,

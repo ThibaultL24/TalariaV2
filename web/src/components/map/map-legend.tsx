@@ -13,7 +13,7 @@ export function MapLegend({ presentKeys }: MapLegendProps) {
 
   return (
     <aside
-      className="surface-nav pointer-events-auto absolute right-3 bottom-[9.5rem] z-10 w-[min(100%,16rem)] rounded-xl px-3 py-2.5 sm:bottom-[8.75rem]"
+      className="surface-nav pointer-events-auto absolute right-3 bottom-3 z-20 w-[min(100%,13rem)] rounded-xl px-3 py-2"
       aria-label={t.legendTitle}
     >
       <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted)">

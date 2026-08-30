@@ -435,7 +435,13 @@ pub async fn list_entity_documents(
             l.components_json, l.evidence_summary, d.publication_time
         FROM entity_document_links l
         JOIN corpus_documents d ON d.id = l.corpus_document_id
-        WHERE l.entity_id = $1
+        WHERE l.entity_id IN (
+            SELECT e2.id
+            FROM entities e1
+            JOIN entities e2 ON e2.id = e1.id
+               OR (e1.qid IS NOT NULL AND e2.qid = e1.qid)
+            WHERE e1.id = $1
+          )
           AND ($2::text IS NULL OR l.relation = $2)
           AND ($3::text IS NULL OR d.academic_status = $3)
           AND ($4::text IS NULL OR d.access_level = $4)
@@ -573,7 +579,13 @@ pub async fn list_entity_corpus_passages(
         SELECT d.id, d.source_kind, d.title, d.abstract_text, d.canonical_url, d.academic_status
         FROM entity_document_links l
         JOIN corpus_documents d ON d.id = l.corpus_document_id
-        WHERE l.entity_id = $1
+        WHERE l.entity_id IN (
+            SELECT e2.id
+            FROM entities e1
+            JOIN entities e2 ON e2.id = e1.id
+               OR (e1.qid IS NOT NULL AND e2.qid = e1.qid)
+            WHERE e1.id = $1
+          )
         ORDER BY l.score DESC, d.id DESC
         LIMIT $2
         "#,

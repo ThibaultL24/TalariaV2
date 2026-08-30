@@ -8,9 +8,10 @@ use talaria_sources::historiography::{
     is_historiography_section, scan_bibliographic, scan_passage, HistoriographyHit,
 };
 use talaria_store::{
-    connect, find_active_singleton, find_claim_by_text, find_entity_by_wikipedia_title,
-    insert_claim, insert_claim_evidence, list_entity_corpus_passages, list_sections_matching_page,
-    run_migrations, search_local_entities, upsert_entity_with_kind, ClaimInsert,
+    connect, find_active_singleton, find_claim_by_text, find_entity_by_qid,
+    find_entity_by_wikipedia_title, insert_claim, insert_claim_evidence,
+    list_entity_corpus_passages, list_sections_matching_page, run_migrations, search_local_entities,
+    upsert_entity_with_kind, upsert_person_by_qid, ClaimInsert,
 };
 use talaria_text::split_sentences;
 use uuid::Uuid;
@@ -19,6 +20,7 @@ pub async fn run_historiography_extract(
     config: &AppConfig,
     subject: &str,
     file: Option<&Path>,
+    qid: Option<&str>,
 ) -> anyhow::Result<String> {
     let pool = connect(config).await?;
     run_migrations(&pool).await?;
@@ -26,7 +28,7 @@ pub async fn run_historiography_extract(
         let id = upsert_entity_with_kind(&pool, &config.wiki_lang, subject, "person").await?;
         (id, subject.to_string(), subject.to_string())
     } else {
-        resolve_subject(&pool, &config.wiki_lang, subject).await?
+        resolve_subject(&pool, &config.wiki_lang, subject, qid).await?
     };
 
     let mut inserted = 0usize;
@@ -135,7 +137,19 @@ async fn resolve_subject(
     pool: &sqlx::PgPool,
     wiki_lang: &str,
     subject: &str,
+    qid: Option<&str>,
 ) -> anyhow::Result<(Uuid, String, String)> {
+    if let Some(qid) = qid.map(str::trim).filter(|value| !value.is_empty()) {
+        if let Some(e) = find_entity_by_qid(pool, qid).await? {
+            let label = e
+                .canonical_name
+                .clone()
+                .unwrap_or(e.wikipedia_title.clone());
+            return Ok((e.id, label, e.wikipedia_title));
+        }
+        let id = upsert_person_by_qid(pool, qid, subject, wiki_lang, subject, subject).await?;
+        return Ok((id, subject.to_string(), subject.to_string()));
+    }
     if let Some(e) = find_entity_by_wikipedia_title(pool, wiki_lang, subject).await? {
         let label = e
             .canonical_name

@@ -44,7 +44,7 @@ export function ExplorerMapTimelineBar({
 
   return (
     <div
-      className="surface-nav nebula-panel pointer-events-auto absolute right-3 bottom-3 left-3 z-10 px-4 py-3"
+      className="surface-nav nebula-panel pointer-events-auto absolute bottom-3 left-1/2 z-10 w-[min(26rem,calc(100%-18rem))] -translate-x-1/2 px-3 py-2"
       role="region"
       aria-label={t.untilYear}
     >
@@ -57,7 +57,7 @@ export function ExplorerMapTimelineBar({
         </span>
       </div>
 
-      <div className="nebula-waveform mt-3" aria-hidden>
+      <div className="nebula-waveform mt-1.5 h-6" aria-hidden>
         {waveform.map((height, index) => {
           const bucketYear =
             bounds.min + Math.floor((index / waveform.length) * (bounds.max - bounds.min));
@@ -72,7 +72,7 @@ export function ExplorerMapTimelineBar({
         })}
       </div>
 
-      <div className="relative mt-3">
+      <div className="relative mt-1.5">
         <div className="nebula-range-track" aria-hidden>
           <div className="nebula-range-track__fill" style={{ left: 0, width: `${fillWidth}%` }} />
         </div>

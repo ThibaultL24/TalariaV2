@@ -83,9 +83,11 @@ fn victor_hugo_followed_battle_page_is_unattributed() {
         aliases: &["Hugo"],
         quote: "The Battle of Plevna was fought in 1877.",
         page_title: "Siege of Plevna",
+        event_type: "battle",
         from_followed_page: true,
         structured_source: false,
         role_supported_by_evidence: false,
+        military_subject: false,
     });
     assert_eq!(m, AttributionMatch::Unattributed);
     let gate = attribution_gate_decision(m);

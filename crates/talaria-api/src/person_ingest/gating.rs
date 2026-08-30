@@ -108,6 +108,7 @@ pub fn classify_item(
     page_title: &str,
     from_followed_page: bool,
     structured_source: bool,
+    military_subject: bool,
 ) -> AttributionMatch {
     let alias_refs: Vec<&str> = aliases.iter().map(String::as_str).collect();
     let role_supported_by_evidence = structured_source
@@ -125,9 +126,11 @@ pub fn classify_item(
         aliases: &alias_refs,
         quote: &item.quoted_text,
         page_title,
+        event_type: &item.event_type,
         from_followed_page,
         structured_source,
         role_supported_by_evidence,
+        military_subject,
     })
 }
 
@@ -244,6 +247,7 @@ mod tests {
             "Siege of Plevna",
             true,
             false,
+            false,
         );
         assert_eq!(m, AttributionMatch::Unattributed);
         assert!(!auto_accept_attribution(m));
@@ -261,6 +265,7 @@ mod tests {
             ),
             "Siege of Plevna",
             true,
+            false,
             false,
         );
         assert_eq!(m, AttributionMatch::Unattributed);
@@ -280,8 +285,9 @@ mod tests {
             "Battle of Waterloo",
             true,
             false,
+            true,
         );
-        assert_eq!(m, AttributionMatch::DirectNameMatch);
+        assert_eq!(m, AttributionMatch::FollowedMilitaryAction);
         assert!(auto_accept_attribution(m));
     }
 }

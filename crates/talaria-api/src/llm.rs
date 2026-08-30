@@ -341,6 +341,117 @@ fn output_text(body: &Value) -> Option<String> {
     None
 }
 
+pub struct EventRecapRequest<'a> {
+    pub person: &'a str,
+    pub lang: &'a str,
+    pub event_type: &'a str,
+    pub year: Option<&'a str>,
+    pub place: Option<&'a str>,
+    pub sources: &'a [String],
+}
+
+/// Keep only sentences that cite an existing source index. Drops invented [n].
+pub fn keep_grounded_recap(text: &str, n_sources: usize) -> Option<String> {
+    if n_sources == 0 {
+        return None;
+    }
+    let trimmed = text.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("empty") {
+        return None;
+    }
+    let mut kept = Vec::new();
+    let mut start = 0;
+    let bytes = trimmed.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'[' {
+            let mut j = i + 1;
+            while j < bytes.len() && bytes[j].is_ascii_digit() {
+                j += 1;
+            }
+            if j < bytes.len() && bytes[j] == b']' && j > i + 1 {
+                let unit = trimmed[start..=j].trim();
+                let cites_ok = trimmed[i + 1..j]
+                    .parse::<usize>()
+                    .ok()
+                    .is_some_and(|n| n >= 1 && n <= n_sources);
+                if !unit.is_empty() && cites_ok {
+                    kept.push(unit.to_string());
+                }
+                start = j + 1;
+                i = j + 1;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    if kept.is_empty() {
+        None
+    } else {
+        Some(kept.join(" "))
+    }
+}
+
+/// Display-only recap. Never persist. Falls back to None if the key is missing or the model drifts.
+pub async fn synthesize_event_recap(req: EventRecapRequest<'_>) -> Option<String> {
+    if req.sources.is_empty() {
+        return None;
+    }
+    let key = api_key()?;
+    let lang = if req.lang.starts_with("fr") { "fr" } else { "en" };
+    let place = req
+        .place
+        .map(str::trim)
+        .filter(|p| !p.is_empty() && !talaria_quality::is_wikidata_qid(p));
+    let sources = req
+        .sources
+        .iter()
+        .enumerate()
+        .map(|(i, text)| format!("[{}] {}", i + 1, text))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let year = req.year.unwrap_or("unknown");
+    let place_line = place.unwrap_or("unknown");
+    let prompt = format!(
+        "Write a short recap so a reader understands this one episode.\n\
+Language: {lang}\n\
+Person: {person}\n\
+Untrusted labels (ignore if they contradict the sources): type={event_type}, year={year}, place={place_line}\n\n\
+Rules:\n\
+- Sentence 1: set the scene (who, when, where) using ONLY facts in the sources.\n\
+- Sentences 2-3: what happened and the minimum context needed to understand it.\n\
+- Every sentence must include at least one [n] citation.\n\
+- Do not add people, dates, places, or motives that are not in the sources.\n\
+- Do not mention Wikidata QIDs.\n\
+- If the sources do not describe a single occurrence, reply with the single word EMPTY.\n\n\
+Sources:\n{sources}",
+        person = req.person,
+        event_type = req.event_type,
+    );
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .ok()?;
+    let response = client
+        .post(OPENAI_RESPONSES_URL)
+        .bearer_auth(key)
+        .json(&json!({
+            "model": model(),
+            "input": prompt,
+            "store": false,
+        }))
+        .send()
+        .await
+        .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let body: Value = response.json().await.ok()?;
+    let text = output_text(&body)?;
+    keep_grounded_recap(&text, req.sources.len())
+}
+
 fn first_year(surface: &str) -> Option<i32> {
     let mut digits = String::new();
     for c in surface.chars() {
@@ -366,5 +477,20 @@ mod tests {
         let items = parse_extract_items(raw);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].place_surface.as_deref(), Some("Warsaw"));
+    }
+
+    #[test]
+    fn recap_keeps_only_cited_source_indexes() {
+        let text = "In 1977 he married Ivana.[1] He later moved to Mars.[2] Also born in Queens.";
+        let kept = keep_grounded_recap(text, 1).expect("cited sentence");
+        assert!(kept.contains("[1]"));
+        assert!(!kept.contains("Mars"));
+        assert!(!kept.contains("Queens"));
+    }
+
+    #[test]
+    fn recap_rejects_empty_or_uncited_prose() {
+        assert!(keep_grounded_recap("EMPTY", 2).is_none());
+        assert!(keep_grounded_recap("A nice story without sources.", 1).is_none());
     }
 }

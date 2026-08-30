@@ -42,11 +42,13 @@ pub async fn build_event_dossier(
         }
     }
 
-    if !offline_only && claims.len() < 4 {
+    // Live wiki padding used to pull unrelated "Personal life" sentences.
+    // Only fetch when this event has no local evidence at all.
+    if !offline_only && claims.is_empty() {
         if let Some(title) = wikipedia_title {
             let oldid = evidence.iter().find_map(|row| row.revision_id);
             for lang in dossier_languages(wiki_lang) {
-                if claims.len() >= 6 {
+                if !claims.is_empty() {
                     break;
                 }
                 if let Ok(extra) = fetch_section_claims(title, lang, event, oldid).await {
@@ -56,7 +58,49 @@ pub async fn build_event_dossier(
         }
     }
 
-    if claims.is_empty() {
+    let mut dossier = assemble_dossier(event, fact, claims, wiki_lang);
+    if !offline_only {
+        let year = event
+            .start_time
+            .map(|time| time.format("%Y").to_string());
+        let sources: Vec<String> = dossier
+            .source_refs
+            .iter()
+            .filter_map(|row| {
+                row.get("snippet")
+                    .and_then(|value| value.as_str())
+                    .map(str::to_string)
+            })
+            .collect();
+        if let Some(recap) = crate::llm::synthesize_event_recap(crate::llm::EventRecapRequest {
+            person: &event.person_name,
+            lang: wiki_lang,
+            event_type: &event.event_type,
+            year: year.as_deref(),
+            place: event.place_label.as_deref(),
+            sources: &sources,
+        })
+        .await
+        {
+            dossier.event_summary = recap.clone();
+            dossier.how_it_happened = recap;
+        }
+    }
+    dossier
+}
+
+fn assemble_dossier(
+    event: &CanonicalEventRow,
+    fact: Option<&str>,
+    claims: Vec<DossierClaim>,
+    lang: &str,
+) -> EventDossier {
+    let mut on_topic: Vec<DossierClaim> = claims
+        .into_iter()
+        .filter(|claim| claim_supports_event(event, fact, claim))
+        .collect();
+
+    if on_topic.is_empty() {
         let fallback = fact
             .map(str::to_string)
             .or_else(|| event.summary.clone())
@@ -68,74 +112,43 @@ pub async fn build_event_dossier(
         };
     }
 
-    claims.truncate(6);
+    on_topic.truncate(6);
 
-    // Prefer a dense FR biographical section when we have enough claims from it.
-    let fr_section: Vec<DossierClaim> = claims
-        .iter()
-        .filter(|claim| {
-            claim.language == "fr"
-                && claim
-                    .section_title
-                    .as_deref()
-                    .map(|title| {
-                        let lower = title.to_ascii_lowercase();
-                        lower.contains("naissance")
-                            || lower.contains("mort")
-                            || lower.contains("enfance")
-                            || lower.contains("jeunesse")
-                            || lower.contains("early")
-                            || lower.contains("birth")
-                            || lower.contains("death")
-                    })
-                    .unwrap_or(false)
-        })
-        .cloned()
-        .collect();
-
-    let weave_claims = if fr_section.len() >= 3 {
-        fr_section
-    } else {
-        claims.clone()
-    };
-
-    let how = weave_paragraph(event, &weave_claims);
-    let summary = fact
-        .map(str::trim)
-        .filter(|text| !text.is_empty())
-        .map(str::to_string)
-        .unwrap_or_else(|| {
-            weave_claims
-                .first()
-                .map(|c| c.text.clone())
-                .unwrap_or_default()
-        });
-
-    // Keep the full claim pool in source_refs (local + section), numbered as woven first.
-    let mut ordered = weave_claims.clone();
-    for claim in claims {
-        let norm = normalize_key(&claim.text);
-        if ordered
-            .iter()
-            .any(|existing| normalize_key(&existing.text) == norm)
-        {
-            continue;
-        }
-        ordered.push(claim);
-    }
-    ordered.truncate(8);
-
-    let source_refs = ordered
+    let how = weave_paragraph(event, lang, &on_topic);
+    let source_refs = on_topic
         .iter()
         .enumerate()
         .map(|(index, claim)| claim_to_source_ref(claim, index + 1))
         .collect();
 
     EventDossier {
-        event_summary: summary,
+        event_summary: how.clone(),
         how_it_happened: how,
         source_refs,
     }
+}
+
+fn claim_supports_event(
+    event: &CanonicalEventRow,
+    fact: Option<&str>,
+    claim: &DossierClaim,
+) -> bool {
+    if claim
+        .section_title
+        .as_deref()
+        .is_some_and(|title| title.eq_ignore_ascii_case("evidence"))
+    {
+        return true;
+    }
+    if fact
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .is_some_and(|text| normalize_key(text) == normalize_key(&claim.text))
+    {
+        return true;
+    }
+    let (keywords, subject_keys) = relevance_keywords(event);
+    is_relevant(&claim.text, &keywords, &subject_keys)
 }
 
 fn dossier_languages(primary: &str) -> Vec<&'static str> {
@@ -198,6 +211,10 @@ fn local_claims(
         if text.chars().count() < 24 {
             continue;
         }
+        let (keywords, subject_keys) = relevance_keywords(event);
+        if !is_relevant(&text, &keywords, &subject_keys) {
+            continue;
+        }
         out.push(DossierClaim {
             text,
             page_title: row.wiki_title.clone(),
@@ -241,9 +258,10 @@ async fn local_section_claims(
         if chosen.iter().any(|existing| existing.id == section.id) {
             continue;
         }
-        if section_matches_event(&section.title, event) || chosen.len() < 2 {
-            chosen.push(section);
+        if !section_matches_event(&section.title, event) {
+            continue;
         }
+        chosen.push(section);
         if chosen.len() >= 2 {
             break;
         }
@@ -302,13 +320,33 @@ async fn local_section_claims(
     Ok(claims)
 }
 
+fn is_generic_private_life_section(section_title: &str) -> bool {
+    let lower = section_title.to_ascii_lowercase();
+    lower.contains("vie privée")
+        || lower.contains("vie privee")
+        || lower.contains("personal life")
+        || lower.contains("private life")
+        || lower == "vie"
+        || lower == "life"
+}
+
+fn is_family_event(event: &CanonicalEventRow) -> bool {
+    matches!(
+        event.event_type.as_str(),
+        "marriage" | "divorce" | "family" | "wedding"
+    )
+}
+
 fn section_matches_event(section_title: &str, event: &CanonicalEventRow) -> bool {
+    if is_generic_private_life_section(section_title) && !is_family_event(event) {
+        return false;
+    }
     let lower = section_title.to_ascii_lowercase();
     match event.event_type.as_str() {
         "birth" => {
             lower.contains("naissance")
                 || lower.contains("birth")
-                || lower.contains("early")
+                || lower.contains("early life")
                 || lower.contains("enfance")
                 || lower.contains("jeunesse")
         }
@@ -318,13 +356,29 @@ fn section_matches_event(section_title: &str, event: &CanonicalEventRow) -> bool
                 || lower.contains("décès")
                 || lower.contains("deces")
         }
+        "marriage" | "divorce" | "family" | "wedding" => {
+            is_generic_private_life_section(section_title)
+                || lower.contains("family")
+                || lower.contains("famille")
+                || lower.contains("mariage")
+                || lower.contains("marriage")
+        }
         _ => {
             lower.contains("career")
                 || lower.contains("carrière")
                 || lower.contains("carriere")
                 || lower.contains("reign")
                 || lower.contains("military")
-                || lower.contains("life")
+                || lower.contains("early life")
+                || lower.contains("enfance")
+                || lower.contains("jeunesse")
+                || lower.contains("childhood")
+                || lower.contains("business")
+                || lower.contains("fortune")
+                || lower.contains("wealth")
+                || event_topic_tokens(event).iter().any(|token| {
+                    token.chars().count() >= 5 && lower.contains(token.as_str())
+                })
         }
     }
 }
@@ -537,13 +591,100 @@ fn section_needles(event_type: &str, lang: &str) -> Vec<&'static str> {
         ("battle", _) => vec!["battle", "campaign", "war"],
         ("office", "fr") => vec!["consulat", "empire", "pouvoir", "politique"],
         ("office", _) => vec!["rule", "emperor", "consulate", "power"],
-        (_, "fr") => vec!["biographie", "vie", "parcours"],
-        _ => vec!["life", "biography", "career"],
+        (_, "fr") => vec![
+            "carrière",
+            "parcours",
+            "enfance",
+            "jeunesse",
+            "fortune",
+            "affaires",
+        ],
+        _ => vec![
+            "career",
+            "early life",
+            "childhood",
+            "business",
+            "wealth",
+            "fortune",
+        ],
     }
 }
 
+fn event_topic_tokens(event: &CanonicalEventRow) -> Vec<String> {
+    let blob = format!(
+        "{} {}",
+        event.title,
+        event.summary.as_deref().unwrap_or("")
+    );
+    let person = event
+        .person_name
+        .split('(')
+        .next()
+        .unwrap_or(&event.person_name)
+        .to_ascii_lowercase();
+    let mut tokens = Vec::new();
+    for raw in blob.split(|c: char| !c.is_alphanumeric()) {
+        let token = raw.to_ascii_lowercase();
+        if token.chars().count() < 4 || is_topic_stopword(&token) {
+            continue;
+        }
+        if person.split_whitespace().any(|part| part == token) {
+            continue;
+        }
+        if !tokens.iter().any(|existing| existing == &token) {
+            tokens.push(token);
+        }
+    }
+    tokens
+}
+
+fn is_topic_stopword(token: &str) -> bool {
+    matches!(
+        token,
+        "this"
+            | "that"
+            | "with"
+            | "from"
+            | "into"
+            | "about"
+            | "after"
+            | "before"
+            | "their"
+            | "there"
+            | "which"
+            | "would"
+            | "could"
+            | "have"
+            | "been"
+            | "were"
+            | "was"
+            | "dans"
+            | "pour"
+            | "avec"
+            | "selon"
+            | "leur"
+            | "leurs"
+            | "cette"
+            | "sont"
+            | "plus"
+            | "aussi"
+            | "comme"
+            | "dont"
+            | "une"
+            | "des"
+            | "les"
+            | "the"
+            | "and"
+            | "for"
+            | "his"
+            | "her"
+            | "its"
+            | "age"
+    )
+}
+
 fn relevance_keywords(event: &CanonicalEventRow) -> (Vec<String>, Vec<String>) {
-    let mut keys = Vec::new();
+    let mut keys = event_topic_tokens(event);
     let mut subject_keys = Vec::new();
     let person = event.person_name.split('(').next().unwrap_or(&event.person_name).trim();
     if !person.is_empty() {
@@ -555,9 +696,6 @@ fn relevance_keywords(event: &CanonicalEventRow) -> (Vec<String>, Vec<String>) {
     if let Some(place) = event.place_label.as_deref() {
         keys.push(place.to_ascii_lowercase());
     }
-    if let Some(time) = event.start_time {
-        keys.push(time.format("%Y").to_string());
-    }
     match event.event_type.as_str() {
         "birth" => keys.extend(
             [
@@ -567,7 +705,6 @@ fn relevance_keywords(event: &CanonicalEventRow) -> (Vec<String>, Vec<String>) {
                 "birth",
                 "bapt",
                 "ondoy",
-                "mère",
                 "mère",
                 "mother",
                 "father",
@@ -612,7 +749,7 @@ fn relevance_keywords(event: &CanonicalEventRow) -> (Vec<String>, Vec<String>) {
             .into_iter()
             .map(str::to_string),
         ),
-        _ => keys.extend(["en ", "à ", "in ", "at "].into_iter().map(str::to_string)),
+        _ => {}
     }
     (keys, subject_keys)
 }
@@ -642,9 +779,12 @@ fn is_relevant(text: &str, keywords: &[String], subject_keys: &[String]) -> bool
     {
         return false;
     }
+    if keywords.is_empty() {
+        return false;
+    }
     let hits = keywords
         .iter()
-        .filter(|key| !key.trim().is_empty() && lower.contains(key.as_str()))
+        .filter(|key| key.trim().len() >= 4 && lower.contains(key.as_str()))
         .count();
     hits >= 1
 }
@@ -674,16 +814,113 @@ fn normalize_key(text: &str) -> String {
         .to_ascii_lowercase()
 }
 
-fn weave_paragraph(event: &CanonicalEventRow, claims: &[DossierClaim]) -> String {
-    let lang = claims
-        .first()
-        .map(|claim| claim.language.as_str())
-        .unwrap_or("en");
-    let mut parts: Vec<String> = Vec::new();
+fn short_person(name: &str) -> String {
+    name.split('(').next().unwrap_or(name).trim().to_string()
+}
 
-    // Editorial lead — not a biography dump.
-    if let Some(lead) = framing_sentence(event, lang) {
-        parts.push(lead);
+fn sources_blob(claims: &[DossierClaim]) -> String {
+    claims
+        .iter()
+        .map(|claim| claim.text.as_str())
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_ascii_lowercase()
+}
+
+fn grounded_scene(event: &CanonicalEventRow, lang: &str, blob: &str) -> Option<String> {
+    let person = short_person(&event.person_name);
+    if person.is_empty() {
+        return None;
+    }
+    let year = event
+        .start_time
+        .map(|time| time.format("%Y").to_string())
+        .filter(|year| blob.contains(year));
+    let place = event
+        .place_label
+        .as_deref()
+        .map(str::trim)
+        .filter(|place| {
+            talaria_quality::is_human_place_label(place)
+                && blob.contains(&place.to_ascii_lowercase())
+        });
+    let fr = lang.starts_with("fr");
+    let childhood = blob.contains("age eight")
+        || blob.contains("âge de huit")
+        || blob.contains("age de huit")
+        || blob.contains("childhood")
+        || blob.contains("enfance");
+
+    if fr {
+        return match (event.event_type.as_str(), year.as_deref(), place) {
+            ("marriage" | "wedding", Some(year), Some(place)) => {
+                Some(format!("{person} se marie en {year} à {place}."))
+            }
+            ("marriage" | "wedding", Some(year), None) => {
+                Some(format!("{person} se marie en {year}."))
+            }
+            ("birth", Some(year), Some(place)) => {
+                Some(format!("{person} naît en {year} à {place}."))
+            }
+            ("birth", Some(year), None) => Some(format!("{person} naît en {year}.")),
+            ("death", Some(year), Some(place)) => {
+                Some(format!("{person} meurt en {year} à {place}."))
+            }
+            ("death", Some(year), None) => Some(format!("{person} meurt en {year}.")),
+            ("battle" | "siege", Some(year), Some(place)) => {
+                Some(format!("En {year}, {person} est engagé dans un combat à {place}."))
+            }
+            ("residence", Some(year), Some(place)) => {
+                Some(format!("En {year}, {person} s’installe à {place}."))
+            }
+            (_, Some(year), Some(place)) => {
+                Some(format!("En {year}, un épisode de la vie de {person} se joue à {place}."))
+            }
+            (_, Some(year), None) => Some(format!("En {year}, dans la vie de {person}.")),
+            _ if childhood => Some(format!("Épisode de l’enfance de {person}.")),
+            _ => Some(format!("Ce que les sources disent de cet épisode de {person}.")),
+        };
+    }
+
+    match (event.event_type.as_str(), year.as_deref(), place) {
+        ("marriage" | "wedding", Some(year), Some(place)) => {
+            Some(format!("{person} marries in {year} in {place}."))
+        }
+        ("marriage" | "wedding", Some(year), None) => {
+            Some(format!("{person} marries in {year}."))
+        }
+        ("birth", Some(year), Some(place)) => Some(format!("{person} is born in {year} in {place}.")),
+        ("birth", Some(year), None) => Some(format!("{person} is born in {year}.")),
+        ("death", Some(year), Some(place)) => Some(format!("{person} dies in {year} in {place}.")),
+        ("death", Some(year), None) => Some(format!("{person} dies in {year}.")),
+        ("battle" | "siege", Some(year), Some(place)) => {
+            Some(format!("In {year}, {person} is in a fight at {place}."))
+        }
+        ("residence", Some(year), Some(place)) => {
+            Some(format!("In {year}, {person} settles in {place}."))
+        }
+        (_, Some(year), Some(place)) => {
+            Some(format!("In {year}, an episode in {person}’s life takes place in {place}."))
+        }
+        (_, Some(year), None) => Some(format!("In {year}, in {person}’s life.")),
+        _ if childhood => Some(format!("From {person}’s childhood.")),
+        _ => Some(format!("What the sources say about this episode in {person}’s life.")),
+    }
+}
+
+fn scene_repeats_claim(scene: &str, claim: &str) -> bool {
+    normalize_key(scene) == normalize_key(claim)
+        || (normalize_key(claim).contains(&normalize_key(scene)) && scene.chars().count() > 24)
+}
+
+fn weave_paragraph(event: &CanonicalEventRow, lang: &str, claims: &[DossierClaim]) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    let blob = sources_blob(claims);
+    if let Some(scene) = grounded_scene(event, lang, &blob) {
+        let first = claims.first().map(|claim| claim.text.as_str()).unwrap_or("");
+        if !scene_repeats_claim(&scene, first) {
+            parts.push(scene);
+        }
     }
 
     for (index, claim) in claims.iter().enumerate() {
@@ -691,9 +928,6 @@ fn weave_paragraph(event: &CanonicalEventRow, claims: &[DossierClaim]) -> String
         let compact = compact_claim(&claim.text, event, claim.section_title.as_deref());
         if compact.is_empty() {
             continue;
-        }
-        if n == 1 && parts.len() == 1 && claim_covers_framing(parts[0].as_str(), &compact) {
-            parts.clear();
         }
         parts.push(format!("{compact}[{n}]"));
         if parts.len() >= 5 {
@@ -713,63 +947,6 @@ fn weave_paragraph(event: &CanonicalEventRow, claims: &[DossierClaim]) -> String
         }
     }
     out
-}
-
-fn framing_sentence(event: &CanonicalEventRow, lang: &str) -> Option<String> {
-    let year = event.start_time.map(|t| t.format("%Y").to_string());
-    let place = event
-        .place_label
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty());
-    let person = event.person_name.as_str();
-
-    if lang == "fr" {
-        return match (event.event_type.as_str(), year.as_deref(), place) {
-            ("birth", Some(year), Some(place)) => Some(format!(
-                "{person} — naissance : les sources situent l’événement à {place} en {year}."
-            )),
-            ("death", Some(year), Some(place)) => Some(format!(
-                "{person} — mort : les sources situent l’événement à {place} en {year}."
-            )),
-            ("battle", Some(year), Some(place)) => Some(format!(
-                "{person} — bataille : les sources décrivent l’affrontement à {place} en {year}."
-            )),
-            (_, Some(year), Some(place)) => Some(format!(
-                "{person} — les sources situent cet épisode à {place} en {year}."
-            )),
-            _ => None,
-        };
-    }
-
-    match (event.event_type.as_str(), year.as_deref(), place) {
-        ("birth", Some(year), Some(place)) => Some(format!(
-            "{person} — birth: sources place the event in {place} in {year}."
-        )),
-        ("death", Some(year), Some(place)) => Some(format!(
-            "{person} — death: sources place the event in {place} in {year}."
-        )),
-        (_, Some(year), Some(place)) => Some(format!(
-            "{person} — sources situate this episode in {place} in {year}."
-        )),
-        _ => None,
-    }
-}
-
-fn claim_covers_framing(lead: &str, claim: &str) -> bool {
-    let lead_l = lead.to_ascii_lowercase();
-    let claim_l = claim.to_ascii_lowercase();
-    let year = lead_l.split_whitespace().find_map(|word| {
-        let trimmed: String = word.chars().filter(|c| c.is_ascii_digit()).collect();
-        (trimmed.len() == 4).then_some(trimmed)
-    });
-    let has_year = year.map(|y| claim_l.contains(&y)).unwrap_or(false);
-    has_year
-        && (claim_l.contains("naît")
-            || claim_l.contains("nait")
-            || claim_l.contains("born")
-            || claim_l.contains("mort")
-            || claim_l.contains("died"))
 }
 
 fn compact_claim(text: &str, event: &CanonicalEventRow, section_title: Option<&str>) -> String {
@@ -991,4 +1168,151 @@ fn is_identity_blurb(text: &str) -> bool {
         || lower.contains(" known as ")
         || lower.contains(" est un ")
         || lower.contains(" est une ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{TimeZone, Utc};
+    use uuid::Uuid;
+
+    fn trump_wealth_event() -> CanonicalEventRow {
+        CanonicalEventRow {
+            id: Uuid::nil(),
+            entity_id: Uuid::nil(),
+            person_name: "Donald Trump".into(),
+            event_type: "historical_fact".into(),
+            epistemic_status: "accepted".into(),
+            title: "Millionaire by age eight".into(),
+            summary: Some(
+                "Trump was a millionaire in inflation-adjusted dollars by age eight".into(),
+            ),
+            start_time: Utc.with_ymd_and_hms(1954, 1, 1, 0, 0, 0).single(),
+            time_json: json!({"kind":"approx","precision":"year"}),
+            place_label: None,
+            confidence: 0.8,
+            map_eligible: false,
+            lat: None,
+            lon: None,
+        }
+    }
+
+    fn claim(text: &str, section: &str) -> DossierClaim {
+        DossierClaim {
+            text: text.into(),
+            page_title: "Donald Trump".into(),
+            language: "fr".into(),
+            section_title: Some(section.into()),
+            oldid: None,
+            url: "https://fr.wikipedia.org/wiki/Donald_Trump".into(),
+        }
+    }
+
+    #[test]
+    fn wealth_fact_keeps_matching_sentence() {
+        let event = trump_wealth_event();
+        let (keywords, subject_keys) = relevance_keywords(&event);
+        assert!(is_relevant(
+            "Trump was a millionaire in inflation-adjusted dollars by age eight.",
+            &keywords,
+            &subject_keys,
+        ));
+    }
+
+    #[test]
+    fn vie_privee_family_sentences_are_not_relevant_to_wealth_fact() {
+        let event = trump_wealth_event();
+        let (keywords, subject_keys) = relevance_keywords(&event);
+        for text in [
+            "Selon d'autres sources, Trump rencontrait des mannequins de Montréal au bar Maxwell's Plum pour la promotion des Jeux olympiques.",
+            "Donald Trump a nié une relation avec Carla Bruni en 1991.",
+            "Il est marié à Melania Knauss depuis 2005 et leur fils Barron est né en 2006.",
+            "Donald Trump Jr. et Vanessa Haydon Trump ont trois enfants.",
+        ] {
+            assert!(
+                !is_relevant(text, &keywords, &subject_keys),
+                "expected unrelated: {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn personal_life_section_does_not_match_generic_historical_fact() {
+        let event = trump_wealth_event();
+        assert!(!section_matches_event("Vie privée", &event));
+        assert!(!section_matches_event("Personal life", &event));
+        assert!(!section_matches_event("Private life", &event));
+    }
+
+    #[test]
+    fn assemble_drops_off_topic_sources_and_uses_woven_summary() {
+        let event = trump_wealth_event();
+        let fact = "Trump was a millionaire in inflation-adjusted dollars by age eight";
+        let dossier = assemble_dossier(
+            &event,
+            Some(fact),
+            vec![
+                claim(fact, "evidence"),
+                claim(
+                    "Selon d'autres sources, Trump rencontrait des mannequins de Montréal au bar Maxwell's Plum pour la promotion des Jeux olympiques.",
+                    "Vie privée",
+                ),
+                claim(
+                    "Donald Trump a nié une relation avec Carla Bruni en 1991.",
+                    "Vie privée",
+                ),
+                claim(
+                    "Il est marié à Melania Knauss depuis 2005 et leur fils Barron est né en 2006.",
+                    "Vie privée",
+                ),
+            ],
+            "fr",
+        );
+        assert_eq!(dossier.source_refs.len(), 1);
+        assert_eq!(dossier.event_summary, dossier.how_it_happened);
+        assert!(dossier.event_summary.contains(fact));
+        assert!(dossier.event_summary.contains("enfance"));
+        assert!(dossier.how_it_happened.contains("[1]"));
+        let snippet = dossier.source_refs[0]
+            .get("snippet")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        assert!(snippet.to_ascii_lowercase().contains("millionaire"));
+    }
+
+    #[test]
+    fn framing_ignores_year_place_missing_from_the_fact() {
+        let mut event = trump_wealth_event();
+        event.title = "Donald Trump — historical_fact (2024) @ Jamaica".into();
+        event.place_label = Some("Jamaica".into());
+        event.start_time = Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).single();
+        let fact = "Trump was a millionaire in inflation-adjusted dollars by age eight";
+        let dossier = assemble_dossier(&event, Some(fact), vec![claim(fact, "evidence")], "fr");
+        assert!(
+            !dossier.event_summary.contains("Jamaica"),
+            "got {}",
+            dossier.event_summary
+        );
+        assert!(
+            !dossier.event_summary.contains("2024"),
+            "got {}",
+            dossier.event_summary
+        );
+        assert!(dossier.event_summary.contains("millionaire"));
+        assert!(dossier.event_summary.contains("enfance"));
+    }
+
+    #[test]
+    fn marriage_scene_uses_year_from_the_quote() {
+        let mut event = trump_wealth_event();
+        event.event_type = "marriage".into();
+        event.summary = Some("In 1977, Trump married Ivana Zelníčková".into());
+        event.start_time = Utc.with_ymd_and_hms(1977, 1, 1, 0, 0, 0).single();
+        event.place_label = Some("Siena".into());
+        let fact = "In 1977, Trump married Ivana Zelníčková";
+        let dossier = assemble_dossier(&event, Some(fact), vec![claim(fact, "evidence")], "fr");
+        assert!(dossier.event_summary.contains("se marie en 1977"));
+        assert!(!dossier.event_summary.contains("Siena"));
+        assert!(dossier.event_summary.contains("Ivana"));
+    }
 }

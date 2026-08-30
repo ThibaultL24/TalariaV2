@@ -1,12 +1,106 @@
 // web/src/lib/geo.ts
 import type { GeoJsonFeatureCollection, TimelineEvent } from "./api";
 
+function featurePoint(feature: unknown): [number, number] | null {
+  if (!feature || typeof feature !== "object") return null;
+  const geometry = (feature as { geometry?: { coordinates?: unknown } }).geometry;
+  const coords = geometry?.coordinates;
+  if (!Array.isArray(coords) || coords.length < 2) return null;
+  const lon = Number(coords[0]);
+  const lat = Number(coords[1]);
+  if (!Number.isFinite(lon) || !Number.isFinite(lat)) return null;
+  return [lon, lat];
+}
+
+export function boundsOfMapFeatures(collection: {
+  features: unknown[];
+}): [[number, number], [number, number]] | null {
+  let minLon = Infinity;
+  let minLat = Infinity;
+  let maxLon = -Infinity;
+  let maxLat = -Infinity;
+  for (const feature of collection.features) {
+    const point = featurePoint(feature);
+    if (!point) continue;
+    const [lon, lat] = point;
+    minLon = Math.min(minLon, lon);
+    minLat = Math.min(minLat, lat);
+    maxLon = Math.max(maxLon, lon);
+    maxLat = Math.max(maxLat, lat);
+  }
+  if (!Number.isFinite(minLon)) return null;
+  if (minLon === maxLon) {
+    minLon -= 0.5;
+    maxLon += 0.5;
+  }
+  if (minLat === maxLat) {
+    minLat -= 0.35;
+    maxLat += 0.35;
+  }
+  return [
+    [minLon, minLat],
+    [maxLon, maxLat],
+  ];
+}
+
 export function extractYear(startTime?: string | null): number | null {
   if (!startTime) return null;
   const match = startTime.match(/^(-?\d+)/);
   if (!match) return null;
   const year = Number.parseInt(match[1], 10);
   return Number.isFinite(year) ? year : null;
+}
+
+export function eventYear(event: TimelineEvent): number | null {
+  return extractYear(event.time?.start) ?? extractYear(event.start_time);
+}
+
+const STACK_KEY_DECIMALS = 3;
+const RING_STEP_DEG = 0.018;
+const RING_SIZE = 8;
+
+function coordKey(lon: number, lat: number): string {
+  return `${lon.toFixed(STACK_KEY_DECIMALS)}|${lat.toFixed(STACK_KEY_DECIMALS)}`;
+}
+
+/** Same cell (city/country centroid) → ring so stacked events stay clickable. */
+export function spreadStackedMapPoints(
+  collection: GeoJsonFeatureCollection,
+): GeoJsonFeatureCollection {
+  const buckets = new Map<string, number[]>();
+  collection.features.forEach((feature, index) => {
+    const coords = feature.geometry?.coordinates;
+    if (!coords || coords.length < 2) return;
+    const key = coordKey(Number(coords[0]), Number(coords[1]));
+    const list = buckets.get(key) ?? [];
+    list.push(index);
+    buckets.set(key, list);
+  });
+
+  return {
+    type: "FeatureCollection",
+    features: collection.features.map((feature, index) => {
+      const coords = feature.geometry?.coordinates;
+      if (!coords || coords.length < 2) return feature;
+      const lon = Number(coords[0]);
+      const lat = Number(coords[1]);
+      const group = buckets.get(coordKey(lon, lat));
+      if (!group || group.length < 2) return feature;
+      const i = group.indexOf(index);
+      const ring = Math.floor(i / RING_SIZE);
+      const slot = i % RING_SIZE;
+      const onRing = Math.min(RING_SIZE, group.length - ring * RING_SIZE);
+      const angle = (Math.PI * 2 * slot) / onRing;
+      const radius = RING_STEP_DEG * (ring + 1);
+      return {
+        ...feature,
+        geometry: {
+          ...feature.geometry,
+          coordinates: [lon + radius * Math.cos(angle), lat + radius * Math.sin(angle)],
+        },
+      };
+    }),
+  };
 }
 
 export function ensureFeatureIds(collection: GeoJsonFeatureCollection): GeoJsonFeatureCollection {
@@ -71,12 +165,25 @@ export function filterTimelineUntilYear(
   });
 }
 
-export function buildYearBounds(events: TimelineEvent[]): { min: number; max: number } {
-  const years = events
-    .map((event) => extractYear(event.start_time))
+function yearsOfType(events: TimelineEvent[], eventType: string): number[] {
+  return events
+    .filter((event) => event.event_type === eventType)
+    .map(eventYear)
     .filter((year): year is number => year != null);
+}
+
+export function buildYearBounds(events: TimelineEvent[]): { min: number; max: number } {
+  const years = events.map(eventYear).filter((year): year is number => year != null);
   if (years.length === 0) return { min: 1800, max: new Date().getFullYear() };
-  return { min: Math.min(...years), max: Math.max(...years) };
+
+  const births = yearsOfType(events, "birth");
+  const deaths = yearsOfType(events, "death");
+  const min = births.length ? Math.min(...births) : Math.min(...years);
+  const deathAfterBirth = deaths.filter((year) => year >= min);
+  const max = deathAfterBirth.length
+    ? Math.min(...deathAfterBirth)
+    : Math.max(...years);
+  return { min, max: Math.max(min, max) };
 }
 
 export function buildYearHistogram(events: TimelineEvent[]): { year: number; count: number }[] {

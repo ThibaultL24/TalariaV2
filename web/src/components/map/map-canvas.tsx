@@ -4,17 +4,17 @@ import { useEffect, useRef } from "react";
 import maplibregl, { type Map } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { ANTIQUE_MAP_STYLE } from "@/styles/map-style-antique";
-import { ANALYTICAL_MAP_STYLE } from "@/styles/map-style-analytical";
 import { useThemeStore } from "@/stores/theme-store";
 
 interface MapCanvasProps {
   onReady?: (map: Map) => void;
 }
 
+const OPENFREEMAP_DARK = "https://tiles.openfreemap.org/styles/dark";
+
 function pickStyle(isDark: boolean): string | maplibregl.StyleSpecification {
-  return (isDark ? ANALYTICAL_MAP_STYLE : ANTIQUE_MAP_STYLE) as
-    | string
-    | maplibregl.StyleSpecification;
+  if (isDark) return OPENFREEMAP_DARK;
+  return ANTIQUE_MAP_STYLE as maplibregl.StyleSpecification;
 }
 
 export function MapCanvas({ onReady }: MapCanvasProps) {

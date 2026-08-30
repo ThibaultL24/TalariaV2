@@ -13,11 +13,14 @@ export interface AppMessages {
   searchNew: string;
   loading: string;
   loadingMap: string;
+  searchInProgress: string;
   noResults: string;
   emptySearch: string;
   close: string;
   closeDetail: string;
   summary: string;
+  dossierTitle: string;
+  dossierHint: string;
   sources: string;
   noSources: string;
   openSource: string;
@@ -27,6 +30,20 @@ export interface AppMessages {
   legendTitle: string;
   personSearch: string;
   imageUnavailable: string;
+  home: string;
+  agora: string;
+  agoraHint: string;
+  collectAgora: string;
+  explorer: string;
+  heroEyebrow: string;
+  heroSubtitle: string;
+  startExploration: string;
+  openAgora: string;
+  livingMap: string;
+  livingMapDesc: string;
+  homeAboutTitle: string;
+  homeAboutSources: string;
+  agoraEmpty: string;
 }
 
 const EN: AppMessages = {
@@ -39,11 +56,14 @@ const EN: AppMessages = {
   searchNew: "New",
   loading: "Loading…",
   loadingMap: "Placing events on the map…",
+  searchInProgress: "Search in progress",
   noResults: "No matches.",
   emptySearch: "Search a historical figure to see their life on the map.",
   close: "Close",
   closeDetail: "Close event",
   summary: "Summary",
+  dossierTitle: "Context",
+  dossierHint: "A short sourced recap — tap [n] to open the citation.",
   sources: "Sources",
   noSources: "No sources for this event.",
   openSource: "Open source",
@@ -53,6 +73,20 @@ const EN: AppMessages = {
   legendTitle: "Legend",
   personSearch: "Person search",
   imageUnavailable: "",
+  home: "Home",
+  agora: "Agora",
+  agoraHint: "Works, opinions, theories and controversies about this person.",
+  collectAgora: "Collect scholarship",
+  explorer: "Map",
+  heroEyebrow: "Historical geography",
+  heroSubtitle: "Search a person. See their life on the map. Read the debates in the Agora.",
+  startExploration: "Open the map",
+  openAgora: "Open the Agora",
+  livingMap: "Living map",
+  livingMapDesc: "Dated facts, anecdotes and places from Wikipedia and catalogs.",
+  homeAboutTitle: "A life in space and argument",
+  homeAboutSources: "Each point keeps its summary and the sources that mention it.",
+  agoraEmpty: "Search a historical figure to load works, theories and controversies.",
 };
 
 const FR: AppMessages = {
@@ -65,11 +99,14 @@ const FR: AppMessages = {
   searchNew: "Nouveau",
   loading: "Chargement…",
   loadingMap: "Placement des événements sur la carte…",
+  searchInProgress: "Recherche en cours",
   noResults: "Aucun résultat.",
   emptySearch: "Recherchez une personnalité pour voir sa vie sur la carte.",
   close: "Fermer",
   closeDetail: "Fermer l’événement",
   summary: "Résumé",
+  dossierTitle: "Contexte",
+  dossierHint: "Un minimum de contexte sourcé — tapez [n] pour ouvrir la citation.",
   sources: "Sources",
   noSources: "Aucune source pour cet événement.",
   openSource: "Ouvrir la source",
@@ -79,6 +116,20 @@ const FR: AppMessages = {
   legendTitle: "Légende",
   personSearch: "Recherche de personnalité",
   imageUnavailable: "",
+  home: "Accueil",
+  agora: "Agora",
+  agoraHint: "Travaux, avis, théories et controverses autour de cette personne.",
+  collectAgora: "Collecter l’agora",
+  explorer: "Carte",
+  heroEyebrow: "Géographie historique",
+  heroSubtitle: "Cherchez une personne. Voyez sa vie sur la carte. Lisez les débats dans l’Agora.",
+  startExploration: "Ouvrir la carte",
+  openAgora: "Ouvrir l’Agora",
+  livingMap: "Carte vivante",
+  livingMapDesc: "Faits datés, anecdotes et lieux issus de Wikipédia et des catalogues.",
+  homeAboutTitle: "Une vie dans l’espace et le débat",
+  homeAboutSources: "Chaque point garde son résumé et les sources qui en parlent.",
+  agoraEmpty: "Recherchez une personnalité pour charger travaux, théories et controverses.",
 };
 
 export const messages: Record<AppLocale, AppMessages> = { en: EN, fr: FR };

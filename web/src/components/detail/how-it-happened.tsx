@@ -1,5 +1,6 @@
 // web/src/components/detail/how-it-happened.tsx
 import { CitedParagraph } from "@/components/detail/cited-paragraph";
+import { useI18n } from "@/lib/i18n";
 
 interface HowItHappenedProps {
   text: string;
@@ -35,6 +36,7 @@ export function parseDossierProse(raw: string): ParsedDossier {
 }
 
 export function HowItHappened({ text, onCiteClick }: HowItHappenedProps) {
+  const { t } = useI18n();
   const { lead, body } = parseDossierProse(text);
   if (!lead && body.length === 0) return null;
 
@@ -42,13 +44,13 @@ export function HowItHappened({ text, onCiteClick }: HowItHappenedProps) {
     <section className="dossier-how overflow-hidden rounded-xl border border-(--color-border-subtle) bg-(--color-bg-primary)/40">
       <header className="border-b border-(--color-border-subtle) px-4 py-3">
         <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-(--color-accent-strong)">
-          Dossier
+          {t.summary}
         </p>
         <h4
           className="mt-0.5 text-sm font-semibold tracking-wide text-(--color-text-primary)"
           style={{ fontFamily: "var(--font-display)" }}
         >
-          How it happened
+          {t.dossierTitle}
         </h4>
       </header>
 
@@ -73,9 +75,7 @@ export function HowItHappened({ text, onCiteClick }: HowItHappenedProps) {
 
       <footer className="border-t border-(--color-border-subtle) bg-(--color-bg-elevated)/50 px-4 py-2.5">
         <p className="text-[11px] leading-relaxed text-(--color-text-muted)">
-          Synthèse sourcée de cet événement — tapez un exposant{" "}
-          <span className="font-semibold text-(--color-accent-strong)">[n]</span> pour ouvrir la
-          citation complète ci-dessous.
+          {t.dossierHint}
         </p>
       </footer>
     </section>

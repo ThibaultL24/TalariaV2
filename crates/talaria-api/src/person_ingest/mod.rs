@@ -15,6 +15,7 @@ use std::path::Path;
 use serde_json::{json, Value};
 use talaria_core::AppConfig;
 use talaria_quality::{GateContext, Lane};
+use talaria_sources::has_military_signal;
 use talaria_sources::load_seed_titles;
 use talaria_sources::wdqs::fetch_events_for_person;
 use talaria_store::{
@@ -47,7 +48,7 @@ pub async fn run_person_ingest(
     let mut seen_titles: HashSet<String> = HashSet::new();
     let mut follow_queue: Vec<String> = Vec::new();
     let mut primary_title = subject.to_string();
-    let aliases = collect::subject_aliases(subject);
+    let mut aliases = collect::subject_aliases(subject);
     let follow_cap = collect::follow_budget(max_documents);
 
     let wd_meta = match crate::lot_e::fetch_wikidata_subject_meta(&resolved_qid, wiki_lang, Some(&pool))
@@ -63,6 +64,17 @@ pub async fn run_person_ingest(
         .as_ref()
         .and_then(|m| m.wiki_title.clone())
         .unwrap_or_else(|| subject.to_string());
+    if wiki_title != subject {
+        for extra in collect::subject_aliases(&wiki_title) {
+            if !aliases.iter().any(|a| a == &extra) {
+                aliases.push(extra);
+            }
+        }
+    }
+    let military_subject = wd_meta
+        .as_ref()
+        .map(|m| has_military_signal(&m.occupations, Some(subject)))
+        .unwrap_or(false);
     let wd_label = wiki_title.clone();
     let entity_id = upsert_person_by_qid(
         &pool,
@@ -108,6 +120,7 @@ pub async fn run_person_ingest(
                             page_title: subject,
                             from_followed_page: false,
                             structured_source: true,
+                            military_subject,
                             aliases: &aliases,
                         },
                     )
@@ -121,7 +134,7 @@ pub async fn run_person_ingest(
 
     for lang in collect::wiki_langs(wiki_lang) {
         match collect::fetch_wiki_extract(&lang, subject).await {
-            Ok((title, text)) => {
+            Ok((title, text, links)) => {
                 if !seen_titles.insert(title.to_lowercase()) {
                     continue;
                 }
@@ -129,6 +142,7 @@ pub async fn run_person_ingest(
                     primary_title = title.clone();
                 }
                 wiki_pages += 1;
+                follow_queue.extend(collect::follow_titles_from_page_links(&links, follow_cap));
                 let (ins, re, deb, drop) = ingest_wiki_text(
                     &pool,
                     entity_id,
@@ -138,6 +152,7 @@ pub async fn run_person_ingest(
                     &text,
                     &mut ctx,
                     &aliases,
+                    military_subject,
                 )
                 .await?;
                 facts_inserted += ins;
@@ -177,6 +192,7 @@ pub async fn run_person_ingest(
                             page_title: subject,
                             from_followed_page: false,
                             structured_source: true,
+                            military_subject,
                             aliases: &aliases,
                         },
                     )
@@ -199,6 +215,7 @@ pub async fn run_person_ingest(
                 &events,
                 &mut ctx,
                 &aliases,
+                military_subject,
             )
             .await?;
             facts_inserted += wdqs_ins;
@@ -235,15 +252,15 @@ pub async fn run_person_ingest(
             &title,
             &mut ctx,
             &aliases,
+            military_subject,
         )
         .await
         {
             Ok((ins, re)) => {
-                if ins + re == 0 {
-                    continue;
-                }
-                wiki_pages += 1;
                 followed += 1;
+                if ins + re > 0 {
+                    wiki_pages += 1;
+                }
                 facts_inserted += ins;
                 facts_reinforced += re;
             }
@@ -292,6 +309,7 @@ async fn ingest_wiki_text(
     text: &str,
     ctx: &mut GateContext,
     aliases: &[String],
+    military_subject: bool,
 ) -> anyhow::Result<(u32, u32, u32, u32)> {
     let uri = format!(
         "https://{lang}.wikipedia.org/wiki/{}",
@@ -303,6 +321,38 @@ async fn ingest_wiki_text(
     let mut reinforced = 0u32;
     let mut debates = 0u32;
     let mut dropped = 0u32;
+    let rules = extract::extract_wiki_rules(subject, title, text, ctx.subject_death_year);
+    for item in grounding::ground_prose(subject, text, rules) {
+        if item.lane != Lane::Fact {
+            continue;
+        }
+        tally(
+            persist::persist_fact_item(
+                pool,
+                entity_id,
+                subject,
+                &item,
+                ctx,
+                PersistMeta {
+                    raw_document_id: raw_id,
+                    coords: None,
+                    primary_object: None,
+                    source_locator: &locator,
+                    page_title: title,
+                    from_followed_page: false,
+                    structured_source: false,
+                    military_subject,
+                    aliases,
+                },
+            )
+            .await?,
+            &mut inserted,
+            &mut reinforced,
+        );
+    }
+    if inserted + reinforced > 0 {
+        return Ok((inserted, reinforced, debates, dropped));
+    }
     for chunk in extract::split_chunks(text, 3500) {
         let extracted = if llm::is_configured() {
             match extract::extract_prose_chunk(subject, title, &chunk).await {
@@ -338,6 +388,7 @@ async fn ingest_wiki_text(
                                 page_title: title,
                                 from_followed_page: false,
                                 structured_source: false,
+                                military_subject,
                                 aliases,
                             },
                         )
@@ -360,10 +411,16 @@ async fn ingest_follow_page(
     title: &str,
     ctx: &mut GateContext,
     aliases: &[String],
+    military_subject: bool,
 ) -> anyhow::Result<(u32, u32)> {
     let (resolved, text, wiki_xy) = collect::fetch_wiki_page(lang, title).await?;
-    let Some((doc, raw, mut xy)) =
-        extract::follow_page_to_extract(subject, &resolved, &text, wiki_xy)
+    let Some((doc, raw, mut xy)) = extract::follow_page_to_extract(
+        subject,
+        &resolved,
+        &text,
+        wiki_xy,
+        military_subject,
+    )
     else {
         return Ok((0, 0));
     };
@@ -399,6 +456,7 @@ async fn ingest_follow_page(
                     page_title: resolved.as_str(),
                     from_followed_page: true,
                     structured_source: false,
+                    military_subject,
                     aliases,
                 },
             )
@@ -418,6 +476,7 @@ async fn persist_wdqs_events(
     events: &[talaria_sources::wdqs::WdqsEvent],
     ctx: &mut GateContext,
     aliases: &[String],
+    military_subject: bool,
 ) -> anyhow::Result<(u32, u32)> {
     if events.is_empty() {
         return Ok((0, 0));
@@ -455,6 +514,7 @@ async fn persist_wdqs_events(
                         page_title: &ev.label,
                         from_followed_page: false,
                         structured_source: true,
+                        military_subject,
                         aliases,
                     },
                 )

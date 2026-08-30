@@ -9,6 +9,7 @@ pub enum AttributionMatch {
     AliasMatch,
     TitleSubjectMatch,
     StructuredParticipantMatch,
+    FollowedMilitaryAction,
     CoreferenceMatch,
     Unattributed,
 }
@@ -18,9 +19,18 @@ pub struct AttributionInput<'a> {
     pub aliases: &'a [&'a str],
     pub quote: &'a str,
     pub page_title: &'a str,
+    pub event_type: &'a str,
     pub from_followed_page: bool,
     pub structured_source: bool,
     pub role_supported_by_evidence: bool,
+    pub military_subject: bool,
+}
+
+fn is_military_action_type(event_type: &str) -> bool {
+    matches!(
+        event_type,
+        "battle" | "siege" | "military_campaign" | "surrender" | "retreat"
+    )
 }
 
 fn fold_case(s: &str) -> String {
@@ -72,6 +82,13 @@ pub fn classify_attribution(input: &AttributionInput<'_>) -> AttributionMatch {
         return AttributionMatch::StructuredParticipantMatch;
     }
 
+    if input.military_subject
+        && input.from_followed_page
+        && is_military_action_type(input.event_type)
+    {
+        return AttributionMatch::FollowedMilitaryAction;
+    }
+
     if !input.from_followed_page {
         return AttributionMatch::TitleSubjectMatch;
     }
@@ -110,6 +127,7 @@ pub fn auto_accept_attribution(m: AttributionMatch) -> bool {
             | AttributionMatch::AliasMatch
             | AttributionMatch::TitleSubjectMatch
             | AttributionMatch::StructuredParticipantMatch
+            | AttributionMatch::FollowedMilitaryAction
     )
 }
 
@@ -134,9 +152,11 @@ mod tests {
             aliases: &["Hugo"],
             quote: "The Battle of Plevna was fought in 1877.",
             page_title: "Siege of Plevna",
+            event_type: "battle",
             from_followed_page: true,
             structured_source: false,
             role_supported_by_evidence: false,
+            military_subject: false,
         });
         assert_eq!(m, AttributionMatch::Unattributed);
         assert!(!auto_accept_attribution(m));
@@ -149,9 +169,11 @@ mod tests {
             aliases: &[],
             quote: "He was born in Besançon.",
             page_title: "Victor Hugo",
+            event_type: "birth",
             from_followed_page: false,
             structured_source: false,
             role_supported_by_evidence: true,
+            military_subject: false,
         });
         assert_eq!(m, AttributionMatch::TitleSubjectMatch);
         assert!(auto_accept_attribution(m));
@@ -164,9 +186,11 @@ mod tests {
             aliases: &[],
             quote: "He then returned to Paris.",
             page_title: "War of the Sixth Coalition",
+            event_type: "travel",
             from_followed_page: true,
             structured_source: false,
             role_supported_by_evidence: true,
+            military_subject: true,
         });
         assert_eq!(m, AttributionMatch::CoreferenceMatch);
         assert!(!auto_accept_attribution(m));
@@ -179,10 +203,29 @@ mod tests {
             aliases: &[],
             quote: "",
             page_title: "WDQS events for Q517",
+            event_type: "battle",
             from_followed_page: true,
             structured_source: true,
             role_supported_by_evidence: true,
+            military_subject: true,
         });
         assert_eq!(m, AttributionMatch::StructuredParticipantMatch);
+    }
+
+    #[test]
+    fn military_followed_battle_page_is_auto_accept() {
+        let m = classify_attribution(&AttributionInput {
+            subject: "Napoleon",
+            aliases: &[],
+            quote: "The battle was fought on 2 December 1805 near Austerlitz.",
+            page_title: "Battle of Austerlitz",
+            event_type: "battle",
+            from_followed_page: true,
+            structured_source: false,
+            role_supported_by_evidence: false,
+            military_subject: true,
+        });
+        assert_eq!(m, AttributionMatch::FollowedMilitaryAction);
+        assert!(auto_accept_attribution(m));
     }
 }

@@ -16,7 +16,7 @@ mod travel;
 pub use claim::{claim_fingerprint, ClaimKey};
 pub use dense::DenseClauseExtractor;
 pub use infobox::InfoboxExtractor;
-pub use itinerary::ItineraryExtractor;
+pub use itinerary::{is_country_or_region, ItineraryExtractor};
 pub use keywords::KeywordMineExtractor;
 pub use military::MilitaryCampaignExtractor;
 pub use posthumous::PosthumousEventExtractor;

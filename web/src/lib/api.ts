@@ -209,8 +209,12 @@ export async function fetchEventEvidence(eventId: string): Promise<EventEvidence
   return data.evidence ?? [];
 }
 
-export async function fetchEventDetail(eventId: string): Promise<EventDetailResponse> {
-  const response = await fetch(`/api/v1/events/${eventId}`);
+export async function fetchEventDetail(
+  eventId: string,
+  lang?: string,
+): Promise<EventDetailResponse> {
+  const query = lang ? `?lang=${encodeURIComponent(lang)}` : "";
+  const response = await fetch(`/api/v1/events/${eventId}${query}`);
   if (!response.ok) throw new Error("event detail fetch failed");
   return response.json();
 }
@@ -335,7 +339,7 @@ export function browserWikiLang(): string {
   return /^[a-z]{2}$/.test(lang) ? lang : "en";
 }
 
-export const EXPLORER_INGEST_MAX_DOCUMENTS = 80;
+export const EXPLORER_INGEST_MAX_DOCUMENTS = 400;
 
 async function startLaneIngest(
   lane: IngestLane,

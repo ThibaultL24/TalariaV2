@@ -155,7 +155,13 @@ pub async fn list_claims_for_entity(
                event_time, place_label, confidence, canonical_event_id,
                debate_type, evidence_layer
         FROM soft_claims
-        WHERE entity_id = $1
+        WHERE entity_id IN (
+            SELECT e2.id
+            FROM entities e1
+            JOIN entities e2 ON e2.id = e1.id
+               OR (e1.qid IS NOT NULL AND e2.qid = e1.qid)
+            WHERE e1.id = $1
+          )
           AND (
             NOT $3
             OR claim_kind IN ('theory', 'controversy', 'debate_stance')

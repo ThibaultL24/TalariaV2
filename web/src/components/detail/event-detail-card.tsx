@@ -9,7 +9,7 @@ import {
 } from "@/lib/api";
 import { SourceRefsList } from "@/components/detail/source-refs-list";
 import { EventImageHero } from "@/components/detail/event-image-hero";
-import { CitedParagraph } from "@/components/detail/cited-paragraph";
+import { HowItHappened } from "@/components/detail/how-it-happened";
 import { resolveEventImage, type ResolvedEventImage } from "@/lib/resolve-event-image";
 import { useI18n } from "@/lib/i18n";
 
@@ -20,21 +20,21 @@ interface EventDetailCardProps {
 }
 
 export function EventDetailCard({ event, onClose, offlineOnly = false }: EventDetailCardProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [detail, setDetail] = useState<EventDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeCite, setActiveCite] = useState<number | null>(null);
   const [image, setImage] = useState<ResolvedEventImage | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
-  const [sourcesOpen, setSourcesOpen] = useState(false);
+  const [sourcesOpen, setSourcesOpen] = useState(true);
   const sourcesRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setActiveCite(null);
-    setSourcesOpen(false);
-    fetchEventDetail(event.id)
+    setSourcesOpen(true);
+    fetchEventDetail(event.id, locale)
       .then((payload) => {
         if (!cancelled) setDetail(payload);
       })
@@ -47,7 +47,7 @@ export function EventDetailCard({ event, onClose, offlineOnly = false }: EventDe
     return () => {
       cancelled = true;
     };
-  }, [event.id]);
+  }, [event.id, locale]);
 
   useEffect(() => {
     if (!detail?.event || offlineOnly) {
@@ -85,12 +85,14 @@ export function EventDetailCard({ event, onClose, offlineOnly = false }: EventDe
   }, [detail, offlineOnly]);
 
   const resolved = detail?.event ?? event;
-  const summary =
+  const recap =
     detail?.narrative?.event_summary?.trim() ||
-    detail?.narrative?.how_it_happened?.trim() ||
-    detail?.narrative?.fact?.trim() ||
     resolved.summary?.trim() ||
     null;
+  const placeLabel =
+    resolved.place_label && !/^Q\d+$/i.test(resolved.place_label.trim())
+      ? resolved.place_label
+      : null;
   const sourceRefs = collectSourceRefs(detail);
   const wikiLang =
     sourceRefs.find((ref) => ref.language)?.language ??
@@ -109,7 +111,7 @@ export function EventDetailCard({ event, onClose, offlineOnly = false }: EventDe
     }, 50);
   }
 
-  const datePlace = [formatDateLabel(resolved.start_time), resolved.place_label]
+  const datePlace = [formatDateLabel(resolved.start_time), placeLabel]
     .filter(Boolean)
     .join(" · ");
 
@@ -137,14 +139,7 @@ export function EventDetailCard({ event, onClose, offlineOnly = false }: EventDe
       <div className="flex-1 space-y-4 p-4">
         {loading ? <p className="text-sm text-(--color-text-muted)">{t.loading}</p> : null}
         <EventImageHero image={image} loading={imageLoading} />
-        {summary ? (
-          <section>
-            <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted)">
-              {t.summary}
-            </h3>
-            <CitedParagraph text={summary} onCiteClick={focusCitation} variant="lead" />
-          </section>
-        ) : null}
+        {recap ? <HowItHappened text={recap} onCiteClick={focusCitation} /> : null}
 
         <section ref={sourcesRef}>
           <button

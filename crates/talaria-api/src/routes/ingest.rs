@@ -20,7 +20,9 @@ use super::AppState;
 use crate::corpus_ingest::{self, live_corpus_providers};
 use crate::historiography;
 use crate::lot_e::write_minimal_seed_list;
-use talaria_store::{density_report_counts, update_entity_qid, upsert_entity_with_kind};
+use talaria_store::{
+    person_density_counts, update_entity_qid, upsert_entity_with_kind, upsert_person_by_qid,
+};
 
 pub const LANE_EXPLORER: &str = "explorer";
 pub const LANE_AGORA: &str = "agora";
@@ -219,13 +221,30 @@ async fn start_lane_ingest(
     let entity_id = if lane == LANE_EXPLORER {
         None
     } else {
-        let id = upsert_entity_with_kind(
-            &state.pool,
-            &state.config.wiki_lang,
-            &subject,
-            "person",
-        )
-        .await
+        let id = if let Some(qid) = body
+            .qid
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            upsert_person_by_qid(
+                &state.pool,
+                qid,
+                &subject,
+                &state.config.wiki_lang,
+                &subject,
+                &subject,
+            )
+            .await
+        } else {
+            upsert_entity_with_kind(
+                &state.pool,
+                &state.config.wiki_lang,
+                &subject,
+                "person",
+            )
+            .await
+        }
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -415,7 +434,7 @@ async fn run_agora_lane(
     let corpus_json: Value = serde_json::from_str(&corpus_report)
         .unwrap_or_else(|_| json!({ "raw": corpus_report }));
 
-    let hist_report = historiography::run_historiography_extract(config, subject, None).await?;
+    let hist_report = historiography::run_historiography_extract(config, subject, None, qid).await?;
     let hist_json: Value = serde_json::from_str(&hist_report)
         .unwrap_or_else(|_| json!({ "raw": hist_report }));
 
@@ -456,10 +475,9 @@ pub async fn get_ingest_job(
         ));
     };
     let (timeline_events, map_events) = match job.entity_id {
-        Some(entity_id) => match density_report_counts(&state.pool, Some(entity_id)).await {
-            Ok(counts) => (counts.timeline_eligible, counts.map_eligible),
-            Err(_) => (0, 0),
-        },
+        Some(entity_id) => person_density_counts(&state.pool, entity_id)
+            .await
+            .unwrap_or((0, 0)),
         None => (0, 0),
     };
     Ok(Json(json!({

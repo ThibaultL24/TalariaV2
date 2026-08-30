@@ -10,15 +10,12 @@ import { MapLayers } from "@/components/map/map-layers";
 import { MapLegend } from "@/components/map/map-legend";
 import { MapSourceManager } from "@/components/map/map-source-manager";
 import { EntitySearchBox } from "@/components/search/entity-search-box";
+import { usePersonPicker } from "@/hooks/use-person-picker";
 import {
   fetchGeoJson,
-  fetchIngestJob,
   fetchStatus,
   fetchTimeline,
-  searchEntities,
-  startExplorerIngest,
   type GeoJsonFeatureCollection,
-  type IngestJobResponse,
   type TimelineEvent,
 } from "@/lib/api";
 import {
@@ -27,118 +24,44 @@ import {
   type LegendKey,
 } from "@/lib/event-legend";
 import {
+  boundsOfMapFeatures,
   buildYearBounds,
   buildYearHistogram,
   filterGeoJsonUntilYear,
   filterTimelineUntilYear,
+  spreadStackedMapPoints,
 } from "@/lib/geo";
 import { useI18n } from "@/lib/i18n";
-import type { SearchSuggestion } from "@/lib/schemas/entity";
 import type { TalariaFeatureCollection } from "@/lib/schemas/geojson";
-import { collapseToSinglePersonSuggestion } from "@/lib/search-suggestions";
 import { useExplorerStore } from "@/stores/explorer-store";
 
 const POLL_MS = 5000;
 const INGEST_POLL_MS = 1500;
-const INGEST_TIMEOUT_MS = 45 * 60 * 1000;
 const LIVE_LIMIT = 2000;
 
-async function pollIngestJob(
-  jobId: string,
-  onTick: (job: IngestJobResponse) => void,
-): Promise<IngestJobResponse> {
-  const deadline = Date.now() + INGEST_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    const job = await fetchIngestJob(jobId);
-    onTick(job);
-    if (job.status !== "running" && job.status !== "queued") return job;
-    await new Promise((resolve) => setTimeout(resolve, INGEST_POLL_MS));
-  }
-  throw new Error("timeout");
-}
-
-function namesOverlap(left: string, right: string): boolean {
-  const a = left.trim().toLowerCase();
-  const b = right.trim().toLowerCase();
-  return a.includes(b) || b.includes(a);
-}
-
-function preferDenseLocalAlias(
-  item: SearchSuggestion,
-  items: SearchSuggestion[],
-): SearchSuggestion {
-  if (!item.known_locally || !item.label) return item;
-  const denser = items
-    .filter(
-      (row) =>
-        row.known_locally &&
-        row.entity_id &&
-        row.label &&
-        namesOverlap(row.label, item.label) &&
-        (row.event_count ?? 0) > (item.event_count ?? 0),
-    )
-    .sort((a, b) => (b.event_count ?? 0) - (a.event_count ?? 0))[0];
-  return denser ?? item;
-}
-
 function toMapCollection(data: GeoJsonFeatureCollection): TalariaFeatureCollection {
-  return data as TalariaFeatureCollection;
+  return spreadStackedMapPoints(data) as TalariaFeatureCollection;
 }
 
 export function ExplorerPage() {
-  const { locale, t } = useI18n();
+  const { t } = useI18n();
   const [map, setMap] = useState<Map | null>(null);
   const [allEvents, setAllEvents] = useState<TimelineEvent[]>([]);
   const [geojson, setGeojson] = useState<GeoJsonFeatureCollection | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [untilYear, setUntilYear] = useState<number | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [ingestBusy, setIngestBusy] = useState(false);
-  const ingestLock = useRef<string | null>(null);
+  const { suggestions, setSearchQuery, searchLoading, selectPerson, ingestBusy, error } =
+    usePersonPicker();
 
-  const {
-    entityId,
-    entityLabel,
-    personFilter,
-    selectedEventId,
-    setEntity,
-    setPersonFilter,
-    setSelectedEventId,
-    closeDetail,
-  } = useExplorerStore();
+  const { entityId, entityLabel, personFilter, selectedEventId, setSelectedEventId, closeDetail } =
+    useExplorerStore();
 
   const hasEntity = Boolean(entityId || personFilter);
 
   useEffect(() => {
     fetchStatus().catch(() => undefined);
   }, []);
-
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setSuggestions([]);
-      return;
-    }
-    let cancelled = false;
-    setSearchLoading(true);
-    searchEntities(searchQuery, locale)
-      .then((items) => {
-        if (!cancelled) {
-          setSuggestions(collapseToSinglePersonSuggestion(searchQuery, items));
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setSuggestions([]);
-      })
-      .finally(() => {
-        if (!cancelled) setSearchLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [searchQuery, locale]);
 
   useEffect(() => {
     if (!hasEntity) {
@@ -151,7 +74,7 @@ export function ExplorerPage() {
     let cancelled = false;
     let inFlight = false;
     let first = true;
-    setError(null);
+    setLoadError(null);
 
     const query = {
       entityId: entityId ?? undefined,
@@ -176,10 +99,10 @@ export function ExplorerPage() {
           if (prev == null || first) return bounds.max;
           return Math.min(Math.max(prev, bounds.min), bounds.max);
         });
-        setError(null);
+        setLoadError(null);
       } catch (err) {
         if (!cancelled && first) {
-          setError(err instanceof Error ? err.message : "load failed");
+          setLoadError(err instanceof Error ? err.message : "load failed");
         }
       } finally {
         inFlight = false;
@@ -200,7 +123,7 @@ export function ExplorerPage() {
 
   useEffect(() => {
     if (!map) return;
-    map.setPadding({ top: 12, bottom: 150, left: 8, right: 8 });
+    map.setPadding({ top: 12, bottom: 96, left: 8, right: 88 });
   }, [map]);
 
   const dataBounds = useMemo(() => buildYearBounds(allEvents), [allEvents]);
@@ -216,7 +139,13 @@ export function ExplorerPage() {
     return filterGeoJsonUntilYear(geojson, playhead);
   }, [geojson, playhead]);
 
-  const histogram = useMemo(() => buildYearHistogram(allEvents), [allEvents]);
+  const histogram = useMemo(
+    () =>
+      buildYearHistogram(allEvents).filter(
+        (row) => row.year >= dataBounds.min && row.year <= dataBounds.max,
+      ),
+    [allEvents, dataBounds],
+  );
 
   const presentKeys = useMemo(() => {
     const keys = new Set<LegendKey>();
@@ -256,65 +185,6 @@ export function ExplorerPage() {
     };
   }, [allEvents, selectedEventId, geojson, entityId, entityLabel]);
 
-  const runSilentIngest = useCallback(
-    async (override: { subject: string; qid?: string | null; entityId?: string | null }) => {
-      const subject = override.subject;
-      if (!subject) return;
-      const lockKey = `explorer:${subject}:${override.qid ?? ""}`;
-      if (ingestLock.current === lockKey) return;
-      ingestLock.current = lockKey;
-      setError(null);
-      setIngestBusy(true);
-      try {
-        const job = await startExplorerIngest({
-          subject,
-          qid: override.qid,
-          live: true,
-          wikiLang: locale,
-        });
-        let boundEntityId = override.entityId;
-        const bindEntity = (id?: string | null) => {
-          if (!id || boundEntityId === id) return;
-          boundEntityId = id;
-          setEntity(id, subject, override.qid);
-        };
-        bindEntity(job.entity_id);
-        const result = await pollIngestJob(job.job_id, (tick) => {
-          bindEntity(tick.entity_id);
-        });
-        if (result.status === "failed") {
-          setError(result.error ?? t.loadingMap);
-          return;
-        }
-        bindEntity(result.entity_id);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : t.loadingMap);
-      } finally {
-        setIngestBusy(false);
-        if (ingestLock.current === lockKey) ingestLock.current = null;
-      }
-    },
-    [locale, setEntity, t.loadingMap],
-  );
-
-  const handleSelectSuggestion = useCallback(
-    (item: SearchSuggestion) => {
-      const chosen = preferDenseLocalAlias(item, suggestions);
-      setError(null);
-      if (chosen.known_locally && chosen.entity_id) {
-        setEntity(chosen.entity_id, chosen.label, chosen.qid);
-      } else {
-        setPersonFilter(chosen.label, chosen.label, chosen.qid);
-      }
-      void runSilentIngest({
-        subject: chosen.label,
-        qid: chosen.qid,
-        entityId: chosen.entity_id,
-      });
-    },
-    [runSilentIngest, setEntity, setPersonFilter, suggestions],
-  );
-
   const handleSelectEvent = useCallback(
     (eventId: string) => {
       setSelectedEventId(eventId);
@@ -341,6 +211,24 @@ export function ExplorerPage() {
   }, [selectedEventId, closeDetail]);
 
   const mapData = hasEntity ? toMapCollection(visibleGeoJson) : undefined;
+  const banner = error ?? loadError;
+  const fittedEntity = useRef<string>("");
+
+  useEffect(() => {
+    const entityKey = entityId ?? personFilter ?? "";
+    if (!map || !entityKey || !mapData?.features.length) return;
+    const token = `${entityKey}:${ingestBusy ? "busy" : "idle"}`;
+    if (fittedEntity.current === token) return;
+    if (fittedEntity.current.startsWith(`${entityKey}:busy`) && ingestBusy) return;
+    const box = boundsOfMapFeatures(mapData);
+    if (!box) return;
+    fittedEntity.current = token;
+    map.fitBounds(box, {
+      padding: { top: 56, bottom: 120, left: 24, right: 96 },
+      maxZoom: 6,
+      duration: 700,
+    });
+  }, [entityId, ingestBusy, map, mapData, personFilter]);
 
   return (
     <div className="app-shell map-shell flex h-screen flex-col">
@@ -349,7 +237,7 @@ export function ExplorerPage() {
           <EntitySearchBox
             suggestions={suggestions}
             onSubmitQuery={setSearchQuery}
-            onSelect={handleSelectSuggestion}
+            onSelect={selectPerson}
             isLoading={searchLoading}
           />
         }
@@ -371,13 +259,13 @@ export function ExplorerPage() {
 
         {ingestBusy || loading ? (
           <div className="pointer-events-none absolute top-3 left-1/2 z-10 -translate-x-1/2 rounded-full border border-(--map-panel-border) bg-(--color-bg-elevated)/85 px-3 py-1 text-[11px] text-(--color-text-secondary) backdrop-blur-sm">
-            {t.loadingMap}
+            {ingestBusy ? t.searchInProgress : t.loadingMap}
           </div>
         ) : null}
 
-        {error ? (
+        {banner ? (
           <p className="absolute top-14 left-1/2 z-10 -translate-x-1/2 rounded-lg bg-red-950/80 px-3 py-1.5 text-sm text-red-200">
-            {error}
+            {banner}
           </p>
         ) : null}
 

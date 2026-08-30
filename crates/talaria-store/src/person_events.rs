@@ -59,6 +59,24 @@ pub async fn find_active_person_event_by_occurrence(
     Ok(id)
 }
 
+/// Global person fingerprint — unique index is not per-entity.
+pub async fn find_active_person_event_by_fingerprint(
+    pool: &PgPool,
+    fingerprint: &str,
+) -> anyhow::Result<Option<Uuid>> {
+    let id = sqlx::query_scalar(
+        r#"
+        SELECT id FROM canonical_events
+        WHERE fingerprint = $1 AND pipeline = 'person' AND is_active
+        LIMIT 1
+        "#,
+    )
+    .bind(fingerprint)
+    .fetch_optional(pool)
+    .await?;
+    Ok(id)
+}
+
 pub async fn insert_person_event(pool: &PgPool, event: &PersonEventInsert) -> anyhow::Result<Uuid> {
     let id: Uuid = if event.map_eligible && event.lat.is_some() && event.lon.is_some() {
         sqlx::query_scalar(
@@ -303,6 +321,31 @@ pub async fn upsert_raw_wikidata_document(
     .fetch_one(pool)
     .await?;
     Ok(id)
+}
+
+pub async fn person_density_counts(
+    pool: &PgPool,
+    entity_id: Uuid,
+) -> anyhow::Result<(i64, i64)> {
+    let timeline: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint FROM canonical_events
+        WHERE entity_id = $1 AND pipeline = 'person' AND is_active AND timeline_eligible
+        "#,
+    )
+    .bind(entity_id)
+    .fetch_one(pool)
+    .await?;
+    let map: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint FROM canonical_events
+        WHERE entity_id = $1 AND pipeline = 'person' AND is_active AND map_eligible
+        "#,
+    )
+    .bind(entity_id)
+    .fetch_one(pool)
+    .await?;
+    Ok((timeline, map))
 }
 
 #[cfg(test)]

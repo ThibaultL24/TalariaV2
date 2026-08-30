@@ -21,12 +21,20 @@ pub fn typed_time_from_year(year: Option<i32>) -> TypedTime {
 pub async fn geocode_place(label: Option<&str>) -> Option<talaria_sources::PlaceResolution> {
     let label = label.map(str::trim).filter(|s| !s.is_empty())?;
     let q = place_query(label);
-    for key in &q.search_keys {
+    let keys: Vec<&String> = q
+        .search_keys
+        .iter()
+        .filter(|key| !talaria_sources::extractors::is_country_or_region(key))
+        .collect();
+    if keys.is_empty() {
+        return None;
+    }
+    for key in &keys {
         if let Some(res) = resolve_place_offline(key) {
             return Some(res);
         }
     }
-    for key in &q.search_keys {
+    for key in &keys {
         let Some(hit) = crate::lot_e::resolve_label_coords(key).await else {
             continue;
         };

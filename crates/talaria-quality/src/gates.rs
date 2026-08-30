@@ -112,6 +112,10 @@ fn looks_like_accession(evidence: &str) -> bool {
         "king of",
         "queen of",
         "empereur",
+        "monarch",
+        "roi de",
+        "reine de",
+        "held_office",
     ]
     .iter()
     .any(|cue| e.contains(cue))
@@ -330,6 +334,18 @@ mod tests {
         };
         let codes = apply_gates(&c, &ctx).codes();
         assert!(codes.contains(&"implausible_age_for_event_type".into()));
+    }
+
+    #[test]
+    fn child_monarch_office_from_wikidata_statement_is_plausible() {
+        let mut c = base_candidate("office", 1643);
+        c.evidence_ptrs[0].quoted_text = "Louis XIV | office | monarch | 1643 | France".into();
+        let ctx = GateContext {
+            subject_birth_year: Some(1638),
+            subject_death_year: Some(1715),
+            ..Default::default()
+        };
+        assert!(matches!(apply_gates(&c, &ctx), GateDecision::Accept));
     }
 
     #[test]
