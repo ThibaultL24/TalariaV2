@@ -20,6 +20,22 @@ pub fn typed_time_from_year(year: Option<i32>) -> TypedTime {
 
 pub async fn geocode_place(label: Option<&str>) -> Option<talaria_sources::PlaceResolution> {
     let label = label.map(str::trim).filter(|s| !s.is_empty())?;
+    if talaria_quality::is_wikidata_qid(label) {
+        if let Ok(client) = talaria_wikidata::WikidataClient::new() {
+            if let Ok(Some((lat, lon))) = client.fetch_coordinates(label).await {
+                return Some(talaria_sources::PlaceResolution {
+                    label: label.to_string(),
+                    method: "wikidata_qid_p625".into(),
+                    wikidata_qid: Some(label.to_string()),
+                    lat,
+                    lon,
+                    precision: "wikidata_p625".into(),
+                    uncertainty_radius_m: Some(5000.0),
+                    score: 0.75,
+                });
+            }
+        }
+    }
     let q = place_query(label);
     let keys: Vec<&String> = q
         .search_keys

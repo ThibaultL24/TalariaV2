@@ -350,10 +350,8 @@ async fn ingest_wiki_text(
             &mut reinforced,
         );
     }
-    if inserted + reinforced > 0 {
-        return Ok((inserted, reinforced, debates, dropped));
-    }
-    for chunk in extract::split_chunks(text, 3500) {
+    // Rules used to return here and skip the LLM, so biographies stayed thin.
+    for chunk in extract::split_chunks(text, 3500).into_iter().take(16) {
         let extracted = if llm::is_configured() {
             match extract::extract_prose_chunk(subject, title, &chunk).await {
                 Ok(items) => items,
@@ -451,6 +449,38 @@ async fn ingest_follow_page(
                 PersistMeta {
                     raw_document_id: raw_id,
                     coords: xy,
+                    primary_object: Some(resolved.as_str()),
+                    source_locator: &locator,
+                    page_title: resolved.as_str(),
+                    from_followed_page: true,
+                    structured_source: false,
+                    military_subject,
+                    aliases,
+                },
+            )
+            .await?,
+            &mut inserted,
+            &mut reinforced,
+        );
+    }
+    for item in grounding::ground_prose(
+        subject,
+        &doc,
+        extract::extract_wiki_rules(subject, &resolved, &doc, ctx.subject_death_year),
+    ) {
+        if item.lane != Lane::Fact {
+            continue;
+        }
+        tally(
+            persist::persist_fact_item(
+                pool,
+                entity_id,
+                subject,
+                &item,
+                ctx,
+                PersistMeta {
+                    raw_document_id: raw_id,
+                    coords: None,
                     primary_object: Some(resolved.as_str()),
                     source_locator: &locator,
                     page_title: resolved.as_str(),

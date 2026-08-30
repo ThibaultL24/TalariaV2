@@ -279,6 +279,9 @@ pub fn event_type_is_map_locus(event_type: &str) -> bool {
             | "imprisonment"
             | "diplomatic"
             | "employment"
+            | "work"
+            | "burial"
+            | "treaty"
     )
 }
 
@@ -440,6 +443,9 @@ mod tests {
         assert!(!event_type_is_map_locus("publication"));
         assert!(event_type_is_map_locus("arrival"));
         assert!(event_type_is_map_locus("residence"));
+        assert!(event_type_is_map_locus("work"));
+        assert!(event_type_is_map_locus("burial"));
+        assert!(event_type_is_map_locus("treaty"));
         assert!(!event_type_is_map_locus("historical_fact"));
     }
 

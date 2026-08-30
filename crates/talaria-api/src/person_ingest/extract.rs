@@ -51,7 +51,7 @@ fn year_from_raw(raw: &RawCandidate) -> Option<i32> {
         })
 }
 
-/// Deterministic biography extract — used when the LLM returns nothing.
+/// Deterministic biography extract. The LLM pass still runs after this.
 pub fn extract_wiki_rules(
     subject: &str,
     title: &str,

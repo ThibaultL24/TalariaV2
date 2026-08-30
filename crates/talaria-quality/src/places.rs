@@ -8,6 +8,12 @@ pub struct PlaceQuery {
 pub fn place_query(surface: &str) -> PlaceQuery {
     let trimmed = surface.trim();
     let mut search_keys = vec![trimmed.to_string()];
+    if crate::is_wikidata_qid(trimmed) {
+        return PlaceQuery {
+            surface: trimmed.to_string(),
+            search_keys,
+        };
+    }
 
     if let Some(remainder) = trimmed.strip_prefix("The ") {
         if !remainder.is_empty() {
