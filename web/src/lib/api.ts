@@ -351,6 +351,9 @@ async function startLaneIngest(
     maxDocuments?: number;
     wikiLang?: string;
     corpusLimit?: number;
+    corpusLimitPerProvider?: number;
+    corpusLimitTotal?: number;
+    minimumPerProvider?: number;
   },
 ): Promise<IngestJobResponse> {
   const response = await fetch(`/api/v1/ingest/${lane}`, {
@@ -364,6 +367,9 @@ async function startLaneIngest(
       max_documents: input.maxDocuments,
       wiki_lang: input.wikiLang,
       corpus_limit: input.corpusLimit,
+      corpus_limit_per_provider: input.corpusLimitPerProvider,
+      corpus_limit_total: input.corpusLimitTotal,
+      minimum_per_provider: input.minimumPerProvider,
     }),
   });
   if (!response.ok) {
@@ -395,6 +401,9 @@ export async function startAgoraIngest(input: {
   qid?: string | null;
   live?: boolean;
   corpusLimit?: number;
+  corpusLimitPerProvider?: number;
+  corpusLimitTotal?: number;
+  minimumPerProvider?: number;
 }): Promise<IngestJobResponse> {
   return startLaneIngest("agora", input);
 }

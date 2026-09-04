@@ -153,6 +153,14 @@ pub struct StartIngestBody {
     /// Per-provider document cap (agora lane only).
     #[serde(default)]
     pub corpus_limit: Option<u32>,
+    /// Preferred name for the per-provider cap. `corpus_limit` is a deprecated alias.
+    #[serde(default)]
+    pub corpus_limit_per_provider: Option<u32>,
+    /// Global cap on unique normalized documents (agora lane only).
+    #[serde(default)]
+    pub corpus_limit_total: Option<u32>,
+    #[serde(default)]
+    pub minimum_per_provider: Option<u32>,
 }
 
 fn resolve_wiki_lang(requested: Option<&str>, fallback: &str) -> String {
@@ -220,8 +228,7 @@ async fn find_running_job(
     qid: Option<&str>,
 ) -> Option<IngestJob> {
     let jobs = jobs.lock().await;
-    jobs
-        .values()
+    jobs.values()
         .find(|job| {
             job.lane == lane
                 && matches!(job.status.as_str(), "queued" | "running")
@@ -331,13 +338,7 @@ async fn start_lane_ingest(
             )
             .await
         } else {
-            upsert_entity_with_kind(
-                &state.pool,
-                &state.config.wiki_lang,
-                &subject,
-                "person",
-            )
-            .await
+            upsert_entity_with_kind(&state.pool, &state.config.wiki_lang, &subject, "person").await
         }
         .map_err(|e| {
             (
@@ -382,7 +383,16 @@ async fn start_lane_ingest(
     let subject_for_job = subject.clone();
     let max_titles = body.max_titles.filter(|n| *n > 0);
     let max_documents = resolve_max_documents(body.max_documents);
-    let corpus_limit = body.corpus_limit.filter(|n| *n > 0).unwrap_or(15);
+    let corpus_limits = corpus_ingest::CorpusIngestLimits {
+        per_provider: body
+            .corpus_limit_per_provider
+            .or(body.corpus_limit)
+            .filter(|n| *n > 0)
+            .unwrap_or(15),
+        total: body.corpus_limit_total.filter(|n| *n > 0).or(Some(120)),
+        minimum_per_provider: body.minimum_per_provider.unwrap_or(3),
+        provider_timeout: std::time::Duration::from_secs(30),
+    };
     let wiki_lang = resolve_wiki_lang(body.wiki_lang.as_deref(), &config.wiki_lang);
     let lane_owned = lane.to_string();
 
@@ -430,13 +440,7 @@ async fn start_lane_ingest(
             )
             .await
         } else {
-            run_agora_lane(
-                &config,
-                &subject_for_job,
-                qid.as_deref(),
-                corpus_limit,
-            )
-            .await
+            run_agora_lane(&config, &subject_for_job, qid.as_deref(), corpus_limits).await
         };
 
         let mut jobs = jobs.lock().await;
@@ -578,7 +582,7 @@ async fn run_agora_lane(
     config: &talaria_core::AppConfig,
     subject: &str,
     qid: Option<&str>,
-    corpus_limit: u32,
+    corpus_limits: corpus_ingest::CorpusIngestLimits,
 ) -> anyhow::Result<Value> {
     let providers = live_corpus_providers();
     let corpus_report = corpus_ingest::run_corpus_ingest(
@@ -586,18 +590,19 @@ async fn run_agora_lane(
         subject,
         qid,
         &providers,
-        corpus_limit,
+        corpus_limits,
         false,
         None,
         true,
     )
     .await?;
-    let corpus_json: Value = serde_json::from_str(&corpus_report)
-        .unwrap_or_else(|_| json!({ "raw": corpus_report }));
+    let corpus_json: Value =
+        serde_json::from_str(&corpus_report).unwrap_or_else(|_| json!({ "raw": corpus_report }));
 
-    let hist_report = historiography::run_historiography_extract(config, subject, None, qid).await?;
-    let hist_json: Value = serde_json::from_str(&hist_report)
-        .unwrap_or_else(|_| json!({ "raw": hist_report }));
+    let hist_report =
+        historiography::run_historiography_extract(config, subject, None, qid).await?;
+    let hist_json: Value =
+        serde_json::from_str(&hist_report).unwrap_or_else(|_| json!({ "raw": hist_report }));
 
     Ok(json!({
         "lane": LANE_AGORA,

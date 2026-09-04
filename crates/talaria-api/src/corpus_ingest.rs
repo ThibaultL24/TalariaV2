@@ -2,7 +2,9 @@
 //! Corpus ingest orchestration (PR1): discover → fetch → snapshot → normalize → persist.
 //! Does NOT create quality claims, soft claims, events, or historiography positions.
 
+use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use talaria_core::AppConfig;
 use talaria_sources::connectors::{
@@ -90,6 +92,67 @@ pub struct CorpusIngestMetrics {
     pub snapshots_reused: u64,
     pub entity_links: u64,
     pub connector_errors: u64,
+    pub providers: BTreeMap<String, ProviderIngestMetrics>,
+}
+
+#[derive(Debug, Default, Clone, serde::Serialize)]
+pub struct ProviderIngestMetrics {
+    pub status: String,
+    pub connector_version: Option<String>,
+    pub discover_calls: u64,
+    pub documents_discovered: u64,
+    pub documents_persisted: u64,
+    pub documents_skipped: u64,
+    pub connector_errors: u64,
+    pub elapsed_ms: u64,
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct CorpusIngestLimits {
+    pub per_provider: u32,
+    pub total: Option<u32>,
+    pub minimum_per_provider: u32,
+    pub provider_timeout: Duration,
+}
+
+impl CorpusIngestLimits {
+    pub fn legacy(per_provider: u32) -> Self {
+        Self {
+            per_provider,
+            total: None,
+            minimum_per_provider: 0,
+            provider_timeout: Duration::from_secs(30),
+        }
+    }
+}
+
+fn provider_budget(
+    limits: CorpusIngestLimits,
+    provider_count: usize,
+    provider_index: usize,
+    globally_persisted: usize,
+) -> u32 {
+    let Some(total) = limits.total else {
+        return limits.per_provider;
+    };
+    let fair_minimum = limits
+        .minimum_per_provider
+        .min(limits.per_provider)
+        .min(total / provider_count.max(1) as u32);
+    let providers_after = provider_count.saturating_sub(provider_index + 1) as u32;
+    let globally_remaining = total.saturating_sub(globally_persisted as u32);
+    globally_remaining
+        .saturating_sub(fair_minimum.saturating_mul(providers_after))
+        .min(limits.per_provider)
+}
+
+fn connector_failure_status(error: &str) -> &'static str {
+    if error.contains("429") || error.to_ascii_lowercase().contains("rate limit") {
+        "rate_limited"
+    } else {
+        "failed"
+    }
 }
 
 pub async fn run_corpus_ingest(
@@ -97,7 +160,7 @@ pub async fn run_corpus_ingest(
     subject_label: &str,
     qid: Option<&str>,
     providers: &[String],
-    limit: u32,
+    limits: CorpusIngestLimits,
     use_fixture: bool,
     fixture_dir: Option<PathBuf>,
     live: bool,
@@ -283,52 +346,115 @@ pub async fn run_corpus_ingest(
             plan_json: serde_json::json!({
                 "mode": "corpus_ingest",
                 "providers": kinds.iter().map(|k| k.as_str()).collect::<Vec<_>>(),
-                "limit": limit,
+                "limit_per_provider": limits.per_provider,
+                "limit_total": limits.total,
+                "minimum_per_provider": limits.minimum_per_provider,
                 "fixture": use_fixture,
             }),
-            budgets_json: serde_json::json!({ "limit": limit }),
-            connector_versions: serde_json::json!({}),
+            budgets_json: serde_json::json!({
+                "limit_per_provider": limits.per_provider,
+                "limit_total": limits.total,
+                "minimum_per_provider": limits.minimum_per_provider,
+            }),
+            connector_versions: serde_json::Value::Object(
+                kinds
+                    .iter()
+                    .filter_map(|kind| {
+                        registry
+                            .get(kind)
+                            .and_then(|registration| registration.connector.as_ref())
+                            .map(|connector| {
+                                (
+                                    kind.as_str().to_string(),
+                                    serde_json::json!(connector.connector_version()),
+                                )
+                            })
+                    })
+                    .collect(),
+            ),
         },
     )
     .await?;
 
     let mut metrics = CorpusIngestMetrics::default();
-    let mut remaining = limit;
+    let mut persisted_ids = HashSet::new();
 
-    for kind in kinds {
-        if remaining == 0 {
-            break;
-        }
+    let provider_count = kinds.len();
+    for (provider_index, kind) in kinds.into_iter().enumerate() {
+        let started = Instant::now();
+        let source = kind.as_str().to_string();
+        let mut provider_metrics = ProviderIngestMetrics {
+            status: "not_configured".into(),
+            ..ProviderIngestMetrics::default()
+        };
         let Some(reg) = registry.get(&kind) else {
+            metrics.providers.insert(source, provider_metrics);
             continue;
         };
         let Some(connector) = &reg.connector else {
+            metrics.providers.insert(source, provider_metrics);
             continue;
         };
+        provider_metrics.connector_version = Some(connector.connector_version().to_string());
         if !reg.implemented {
             tracing::warn!(source = kind.as_str(), "connector not implemented; skip");
+            metrics.providers.insert(source, provider_metrics);
             continue;
         }
 
         let mut cursor = None;
+        // Let earlier providers use surplus capacity, but reserve the requested first
+        // sample for every provider that has not run yet. If the total is smaller than
+        // the requested aggregate minimum, divide it as evenly as possible.
+        let mut provider_remaining =
+            provider_budget(limits, provider_count, provider_index, persisted_ids.len());
+        provider_metrics.status = "healthy".into();
         loop {
-            if remaining == 0 {
+            // Make one discovery call even when the persistence budget is exhausted,
+            // so every configured provider reports its real health for this run.
+            if provider_remaining == 0 && provider_metrics.discover_calls > 0 {
                 break;
             }
-            let page = match connector.discover(&subject, cursor.clone()).await {
-                Ok(p) => p,
-                Err(e) => {
+            provider_metrics.discover_calls += 1;
+            let page = match tokio::time::timeout(
+                limits.provider_timeout,
+                connector.discover(&subject, cursor.clone()),
+            )
+            .await
+            {
+                Ok(Ok(p)) => p,
+                Err(_) => {
+                    let error = format!(
+                        "provider timed out after {}s",
+                        limits.provider_timeout.as_secs()
+                    );
+                    tracing::warn!(source = kind.as_str(), %error, "discover failed");
+                    provider_metrics.status = "failed".into();
+                    provider_metrics.connector_errors += 1;
+                    provider_metrics.last_error = Some(error);
+                    metrics.connector_errors += 1;
+                    break;
+                }
+                Ok(Err(e)) => {
                     tracing::warn!(error = %e, source = kind.as_str(), "discover failed");
+                    provider_metrics.status = connector_failure_status(&e.to_string()).into();
+                    provider_metrics.connector_errors += 1;
+                    provider_metrics.last_error = Some(e.to_string());
                     metrics.connector_errors += 1;
                     break;
                 }
             };
 
             for doc in page.documents {
-                if remaining == 0 {
+                if provider_remaining == 0
+                    || limits
+                        .total
+                        .is_some_and(|cap| persisted_ids.len() >= cap as usize)
+                {
                     break;
                 }
                 metrics.documents_discovered += 1;
+                provider_metrics.documents_discovered += 1;
                 let (discovered_id, _) =
                     upsert_discovered_document(&pool, &to_discovered_insert(run_id, &doc)).await?;
 
@@ -337,8 +463,12 @@ pub async fn run_corpus_ingest(
                     Err(e) => {
                         tracing::warn!(error = %e, id = %doc.external_id, "fetch failed");
                         metrics.connector_errors += 1;
+                        provider_metrics.connector_errors += 1;
+                        provider_metrics.status = "partial".into();
+                        provider_metrics.last_error = Some(e.to_string());
                         mark_discovered_skipped(&pool, discovered_id, "fetch_failed").await?;
                         metrics.documents_skipped += 1;
+                        provider_metrics.documents_skipped += 1;
                         continue;
                     }
                 };
@@ -351,6 +481,7 @@ pub async fn run_corpus_ingest(
                     );
                     mark_discovered_skipped(&pool, discovered_id, "no_normalizer").await?;
                     metrics.documents_skipped += 1;
+                    provider_metrics.documents_skipped += 1;
                     continue;
                 };
                 let (corpus_id, snapshot_id, snapshot_new) =
@@ -368,6 +499,8 @@ pub async fn run_corpus_ingest(
                 mark_discovered_corpus_document(&pool, discovered_id, corpus_id).await?;
                 mark_discovered_snapshotted(&pool, discovered_id, snapshot_id).await?;
                 metrics.documents_persisted += 1;
+                provider_metrics.documents_persisted += 1;
+                persisted_ids.insert(corpus_id);
                 if snapshot_new {
                     metrics.snapshots_created += 1;
                 } else {
@@ -392,7 +525,7 @@ pub async fn run_corpus_ingest(
                     metrics.entity_links += 1;
                 }
 
-                remaining = remaining.saturating_sub(1);
+                provider_remaining = provider_remaining.saturating_sub(1);
             }
 
             cursor = page.next_cursor;
@@ -400,6 +533,9 @@ pub async fn run_corpus_ingest(
                 break;
             }
         }
+        provider_metrics.elapsed_ms =
+            started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
+        metrics.providers.insert(source, provider_metrics);
     }
 
     let metrics_json = serde_json::to_value(&metrics)?;
@@ -689,5 +825,37 @@ mod tests {
     fn explicit_providers_are_respected() {
         let kinds = resolve_corpus_providers(&["hal".into(), "persee".into()], true);
         assert_eq!(kinds, vec![SourceKind::Hal, SourceKind::Persee]);
+    }
+
+    #[test]
+    fn provider_budget_reserves_a_minimum_for_later_sources() {
+        let limits = CorpusIngestLimits {
+            per_provider: 15,
+            total: Some(20),
+            minimum_per_provider: 3,
+            provider_timeout: Duration::from_secs(1),
+        };
+        assert_eq!(provider_budget(limits, 3, 0, 0), 14);
+        assert_eq!(provider_budget(limits, 3, 1, 14), 3);
+        assert_eq!(provider_budget(limits, 3, 2, 17), 3);
+    }
+
+    #[test]
+    fn provider_budget_divides_a_too_small_total_fairly() {
+        let limits = CorpusIngestLimits {
+            per_provider: 15,
+            total: Some(5),
+            minimum_per_provider: 3,
+            provider_timeout: Duration::from_secs(1),
+        };
+        assert_eq!(provider_budget(limits, 3, 0, 0), 3);
+        assert_eq!(provider_budget(limits, 3, 1, 3), 1);
+        assert_eq!(provider_budget(limits, 3, 2, 4), 1);
+    }
+
+    #[test]
+    fn provider_status_distinguishes_rate_limits() {
+        assert_eq!(connector_failure_status("HTTP 429 Too Many Requests"), "rate_limited");
+        assert_eq!(connector_failure_status("connection reset"), "failed");
     }
 }
