@@ -190,3 +190,4 @@ Rejected events stay in `event_candidates` — they must **never** appear in `ca
 ## See Also
 
 - [SOURCE_EXPANSION.md](./SOURCE_EXPANSION.md) — Product-truth notes for institutional/catalog sources (Vague A/B)
+- [Progressive UX](PROGRESSIVE_UX.md) — product-truth notes for the progressive explorer ingest UX
