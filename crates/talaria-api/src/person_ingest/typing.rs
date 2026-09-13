@@ -5,7 +5,7 @@
 //!   mention → place identity (aliases / existing entities / TGN / WHG) → geocode that identity.
 //!
 //! Coordinates come only from Wikidata P625 / offline gazetteer / wiki page coords.
-//! TGN and WHG are identity layers (connectors stubbed); they resolve place names to
+//! TGN and WHG are identity layers (fully async); they resolve place names to
 //! authoritative identifiers which can then be geocoded via P625.
 
 use talaria_quality::{place_query, TypedTime};
@@ -27,10 +27,13 @@ pub fn typed_time_from_year(year: Option<i32>) -> TypedTime {
     }
 }
 
-/// Resolve place identity WITHOUT coordinates.
+/// Resolve place identity WITHOUT coordinates (async).
 /// This is the first step in the grounding chain: mention → identity.
 /// Returns a PlaceIdentity if the place can be identified (possibly with a QID).
-pub fn resolve_place_identity(label: Option<&str>) -> Option<PlaceIdentity> {
+///
+/// IMPORTANT: This function is async to support TGN SPARQL and WHG REST identity resolution.
+/// Never use block_on to call this from sync context — it will panic inside async runtime.
+pub async fn resolve_place_identity(label: Option<&str>) -> Option<PlaceIdentity> {
     let label = label.map(str::trim).filter(|s| !s.is_empty())?;
 
     // If already a QID, return identity directly
@@ -38,9 +41,9 @@ pub fn resolve_place_identity(label: Option<&str>) -> Option<PlaceIdentity> {
         return Some(PlaceIdentity::from_wikidata(label, label));
     }
 
-    // Try composite resolver: alias gazetteer → TGN (stub) → WHG (stub)
+    // Try composite resolver: alias gazetteer → TGN → WHG
     let resolver = CompositeIdentityResolver::new();
-    if let Some(identity) = resolver.resolve(label) {
+    if let Some(identity) = resolver.resolve(label).await {
         return Some(identity);
     }
 
@@ -85,8 +88,8 @@ pub async fn geocode_identity(
 pub async fn geocode_place(label: Option<&str>) -> Option<talaria_sources::PlaceResolution> {
     let label = label.map(str::trim).filter(|s| !s.is_empty())?;
 
-    // Step 1: Resolve place identity
-    if let Some(identity) = resolve_place_identity(Some(label)) {
+    // Step 1: Resolve place identity (async — TGN SPARQL, WHG REST, or alias gazetteer)
+    if let Some(identity) = resolve_place_identity(Some(label)).await {
         // Step 2: Geocode the resolved identity
         if let Some(res) = geocode_identity(&identity).await {
             return Some(res);
