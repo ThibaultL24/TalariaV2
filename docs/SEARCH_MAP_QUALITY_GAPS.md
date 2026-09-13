@@ -322,18 +322,21 @@ All four causes are confirmed in code.
 
 ## Executive Summary (Résumé)
 
-L'analyse révèle **8 causes principales** de l'imprécision des résultats de recherche et des points cartographiques dans l'explorateur Talaria :
+L'analyse révèle **9 causes principales** de l'imprécision des résultats de recherche et des points cartographiques dans l'explorateur Talaria :
 
 | # | Cause | Impact | Fichiers clés |
 |---|-------|--------|---------------|
-| 1 | **Sources non utilisées pour la carte** | Les sources institutionnelles (HAL, Gallica, BnF, etc.) ne contribuent pas aux points de carte | `routes/ingest.rs`, `corpus_ingest.rs` |
-| 2 | **Géocodage hors-ligne limité** | Gazetteer de ~250 lieux, biais napoléonien | `talaria-sources/src/places.rs` |
-| 3 | **Filtrage `map_eligible` restrictif** | Seuls ~20 types d'événements obtiennent des pins | `talaria-quality/src/gates.rs` |
-| 4 | **Absence de résolution d'identité** | VIAF/ISNI/IdRef sont des stubs | `connectors/mod.rs` |
-| 5 | **Perte de précision temporelle** | Événements sans date → NeedsReview | `gates.rs`, `typing.rs` |
-| 6 | **Précision géographique ignorée** | `wikibase:geoPrecision` non extrait; 5km hardcodé | `client.rs`, `typing.rs` |
-| 7 | **Identifiants d'autorité non lus** | P268/P214/P213/P269 ignorés sur les QID | `wikidata.rs`, `lot_e.rs` |
-| 8 | **Coordonnées multimédia absentes** | Commons P9149/P1259, Europeana edm:Place non extraits | `commons.rs`, `europeana.rs` |
+| 1 | **Pipeline person-only** | Seul `pipeline='person'` apparaît; dump/legacy rejeté HTTP 400 | `routes/events.rs`, `canonical_events.rs` |
+| 2 | **Sources non utilisées pour la carte** | Les sources institutionnelles (HAL, Gallica, BnF, etc.) ne contribuent pas aux points de carte | `routes/ingest.rs`, `corpus_ingest.rs` |
+| 3 | **Géocodage hors-ligne limité** | Gazetteer de ~250 lieux, biais napoléonien | `talaria-sources/src/places.rs` |
+| 4 | **Filtrage `map_eligible` restrictif** | Seuls ~20 types d'événements obtiennent des pins | `talaria-quality/src/gates.rs` |
+| 5 | **Absence de résolution d'identité** | VIAF/ISNI/IdRef sont des stubs | `connectors/mod.rs` |
+| 6 | **Perte de précision temporelle** | Événements sans date → NeedsReview | `gates.rs`, `typing.rs` |
+| 7 | **Précision géographique ignorée** | `wikibase:geoPrecision` non extrait; 5km hardcodé | `client.rs`, `typing.rs` |
+| 8 | **Identifiants d'autorité non lus** | P268/P214/P213/P269 ignorés sur les QID | `wikidata.rs`, `lot_e.rs` |
+| 9 | **Coordonnées multimédia absentes** | Commons P9149/P1259, Europeana edm:Place non extraits | `commons.rs`, `europeana.rs` |
+
+**Conclusion clé**: Les filtres `map_eligible` et `pipeline='person'` expliquent directement l'insuffisance des points cartographiques. Des événements valides existent dans la timeline mais n'apparaissent pas sur la carte car ils manquent de coordonnées ou sont de types exclus.
 
 ---
 
@@ -906,9 +909,182 @@ The precision IS extracted, but `WikibaseTime` → `TypedTime` conversion may no
 
 ---
 
-## 5. Additional Gaps from Second API Cartography
+## 5. Documentation Audit Verification (Auditeur de documentation)
 
-### 5.1 Anti-Noise Measures (Not Implemented)
+### 5.1 README vs AGENTS.md Pipeline Discrepancy
+
+**Finding: CONFIRMED — risk of user confusion.**
+
+| Document | What It Says | Actual Behavior |
+|----------|--------------|-----------------|
+| README | Main path is `dump→COSMOS→judge` | Creates `pipeline='legacy'` |
+| AGENTS.md | `pipeline='person'` feeds explorer/timeline/geojson | ✅ Correct |
+| Code | `pipeline='legacy'` → HTTP 400 on API | ✅ Enforced |
+
+**Evidence** (`routes/events.rs` lines 58-69):
+```rust
+fn resolve_pipeline(explicit: &Option<String>) -> Result<Option<String>, RetiredPipeline> {
+    match explicit.as_deref() {
+        Some("quality") | Some("legacy") => Err(RetiredPipeline),
+        Some(_) => Ok(explicit.clone()),
+        None => Ok(default_pipeline()),  // "person"
+    }
+}
+
+fn retired_pipeline_response() -> impl IntoResponse {
+    (StatusCode::BAD_REQUEST, Json(json!({ "error": "pipeline_retired", "use": "person" })))
+}
+```
+
+**Risk**: Users following README's dump workflow will:
+1. Extract pages, run COSMOS, judge candidates → creates `pipeline='legacy'` events
+2. Query timeline/geojson → see nothing (events filtered out)
+3. Wonder why map is empty
+
+**README states** (line 86): "Results stay on the dump/legacy path — they do **not** populate `pipeline='person'` or appear in the explorer."
+
+This disclaimer exists but is easy to miss. The README workflow presents dump processing as the main path, when it's actually an offline batch tool.
+
+### 5.2 TypedTime (kind × precision) Enforcement
+
+**Finding: ENFORCED in code.**
+
+**Evidence** (`crates/talaria-quality/src/model.rs` lines 87-114):
+```rust
+pub enum TypedTime {
+    Exact { year, month, day, surface },
+    Range { start_year, end_year, surface },
+    Approx { year, surface },
+    Unknown { surface },
+}
+```
+
+**Gates enforcement** (`gates.rs` line 249):
+```rust
+if matches!(candidate.time, TypedTime::Unknown { .. }) {
+    return GateDecision::NeedsReview;
+}
+```
+
+**Serialization** (`time_typed.rs` `time_to_json`): Writes JSONB with separate `kind` and `precision` fields.
+
+**Impact on map**: Events with `TypedTime::Unknown` → `NeedsReview` → never `Accepted` → never on map. This is a correctness constraint, but explains some "missing" events.
+
+### 5.3 map_eligible vs timeline_eligible Enforcement
+
+**Finding: ENFORCED — key to understanding imprecise map results.**
+
+| Flag | When True | Used By |
+|------|-----------|---------|
+| `map_eligible` | `coords IS SOME` AND `event_type_is_map_locus(type)` | GeoJSON endpoint |
+| `timeline_eligible` | Always `true` for accepted events | Timeline endpoint |
+
+**Evidence** (`canonical_events.rs` lines 270-271):
+```rust
+// GeoJSON query
+AND ($3 = false OR ce.map_eligible = true)
+AND ce.geom IS NOT NULL
+```
+
+**Count query** (`multi_source.rs` lines 482-483):
+```sql
+WHERE pipeline = 'quality' AND is_active AND timeline_eligible AND NOT map_eligible
+```
+
+This means there's a category of events that appear on the timeline but NOT on the map — those with `timeline_eligible=true` but `map_eligible=false` (no coords or excluded event type).
+
+**This directly explains imprecise/insufficient map results**: many valid events exist but lack coordinates.
+
+### 5.4 occurrence_key and Idempotent Evidence Enforcement
+
+**Finding: ENFORCED — prevents duplicates but doesn't explain imprecision.**
+
+**occurrence_key** (`occurrence.rs` lines 15-55):
+```rust
+pub fn occurrence_key(
+    subject: &str, event_type: &str, predicate: &str,
+    time: &TypedTime, place: Option<&str>, primary_object: Option<&str>,
+) -> String
+```
+
+**Idempotency** (`person_events.rs` line 195):
+```rust
+ON CONFLICT (fingerprint) DO NOTHING
+```
+
+**Evidence deduplication** (`person_events.rs` line 245):
+```rust
+ON CONFLICT ON CONSTRAINT uq_event_evidence_dedup DO NOTHING
+```
+
+**Impact**: Extra sources reinforce the same occurrence via evidence — they do NOT create duplicate map points. This is correct behavior.
+
+### 5.5 Source Maturity Documentation Gap
+
+**Finding: CONFIRMED — AGENTS.md documents it, README does not.**
+
+| Source | AGENTS.md Status | README Mention |
+|--------|------------------|----------------|
+| Wikipedia/Wikidata | ✅ Live | ✅ Implicit |
+| HAL/Persée/Gallica/BnF | ✅ "fetch/parse/extract ready with `--live`" | ❌ Not mentioned |
+| VIAF/ISNI/IdRef | ✅ "still stubs" | ❌ Not mentioned |
+| Europeana | ✅ "ready only with `EUROPEANA_API_KEY`" | ❌ Not mentioned |
+
+README focuses on the dump workflow and doesn't mention multi-source density features.
+
+### 5.6 Timeline-Only Events and ResolvePlaces
+
+**Finding: Partially documented in AGENTS.md, not in README.**
+
+**When events stay timeline-only** (no map pin):
+1. `place_label` exists but `geom IS NULL` (geocoding failed)
+2. `event_type` is not in `event_type_is_map_locus()` (e.g., `publication`)
+3. `TypedTime::Unknown` → `NeedsReview` (never accepted)
+
+**ResolvePlaces enrichment** (`lot_e.rs` lines 1973+):
+```rust
+pub async fn run_resolve_places(config, subject, all_unresolved) -> anyhow::Result<...>
+```
+
+This batch process attempts to geocode events with `timeline_eligible=true AND map_eligible=false`.
+
+**Alias enrichment** (`places.rs`): The offline gazetteer has ~250 places with aliases. If a place_label matches an alias, coords are assigned offline.
+
+**Documentation gap**: Neither README nor AGENTS.md explains:
+- What fraction of timeline events lack map pins
+- How to diagnose geocoding failures
+- How aliases bridge the gap
+
+---
+
+## 5.7 Key Finding: map_eligible Filtering Explains Imprecision
+
+**The core explanation for "imprecise/insufficient map results"**:
+
+1. **Pipeline filter**: Only `pipeline='person'` appears on map. Legacy dump results are excluded by design.
+
+2. **Coordinate requirement**: `list_geojson_events` requires `geom IS NOT NULL`. Events with place names but no coords are timeline-only.
+
+3. **Event type filter**: `event_type_is_map_locus()` allows ~20 types. Publications, commemorations, and awards are excluded.
+
+4. **Temporal filter**: `TypedTime::Unknown` → `NeedsReview` → never on map.
+
+5. **Source coverage**: Only Wikipedia/Wikidata used for person ingest. HAL/Gallica/BnF could provide more dated place mentions but aren't wired in.
+
+**Quantification** (from `multi_source.rs`):
+```sql
+-- Events on timeline but NOT on map:
+SELECT COUNT(*) FROM canonical_events
+WHERE pipeline = 'quality' AND is_active AND timeline_eligible AND NOT map_eligible
+```
+
+This query reveals the "gap" between what the system knows and what appears on the map.
+
+---
+
+## 6. Additional Gaps from Second API Cartography
+
+### 6.1 Anti-Noise Measures (Not Implemented)
 
 The Documentation API recommended these anti-noise filters — none are currently implemented:
 
@@ -918,7 +1094,7 @@ The Documentation API recommended these anti-noise filters — none are currentl
 | Drop country/region centroids | ❌ Not implemented | All P625 coords accepted regardless of precision |
 | Earth-only check | ❌ Not implemented | Lunar/Mars coords from Wikidata would be accepted |
 
-### 5.2 Pin Chain Completion Status
+### 6.2 Pin Chain Completion Status
 
 | Chain Step | Implemented | Notes |
 |------------|-------------|-------|
