@@ -8,6 +8,8 @@ Talaria Engine is a Rust pipeline for extracting historical events from Wikipedi
 Wikipedia dump → sentences → phrase-candidates → canonical events → HTTP API → Explorer UI
 ```
 
+Onboarding / product path: see root [README.md](../README.md).
+
 ## Core Contracts
 
 ### Single Person Pipeline
