@@ -24,9 +24,7 @@ pub enum SourceKind {
     OpenEdition,
     Sudoc,
     Fixture,
-    // Vague B: grounding / structured life facts connectors
-    GettyTgn,
-    Whg,
+    // Vague B: structured life facts connectors (document sources)
     FranceArchives,
     DeutscheBiographie,
     PopMerimee,
@@ -56,8 +54,6 @@ impl SourceKind {
             Self::OpenEdition => "open_edition",
             Self::Sudoc => "sudoc",
             Self::Fixture => "fixture",
-            Self::GettyTgn => "getty_tgn",
-            Self::Whg => "whg",
             Self::FranceArchives => "france_archives",
             Self::DeutscheBiographie => "deutsche_biographie",
             Self::PopMerimee => "pop_merimee",
@@ -87,8 +83,6 @@ impl SourceKind {
             "open_edition" | "openedition" => Self::OpenEdition,
             "sudoc" => Self::Sudoc,
             "fixture" => Self::Fixture,
-            "getty_tgn" | "tgn" | "getty" => Self::GettyTgn,
-            "whg" | "world_historical_gazetteer" => Self::Whg,
             "france_archives" | "francearchives" => Self::FranceArchives,
             "deutsche_biographie" | "deutschebiographie" | "gnd" => Self::DeutscheBiographie,
             "pop_merimee" | "merimee" | "pop" => Self::PopMerimee,

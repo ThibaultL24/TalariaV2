@@ -7,7 +7,6 @@ mod europeana;
 mod fixture;
 mod france_archives;
 mod gallica;
-mod getty_tgn;
 mod hal;
 mod internet_archive;
 pub mod net;
@@ -17,7 +16,6 @@ mod persee;
 mod pop_merimee;
 mod stub;
 mod theses_fr;
-mod whg;
 mod wikidata;
 mod wikipedia;
 mod wikisource;
@@ -38,9 +36,6 @@ pub use france_archives::{
     FranceArchivesConnector,
 };
 pub use gallica::GallicaConnector;
-pub use getty_tgn::{
-    CONNECTOR_VERSION as GETTY_TGN_VERSION, GettyTgnConfig, GettyTgnConnector, TgnPlaceMatch,
-};
 pub use hal::{CONNECTOR_VERSION as HAL_VERSION, HalConnector, normalize_hal_doc};
 pub use internet_archive::{InternetArchiveConfig, InternetArchiveConnector, normalize_ia_item};
 pub use open_library::OpenLibraryConnector;
@@ -57,7 +52,6 @@ pub use theses_fr::{
     CONNECTOR_VERSION as THESES_FR_VERSION, ThesesFrConfig, ThesesFrConnector,
     normalize_these_detail,
 };
-pub use whg::{CONNECTOR_VERSION as WHG_VERSION, WhgConfig, WhgConnector, WhgPlaceMatch};
 pub use wikidata::{WikidataSourceConnector, WikidataSourceConnectorConfig};
 pub use wikipedia::{WikipediaConnector, WikipediaConnectorConfig};
 pub use wikisource::{
@@ -258,42 +252,31 @@ fn caps_persee() -> SourceCapabilities {
     }
 }
 
-fn caps_grounding(kind: SourceKind) -> SourceCapabilities {
-    let (tier, idents, provides_coords) = match kind {
-        SourceKind::GettyTgn => (
-            AuthorityTier::Institutional,
-            vec!["tgn".into()],
-            false,
-        ),
-        SourceKind::Whg => (
-            AuthorityTier::Institutional,
-            vec!["whg".into()],
-            true,
-        ),
+fn caps_heritage_place(kind: SourceKind) -> SourceCapabilities {
+    let (tier, idents) = match kind {
         SourceKind::PopMerimee => (
             AuthorityTier::Institutional,
             vec!["merimee_ref".into()],
-            true,
         ),
-        _ => (AuthorityTier::CommunityCatalog, vec![], false),
+        _ => (AuthorityTier::CommunityCatalog, vec![]),
     };
     SourceCapabilities {
-        access_mode: SourceAccessMode::Sparql,
+        access_mode: SourceAccessMode::Api,
         authority_tier: tier,
-        provides_text: false,
+        provides_text: true,
         provides_structured_statements: true,
-        provides_coordinates: provides_coords,
+        provides_coordinates: true,
         provides_identifiers: true,
         provides_full_text: false,
         provides_ocr: false,
         provides_iiif: false,
         provides_audiovisual: false,
-        provides_authority_alignment: true,
-        license_notes: "grounding service — place-identity resolution".into(),
-        default_confidence_structured: 0.85,
+        provides_authority_alignment: false,
+        license_notes: "heritage monuments with WGS84 coords".into(),
+        default_confidence_structured: 0.80,
         default_confidence_ocr: 0.0,
         identifiers: idents,
-        document_types: vec![DocumentType::AuthorityRecord],
+        document_types: vec![DocumentType::Other("heritage_monument".into())],
     }
 }
 
@@ -648,45 +631,9 @@ pub fn default_registry_with_corpus(
         register_stub(&mut reg, kind, "alignment layer — not yet wired");
     }
 
-    // Vague B: grounding / structured life facts connectors
+    // Vague B: structured life facts connectors (document sources)
+    // Note: TGN/WHG are PlaceIdentityResolvers in place_identity.rs, not SourceConnectors
     if enable_live_wikimedia {
-        // Getty TGN — place-identity grounding (SPARQL)
-        match GettyTgnConnector::new(GettyTgnConfig::default()) {
-            Ok(conn) => {
-                reg.register(ConnectorRegistration {
-                    kind: SourceKind::GettyTgn,
-                    implemented: true,
-                    capabilities: caps_grounding(SourceKind::GettyTgn),
-                    connector: Some(Arc::new(conn)),
-                    config_notes: "Getty TGN SPARQL (public, place-identity grounding)".into(),
-                });
-            }
-            Err(_) => register_stub(
-                &mut reg,
-                SourceKind::GettyTgn,
-                "Getty TGN connector init failed",
-            ),
-        }
-
-        // WHG — place-identity with historical attestations (requires WHG_API_TOKEN)
-        let whg_config = WhgConfig::from_env();
-        if whg_config.api_token.is_some() {
-            match WhgConnector::new(whg_config) {
-                Ok(conn) => {
-                    reg.register(ConnectorRegistration {
-                        kind: SourceKind::Whg,
-                        implemented: true,
-                        capabilities: caps_grounding(SourceKind::Whg),
-                        connector: Some(Arc::new(conn)),
-                        config_notes: "WHG API (requires WHG_API_TOKEN)".into(),
-                    });
-                }
-                Err(_) => register_stub(&mut reg, SourceKind::Whg, "WHG connector init failed"),
-            }
-        } else {
-            register_stub(&mut reg, SourceKind::Whg, "requires WHG_API_TOKEN");
-        }
-
         // FranceArchives — structured life facts (SPARQL)
         match FranceArchivesConnector::new(FranceArchivesConfig::default()) {
             Ok(conn) => {
@@ -729,7 +676,7 @@ pub fn default_registry_with_corpus(
                 reg.register(ConnectorRegistration {
                     kind: SourceKind::PopMerimee,
                     implemented: true,
-                    capabilities: caps_grounding(SourceKind::PopMerimee),
+                    capabilities: caps_heritage_place(SourceKind::PopMerimee),
                     connector: Some(Arc::new(conn)),
                     config_notes: "POP Mérimée API (public, place entity + WGS84)".into(),
                 });
@@ -741,8 +688,7 @@ pub fn default_registry_with_corpus(
             ),
         }
     } else {
-        register_stub(&mut reg, SourceKind::GettyTgn, "enable with --live");
-        register_stub(&mut reg, SourceKind::Whg, "requires --live and WHG_API_TOKEN");
+        // TGN/WHG are PlaceIdentityResolvers, not SourceConnectors
         register_stub(&mut reg, SourceKind::FranceArchives, "enable with --live");
         register_stub(&mut reg, SourceKind::DeutscheBiographie, "enable with --live");
         register_stub(&mut reg, SourceKind::PopMerimee, "enable with --live");

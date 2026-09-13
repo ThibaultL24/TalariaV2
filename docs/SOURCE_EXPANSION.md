@@ -27,18 +27,31 @@ These sources **reinforce existing canonical events** with additional evidence. 
 
 These sources provide **place-identity resolution** and **structured life facts**. They help resolve place names to authoritative identifiers but do NOT provide coordinates for map pins.
 
-#### Place-Identity Grounding
+#### Place-Identity Grounding (PlaceIdentityResolver trait)
+
+These are **not** SourceConnectors. They implement the `PlaceIdentityResolver` trait in `talaria-sources/src/place_identity.rs` and are used in the grounding chain (mention → identity → geocode).
+
+| Source | Status | Implementation |
+|--------|--------|----------------|
+| Alias Gazetteer | Live | Built-in offline gazetteer with known Napoleon-era places |
+| Getty TGN | Live | SPARQL queries to `vocab.getty.edu/sparql` |
+| WHG | Gated (requires `WHG_API_TOKEN`) | REST API to `whgazetteer.org/api` |
+
+**Usage:**
+- These resolvers are chained via `CompositeIdentityResolver`
+- Order: Alias Gazetteer → TGN → WHG
+- They return `PlaceIdentity` with Wikidata QID alignment when available
+- Coordinates come LATER via P625 lookup on the resolved QID
+
+#### Heritage Place Sources (SourceConnector)
 
 | Source | Status | Description |
 |--------|--------|-------------|
-| Getty TGN | Live | Thesaurus of Geographic Names (SPARQL) |
-| WHG | Stub (requires `WHG_API_TOKEN`) | World Historical Gazetteer with historical attestations |
 | POP/Mérimée | Live | French heritage monuments with WGS84 coords |
 
 **Usage:**
-- TGN resolves place names to TGN URIs and provides place hierarchies (e.g., Paris → Île-de-France → France)
-- WHG provides historical place attestations with temporal context
 - POP/Mérimée provides WGS84 coordinates for heritage monuments
+- These are monument-centric lookups, not general place grounding
 
 #### Structured Life Facts
 
