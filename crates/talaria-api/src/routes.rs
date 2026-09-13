@@ -17,7 +17,8 @@ use events::{detail, evidence, geojson, timeline};
 use facets::{list_periods, list_profiles};
 use crate::llm;
 use ingest::{
-    get_ingest_job, start_agora_ingest, start_explorer_ingest, start_ingest, IngestJobMap,
+    get_explorer_status, get_ingest_job, start_agora_ingest, start_explorer_ingest, start_ingest,
+    IngestJobMap,
 };
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -73,6 +74,7 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/v1/ingest/explorer", post(start_explorer_ingest))
         .route("/api/v1/ingest/agora", post(start_agora_ingest))
         .route("/api/v1/ingest/{job_id}", get(get_ingest_job))
+        .route("/api/v1/ingest/explorer/{job_id}/status", get(get_explorer_status))
         .with_state(AppState {
             pool,
             offline_only,
