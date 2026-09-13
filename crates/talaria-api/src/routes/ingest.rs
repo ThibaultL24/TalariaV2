@@ -21,7 +21,8 @@ use crate::corpus_ingest::{self, live_corpus_providers};
 use crate::historiography;
 use crate::lot_e::write_minimal_seed_list;
 use talaria_store::{
-    person_density_counts, update_entity_qid, upsert_entity_with_kind, upsert_person_by_qid,
+    person_density_counts, person_extended_density_counts, update_entity_qid,
+    upsert_entity_with_kind, upsert_person_by_qid,
 };
 
 pub const LANE_EXPLORER: &str = "explorer";
@@ -616,11 +617,11 @@ pub async fn get_explorer_status(
         ));
     }
     
-    let (timeline_events, map_pins) = match job.entity_id {
-        Some(entity_id) => person_density_counts(&state.pool, entity_id)
+    let counts = match job.entity_id {
+        Some(entity_id) => person_extended_density_counts(&state.pool, entity_id)
             .await
-            .unwrap_or((0, 0)),
-        None => (0, 0),
+            .unwrap_or_default(),
+        None => Default::default(),
     };
     
     let elapsed_ms = job.started_at.map(|s| s.elapsed().as_millis() as u64);
@@ -631,8 +632,11 @@ pub async fn get_explorer_status(
         "status": job.status,
         "phase": job.progress.phase,
         "entity_id": job.entity_id,
-        "timeline_events": timeline_events,
-        "map_pins": map_pins,
+        "timeline_events": counts.timeline_events,
+        "map_pins": counts.map_pins,
+        "precise_dates": counts.precise_dates,
+        "precise_coords": counts.precise_coords,
+        "evidence_count": counts.evidence_count,
         "wiki_pages": job.progress.wiki_pages,
         "wdqs_events": job.progress.wdqs_events,
         "elapsed_ms": elapsed_ms,

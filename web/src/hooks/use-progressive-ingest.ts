@@ -165,6 +165,9 @@ export function useProgressiveIngest(opts: UseProgressiveIngestOptions = {}) {
     phase: state.status?.phase ?? null,
     timelineEvents: state.status?.timeline_events ?? 0,
     mapPins: state.status?.map_pins ?? 0,
+    preciseDates: state.status?.precise_dates ?? 0,
+    preciseCoords: state.status?.precise_coords ?? 0,
+    evidenceCount: state.status?.evidence_count ?? 0,
     wikiPages: state.status?.wiki_pages ?? 0,
     elapsedMs: state.status?.elapsed_ms ?? null,
   };

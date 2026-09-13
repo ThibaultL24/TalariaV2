@@ -5,6 +5,9 @@ interface IngestProgressBadgeProps {
   phase: string | null;
   timelineEvents: number;
   mapPins: number;
+  preciseDates: number;
+  preciseCoords: number;
+  evidenceCount: number;
   wikiPages: number;
   isRunning: boolean;
   error?: string | null;
@@ -16,6 +19,7 @@ const PHASE_LABELS: Record<string, string> = {
   resolving: "Resolving entity…",
   collecting: "Collecting sources…",
   extracting: "Extracting events…",
+  grounding: "Grounding places…",
   persisting: "Saving…",
   done: "Complete",
   failed: "Failed",
@@ -30,6 +34,9 @@ export function IngestProgressBadge({
   phase,
   timelineEvents,
   mapPins,
+  preciseDates,
+  preciseCoords,
+  evidenceCount,
   wikiPages,
   isRunning,
   error,
@@ -44,12 +51,21 @@ export function IngestProgressBadge({
     );
   }
 
-  const countsText =
-    timelineEvents > 0 || mapPins > 0
-      ? `${timelineEvents} événements · ${mapPins} pins`
-      : null;
+  const hasEvents = timelineEvents > 0 || mapPins > 0;
+  const countsText = hasEvents
+    ? `${timelineEvents} événements · ${mapPins} pins`
+    : null;
 
-  const sourcesText = wikiPages > 0 ? `${wikiPages} pages` : null;
+  const precisionText = hasEvents && (preciseDates > 0 || preciseCoords > 0)
+    ? `${preciseDates} dated · ${preciseCoords} located`
+    : null;
+
+  const sourcesText = wikiPages > 0 || evidenceCount > 0
+    ? [
+        wikiPages > 0 ? `${wikiPages} pages` : null,
+        evidenceCount > 0 ? `${evidenceCount} sources` : null,
+      ].filter(Boolean).join(" · ")
+    : null;
 
   return (
     <div className="pointer-events-none absolute top-3 left-1/2 z-10 -translate-x-1/2 flex flex-col items-center gap-1">
@@ -62,9 +78,14 @@ export function IngestProgressBadge({
           <span>{phaseLabel(phase, t)}</span>
         </div>
       )}
-      {(countsText || sourcesText) && (
+      {countsText && (
         <div className="rounded-full border border-(--map-panel-border) bg-(--color-bg-elevated)/75 px-2.5 py-0.5 text-[10px] text-(--color-text-muted) backdrop-blur-sm">
-          {[countsText, sourcesText].filter(Boolean).join(" · ")}
+          {countsText}
+        </div>
+      )}
+      {(precisionText || sourcesText) && (
+        <div className="rounded-full border border-(--map-panel-border) bg-(--color-bg-elevated)/65 px-2 py-0.5 text-[9px] text-(--color-text-muted)/80 backdrop-blur-sm">
+          {[precisionText, sourcesText].filter(Boolean).join(" · ")}
         </div>
       )}
     </div>

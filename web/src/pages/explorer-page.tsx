@@ -68,6 +68,9 @@ export function ExplorerPage() {
     ingestPhase,
     timelineEvents,
     mapPins,
+    preciseDates,
+    preciseCoords,
+    evidenceCount,
     wikiPages,
   } = usePersonPicker({ onCountsChanged: handleCountsChanged });
 
@@ -296,6 +299,9 @@ export function ExplorerPage() {
             phase={ingestPhase}
             timelineEvents={timelineEvents}
             mapPins={mapPins}
+            preciseDates={preciseDates}
+            preciseCoords={preciseCoords}
+            evidenceCount={evidenceCount}
             wikiPages={wikiPages}
             isRunning={ingestBusy}
             error={error}

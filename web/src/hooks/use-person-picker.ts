@@ -107,6 +107,9 @@ export function usePersonPicker(opts: UsePersonPickerOptions = {}) {
     ingestPhase: progressiveIngest.phase,
     timelineEvents: progressiveIngest.timelineEvents,
     mapPins: progressiveIngest.mapPins,
+    preciseDates: progressiveIngest.preciseDates,
+    preciseCoords: progressiveIngest.preciseCoords,
+    evidenceCount: progressiveIngest.evidenceCount,
     wikiPages: progressiveIngest.wikiPages,
     elapsedMs: progressiveIngest.elapsedMs,
   };

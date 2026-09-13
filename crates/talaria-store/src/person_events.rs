@@ -405,6 +405,54 @@ pub async fn upsert_raw_corpus_document(
     Ok(id)
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct ExtendedDensityCounts {
+    pub timeline_events: i64,
+    pub map_pins: i64,
+    pub precise_dates: i64,
+    pub precise_coords: i64,
+    pub evidence_count: i64,
+}
+
+pub async fn person_extended_density_counts(
+    pool: &PgPool,
+    entity_id: Uuid,
+) -> anyhow::Result<ExtendedDensityCounts> {
+    let row: (i64, i64, i64, i64) = sqlx::query_as(
+        r#"
+        SELECT 
+            COUNT(*) FILTER (WHERE timeline_eligible)::bigint as timeline,
+            COUNT(*) FILTER (WHERE map_eligible)::bigint as map,
+            COUNT(*) FILTER (WHERE date_precision IN ('day', 'month'))::bigint as precise_dates,
+            COUNT(*) FILTER (WHERE coord_precision_level IN ('point', 'city'))::bigint as precise_coords
+        FROM canonical_events
+        WHERE entity_id = $1 AND pipeline = 'person' AND is_active
+        "#,
+    )
+    .bind(entity_id)
+    .fetch_one(pool)
+    .await?;
+    
+    let evidence: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint FROM event_evidence ee
+        JOIN canonical_events ce ON ee.event_id = ce.id
+        WHERE ce.entity_id = $1 AND ce.pipeline = 'person' AND ce.is_active
+        "#,
+    )
+    .bind(entity_id)
+    .fetch_one(pool)
+    .await?;
+    
+    Ok(ExtendedDensityCounts {
+        timeline_events: row.0,
+        map_pins: row.1,
+        precise_dates: row.2,
+        precise_coords: row.3,
+        evidence_count: evidence,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -421,6 +421,9 @@ export interface ExplorerIngestStatus {
   entity_id?: string | null;
   timeline_events: number;
   map_pins: number;
+  precise_dates: number;
+  precise_coords: number;
+  evidence_count: number;
   wiki_pages: number;
   wdqs_events: number;
   elapsed_ms?: number | null;
