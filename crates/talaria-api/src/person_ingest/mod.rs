@@ -19,8 +19,8 @@ use talaria_sources::has_military_signal;
 use talaria_sources::load_seed_titles;
 use talaria_sources::wdqs::fetch_events_for_person;
 use talaria_store::{
-    connect, run_migrations, upsert_person_by_qid, upsert_raw_wikidata_document,
-    upsert_raw_wikipedia_document,
+    connect, run_migrations, update_entity_authority_ids, upsert_person_by_qid,
+    upsert_raw_wikidata_document, upsert_raw_wikipedia_document,
 };
 use uuid::Uuid;
 
@@ -85,6 +85,16 @@ pub async fn run_person_ingest(
         subject,
     )
     .await?;
+
+    // Persist authority bundle (P268 BnF, P214 VIAF, P213 ISNI, P269 IdRef) when available.
+    if let Some(meta) = wd_meta.as_ref() {
+        if !meta.authority_bundle.is_empty() {
+            let auth_json = meta.authority_bundle.to_json();
+            if let Err(e) = update_entity_authority_ids(&pool, entity_id, &auth_json).await {
+                tracing::warn!(error = %e, "failed to persist authority bundle");
+            }
+        }
+    }
 
     let mut ctx = GateContext {
         subject_birth_year: wd_meta.as_ref().and_then(|m| m.birth_year),

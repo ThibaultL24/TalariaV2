@@ -138,6 +138,26 @@ impl TypedTime {
             Self::Unknown { .. } => "unknown".into(),
         }
     }
+
+    /// Returns queryable date precision as a projection of kind×precision.
+    /// This is the semantic value stored in `canonical_events.date_precision`.
+    /// Values: "day", "month", "year", "range", "approx", "unknown"
+    pub fn date_precision(&self) -> &'static str {
+        match self {
+            Self::Exact { day, month, .. } => {
+                if day.is_some() && day != &Some(0) {
+                    "day"
+                } else if month.is_some() && month != &Some(0) {
+                    "month"
+                } else {
+                    "year"
+                }
+            }
+            Self::Range { .. } => "range",
+            Self::Approx { .. } => "approx",
+            Self::Unknown { .. } => "unknown",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

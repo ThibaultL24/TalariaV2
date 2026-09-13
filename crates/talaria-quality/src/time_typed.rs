@@ -372,6 +372,66 @@ mod tests {
         let dt = start_time_from_typed(&t).expect("projection");
         assert_eq!(dt.format("%Y-%m-%d").to_string(), "1799-01-01");
     }
+
+    #[test]
+    fn date_precision_exact_with_day() {
+        let t = TypedTime::Exact {
+            year: 1769,
+            month: Some(8),
+            day: Some(15),
+            surface: Some("15 August 1769".into()),
+        };
+        assert_eq!(t.date_precision(), "day");
+    }
+
+    #[test]
+    fn date_precision_exact_with_month_only() {
+        let t = TypedTime::Exact {
+            year: 1805,
+            month: Some(3),
+            day: None,
+            surface: Some("March 1805".into()),
+        };
+        assert_eq!(t.date_precision(), "month");
+    }
+
+    #[test]
+    fn date_precision_exact_year_only() {
+        let t = TypedTime::Exact {
+            year: 1805,
+            month: None,
+            day: None,
+            surface: Some("1805".into()),
+        };
+        assert_eq!(t.date_precision(), "year");
+    }
+
+    #[test]
+    fn date_precision_range() {
+        let t = TypedTime::Range {
+            start_year: 1804,
+            end_year: 1815,
+            surface: Some("1804–1815".into()),
+        };
+        assert_eq!(t.date_precision(), "range");
+    }
+
+    #[test]
+    fn date_precision_approx() {
+        let t = TypedTime::Approx {
+            year: 1799,
+            surface: Some("c. 1799".into()),
+        };
+        assert_eq!(t.date_precision(), "approx");
+    }
+
+    #[test]
+    fn date_precision_unknown() {
+        let t = TypedTime::Unknown {
+            surface: Some("sometime".into()),
+        };
+        assert_eq!(t.date_precision(), "unknown");
+    }
 }
 
 /// Serialise a `TypedTime` to a JSON value for storage in `canonical_events.time_json`.

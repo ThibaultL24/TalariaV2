@@ -215,6 +215,82 @@ fn entity_revision_id(entity: &Value) -> Option<String> {
     v.as_str().map(str::to_string)
 }
 
+/// Authority identifier bundle extracted from Wikidata claims.
+/// P268 (BnF), P214 (VIAF), P213 (ISNI), P269 (IdRef).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct AuthorityBundle {
+    pub bnf: Option<String>,    // P268
+    pub viaf: Option<String>,   // P214
+    pub isni: Option<String>,   // P213
+    pub idref: Option<String>,  // P269
+    pub gallica_ark: Option<String>, // P4258 (Gallica ARK identifier)
+}
+
+impl AuthorityBundle {
+    /// Convert to JSONB-compatible map for storage in entities.authority_ids.
+    pub fn to_json(&self) -> Value {
+        let mut map = serde_json::Map::new();
+        if let Some(ref v) = self.bnf {
+            map.insert("bnf".into(), Value::String(v.clone()));
+        }
+        if let Some(ref v) = self.viaf {
+            map.insert("viaf".into(), Value::String(v.clone()));
+        }
+        if let Some(ref v) = self.isni {
+            map.insert("isni".into(), Value::String(v.clone()));
+        }
+        if let Some(ref v) = self.idref {
+            map.insert("idref".into(), Value::String(v.clone()));
+        }
+        if let Some(ref v) = self.gallica_ark {
+            map.insert("gallica_ark".into(), Value::String(v.clone()));
+        }
+        Value::Object(map)
+    }
+
+    /// Check if any authority identifier is present.
+    pub fn is_empty(&self) -> bool {
+        self.bnf.is_none()
+            && self.viaf.is_none()
+            && self.isni.is_none()
+            && self.idref.is_none()
+            && self.gallica_ark.is_none()
+    }
+}
+
+/// Extract authority identifier bundle from Wikidata entity claims.
+/// Properties: P268 (BnF), P214 (VIAF), P213 (ISNI), P269 (IdRef), P4258 (Gallica ARK).
+pub fn extract_authority_bundle(entity: &Value) -> AuthorityBundle {
+    let claims = entity.get("claims");
+    AuthorityBundle {
+        bnf: extract_external_id(claims, "P268"),
+        viaf: extract_external_id(claims, "P214"),
+        isni: extract_external_id(claims, "P213"),
+        idref: extract_external_id(claims, "P269"),
+        gallica_ark: extract_external_id(claims, "P4258"),
+    }
+}
+
+/// Extract a single external-id value from claims (first non-deprecated, preferring preferred).
+fn extract_external_id(claims: Option<&Value>, pid: &str) -> Option<String> {
+    let arr = claims?.get(pid)?.as_array()?;
+    
+    // Prefer preferred rank, then normal; skip deprecated
+    let preferred = arr.iter().find(|stmt| {
+        stmt.get("rank").and_then(|v| v.as_str()) == Some("preferred")
+    });
+    let normal = arr.iter().find(|stmt| {
+        let rank = stmt.get("rank").and_then(|v| v.as_str()).unwrap_or("normal");
+        rank != "deprecated"
+    });
+    
+    let stmt = preferred.or(normal)?;
+    stmt.pointer("/mainsnak/datavalue/value")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -593,5 +669,109 @@ mod tests {
             promoted_statement_lines(&parsed),
             "STATEMENT\tbirth\tborn_in\t-44\t"
         );
+    }
+
+    #[test]
+    fn authority_bundle_extracts_p268_p214_p213_p269() {
+        let entity = json!({
+            "id": "Q517",
+            "claims": {
+                "P268": [{
+                    "mainsnak": {
+                        "snaktype": "value",
+                        "datavalue": { "value": "11887067q" }
+                    },
+                    "rank": "normal"
+                }],
+                "P214": [{
+                    "mainsnak": {
+                        "snaktype": "value",
+                        "datavalue": { "value": "12345678" }
+                    },
+                    "rank": "normal"
+                }],
+                "P213": [{
+                    "mainsnak": {
+                        "snaktype": "value",
+                        "datavalue": { "value": "0000 0001 2103 2683" }
+                    },
+                    "rank": "normal"
+                }],
+                "P269": [{
+                    "mainsnak": {
+                        "snaktype": "value",
+                        "datavalue": { "value": "026794586" }
+                    },
+                    "rank": "normal"
+                }]
+            }
+        });
+        let bundle = extract_authority_bundle(&entity);
+        assert_eq!(bundle.bnf.as_deref(), Some("11887067q"));
+        assert_eq!(bundle.viaf.as_deref(), Some("12345678"));
+        assert_eq!(bundle.isni.as_deref(), Some("0000 0001 2103 2683"));
+        assert_eq!(bundle.idref.as_deref(), Some("026794586"));
+        assert!(!bundle.is_empty());
+    }
+
+    #[test]
+    fn authority_bundle_prefers_preferred_rank() {
+        let entity = json!({
+            "id": "Q1",
+            "claims": {
+                "P268": [
+                    {
+                        "mainsnak": {
+                            "snaktype": "value",
+                            "datavalue": { "value": "old_bnf" }
+                        },
+                        "rank": "normal"
+                    },
+                    {
+                        "mainsnak": {
+                            "snaktype": "value",
+                            "datavalue": { "value": "new_bnf" }
+                        },
+                        "rank": "preferred"
+                    }
+                ]
+            }
+        });
+        let bundle = extract_authority_bundle(&entity);
+        assert_eq!(bundle.bnf.as_deref(), Some("new_bnf"));
+    }
+
+    #[test]
+    fn authority_bundle_skips_deprecated() {
+        let entity = json!({
+            "id": "Q1",
+            "claims": {
+                "P214": [{
+                    "mainsnak": {
+                        "snaktype": "value",
+                        "datavalue": { "value": "deprecated_viaf" }
+                    },
+                    "rank": "deprecated"
+                }]
+            }
+        });
+        let bundle = extract_authority_bundle(&entity);
+        assert!(bundle.viaf.is_none());
+        assert!(bundle.is_empty());
+    }
+
+    #[test]
+    fn authority_bundle_to_json() {
+        let bundle = AuthorityBundle {
+            bnf: Some("11887067q".into()),
+            viaf: Some("12345678".into()),
+            isni: None,
+            idref: None,
+            gallica_ark: None,
+        };
+        let j = bundle.to_json();
+        assert_eq!(j["bnf"], "11887067q");
+        assert_eq!(j["viaf"], "12345678");
+        assert!(j.get("isni").is_none());
     }
 }

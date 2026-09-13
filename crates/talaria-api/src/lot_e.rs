@@ -1339,6 +1339,8 @@ pub(crate) struct WikidataSubjectMeta {
     pub(crate) statements_text: String,
     pub(crate) commons_files: Vec<String>,
     pub(crate) frwikisource_title: Option<String>,
+    /// Authority identifier bundle: P268 (BnF), P214 (VIAF), P213 (ISNI), P269 (IdRef).
+    pub(crate) authority_bundle: talaria_wikidata::AuthorityBundle,
 }
 
 pub(crate) fn append_system_known_identifier(
@@ -1618,6 +1620,9 @@ pub(crate) async fn fetch_wikidata_subject_meta(
         .ok_or_else(|| anyhow::anyhow!("missing wikidata entity {qid}"))?;
 
     let parsed = talaria_wikidata::parse_entity_claims(&entity);
+    
+    // Extract authority identifiers: P268 (BnF), P214 (VIAF), P213 (ISNI), P269 (IdRef), P4258 (Gallica ARK)
+    let authority_bundle = talaria_wikidata::extract_authority_bundle(&entity);
 
     let sitelink_key = format!("{lang}wiki");
     let wiki_title = entity
@@ -1777,6 +1782,7 @@ pub(crate) async fn fetch_wikidata_subject_meta(
         statements_text,
         commons_files,
         frwikisource_title,
+        authority_bundle,
     })
 }
 
