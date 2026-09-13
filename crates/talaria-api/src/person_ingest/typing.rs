@@ -12,8 +12,19 @@ use talaria_quality::{place_query, TypedTime};
 use talaria_sources::{
     resolve_place_offline, CompositeIdentityResolver, PlaceIdentity, PlaceIdentityResolver,
 };
-use talaria_store::apply_coords_to_event;
+use talaria_store::{apply_full_place_grounding, upsert_place_resolution, PlaceResolutionInsert};
 use uuid::Uuid;
+
+/// Result of place grounding: coordinates + identity QID.
+/// Used to pass both pieces to event persistence.
+#[derive(Debug, Clone)]
+pub struct PlaceGroundingResult {
+    pub coords: Option<(f64, f64)>,
+    pub identity_qid: Option<String>,
+    pub identity_source: Option<String>,
+    /// Full identity for audit trail (if resolved).
+    pub identity: Option<PlaceIdentity>,
+}
 
 pub fn typed_time_from_year(year: Option<i32>) -> TypedTime {
     match year {
@@ -159,6 +170,67 @@ pub async fn resolve_coords(label: Option<&str>, given: Option<(f64, f64)>) -> O
     geocode_place(label).await.map(|g| (g.lat, g.lon))
 }
 
+/// Full place grounding: identity resolution + geocoding in one call.
+/// Returns both coordinates and the Wikidata QID for `place_identity_qid`.
+/// This is the main entry point for person_ingest place grounding.
+pub async fn ground_place_full(
+    label: Option<&str>,
+    given_coords: Option<(f64, f64)>,
+) -> PlaceGroundingResult {
+    let label = match label.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(l) => l,
+        None => {
+            return PlaceGroundingResult {
+                coords: given_coords,
+                identity_qid: None,
+                identity_source: None,
+                identity: None,
+            };
+        }
+    };
+
+    // Step 1: Resolve place identity (async — TGN SPARQL, WHG REST, or alias gazetteer)
+    let identity = resolve_place_identity(Some(label)).await;
+    let identity_qid = identity.as_ref().and_then(|i| i.wikidata_qid.clone());
+    let identity_source = identity.as_ref().map(|i| i.identity_source.clone());
+
+    // Step 2: Get coordinates (given coords take precedence, then geocode identity)
+    let coords = if given_coords.is_some() {
+        given_coords
+    } else if let Some(ref ident) = identity {
+        geocode_identity(ident).await.map(|r| (r.lat, r.lon))
+    } else {
+        // Fallback: try traditional geocode_place path
+        geocode_place(Some(label)).await.map(|r| (r.lat, r.lon))
+    };
+
+    // If we still don't have a QID but geocode_place found one, use it
+    let final_qid = if identity_qid.is_some() {
+        identity_qid
+    } else if let Some(res) = geocode_place(Some(label)).await {
+        res.wikidata_qid
+    } else {
+        None
+    };
+
+    PlaceGroundingResult {
+        coords,
+        identity_qid: final_qid,
+        identity_source,
+        identity,
+    }
+}
+
+/// Resolve coordinates for an event, with given coords taking precedence.
+/// Also returns identity QID if resolved.
+pub async fn resolve_coords_with_identity(
+    label: Option<&str>,
+    given: Option<(f64, f64)>,
+) -> (Option<(f64, f64)>, Option<String>) {
+    let result = ground_place_full(label, given).await;
+    (result.coords, result.identity_qid)
+}
+
 pub async fn backfill_person_geocodes(pool: &sqlx::PgPool, entity_id: Uuid) -> anyhow::Result<()> {
     let rows: Vec<(Uuid, Option<String>)> = sqlx::query_as(
         r#"
@@ -172,9 +244,40 @@ pub async fn backfill_person_geocodes(pool: &sqlx::PgPool, entity_id: Uuid) -> a
     .await?;
     for (id, label) in rows {
         let Some(label) = label else { continue };
-        if let Some(geo) = geocode_place(Some(&label)).await {
-            apply_coords_to_event(pool, id, geo.lat, geo.lon).await?;
+        let result = ground_place_full(Some(&label), None).await;
+        if let Some((lat, lon)) = result.coords {
+            apply_full_place_grounding(pool, id, result.identity_qid.as_deref(), lat, lon).await?;
         }
     }
     Ok(())
+}
+
+/// Persist place resolution to the audit trail table.
+pub async fn persist_place_resolution(
+    pool: &sqlx::PgPool,
+    label: &str,
+    identity: &PlaceIdentity,
+    coords: Option<(f64, f64)>,
+) -> anyhow::Result<Uuid> {
+    upsert_place_resolution(
+        pool,
+        &PlaceResolutionInsert {
+            place_entity_id: None,
+            place_label: label.to_string(),
+            method: identity.identity_source.clone(),
+            wikidata_qid: identity.wikidata_qid.clone(),
+            tgn_id: identity.tgn_id.clone(),
+            whg_id: identity.whg_id.clone(),
+            geonames_id: identity.geonames_id.clone(),
+            lat: coords.map(|(lat, _)| lat),
+            lon: coords.map(|(_, lon)| lon),
+            score: Some(identity.confidence),
+            identity_source: Some(identity.identity_source.clone()),
+            raw_json: serde_json::json!({
+                "label": identity.label,
+                "confidence": identity.confidence,
+            }),
+        },
+    )
+    .await
 }

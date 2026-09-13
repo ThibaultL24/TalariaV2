@@ -658,6 +658,9 @@ pub struct QualityEventInsert {
     pub supersedes: Option<Uuid>,
     pub source_count: i32,
     pub evidence_count: i32,
+    /// Wikidata QID for the resolved place identity (from TGN, WHG, or Wikidata search).
+    /// Separate from geocoding — identity resolution establishes this before coordinates.
+    pub place_identity_qid: Option<String>,
 }
 
 /// Append-only insert into the person lane. Never mutates prior rows in place.
@@ -687,12 +690,12 @@ pub async fn insert_quality_canonical_event(
                 place_label, place_entity_id, geom, confidence, map_eligible,
                 historically_valid, timeline_eligible, source_count, evidence_count,
                 fingerprint, occurrence_key, occurrence_stem, primary_object, is_active, supersedes, predicate,
-                assembler_version, pipeline, event_candidate_id
+                assembler_version, pipeline, event_candidate_id, place_identity_qid
             )
             VALUES (
                 $1,$2,$3,$4,$5,$6,$7,$8,$9,
                 ST_SetSRID(ST_MakePoint($10,$11),4326)::geography,
-                $12,$13,$14,$15,$16,$17,$18,$19,$20,$21,true,$22,$23,$24,'person',$25
+                $12,$13,$14,$15,$16,$17,$18,$19,$20,$21,true,$22,$23,$24,'person',$25,$26
             )
             RETURNING id
             "#,
@@ -722,6 +725,7 @@ pub async fn insert_quality_canonical_event(
         .bind(&event.predicate)
         .bind(&event.assembler_version)
         .bind(event.event_candidate_id)
+        .bind(&event.place_identity_qid)
         .fetch_one(pool)
         .await?
     } else {
@@ -732,10 +736,10 @@ pub async fn insert_quality_canonical_event(
                 place_label, place_entity_id, confidence, map_eligible,
                 historically_valid, timeline_eligible, source_count, evidence_count,
                 fingerprint, occurrence_key, occurrence_stem, primary_object, is_active, supersedes, predicate,
-                assembler_version, pipeline, event_candidate_id
+                assembler_version, pipeline, event_candidate_id, place_identity_qid
             )
             VALUES (
-                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,true,$20,$21,$22,'person',$23
+                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,true,$20,$21,$22,'person',$23,$24
             )
             RETURNING id
             "#,
@@ -763,6 +767,7 @@ pub async fn insert_quality_canonical_event(
         .bind(&event.predicate)
         .bind(&event.assembler_version)
         .bind(event.event_candidate_id)
+        .bind(&event.place_identity_qid)
         .fetch_one(pool)
         .await?
     };

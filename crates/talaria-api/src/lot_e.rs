@@ -1303,6 +1303,7 @@ async fn process_one(
             supersedes: None,
             source_count: 1,
             evidence_count: 1,
+            place_identity_qid: None,
         },
     )
     .await?;

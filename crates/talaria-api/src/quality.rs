@@ -247,6 +247,7 @@ async fn judge_and_maybe_assemble(
             supersedes: None,
             source_count: 1,
             evidence_count: 1,
+            place_identity_qid: None,
         },
     )
     .await?;
@@ -879,6 +880,7 @@ pub async fn run_quality_supersede_death(
             supersedes: old,
             source_count: 1,
             evidence_count: 1,
+            place_identity_qid: None,
         },
     )
     .await?;
