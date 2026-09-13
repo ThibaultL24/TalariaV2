@@ -2,7 +2,175 @@
 
 **Date**: September 2026  
 **Status**: Diagnostic findings — no implementation changes  
-**Author**: Cursor Cloud Agent (requested by Thibault)
+**Author**: Cursor Cloud Agent (requested by Thibault)  
+**Updated**: Verified teammate Documentation API hypotheses against code
+
+---
+
+## 0. Repo Questions — Direct Answers
+
+These answers are verified against the codebase as of 2026-09-13.
+
+### Q1: Gallica connector — SRU only, or already ALTO / texteBrut / IIIF / ContentSearch?
+
+**Answer: SRU only.**
+
+The Gallica connector (`crates/talaria-sources/src/connectors/gallica.rs`) uses exclusively the SRU endpoint:
+
+```rust
+const SRU: &str = "https://gallica.bnf.fr/SRU";
+```
+
+- **No ALTO OCR** — not implemented
+- **No texteBrut** — not implemented  
+- **No IIIF** — declared in capabilities (`provides_iiif: true` in `caps_stub`) but not used
+- **No ContentSearch** — not implemented
+
+The connector version is `"gallica:sru_v1"` confirming it only parses Dublin Core metadata from SRU responses. No full-text or coordinate extraction.
+
+### Q2: data.bnf — live SPARQL and/or dumps?
+
+**Answer: Neither. SRU only (Dublin Core).**
+
+The BnF connector (`crates/talaria-sources/src/connectors/bnf.rs`) uses the catalogue SRU endpoint:
+
+```rust
+pub const DEFAULT_BASE_URL: &str = "https://catalogue.bnf.fr/api/SRU";
+```
+
+- **No SPARQL** — `data.bnf.fr` SPARQL endpoint is not called anywhere
+- **No dumps** — no RDF/NT dump ingestion
+- **Only Dublin Core** — `recordSchema=dublincore` in SRU queries
+
+The connector is named `"bnf:v1"` and only extracts: ark, title, description, date, creator, language, publisher.
+
+### Q3: Persée — which OAI prefixes (dc vs mods vs persee_mets)?
+
+**Answer: `oai_dc` (Dublin Core) only.**
+
+The Persée connector (`crates/talaria-sources/src/connectors/persee.rs`) uses OAI-PMH with Dublin Core:
+
+```rust
+let url = format!(
+    "{OAI_BASE}?verb=GetRecord&metadataPrefix=oai_dc&identifier={}",
+    percent_encode(&identifier)
+);
+```
+
+- **`oai_dc`** — the only metadata prefix used
+- **No `mods`** — not implemented
+- **No `persee_mets`** — not implemented
+
+Discovery uses portal HTML scraping, then OAI-PMH GetRecord with Dublin Core for fetch.
+
+### Q4: Schema `canonical_events` / `event_evidence` — fields for coord_precision, date_precision / time_json, fragment_id, evidence_hash?
+
+**Answer:**
+
+| Field | Table | Present | Details |
+|-------|-------|---------|---------|
+| **coord_precision** | `canonical_events` | ✅ `location_precision TEXT` | Added in migration 010; values: exact/approximate/centroid/unknown |
+| **uncertainty_radius_m** | `canonical_events` | ✅ `DOUBLE PRECISION` | Added in migration 010 |
+| **date_precision** | `canonical_events` | ❌ Embedded in `time_json` | No separate column; `time_json.precision` holds day/month/year |
+| **time_json** | `canonical_events` | ✅ `JSONB` | `{kind, year, start, end, surface, precision}` |
+| **fragment_id** | `event_evidence` | ❌ Not on evidence | Only on `event_candidates.fragment_id`; evidence links via `sentence_id` |
+| **evidence_hash** | `event_evidence` | ✅ `TEXT` | Added in migration 027; `md5(canonical_event_id + raw_document_id + quoted_text)` |
+| **source_locator** | `event_evidence` | ✅ `TEXT` | Added in migration 027; JSON with kind/uri/title |
+
+Schema gaps:
+- `date_precision` is embedded, not a separate queryable column
+- `fragment_id` not linked to evidence (would enable triplet: source_url + quoted_text + fragment_id)
+- No `coord_uncertainty_source` to track which geocoder provided the coordinates
+
+### Q5: Geocode path — Wikidata P625 only, or any fallback (Nominatim/Geonames/BAN)?
+
+**Answer: Wikidata P625 only. No Nominatim, Geonames, or BAN.**
+
+The geocode path in `crates/talaria-api/src/person_ingest/typing.rs` and `lot_e.rs`:
+
+```
+1. resolve_place_offline(label)     → hardcoded gazetteer (~250 places)
+2. place_hint_from_title(label)     → "Battle of X" → "X"
+3. fetch_wikidata_coords_for_label  → Wikidata search → P625
+```
+
+**Verified absent**:
+- `grep -r "Nominatim" *.rs` → no matches
+- `grep -r "geonames" *.rs` → no matches  
+- `grep -r "ban.fr\|adresse.data" *.rs` → no matches
+
+The only coordinate sources are:
+1. Offline alias gazetteer (static)
+2. Wikidata P625 claims (live)
+3. Wikipedia page coordinates (for followed pages only)
+
+---
+
+## 0.1 Teammate Hypothesis Verification
+
+### Documentation API P0: Evidence triplet (source_url + quoted_text + fragment_id)
+
+**Status: Partially implemented, not enforced.**
+
+- `event_evidence.source_locator` (JSON) stores `{kind, uri, title}` — ✅ source_url
+- `event_evidence.quoted_text` — ✅ quoted_text  
+- `event_evidence.fragment_id` — ❌ NOT present (only on `event_candidates`)
+
+The triplet is **not enforced as a unique constraint**. Instead, `evidence_hash = md5(canonical_event_id + raw_document_id + quoted_text)` is used for deduplication (migration 027).
+
+### Documentation API P0: Gallica depth (OAIRecord/nqamoyen/texteBrut/ALTO/ContentSearch/IIIF)
+
+**Status: Not implemented. SRU bibliographic notices only.**
+
+Gallica connector returns `DocumentType::BibliographicNotice` with `full_text_available: true` but never fetches the actual text. The `provides_iiif: true` capability is declared but unused.
+
+### Documentation API P0: Separate spatial precision (point/city/region/country) and temporal precision
+
+**Status: Spatial partially, temporal embedded.**
+
+Spatial precision:
+- `canonical_events.location_precision` — exists with CHECK `IN ('exact', 'approximate', 'centroid', 'unknown')`
+- `canonical_events.uncertainty_radius_m` — exists
+- **Missing**: point/city/region/country granularity
+
+Temporal precision:
+- `time_json.precision` — embedded in JSONB, not a separate column
+- Values: `day`, `month`, `year` per `TypedTime` struct
+- **Gap**: Not queryable without JSON operators
+
+### Documentation API P0: Grounding chain before geocode
+
+**Status: Not implemented as a formal chain.**
+
+Current flow is linear:
+1. Extract raw place mention
+2. Immediately attempt geocode
+3. If geocode fails, `map_eligible=false`
+
+No intermediate "grounding" step that resolves place identity before geocoding. The system conflates mention resolution with coordinate lookup.
+
+### Documentation API P1: IdRef → VIAF → ISNI resolution order
+
+**Status: All three are stubs.**
+
+```rust
+for kind in [SourceKind::Viaf, SourceKind::Isni, SourceKind::IdRef, ...] {
+    register_stub(&mut reg, kind, "alignment layer — not yet wired");
+}
+```
+
+No implementation exists. The recommended cascade order (IdRef → VIAF → ISNI) is not coded.
+
+### Teammate Hypothesis: Map fuzziness causes
+
+| Cause | Verified | Evidence |
+|-------|----------|----------|
+| (a) Coarse Wikidata geocode | ✅ True | `uncertainty_radius_m: Some(5000.0)` hardcoded for all Wikidata results |
+| (b) Coarse dates | ✅ True | `TypedTime::Unknown` → `NeedsReview` → never on map |
+| (c) Single evidence without fragment | ✅ True | `fragment_id` not on `event_evidence` table |
+| (d) Weak entity resolution | ✅ True | VIAF/ISNI/IdRef all stubs; no person disambiguation |
+
+All four causes are confirmed in code.
 
 ---
 
@@ -208,6 +376,8 @@ Types **exclus** de la carte:
 
 ### 3.3 Hypothesis: Institutional Sources Not Used for Map Points
 
+**Verified: TRUE** — `grep -ri "gallica\|persee\|bnf\|hal" crates/talaria-api/src/person_ingest/` returns **no matches**.
+
 **Evidence** (`crates/talaria-api/src/routes/ingest.rs`):
 
 ```rust:382:413:crates/talaria-api/src/routes/ingest.rs
@@ -229,6 +399,13 @@ async fn run_agora_lane(...) -> anyhow::Result<Value> {
     // Creates historiographic claims, NOT map events
 }
 ```
+
+**Code-verified**: The `person_ingest` module imports only:
+- `talaria_sources::wdqs` (WDQS events)
+- `talaria_wikidata` (Wikidata client)
+- `crate::lot_e` (Wikidata meta + Wikipedia fetch)
+
+No imports from `corpus_ingest`, `hal`, `gallica`, `bnf`, or `persee` connectors.
 
 **Impact**: Des sources riches (Gallica, BnF, HAL) qui pourraient fournir des lieux datés ne contribuent jamais aux points de carte.
 
@@ -283,6 +460,67 @@ Pas de clustering actif — désactivé dans le code actuel.
 ---
 
 ## 4. Prioritized Recommendations
+
+### P0 — Prerequisites (from Documentation API team, verified)
+
+#### 4.0a Evidence Triplet Schema
+
+**What**: Add `fragment_id` to `event_evidence` table; enforce unique constraint on `(source_locator, quoted_text, fragment_id)`.
+
+**Why**: Currently evidence lacks fragment-level provenance. The `evidence_hash` (md5) conflates document + quote but loses fragment granularity.
+
+**Files**:
+- New migration: `migrations/029_evidence_fragment_triplet.sql`
+- `crates/talaria-store/src/person_events.rs`
+
+**Expected Impact**: Enables precise citation back to source fragments; prerequisite for Gallica ALTO integration.
+
+**Risk**: Migration on existing data; need to backfill `fragment_id` from `event_candidates` where available.
+
+#### 4.0b Separate Precision Columns
+
+**What**: Add `date_precision TEXT CHECK (IN ('day', 'month', 'year', 'decade', 'century', 'unknown'))` and `coord_precision_level TEXT CHECK (IN ('point', 'city', 'region', 'country', 'unknown'))` as queryable columns.
+
+**Why**: `time_json.precision` is embedded in JSONB, not indexable. `location_precision` exists but with coarse values (exact/approximate/centroid).
+
+**Files**:
+- New migration
+- `crates/talaria-quality/src/model.rs`
+- `crates/talaria-store/src/quality.rs`
+
+**Expected Impact**: Enables filtering map by precision level (e.g., hide city-level when zoomed in).
+
+#### 4.0c Grounding Chain Before Geocode
+
+**What**: Separate place mention resolution (→ place entity) from geocoding (→ coordinates). Ground to `place_entity_id` first, then geocode the entity.
+
+**Why**: Current system skips entity resolution and goes directly to coordinate lookup. This loses the chance to:
+- Use entity aliases for geocoding
+- Prefer authoritative coordinates over search results
+- Track which entity a coordinate belongs to
+
+**Files**:
+- `crates/talaria-api/src/person_ingest/typing.rs`
+- `crates/talaria-quality/src/places.rs`
+
+**Expected Impact**: +15-20% place resolution by using entity aliases.
+
+#### 4.0d Authority Resolution: IdRef → VIAF → ISNI
+
+**What**: Implement the three authority connectors in cascade order: IdRef (French authority), VIAF (international), ISNI (identifier).
+
+**Why**: IdRef has the richest French historical data; VIAF provides international consolidation; ISNI adds numeric identifier.
+
+**Files**:
+- `crates/talaria-sources/src/connectors/idref.rs` (new)
+- `crates/talaria-sources/src/connectors/viaf.rs` (new)
+- `crates/talaria-sources/src/connectors/isni.rs` (new)
+
+**Expected Impact**: Prerequisite for multi-source enrichment; +20-30% person disambiguation accuracy.
+
+**Risk**: High complexity; IdRef uses SRU, VIAF uses SRU/JSON, ISNI uses REST.
+
+---
 
 ### P1 — High Leverage / Medium Risk
 
@@ -374,6 +612,38 @@ Pas de clustering actif — désactivé dans le code actuel.
 
 ---
 
+### P6 — Future: Gallica Full Depth (from Documentation API team)
+
+#### 4.6 Gallica ALTO/texteBrut/IIIF/ContentSearch
+
+**Current State**: SRU bibliographic notices only.
+
+**Depth Layers Available** (not yet implemented):
+
+| Layer | API | What It Provides |
+|-------|-----|------------------|
+| OAIRecord | OAI-PMH | Dublin Core metadata (same as SRU) |
+| nqamoyen | REST | Thumbnail + preview quality images |
+| texteBrut | REST | Plain-text OCR (lossy) |
+| ALTO | IIIF | Structured OCR with coordinates per word |
+| ContentSearch | IIIF | Full-text search with hit highlighting |
+| IIIF | Image API | High-resolution page images |
+
+**Implementation Priority**:
+1. `texteBrut` — easiest, plain text endpoint
+2. `ALTO` — highest value, enables fragment-level citation with page coords
+3. `ContentSearch` — search within documents
+
+**Files**:
+- `crates/talaria-sources/src/connectors/gallica.rs`
+- New: `gallica_iiif.rs` module
+
+**Expected Impact**: Transforms Gallica from metadata-only to full-text extraction source.
+
+**Risk**: Rate limits on Gallica APIs; ALTO XML parsing complexity.
+
+---
+
 ## 5. Verification Checklist
 
 Before implementing any recommendation, verify:
@@ -419,4 +689,58 @@ Before implementing any recommendation, verify:
 
 ---
 
+## Appendix C: Geocode Path Detail (Confirmed)
+
+```
+geocode_place(label)
+    │
+    ├── is_wikidata_qid(label)?
+    │   └── YES: WikidataClient::fetch_coordinates(qid)
+    │             → P625 claim lookup
+    │             → uncertainty_radius_m: 5000.0 (hardcoded)
+    │
+    ├── resolve_place_offline(label)
+    │   └── ALIAS_GAZETTEER (~250 entries, Napoleonic bias)
+    │       → places.rs lookup_alias()
+    │       → uncertainty_radius_m: 500.0 (exact) or 5000.0 (centroid)
+    │
+    └── lot_e::resolve_label_coords(label)
+        ├── resolve_place_offline(label)  ← retry
+        ├── place_hint_from_title(label)
+        │   └── "Battle of X" → resolve_place_offline("X")
+        └── fetch_wikidata_coords_for_label(label, "en")
+            └── Wikidata search → first result → P625
+            └── uncertainty_radius_m: 5000.0
+
+FALLBACKS NOT IMPLEMENTED:
+❌ Nominatim (OpenStreetMap)
+❌ GeoNames
+❌ BAN (Base Adresse Nationale)
+❌ Google Geocoding API
+❌ Photon
+```
+
+## Appendix D: Connector API Protocols (Confirmed)
+
+| Connector | Protocol | Endpoint | Metadata Format |
+|-----------|----------|----------|-----------------|
+| Gallica | SRU | `gallica.bnf.fr/SRU` | Dublin Core XML |
+| BnF | SRU | `catalogue.bnf.fr/api/SRU` | Dublin Core XML |
+| Persée | OAI-PMH | `oai.persee.fr/oai` | `oai_dc` (Dublin Core) |
+| HAL | Solr REST | `api.archives-ouvertes.fr` | JSON |
+| OpenAlex | REST | `api.openalex.org` | JSON |
+| theses.fr | REST | `theses.fr/api` | JSON |
+| Wikidata | MediaWiki API | `wikidata.org/w/api.php` | JSON |
+| Wikipedia | MediaWiki API | `{lang}.wikipedia.org/w/api.php` | JSON |
+
+**Not Implemented**:
+- data.bnf.fr SPARQL
+- Gallica IIIF / ALTO / ContentSearch
+- Persée MODS / persee_mets
+- Any RDF dump ingestion
+
+---
+
 *Document généré automatiquement. Toute hypothèse incorrecte peut être écartée — vérifier dans le code source.*
+
+*Updated 2026-09-13 with Documentation API team verification.*
