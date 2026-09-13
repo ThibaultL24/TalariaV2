@@ -106,9 +106,155 @@ The only coordinate sources are:
 
 ---
 
-## 0.1 Teammate Hypothesis Verification
+## 0.1 Second API Cartography Verification (2026-09-13)
 
-### Documentation API P0: Evidence triplet (source_url + quoted_text + fragment_id)
+The following hypotheses from the Documentation API team's second cartography have been verified against the codebase.
+
+### Wikipedia: REST extracts only → labels/summary, NOT typed coords/dates?
+
+**Status: PARTIALLY FALSE — varies by code path.**
+
+| Code Path | Extracts | Coords | Revisions/Wikitext | QID from pageprops |
+|-----------|----------|--------|--------------------|--------------------|
+| `lot_e.rs::fetch_wikipedia_extract` | ✅ | ✅ `prop=coordinates` | ✅ `rvprop=content\|ids` | ✅ `ppprop=wikibase_item` |
+| `talaria-sources Wikipedia connector` | ✅ | ❌ Not extracted | ✅ `rvprop=content\|ids` | ✅ via `pageprops` |
+| `lot_e.rs REST fallback` | ✅ HTML→text | ✅ summary API | ❌ | ❌ |
+
+**Evidence** (`crates/talaria-api/src/lot_e.rs` lines 169-174):
+```rust
+("prop", "extracts|info|coordinates|revisions|pageprops"),
+("ppprop", "wikibase_item"),
+("rvprop", "content|ids"),
+```
+
+The `lot_e.rs` path (used by explorer ingest) **does** fetch coordinates and wikitext. However, the Wikipedia connector in `talaria-sources` does **not** extract page coordinates — only plain text/wikitext.
+
+**Underused capabilities (verified absent)**:
+- `parse sections` for `quoted_text + anchors` — not implemented
+- `revisions for revid/hash` — revid fetched but hash not computed from content
+
+**Teammate verdict confirmed**: "extracts=UI; pins should come from Wikidata P625" — **CORRECT**. Wikipedia page coords are secondary; P625 is the primary geocode source.
+
+### Wikidata P0 geo: P625 + wikibase:geoPrecision → store coord_precision_m?
+
+**Status: NOT IMPLEMENTED — precision lost.**
+
+| Property | Extracted | Stored |
+|----------|-----------|--------|
+| P625 lat/lon | ✅ | ✅ |
+| P625 `wikibase:geoPrecision` | ❌ NOT extracted | ❌ |
+| P580/P582/P585 dates | ✅ (year only) | ✅ in `time_json` |
+| P580/P582/P585 `timePrecision` | ❌ NOT extracted | ❌ |
+| P131 (located in admin) | ❌ NOT extracted | ❌ |
+| P17 (country) | ❌ NOT extracted | ❌ |
+| P268 (BnF ID) | ❌ NOT extracted | ❌ |
+| P214 (VIAF ID) | ❌ NOT extracted | ❌ |
+| P213 (ISNI) | ❌ NOT extracted | ❌ |
+| P269 (IdRef ID) | ❌ NOT extracted | ❌ |
+| P4258 (Gallica ID) | ❌ NOT extracted | ❌ |
+
+**Evidence** (`crates/talaria-wikidata/src/client.rs` lines 91-120):
+```rust
+async fn fetch_coordinates(&self, qid: &str) -> Result<Option<(f64, f64)>> {
+    // Only lat/lon extracted, no precision
+    let Some(lat) = coord.get("latitude").and_then(|v| v.as_f64()) else { ... };
+    let Some(lon) = coord.get("longitude").and_then(|v| v.as_f64()) else { ... };
+    Ok(Some((lat, lon)))
+}
+```
+
+The SPARQL queries in `wdqs.rs` also do not request `wikibase:geoPrecision`.
+
+**Anti-noise recommendations (verified not implemented)**:
+- `ignore deprecated statements` — ✅ IMPLEMENTED in `promoted_statement_lines`
+- `drop country/region centroids` — ❌ NOT implemented
+- `Earth only (no lunar/Mars coords)` — ❌ NOT checked
+
+### Commons: prefer SDC P9149/P1259 over ambiguous P625?
+
+**Status: NOT IMPLEMENTED — SDC coordinate properties not extracted.**
+
+| Property | Description | Extracted |
+|----------|-------------|-----------|
+| P180 | depicts | ✅ |
+| P170/P2091 | creator | ✅ |
+| sha1 | content hash | ✅ |
+| license | rights | ✅ |
+| P9149 | location of POI shown | ❌ NOT extracted |
+| P1259 | coordinate of viewpoint | ❌ NOT extracted |
+| P625 | coordinates (ambiguous) | ❌ NOT extracted from Commons |
+
+**Evidence** (`crates/talaria-sources/src/connectors/commons.rs` lines 196-213):
+```rust
+fn depicts_from_entity(entity: &Value) -> Vec<String> {
+    entity.pointer("/statements/P180")  // Only P180, not P9149/P1259
+```
+
+The Commons connector does **not** extract any coordinate properties. It only provides metadata for media licensing and attribution.
+
+### Europeana: edm:Place lat/lon OR resolved Wikidata QID?
+
+**Status: NOT IMPLEMENTED — no coordinate extraction.**
+
+**Evidence** (`crates/talaria-sources/src/connectors/europeana.rs`):
+- `grep "edm:Place\|edmPlaceLat\|edmPlaceLon"` → **no matches**
+- The connector extracts only: id, title, description, provider, date, language, type
+- No geographic data extracted from `edm:Place` or `dcterms:spatial`
+
+**Recommendation verified but not coded**: Europeana items with `edm:Place` coordinates could provide additional geo data, especially for cultural heritage objects.
+
+### Stubs ROI: IdRef (Solr) P1 > VIAF > ISNI
+
+**Status: All stubs. No authority identifiers read from Wikidata.**
+
+**Evidence** (grep `P268|P214|P213|P269|P4258` in `*.rs`):
+- **No matches** — these authority identifier properties are never extracted from Wikidata entities.
+
+Even without implementing the authority connectors, the system could read these identifiers from the subject's Wikidata QID to enable future enrichment. Currently, this is not done.
+
+### Pin Chain (proposed vs. actual)
+
+**Proposed Pin Chain**:
+```
+QID ← pageprops → P625+prec+dates+P131 → authorities → Gallica OCR/IIIF or Commons → Europeana → quote+hash
+```
+
+**Actual Pin Chain** (verified):
+```
+Wikipedia page
+    ↓ pageprops
+QID (extracted)
+    ↓ wbgetentities
+P625 lat/lon ONLY (no precision, no dates, no P131)
+    ↓
+Stored with hardcoded uncertainty_radius_m: 5000.0
+    ↓
+NO authority lookup (P268/P214/P213/P269 not read)
+    ↓
+NO Gallica/Commons/Europeana enrichment for coordinates
+    ↓
+Evidence hash = md5(event_id + doc_id + quoted_text) — NO fragment_id
+```
+
+**Gap Summary**:
+| Step | Proposed | Implemented |
+|------|----------|-------------|
+| QID from pageprops | ✅ | ✅ |
+| P625 coordinates | ✅ | ✅ |
+| geoPrecision | ✅ | ❌ |
+| timePrecision | ✅ | ❌ |
+| P131/P17 containment | ✅ | ❌ |
+| Authority bundle (P268/214/213/269) | ✅ | ❌ |
+| Gallica OCR/IIIF | ✅ | ❌ |
+| Commons SDC coords | ✅ | ❌ |
+| Europeana edm:Place | ✅ | ❌ |
+| quote+hash with fragment | ✅ | Partial (no fragment) |
+
+---
+
+## 0.2 First API Cartography Verification
+
+### P0: Evidence triplet (source_url + quoted_text + fragment_id)
 
 **Status: Partially implemented, not enforced.**
 
@@ -118,13 +264,13 @@ The only coordinate sources are:
 
 The triplet is **not enforced as a unique constraint**. Instead, `evidence_hash = md5(canonical_event_id + raw_document_id + quoted_text)` is used for deduplication (migration 027).
 
-### Documentation API P0: Gallica depth (OAIRecord/nqamoyen/texteBrut/ALTO/ContentSearch/IIIF)
+### P0: Gallica depth (OAIRecord/nqamoyen/texteBrut/ALTO/ContentSearch/IIIF)
 
 **Status: Not implemented. SRU bibliographic notices only.**
 
 Gallica connector returns `DocumentType::BibliographicNotice` with `full_text_available: true` but never fetches the actual text. The `provides_iiif: true` capability is declared but unused.
 
-### Documentation API P0: Separate spatial precision (point/city/region/country) and temporal precision
+### P0: Separate spatial precision (point/city/region/country) and temporal precision
 
 **Status: Spatial partially, temporal embedded.**
 
@@ -138,7 +284,7 @@ Temporal precision:
 - Values: `day`, `month`, `year` per `TypedTime` struct
 - **Gap**: Not queryable without JSON operators
 
-### Documentation API P0: Grounding chain before geocode
+### P0: Grounding chain before geocode
 
 **Status: Not implemented as a formal chain.**
 
@@ -149,7 +295,7 @@ Current flow is linear:
 
 No intermediate "grounding" step that resolves place identity before geocoding. The system conflates mention resolution with coordinate lookup.
 
-### Documentation API P1: IdRef → VIAF → ISNI resolution order
+### P1: IdRef → VIAF → ISNI resolution order
 
 **Status: All three are stubs.**
 
@@ -161,7 +307,7 @@ for kind in [SourceKind::Viaf, SourceKind::Isni, SourceKind::IdRef, ...] {
 
 No implementation exists. The recommended cascade order (IdRef → VIAF → ISNI) is not coded.
 
-### Teammate Hypothesis: Map fuzziness causes
+### Map fuzziness causes (all verified)
 
 | Cause | Verified | Evidence |
 |-------|----------|----------|
@@ -176,7 +322,7 @@ All four causes are confirmed in code.
 
 ## Executive Summary (Résumé)
 
-L'analyse révèle **5 causes principales** de l'imprécision des résultats de recherche et des points cartographiques dans l'explorateur Talaria :
+L'analyse révèle **8 causes principales** de l'imprécision des résultats de recherche et des points cartographiques dans l'explorateur Talaria :
 
 | # | Cause | Impact | Fichiers clés |
 |---|-------|--------|---------------|
@@ -185,6 +331,9 @@ L'analyse révèle **5 causes principales** de l'imprécision des résultats de 
 | 3 | **Filtrage `map_eligible` restrictif** | Seuls ~20 types d'événements obtiennent des pins | `talaria-quality/src/gates.rs` |
 | 4 | **Absence de résolution d'identité** | VIAF/ISNI/IdRef sont des stubs | `connectors/mod.rs` |
 | 5 | **Perte de précision temporelle** | Événements sans date → NeedsReview | `gates.rs`, `typing.rs` |
+| 6 | **Précision géographique ignorée** | `wikibase:geoPrecision` non extrait; 5km hardcodé | `client.rs`, `typing.rs` |
+| 7 | **Identifiants d'autorité non lus** | P268/P214/P213/P269 ignorés sur les QID | `wikidata.rs`, `lot_e.rs` |
+| 8 | **Coordonnées multimédia absentes** | Commons P9149/P1259, Europeana edm:Place non extraits | `commons.rs`, `europeana.rs` |
 
 ---
 
@@ -520,6 +669,72 @@ Pas de clustering actif — désactivé dans le code actuel.
 
 **Risk**: High complexity; IdRef uses SRU, VIAF uses SRU/JSON, ISNI uses REST.
 
+#### 4.0e Extract Wikidata geoPrecision (NEW from Second Cartography)
+
+**What**: When fetching P625, also extract `wikibase:geoPrecision` from the claim and store as `coord_precision_m`.
+
+**Why**: Wikidata provides precision metadata for coordinates, but we ignore it and hardcode `uncertainty_radius_m: 5000.0` for all results. This loses granularity between exact GPS points and approximate city centroids.
+
+**Files**:
+- `crates/talaria-wikidata/src/client.rs::fetch_coordinates()`
+- `crates/talaria-sources/src/wdqs.rs` (SPARQL queries)
+- `crates/talaria-api/src/person_ingest/typing.rs`
+
+**Current code** (`client.rs` line 108):
+```rust
+.pointer(&format!("/entities/{qid}/claims/P625/0/mainsnak/datavalue/value"))
+// Only lat/lon extracted, precision discarded
+```
+
+**Fix**: Also extract `/mainsnak/datavalue/value/precision` if present.
+
+**Expected Impact**: More accurate uncertainty radii; enables zoom-dependent pin filtering.
+
+**Risk**: Minimal; Wikidata precision values may need calibration to meters.
+
+#### 4.0f Extract Wikidata timePrecision (NEW from Second Cartography)
+
+**What**: When extracting dates from P580/P582/P585, also store the Wikibase `precision` value (11=day, 10=month, 9=year, etc.) separately.
+
+**Why**: Currently `TypedTime` has `precision: day|month|year` but it's derived from parsing the ISO date string, not from Wikidata's explicit precision claim. Wikidata may indicate "year precision" for `+1815-00-00T00:00:00Z`, which we miss.
+
+**Files**:
+- `crates/talaria-wikidata/src/claims.rs::snak_time()`
+- `crates/talaria-wikidata/src/time.rs`
+
+**Current code** (`claims.rs` lines 196-204):
+```rust
+fn snak_time(snak: &Value) -> Option<crate::time::WikibaseTime> {
+    let precision = snak
+        .pointer("/datavalue/value/precision")
+        .and_then(|v| v.as_i64())
+        .map(|n| n as i32);  // Extracted but may not be fully used
+```
+
+The precision IS extracted, but `WikibaseTime` → `TypedTime` conversion may not preserve Wikibase precision semantics.
+
+**Expected Impact**: Correct temporal precision for edge cases (decade, century-level dates).
+
+**Risk**: Low; requires validation of precision mapping.
+
+#### 4.0g Read Authority Identifiers from Wikidata QID (NEW from Second Cartography)
+
+**What**: When fetching a person's Wikidata entity, extract authority identifiers P268 (BnF), P214 (VIAF), P213 (ISNI), P269 (IdRef), P4258 (Gallica) into `known_identifiers`.
+
+**Why**: Even without implementing the authority connectors, having these identifiers enables:
+- Future authority enrichment without re-fetching
+- Cross-linking in evidence display
+- Prioritized source querying
+
+**Files**:
+- `crates/talaria-sources/src/connectors/wikidata.rs::fetch()`
+- `crates/talaria-api/src/lot_e.rs::fetch_wikidata_subject_meta()`
+- `crates/talaria-sources/src/plan.rs::ResolvedSubject`
+
+**Expected Impact**: Prerequisite for authority cascade (4.0d); enables Gallica ARK lookup.
+
+**Risk**: Minimal; just parsing additional claims.
+
 ---
 
 ### P1 — High Leverage / Medium Risk
@@ -612,9 +827,56 @@ Pas de clustering actif — désactivé dans le code actuel.
 
 ---
 
-### P6 — Future: Gallica Full Depth (from Documentation API team)
+### P6 — Future: Commons SDC Coordinates (NEW from Second Cartography)
 
-#### 4.6 Gallica ALTO/texteBrut/IIIF/ContentSearch
+#### 4.6 Extract Commons SDC P9149/P1259 for Location
+
+**Current State**: Commons connector extracts P180 (depicts), attribution, sha1, license — but NO coordinates.
+
+**Available Properties**:
+| Property | Description | Current |
+|----------|-------------|---------|
+| P9149 | coordinates of depicted place | ❌ Not extracted |
+| P1259 | coordinates of viewpoint | ❌ Not extracted |
+| P625 | coordinates (ambiguous — camera or subject?) | ❌ Not extracted |
+
+**Recommendation**: For Commons media linked to a person, extract P9149 (preferred) or P1259 to get precise locations where photos were taken or places depicted.
+
+**Files**:
+- `crates/talaria-sources/src/connectors/commons.rs`
+
+**Expected Impact**: +5-10% map points for well-photographed historical figures.
+
+**Risk**: Medium; SDC adoption is partial; need fallback to P625.
+
+---
+
+### P7 — Future: Europeana Place Extraction (NEW from Second Cartography)
+
+#### 4.7 Extract edm:Place Coordinates from Europeana
+
+**Current State**: Europeana connector extracts only bibliographic metadata — no geographic data.
+
+**Available Fields** (not extracted):
+- `edm:Place` with `wgs84_pos:lat` and `wgs84_pos:long`
+- `edmPlaceLatitude` / `edmPlaceLongitude` (flattened)
+- Resolved Wikidata QID from `edm:Place.owl:sameAs`
+- `dcterms:spatial` place labels
+
+**Recommendation**: Parse `edm:Place` from Europeana search results to extract coordinates. Fall back to resolving `owl:sameAs` Wikidata QIDs.
+
+**Files**:
+- `crates/talaria-sources/src/connectors/europeana.rs`
+
+**Expected Impact**: +10-20% map points for cultural heritage objects with documented provenance.
+
+**Risk**: Medium; Europeana requires API key (`EUROPEANA_API_KEY`); `edm:Place` coverage varies.
+
+---
+
+### P8 — Future: Gallica Full Depth (from Documentation API team)
+
+#### 4.8 Gallica ALTO/texteBrut/IIIF/ContentSearch
 
 **Current State**: SRU bibliographic notices only.
 
@@ -641,6 +903,36 @@ Pas de clustering actif — désactivé dans le code actuel.
 **Expected Impact**: Transforms Gallica from metadata-only to full-text extraction source.
 
 **Risk**: Rate limits on Gallica APIs; ALTO XML parsing complexity.
+
+---
+
+## 5. Additional Gaps from Second API Cartography
+
+### 5.1 Anti-Noise Measures (Not Implemented)
+
+The Documentation API recommended these anti-noise filters — none are currently implemented:
+
+| Recommendation | Status | Evidence |
+|----------------|--------|----------|
+| Ignore deprecated statements | ✅ Implemented | `promoted_statement_lines` skips `rank=deprecated` |
+| Drop country/region centroids | ❌ Not implemented | All P625 coords accepted regardless of precision |
+| Earth-only check | ❌ Not implemented | Lunar/Mars coords from Wikidata would be accepted |
+
+### 5.2 Pin Chain Completion Status
+
+| Chain Step | Implemented | Notes |
+|------------|-------------|-------|
+| QID ← pageprops | ✅ | `lot_e.rs` extracts `wikibase_item` |
+| P625 lat/lon | ✅ | `WikidataClient::fetch_coordinates()` |
+| P625 precision | ❌ | `geoPrecision` not extracted |
+| P580/P582/P585 dates | ✅ | Year extracted |
+| P580/P582/P585 timePrecision | ❌ | Wikibase precision partially used |
+| P131/P17 admin hierarchy | ❌ | Not extracted |
+| Authority bundle | ❌ | P268/P214/P213/P269/P4258 not read |
+| Gallica OCR/IIIF | ❌ | SRU only |
+| Commons SDC coords | ❌ | P9149/P1259 not extracted |
+| Europeana edm:Place | ❌ | No geo extraction |
+| quote + hash with fragment | Partial | `evidence_hash` exists, `fragment_id` missing |
 
 ---
 
