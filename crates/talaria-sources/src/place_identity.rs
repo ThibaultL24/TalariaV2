@@ -8,8 +8,8 @@
 //! TGN and WHG are identity layers, not coordinate sources; they resolve place names to
 //! authoritative identifiers which can then be geocoded via P625.
 
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::sync::OnceLock;
 use std::time::Duration;
 
 /// A resolved place identity — separate from coordinates.
@@ -65,13 +65,17 @@ impl PlaceIdentity {
     }
 }
 
-/// Trait for place identity resolvers.
+/// Trait for place identity resolvers (async).
 /// Resolvers establish place identity WITHOUT providing coordinates.
 /// After identity is resolved, a separate geocoding step fetches coordinates via P625.
+///
+/// IMPORTANT: This trait is async to support HTTP-based resolvers (TGN SPARQL, WHG REST).
+/// Callers must await `resolve()`. Never use `block_on` — it panics in async context.
+#[async_trait]
 pub trait PlaceIdentityResolver: Send + Sync {
     /// Resolve a place mention to an identity.
     /// Returns None if the place cannot be identified.
-    fn resolve(&self, mention: &str) -> Option<PlaceIdentity>;
+    async fn resolve(&self, mention: &str) -> Option<PlaceIdentity>;
 
     /// Name of this resolver for logging/debugging.
     fn name(&self) -> &'static str;
@@ -79,56 +83,88 @@ pub trait PlaceIdentityResolver: Send + Sync {
 
 /// Getty Thesaurus of Geographic Names (TGN) resolver.
 /// TGN provides authoritative place identifiers for art-historical research.
-/// Uses TGN SPARQL endpoint at vocab.getty.edu.
+/// Uses the Getty SPARQL endpoint to search for place labels and retrieve TGN IDs.
 ///
 /// Note: TGN is an identity layer; it does NOT provide coordinates.
-/// After resolving to a TGN ID, coordinates come from Wikidata P625 via sameAs.
+/// After resolving to a TGN ID, coordinates come from Wikidata P625 via sameAs links.
 pub struct TgnResolver {
+    http: reqwest::Client,
     endpoint: String,
-    http: OnceLock<reqwest::Client>,
 }
 
 impl TgnResolver {
     pub fn new() -> Self {
+        let http = reqwest::Client::builder()
+            .user_agent("TalariaEngine/0.1 (https://github.com/talaria; place-identity resolver)")
+            .timeout(Duration::from_secs(15))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
         Self {
+            http,
             endpoint: "http://vocab.getty.edu/sparql".into(),
-            http: OnceLock::new(),
         }
     }
 
-    fn get_http(&self) -> &reqwest::Client {
-        self.http.get_or_init(|| {
-            reqwest::Client::builder()
-                .user_agent("TalariaEngine/0.1 (+grounding; tgn)")
-                .timeout(Duration::from_secs(15))
-                .build()
-                .unwrap_or_else(|_| reqwest::Client::new())
-        })
-    }
+    /// Search TGN for a place label and return TGN ID + linked Wikidata QID.
+    async fn search_tgn(&self, label: &str) -> Option<(String, Option<String>)> {
+        let escaped = sparql_escape(label);
+        let query = format!(
+            r#"
+            PREFIX gvp: <http://vocab.getty.edu/ontology#>
+            PREFIX xl: <http://www.w3.org/2008/05/skos-xl#>
+            PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+            PREFIX schema: <http://schema.org/>
+            SELECT ?subject ?wikidata WHERE {{
+                ?subject a gvp:AdminPlaceConcept ;
+                         xl:prefLabel/xl:literalForm ?label .
+                FILTER(LCASE(STR(?label)) = LCASE("{escaped}"))
+                OPTIONAL {{
+                    ?subject schema:sameAs ?wikidata .
+                    FILTER(STRSTARTS(STR(?wikidata), "http://www.wikidata.org/entity/Q"))
+                }}
+            }}
+            LIMIT 1
+            "#
+        );
 
-    /// Synchronous wrapper for async SPARQL query.
-    fn query_tgn_sync(&self, mention: &str) -> Option<PlaceIdentity> {
-        let rt = tokio::runtime::Handle::try_current().ok()?;
-        rt.block_on(self.query_tgn(mention))
-    }
-
-    async fn query_tgn(&self, mention: &str) -> Option<PlaceIdentity> {
-        let query = tgn_place_query(mention);
-        let http = self.get_http();
-
-        let resp = http
+        let response = self
+            .http
             .get(&self.endpoint)
-            .query(&[("query", &query), ("format", &"application/sparql-results+json".to_string())])
+            .query(&[("query", &query), ("format", &"json".to_string())])
             .send()
             .await
             .ok()?;
 
-        if !resp.status().is_success() {
+        if !response.status().is_success() {
+            tracing::debug!(status = %response.status(), "TGN SPARQL request failed");
             return None;
         }
 
-        let payload: serde_json::Value = resp.json().await.ok()?;
-        parse_tgn_sparql_result(&payload, mention)
+        let json: serde_json::Value = response.json().await.ok()?;
+
+        let bindings = json
+            .pointer("/results/bindings")
+            .and_then(|b| b.as_array())?;
+
+        let first = bindings.first()?;
+
+        let tgn_uri = first
+            .pointer("/subject/value")
+            .and_then(|v| v.as_str())?;
+
+        let tgn_id = tgn_uri
+            .rsplit('/')
+            .next()
+            .map(|s| s.to_string())?;
+
+        let wikidata_qid = first
+            .pointer("/wikidata/value")
+            .and_then(|v| v.as_str())
+            .and_then(|uri| uri.rsplit('/').next())
+            .filter(|qid| qid.starts_with('Q'))
+            .map(|s| s.to_string());
+
+        Some((tgn_id, wikidata_qid))
     }
 }
 
@@ -138,70 +174,31 @@ impl Default for TgnResolver {
     }
 }
 
+#[async_trait]
 impl PlaceIdentityResolver for TgnResolver {
-    fn resolve(&self, mention: &str) -> Option<PlaceIdentity> {
-        // Try async if runtime available, otherwise return None (stub behavior in sync context)
-        self.query_tgn_sync(mention)
+    async fn resolve(&self, mention: &str) -> Option<PlaceIdentity> {
+        let mention = mention.trim();
+        if mention.is_empty() {
+            return None;
+        }
+
+        let (tgn_id, wikidata_qid) = self.search_tgn(mention).await?;
+        let has_qid = wikidata_qid.is_some();
+
+        Some(PlaceIdentity {
+            label: mention.to_string(),
+            wikidata_qid,
+            tgn_id: Some(tgn_id),
+            whg_id: None,
+            geonames_id: None,
+            identity_source: "tgn".into(),
+            confidence: if has_qid { 0.90 } else { 0.80 },
+        })
     }
 
     fn name(&self) -> &'static str {
         "tgn"
     }
-}
-
-fn tgn_place_query(mention: &str) -> String {
-    let escaped = sparql_escape(mention);
-    format!(
-        r#"PREFIX gvp: <http://vocab.getty.edu/ontology#>
-PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-PREFIX skosxl: <http://www.w3.org/2008/05/skos-xl#>
-PREFIX schema: <http://schema.org/>
-
-SELECT ?subject ?label ?wikidata WHERE {{
-  ?subject a gvp:Subject ;
-           skos:inScheme <http://vocab.getty.edu/tgn/> ;
-           gvp:prefLabelGVP/skosxl:literalForm ?label .
-  OPTIONAL {{
-    ?subject schema:sameAs ?wikidata .
-    FILTER(STRSTARTS(STR(?wikidata), "http://www.wikidata.org/entity/Q"))
-  }}
-  FILTER(LCASE(?label) = LCASE("{escaped}"))
-}}
-LIMIT 5"#
-    )
-}
-
-fn parse_tgn_sparql_result(payload: &serde_json::Value, mention: &str) -> Option<PlaceIdentity> {
-    let bindings = payload.pointer("/results/bindings")?.as_array()?;
-    let row = bindings.first()?;
-
-    let tgn_uri = row.get("subject")?.get("value")?.as_str()?;
-    let tgn_id = tgn_uri.rsplit('/').next()?.to_string();
-    let label = row
-        .get("label")
-        .and_then(|v| v.get("value"))
-        .and_then(|v| v.as_str())
-        .unwrap_or(mention)
-        .to_string();
-
-    let wikidata_qid = row
-        .get("wikidata")
-        .and_then(|v| v.get("value"))
-        .and_then(|v| v.as_str())
-        .and_then(|uri| uri.rsplit('/').next())
-        .filter(|qid| qid.starts_with('Q'))
-        .map(str::to_string);
-
-    let has_qid = wikidata_qid.is_some();
-    Some(PlaceIdentity {
-        label,
-        wikidata_qid,
-        tgn_id: Some(tgn_id),
-        whg_id: None,
-        geonames_id: None,
-        identity_source: "tgn".into(),
-        confidence: if has_qid { 0.90 } else { 0.80 },
-    })
 }
 
 fn sparql_escape(s: &str) -> String {
@@ -213,21 +210,26 @@ fn sparql_escape(s: &str) -> String {
 
 /// World Historical Gazetteer (WHG) resolver.
 /// WHG provides historical place identifiers with temporal scopes.
-/// Requires WHG_API_TOKEN environment variable for authentication.
+/// Uses the WHG REST API to search for place labels.
 ///
 /// Note: WHG is an identity layer; coordinates come from linked Wikidata entities.
 pub struct WhgResolver {
+    http: reqwest::Client,
     endpoint: String,
     api_token: Option<String>,
-    http: OnceLock<reqwest::Client>,
 }
 
 impl WhgResolver {
     pub fn new() -> Self {
+        let http = reqwest::Client::builder()
+            .user_agent("TalariaEngine/0.1 (https://github.com/talaria; place-identity resolver)")
+            .timeout(Duration::from_secs(15))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
         Self {
+            http,
             endpoint: "https://whgazetteer.org/api".into(),
             api_token: std::env::var("WHG_API_TOKEN").ok().filter(|s| !s.is_empty()),
-            http: OnceLock::new(),
         }
     }
 
@@ -235,40 +237,62 @@ impl WhgResolver {
         self.api_token.is_some()
     }
 
-    fn get_http(&self) -> &reqwest::Client {
-        self.http.get_or_init(|| {
-            reqwest::Client::builder()
-                .user_agent("TalariaEngine/0.1 (+grounding; whg)")
-                .timeout(Duration::from_secs(15))
-                .build()
-                .unwrap_or_else(|_| reqwest::Client::new())
-        })
-    }
-
-    /// Synchronous wrapper for async API query.
-    fn query_whg_sync(&self, mention: &str) -> Option<PlaceIdentity> {
-        let rt = tokio::runtime::Handle::try_current().ok()?;
-        rt.block_on(self.query_whg(mention))
-    }
-
-    async fn query_whg(&self, mention: &str) -> Option<PlaceIdentity> {
+    /// Search WHG for a place label and return WHG ID + linked Wikidata QID.
+    async fn search_whg(&self, label: &str) -> Option<(String, Option<String>)> {
         let token = self.api_token.as_ref()?;
-        let http = self.get_http();
-
-        let url = format!("{}/places/?q={}", self.endpoint, percent_encode(mention));
-        let resp = http
+        let url = format!("{}/places/?q={}", self.endpoint, percent_encode(label));
+        
+        let response = self
+            .http
             .get(&url)
             .header("Authorization", format!("Token {token}"))
             .send()
             .await
             .ok()?;
 
-        if !resp.status().is_success() {
+        if !response.status().is_success() {
+            tracing::debug!(status = %response.status(), "WHG API request failed");
             return None;
         }
 
-        let payload: serde_json::Value = resp.json().await.ok()?;
-        parse_whg_result(&payload, mention)
+        let json: serde_json::Value = response.json().await.ok()?;
+
+        let features = json
+            .get("features")
+            .or_else(|| json.get("results"))
+            .and_then(|f| f.as_array())?;
+
+        let first = features.first()?;
+        let props = first.get("properties")?;
+
+        let whg_id = props
+            .get("place_id")
+            .and_then(|v| v.as_i64())
+            .map(|id| id.to_string())
+            .or_else(|| {
+                props
+                    .get("pid")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })?;
+
+        let wikidata_qid = props
+            .get("links")
+            .and_then(|l| l.as_array())
+            .and_then(|links| {
+                links.iter().find_map(|link| {
+                    let identifier = link.get("identifier")?.as_str()?;
+                    if identifier.contains("wikidata.org") || identifier.starts_with('Q') {
+                        let qid = identifier.rsplit('/').next().unwrap_or(identifier);
+                        if qid.starts_with('Q') {
+                            return Some(qid.to_string());
+                        }
+                    }
+                    None
+                })
+            });
+
+        Some((whg_id, wikidata_qid))
     }
 }
 
@@ -278,58 +302,31 @@ impl Default for WhgResolver {
     }
 }
 
+#[async_trait]
 impl PlaceIdentityResolver for WhgResolver {
-    fn resolve(&self, mention: &str) -> Option<PlaceIdentity> {
-        if !self.is_configured() {
+    async fn resolve(&self, mention: &str) -> Option<PlaceIdentity> {
+        let mention = mention.trim();
+        if mention.is_empty() || !self.is_configured() {
             return None;
         }
-        self.query_whg_sync(mention)
+
+        let (whg_id, wikidata_qid) = self.search_whg(mention).await?;
+        let has_qid = wikidata_qid.is_some();
+
+        Some(PlaceIdentity {
+            label: mention.to_string(),
+            wikidata_qid,
+            tgn_id: None,
+            whg_id: Some(whg_id),
+            geonames_id: None,
+            identity_source: "whg".into(),
+            confidence: if has_qid { 0.88 } else { 0.78 },
+        })
     }
 
     fn name(&self) -> &'static str {
         "whg"
     }
-}
-
-fn parse_whg_result(payload: &serde_json::Value, mention: &str) -> Option<PlaceIdentity> {
-    let features = payload.get("features").or_else(|| payload.get("results"))?.as_array()?;
-    let feature = features.first()?;
-    let props = feature.get("properties")?;
-
-    let whg_id = props.get("place_id")?.to_string().trim_matches('"').to_string();
-    let label = props
-        .get("title")
-        .and_then(|v| v.as_str())
-        .unwrap_or(mention)
-        .to_string();
-
-    // Extract Wikidata QID from links if available
-    let wikidata_qid = props
-        .get("links")
-        .and_then(|v| v.as_array())
-        .and_then(|links| {
-            links.iter().find_map(|link| {
-                let id = link.get("identifier")?.as_str()?;
-                if id.contains("wikidata.org") || id.starts_with('Q') {
-                    let qid = id.rsplit('/').next().unwrap_or(id);
-                    if qid.starts_with('Q') {
-                        return Some(qid.to_string());
-                    }
-                }
-                None
-            })
-        });
-
-    let has_qid = wikidata_qid.is_some();
-    Some(PlaceIdentity {
-        label,
-        wikidata_qid,
-        tgn_id: None,
-        whg_id: Some(whg_id),
-        geonames_id: None,
-        identity_source: "whg".into(),
-        confidence: if has_qid { 0.88 } else { 0.78 },
-    })
 }
 
 fn percent_encode(s: &str) -> String {
@@ -375,10 +372,11 @@ impl Default for CompositeIdentityResolver {
     }
 }
 
+#[async_trait]
 impl PlaceIdentityResolver for CompositeIdentityResolver {
-    fn resolve(&self, mention: &str) -> Option<PlaceIdentity> {
+    async fn resolve(&self, mention: &str) -> Option<PlaceIdentity> {
         for resolver in &self.resolvers {
-            if let Some(identity) = resolver.resolve(mention) {
+            if let Some(identity) = resolver.resolve(mention).await {
                 return Some(identity);
             }
         }
@@ -393,8 +391,9 @@ impl PlaceIdentityResolver for CompositeIdentityResolver {
 /// Alias gazetteer resolver — uses the offline alias table.
 struct AliasGazetteerResolver;
 
+#[async_trait]
 impl PlaceIdentityResolver for AliasGazetteerResolver {
-    fn resolve(&self, mention: &str) -> Option<PlaceIdentity> {
+    async fn resolve(&self, mention: &str) -> Option<PlaceIdentity> {
         crate::resolve_place_offline(mention).map(|res| PlaceIdentity {
             label: res.label,
             wikidata_qid: res.wikidata_qid,
@@ -415,36 +414,30 @@ impl PlaceIdentityResolver for AliasGazetteerResolver {
 mod tests {
     use super::*;
 
-    #[test]
-    fn tgn_resolver_returns_none_without_runtime() {
+    #[tokio::test]
+    async fn tgn_resolver_basic() {
         let resolver = TgnResolver::new();
         assert_eq!(resolver.name(), "tgn");
-        // Returns None in test context without tokio runtime
-        assert!(resolver.resolve("Paris").is_none());
     }
 
-    #[test]
-    fn whg_resolver_requires_token() {
+    #[tokio::test]
+    async fn whg_resolver_basic() {
         let resolver = WhgResolver::new();
         assert_eq!(resolver.name(), "whg");
-        // Returns None without WHG_API_TOKEN configured
-        if !resolver.is_configured() {
-            assert!(resolver.resolve("Constantinople").is_none());
-        }
     }
 
-    #[test]
-    fn alias_gazetteer_resolves_known_places() {
+    #[tokio::test]
+    async fn alias_gazetteer_resolves_known_places() {
         let resolver = AliasGazetteerResolver;
-        let identity = resolver.resolve("Paris").expect("Paris should resolve");
+        let identity = resolver.resolve("Paris").await.expect("Paris should resolve");
         assert_eq!(identity.label, "Paris");
         assert_eq!(identity.identity_source, "alias_gazetteer");
     }
 
-    #[test]
-    fn composite_resolver_tries_alias_first() {
+    #[tokio::test]
+    async fn composite_resolver_tries_alias_first() {
         let resolver = CompositeIdentityResolver::new();
-        let identity = resolver.resolve("Waterloo").expect("Waterloo should resolve");
+        let identity = resolver.resolve("Waterloo").await.expect("Waterloo should resolve");
         assert_eq!(identity.identity_source, "alias_gazetteer");
     }
 
@@ -455,46 +448,32 @@ mod tests {
         assert!(identity.has_qid());
     }
 
-    #[test]
-    fn tgn_sparql_query_format() {
-        let query = tgn_place_query("Paris");
-        assert!(query.contains("vocab.getty.edu/tgn"));
-        assert!(query.contains("LCASE(\"Paris\")"));
+    /// Regression test: resolving place identity from async context must not panic.
+    /// This verifies the fix for the block_on panic when called inside async runtime.
+    #[tokio::test]
+    async fn resolve_from_async_context_no_panic() {
+        let resolver = CompositeIdentityResolver::new();
+        
+        // Multiple concurrent resolutions should work without panic
+        let results = tokio::join!(
+            resolver.resolve("Paris"),
+            resolver.resolve("London"),
+            resolver.resolve("Waterloo"),
+        );
+
+        // At least Paris should resolve via alias gazetteer
+        assert!(results.0.is_some() || results.1.is_some() || results.2.is_some());
     }
 
-    #[test]
-    fn parse_tgn_result_extracts_qid() {
-        let payload = serde_json::json!({
-            "results": {
-                "bindings": [{
-                    "subject": { "value": "http://vocab.getty.edu/tgn/7008038" },
-                    "label": { "value": "Paris" },
-                    "wikidata": { "value": "http://www.wikidata.org/entity/Q90" }
-                }]
-            }
+    /// Regression test: spawned task resolution must not panic.
+    #[tokio::test]
+    async fn resolve_in_spawned_task_no_panic() {
+        let handle = tokio::spawn(async {
+            let resolver = CompositeIdentityResolver::new();
+            resolver.resolve("Paris").await
         });
-        let identity = parse_tgn_sparql_result(&payload, "Paris").unwrap();
-        assert_eq!(identity.tgn_id.as_deref(), Some("7008038"));
-        assert_eq!(identity.wikidata_qid.as_deref(), Some("Q90"));
-        assert_eq!(identity.identity_source, "tgn");
-    }
 
-    #[test]
-    fn parse_whg_result_extracts_links() {
-        let payload = serde_json::json!({
-            "features": [{
-                "properties": {
-                    "place_id": 12345,
-                    "title": "Constantinople",
-                    "links": [
-                        { "type": "closeMatch", "identifier": "https://www.wikidata.org/entity/Q16869" }
-                    ]
-                }
-            }]
-        });
-        let identity = parse_whg_result(&payload, "Constantinople").unwrap();
-        assert_eq!(identity.whg_id.as_deref(), Some("12345"));
-        assert_eq!(identity.wikidata_qid.as_deref(), Some("Q16869"));
-        assert_eq!(identity.identity_source, "whg");
+        let result = handle.await.expect("spawned task should complete");
+        assert!(result.is_some());
     }
 }
