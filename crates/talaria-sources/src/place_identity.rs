@@ -10,6 +10,7 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 /// A resolved place identity — separate from coordinates.
 /// Grounding establishes identity first; geocoding happens after.
@@ -95,7 +96,7 @@ impl TgnResolver {
     pub fn new() -> Self {
         let http = reqwest::Client::builder()
             .user_agent("TalariaEngine/0.1 (https://github.com/talaria; place-identity resolver)")
-            .timeout(std::time::Duration::from_secs(15))
+            .timeout(Duration::from_secs(15))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
         Self {
@@ -106,18 +107,20 @@ impl TgnResolver {
 
     /// Search TGN for a place label and return TGN ID + linked Wikidata QID.
     async fn search_tgn(&self, label: &str) -> Option<(String, Option<String>)> {
+        let escaped = sparql_escape(label);
         let query = format!(
             r#"
             PREFIX gvp: <http://vocab.getty.edu/ontology#>
             PREFIX xl: <http://www.w3.org/2008/05/skos-xl#>
             PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+            PREFIX schema: <http://schema.org/>
             SELECT ?subject ?wikidata WHERE {{
                 ?subject a gvp:AdminPlaceConcept ;
                          xl:prefLabel/xl:literalForm ?label .
-                FILTER(LCASE(STR(?label)) = LCASE("{label}"))
+                FILTER(LCASE(STR(?label)) = LCASE("{escaped}"))
                 OPTIONAL {{
-                    ?subject skos:exactMatch ?wikidata .
-                    FILTER(STRSTARTS(STR(?wikidata), "http://www.wikidata.org/entity/"))
+                    ?subject schema:sameAs ?wikidata .
+                    FILTER(STRSTARTS(STR(?wikidata), "http://www.wikidata.org/entity/Q"))
                 }}
             }}
             LIMIT 1
@@ -158,6 +161,7 @@ impl TgnResolver {
             .pointer("/wikidata/value")
             .and_then(|v| v.as_str())
             .and_then(|uri| uri.rsplit('/').next())
+            .filter(|qid| qid.starts_with('Q'))
             .map(|s| s.to_string());
 
         Some((tgn_id, wikidata_qid))
@@ -179,6 +183,7 @@ impl PlaceIdentityResolver for TgnResolver {
         }
 
         let (tgn_id, wikidata_qid) = self.search_tgn(mention).await?;
+        let has_qid = wikidata_qid.is_some();
 
         Some(PlaceIdentity {
             label: mention.to_string(),
@@ -187,13 +192,20 @@ impl PlaceIdentityResolver for TgnResolver {
             whg_id: None,
             geonames_id: None,
             identity_source: "tgn".into(),
-            confidence: 0.80,
+            confidence: if has_qid { 0.90 } else { 0.80 },
         })
     }
 
     fn name(&self) -> &'static str {
         "tgn"
     }
+}
+
+fn sparql_escape(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
 }
 
 /// World Historical Gazetteer (WHG) resolver.
@@ -204,27 +216,36 @@ impl PlaceIdentityResolver for TgnResolver {
 pub struct WhgResolver {
     http: reqwest::Client,
     endpoint: String,
+    api_token: Option<String>,
 }
 
 impl WhgResolver {
     pub fn new() -> Self {
         let http = reqwest::Client::builder()
             .user_agent("TalariaEngine/0.1 (https://github.com/talaria; place-identity resolver)")
-            .timeout(std::time::Duration::from_secs(15))
+            .timeout(Duration::from_secs(15))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
         Self {
             http,
-            endpoint: "https://whgazetteer.org/api/index/".into(),
+            endpoint: "https://whgazetteer.org/api".into(),
+            api_token: std::env::var("WHG_API_TOKEN").ok().filter(|s| !s.is_empty()),
         }
+    }
+
+    pub fn is_configured(&self) -> bool {
+        self.api_token.is_some()
     }
 
     /// Search WHG for a place label and return WHG ID + linked Wikidata QID.
     async fn search_whg(&self, label: &str) -> Option<(String, Option<String>)> {
+        let token = self.api_token.as_ref()?;
+        let url = format!("{}/places/?q={}", self.endpoint, percent_encode(label));
+        
         let response = self
             .http
-            .get(&self.endpoint)
-            .query(&[("name", label), ("limit", "1")])
+            .get(&url)
+            .header("Authorization", format!("Token {token}"))
             .send()
             .await
             .ok()?;
@@ -237,34 +258,37 @@ impl WhgResolver {
         let json: serde_json::Value = response.json().await.ok()?;
 
         let features = json
-            .pointer("/features")
+            .get("features")
+            .or_else(|| json.get("results"))
             .and_then(|f| f.as_array())?;
 
         let first = features.first()?;
+        let props = first.get("properties")?;
 
-        let whg_id = first
-            .pointer("/properties/place_id")
+        let whg_id = props
+            .get("place_id")
             .and_then(|v| v.as_i64())
             .map(|id| id.to_string())
             .or_else(|| {
-                first
-                    .pointer("/properties/pid")
+                props
+                    .get("pid")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string())
             })?;
 
-        let wikidata_qid = first
-            .pointer("/properties/links")
+        let wikidata_qid = props
+            .get("links")
             .and_then(|l| l.as_array())
             .and_then(|links| {
                 links.iter().find_map(|link| {
-                    let identifier = link.pointer("/identifier")?.as_str()?;
-                    if identifier.starts_with("wd:") || identifier.starts_with("Q") {
-                        let qid = identifier.trim_start_matches("wd:");
-                        Some(qid.to_string())
-                    } else {
-                        None
+                    let identifier = link.get("identifier")?.as_str()?;
+                    if identifier.contains("wikidata.org") || identifier.starts_with('Q') {
+                        let qid = identifier.rsplit('/').next().unwrap_or(identifier);
+                        if qid.starts_with('Q') {
+                            return Some(qid.to_string());
+                        }
                     }
+                    None
                 })
             });
 
@@ -282,11 +306,12 @@ impl Default for WhgResolver {
 impl PlaceIdentityResolver for WhgResolver {
     async fn resolve(&self, mention: &str) -> Option<PlaceIdentity> {
         let mention = mention.trim();
-        if mention.is_empty() {
+        if mention.is_empty() || !self.is_configured() {
             return None;
         }
 
         let (whg_id, wikidata_qid) = self.search_whg(mention).await?;
+        let has_qid = wikidata_qid.is_some();
 
         Some(PlaceIdentity {
             label: mention.to_string(),
@@ -295,13 +320,26 @@ impl PlaceIdentityResolver for WhgResolver {
             whg_id: Some(whg_id),
             geonames_id: None,
             identity_source: "whg".into(),
-            confidence: 0.78,
+            confidence: if has_qid { 0.88 } else { 0.78 },
         })
     }
 
     fn name(&self) -> &'static str {
         "whg"
     }
+}
+
+fn percent_encode(s: &str) -> String {
+    let mut out = String::new();
+    for b in s.as_bytes() {
+        match *b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(*b as char)
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
 }
 
 /// Composite resolver that tries multiple identity sources in order.

@@ -348,6 +348,111 @@ pub async fn person_density_counts(
     Ok((timeline, map))
 }
 
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct PersonEvent {
+    pub id: Uuid,
+    pub entity_id: Uuid,
+    pub event_type: String,
+    pub title: Option<String>,
+    pub place_label: Option<String>,
+    pub start_time: Option<DateTime<Utc>>,
+    pub occurrence_key: Option<String>,
+}
+
+pub async fn find_active_person_events_for_entity(
+    pool: &PgPool,
+    entity_id: Uuid,
+) -> anyhow::Result<Vec<PersonEvent>> {
+    let events: Vec<PersonEvent> = sqlx::query_as(
+        r#"
+        SELECT id, entity_id, event_type, title, place_label, start_time, occurrence_key
+        FROM canonical_events
+        WHERE entity_id = $1 AND pipeline = 'person' AND is_active
+        ORDER BY start_time ASC NULLS LAST
+        "#,
+    )
+    .bind(entity_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(events)
+}
+
+pub async fn upsert_raw_corpus_document(
+    pool: &PgPool,
+    source_type: &str,
+    external_id: &str,
+    canonical_url: &str,
+    title: &str,
+    language: Option<&str>,
+    payload: &serde_json::Value,
+) -> anyhow::Result<Uuid> {
+    let id = sqlx::query_scalar(
+        r#"
+        INSERT INTO raw_documents (source_type, source_uri, title, language, payload)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (source_type, source_uri)
+        DO UPDATE SET payload = EXCLUDED.payload, title = EXCLUDED.title
+        RETURNING id
+        "#,
+    )
+    .bind(source_type)
+    .bind(canonical_url)
+    .bind(title)
+    .bind(language.unwrap_or("en"))
+    .bind(payload)
+    .fetch_one(pool)
+    .await?;
+    Ok(id)
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ExtendedDensityCounts {
+    pub timeline_events: i64,
+    pub map_pins: i64,
+    pub precise_dates: i64,
+    pub precise_coords: i64,
+    pub evidence_count: i64,
+}
+
+pub async fn person_extended_density_counts(
+    pool: &PgPool,
+    entity_id: Uuid,
+) -> anyhow::Result<ExtendedDensityCounts> {
+    let row: (i64, i64, i64, i64) = sqlx::query_as(
+        r#"
+        SELECT 
+            COUNT(*) FILTER (WHERE timeline_eligible)::bigint as timeline,
+            COUNT(*) FILTER (WHERE map_eligible)::bigint as map,
+            COUNT(*) FILTER (WHERE date_precision IN ('day', 'month'))::bigint as precise_dates,
+            COUNT(*) FILTER (WHERE coord_precision_level IN ('point', 'city'))::bigint as precise_coords
+        FROM canonical_events
+        WHERE entity_id = $1 AND pipeline = 'person' AND is_active
+        "#,
+    )
+    .bind(entity_id)
+    .fetch_one(pool)
+    .await?;
+    
+    let evidence: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint FROM event_evidence ee
+        JOIN canonical_events ce ON ee.event_id = ce.id
+        WHERE ce.entity_id = $1 AND ce.pipeline = 'person' AND ce.is_active
+        "#,
+    )
+    .bind(entity_id)
+    .fetch_one(pool)
+    .await?;
+    
+    Ok(ExtendedDensityCounts {
+        timeline_events: row.0,
+        map_pins: row.1,
+        precise_dates: row.2,
+        precise_coords: row.3,
+        evidence_count: evidence,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

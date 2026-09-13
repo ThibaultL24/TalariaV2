@@ -186,3 +186,8 @@ Rejected events stay in `event_candidates` — they must **never** appear in `ca
 - Wikidata geoPrecision extraction
 - Commons SDC coordinate extraction (P9149/P1259)
 - Europeana edm:Place coordinate extraction
+
+## See Also
+
+- [SOURCE_EXPANSION.md](./SOURCE_EXPANSION.md) — Product-truth notes for institutional/catalog sources (Vague A/B)
+- [Progressive UX](PROGRESSIVE_UX.md) — product-truth notes for the progressive explorer ingest UX

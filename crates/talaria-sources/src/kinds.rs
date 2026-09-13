@@ -24,6 +24,10 @@ pub enum SourceKind {
     OpenEdition,
     Sudoc,
     Fixture,
+    // Vague B: structured life facts connectors (document sources)
+    FranceArchives,
+    DeutscheBiographie,
+    PopMerimee,
     Other(String),
 }
 
@@ -50,6 +54,9 @@ impl SourceKind {
             Self::OpenEdition => "open_edition",
             Self::Sudoc => "sudoc",
             Self::Fixture => "fixture",
+            Self::FranceArchives => "france_archives",
+            Self::DeutscheBiographie => "deutsche_biographie",
+            Self::PopMerimee => "pop_merimee",
             Self::Other(s) => s.as_str(),
         }
     }
@@ -76,6 +83,9 @@ impl SourceKind {
             "open_edition" | "openedition" => Self::OpenEdition,
             "sudoc" => Self::Sudoc,
             "fixture" => Self::Fixture,
+            "france_archives" | "francearchives" => Self::FranceArchives,
+            "deutsche_biographie" | "deutschebiographie" | "gnd" => Self::DeutscheBiographie,
+            "pop_merimee" | "merimee" | "pop" => Self::PopMerimee,
             other => Self::Other(other.to_string()),
         }
     }
