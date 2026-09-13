@@ -81,4 +81,8 @@ pub use connectors::{
     BnfConnector, CommonsAsset, CommonsConnector, CorpusConnectors, EuropeanaConfig,
     EuropeanaConnector, InternetArchiveConfig, InternetArchiveConnector, OpenAlexConfig,
     OpenAlexConnector, ThesesFrConfig, ThesesFrConnector,
+    // Vague B: structured life facts connectors (document sources)
+    FranceArchivesConfig, FranceArchivesConnector, FaPersonRecord,
+    DeutscheBiographieConfig, DeutscheBiographieConnector, GndPersonRecord,
+    PopMerimeeConfig, PopMerimeeConnector, MerimeeRecord,
 };

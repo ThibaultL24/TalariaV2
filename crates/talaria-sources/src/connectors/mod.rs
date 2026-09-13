@@ -2,8 +2,10 @@
 mod bnf;
 mod catalog;
 mod commons;
+mod deutsche_biographie;
 mod europeana;
 mod fixture;
+mod france_archives;
 mod gallica;
 mod hal;
 mod internet_archive;
@@ -11,6 +13,7 @@ pub mod net;
 mod open_library;
 mod openalex;
 mod persee;
+mod pop_merimee;
 mod stub;
 mod theses_fr;
 mod wikidata;
@@ -22,8 +25,16 @@ pub use commons::{
     CommonsAsset, CommonsConnector, commonswiki_file_sitelink, file_titles_from_wikitext,
     listed_files_from_commons_sitelink, parse_mediainfo, parse_p18_filenames, parse_wiki_page_images,
 };
+pub use deutsche_biographie::{
+    CONNECTOR_VERSION as DEUTSCHE_BIOGRAPHIE_VERSION, DeutscheBiographieConfig,
+    DeutscheBiographieConnector, GndPersonRecord,
+};
 pub use europeana::{EuropeanaConfig, EuropeanaConnector, normalize_europeana_item};
 pub use fixture::FixtureConnector;
+pub use france_archives::{
+    CONNECTOR_VERSION as FRANCE_ARCHIVES_VERSION, FaPersonRecord, FranceArchivesConfig,
+    FranceArchivesConnector,
+};
 pub use gallica::GallicaConnector;
 pub use hal::{CONNECTOR_VERSION as HAL_VERSION, HalConnector, normalize_hal_doc};
 pub use internet_archive::{InternetArchiveConfig, InternetArchiveConnector, normalize_ia_item};
@@ -33,6 +44,9 @@ pub use openalex::{
     normalize_openalex_work, openalex_debate_query,
 };
 pub use persee::{CONNECTOR_VERSION as PERSEE_VERSION, PerseeConnector, normalize_persee_record};
+pub use pop_merimee::{
+    CONNECTOR_VERSION as POP_MERIMEE_VERSION, MerimeeRecord, PopMerimeeConfig, PopMerimeeConnector,
+};
 pub use stub::StubConnector;
 pub use theses_fr::{
     CONNECTOR_VERSION as THESES_FR_VERSION, ThesesFrConfig, ThesesFrConnector,
@@ -235,6 +249,66 @@ fn caps_persee() -> SourceCapabilities {
         default_confidence_ocr: 0.0,
         identifiers: vec!["doi".into()],
         document_types: vec![DocumentType::AcademicArticle],
+    }
+}
+
+fn caps_heritage_place(kind: SourceKind) -> SourceCapabilities {
+    let (tier, idents) = match kind {
+        SourceKind::PopMerimee => (
+            AuthorityTier::Institutional,
+            vec!["merimee_ref".into()],
+        ),
+        _ => (AuthorityTier::CommunityCatalog, vec![]),
+    };
+    SourceCapabilities {
+        access_mode: SourceAccessMode::Api,
+        authority_tier: tier,
+        provides_text: true,
+        provides_structured_statements: true,
+        provides_coordinates: true,
+        provides_identifiers: true,
+        provides_full_text: false,
+        provides_ocr: false,
+        provides_iiif: false,
+        provides_audiovisual: false,
+        provides_authority_alignment: false,
+        license_notes: "heritage monuments with WGS84 coords".into(),
+        default_confidence_structured: 0.80,
+        default_confidence_ocr: 0.0,
+        identifiers: idents,
+        document_types: vec![DocumentType::Other("heritage_monument".into())],
+    }
+}
+
+fn caps_life_facts(kind: SourceKind) -> SourceCapabilities {
+    let (tier, idents) = match kind {
+        SourceKind::FranceArchives => (
+            AuthorityTier::Institutional,
+            vec!["fa_id".into()],
+        ),
+        SourceKind::DeutscheBiographie => (
+            AuthorityTier::Institutional,
+            vec!["gnd".into()],
+        ),
+        _ => (AuthorityTier::CommunityCatalog, vec![]),
+    };
+    SourceCapabilities {
+        access_mode: SourceAccessMode::Api,
+        authority_tier: tier,
+        provides_text: true,
+        provides_structured_statements: true,
+        provides_coordinates: false,
+        provides_identifiers: true,
+        provides_full_text: false,
+        provides_ocr: false,
+        provides_iiif: false,
+        provides_audiovisual: false,
+        provides_authority_alignment: true,
+        license_notes: "structured life facts (birth/death/office)".into(),
+        default_confidence_structured: 0.85,
+        default_confidence_ocr: 0.0,
+        identifiers: idents,
+        document_types: vec![DocumentType::AuthorityRecord, DocumentType::StructuredStatement],
     }
 }
 
@@ -555,6 +629,69 @@ pub fn default_registry_with_corpus(
         SourceKind::Sudoc,
     ] {
         register_stub(&mut reg, kind, "alignment layer — not yet wired");
+    }
+
+    // Vague B: structured life facts connectors (document sources)
+    // Note: TGN/WHG are PlaceIdentityResolvers in place_identity.rs, not SourceConnectors
+    if enable_live_wikimedia {
+        // FranceArchives — structured life facts (SPARQL)
+        match FranceArchivesConnector::new(FranceArchivesConfig::default()) {
+            Ok(conn) => {
+                reg.register(ConnectorRegistration {
+                    kind: SourceKind::FranceArchives,
+                    implemented: true,
+                    capabilities: caps_life_facts(SourceKind::FranceArchives),
+                    connector: Some(Arc::new(conn)),
+                    config_notes: "FranceArchives SPARQL (public, life facts)".into(),
+                });
+            }
+            Err(_) => register_stub(
+                &mut reg,
+                SourceKind::FranceArchives,
+                "FranceArchives connector init failed",
+            ),
+        }
+
+        // Deutsche Biographie + GND — structured life facts (lobid.org)
+        match DeutscheBiographieConnector::new(DeutscheBiographieConfig::default()) {
+            Ok(conn) => {
+                reg.register(ConnectorRegistration {
+                    kind: SourceKind::DeutscheBiographie,
+                    implemented: true,
+                    capabilities: caps_life_facts(SourceKind::DeutscheBiographie),
+                    connector: Some(Arc::new(conn)),
+                    config_notes: "GND via lobid.org (public, life facts)".into(),
+                });
+            }
+            Err(_) => register_stub(
+                &mut reg,
+                SourceKind::DeutscheBiographie,
+                "GND connector init failed",
+            ),
+        }
+
+        // POP/Mérimée — place entity with WGS84 coords
+        match PopMerimeeConnector::new(PopMerimeeConfig::default()) {
+            Ok(conn) => {
+                reg.register(ConnectorRegistration {
+                    kind: SourceKind::PopMerimee,
+                    implemented: true,
+                    capabilities: caps_heritage_place(SourceKind::PopMerimee),
+                    connector: Some(Arc::new(conn)),
+                    config_notes: "POP Mérimée API (public, place entity + WGS84)".into(),
+                });
+            }
+            Err(_) => register_stub(
+                &mut reg,
+                SourceKind::PopMerimee,
+                "POP Mérimée connector init failed",
+            ),
+        }
+    } else {
+        // TGN/WHG are PlaceIdentityResolvers, not SourceConnectors
+        register_stub(&mut reg, SourceKind::FranceArchives, "enable with --live");
+        register_stub(&mut reg, SourceKind::DeutscheBiographie, "enable with --live");
+        register_stub(&mut reg, SourceKind::PopMerimee, "enable with --live");
     }
 
     // Register corpus connectors supplied by the caller (override stubs when present).

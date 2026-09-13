@@ -2,6 +2,7 @@
 //! One ingest: dump Wikipedia → grounded LLM → pipeline='person' facts + Agora debates.
 
 mod collect;
+pub mod corpus_evidence;
 mod extract;
 mod gating;
 mod grounding;
@@ -280,6 +281,40 @@ pub async fn run_person_ingest(
 
     typing::backfill_person_geocodes(&pool, entity_id).await?;
 
+    // Corpus evidence enrichment (Vague A): query HAL, Gallica, BnF, Persée, theses.fr, OpenAlex
+    // to reinforce existing canonical events with additional evidence. Never creates new pins.
+    let corpus_stats = {
+        let resolved_subject = talaria_sources::ResolvedSubject {
+            entity_id: Some(entity_id),
+            qid: Some(resolved_qid.clone()),
+            label: subject.to_string(),
+            languages: vec![wiki_lang.to_string()],
+            birth_year: ctx.subject_birth_year,
+            death_year: ctx.subject_death_year,
+            countries: vec![],
+            occupations: wd_meta
+                .as_ref()
+                .map(|m| m.occupations.clone())
+                .unwrap_or_default(),
+            known_identifiers: vec![],
+        };
+        let corpus_config = corpus_evidence::CorpusEnrichmentConfig::default();
+        match corpus_evidence::enrich_with_corpus_evidence(
+            &pool,
+            entity_id,
+            &resolved_subject,
+            &corpus_config,
+        )
+        .await
+        {
+            Ok(stats) => Some(stats),
+            Err(e) => {
+                tracing::warn!(error = %e, "corpus evidence enrichment failed");
+                None
+            }
+        }
+    };
+
     Ok(json!({
         "lane": "explorer",
         "pipeline": "person",
@@ -295,6 +330,13 @@ pub async fn run_person_ingest(
         "llm_configured": llm::is_configured(),
         "llm_model": llm::model(),
         "dropped_chunks": dropped,
+        "corpus_enrichment": corpus_stats.map(|s| json!({
+            "sources_queried": s.sources_queried,
+            "documents_discovered": s.documents_discovered,
+            "documents_matched": s.documents_matched,
+            "evidence_added": s.evidence_added,
+            "errors": s.errors,
+        })),
     }))
 }
 
