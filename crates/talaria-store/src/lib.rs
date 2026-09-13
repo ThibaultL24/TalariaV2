@@ -86,10 +86,10 @@ pub use places::{
 };
 pub use person_events::{
     evidence_hash, find_active_person_event_by_fingerprint, find_active_person_event_by_occurrence,
-    insert_person_candidate,
+    find_active_person_events_for_entity, insert_person_candidate,
     insert_person_event, insert_person_quote_evidence, person_density_counts,
-    upsert_raw_wikidata_document, upsert_raw_wikipedia_document, PersonCandidateInsert,
-    PersonEventInsert,
+    upsert_raw_corpus_document, upsert_raw_wikidata_document, upsert_raw_wikipedia_document,
+    PersonCandidateInsert, PersonEvent, PersonEventInsert,
 };
 pub use pool::{connect, run_migrations, DbPool};
 pub use profiles::{
