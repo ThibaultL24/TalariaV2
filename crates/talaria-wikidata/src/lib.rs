@@ -8,7 +8,8 @@ mod search_rank;
 mod time;
 
 pub use claims::{
-    identity_year, parse_entity_claims, promoted_statement_lines, ParsedStatement, StatementInsert,
+    extract_authority_bundle, identity_year, parse_entity_claims, promoted_statement_lines,
+    AuthorityBundle, ParsedStatement, StatementInsert,
 };
 pub use client::{WikidataClient, WikidataSearchHit};
 pub use dump::{

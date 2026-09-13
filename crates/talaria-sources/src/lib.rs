@@ -14,6 +14,7 @@ mod identifiers;
 mod kinds;
 mod matching;
 mod person_profile;
+mod place_identity;
 mod place_quality;
 mod places;
 mod plan;
@@ -56,6 +57,9 @@ pub use person_profile::{
     IngestProfile, PersonClass,
 };
 pub use place_quality::is_plausible_place_label;
+pub use place_identity::{
+    CompositeIdentityResolver, PlaceIdentity, PlaceIdentityResolver, TgnResolver, WhgResolver,
+};
 pub use places::{
     place_hint_from_title, place_query_variants, resolve_place_offline, PlaceResolution,
 };

@@ -138,6 +138,30 @@ pub async fn update_entity_qid(pool: &PgPool, entity_id: Uuid, qid: &str) -> any
     Ok(())
 }
 
+/// Update authority identifiers on an entity (P268 BnF, P214 VIAF, P213 ISNI, P269 IdRef).
+/// Merges with existing authority_ids; does not overwrite unless new value is non-empty.
+pub async fn update_entity_authority_ids(
+    pool: &PgPool,
+    entity_id: Uuid,
+    authority_ids: &serde_json::Value,
+) -> anyhow::Result<()> {
+    if authority_ids.as_object().is_none_or(|m| m.is_empty()) {
+        return Ok(());
+    }
+    sqlx::query(
+        r#"
+        UPDATE entities
+        SET authority_ids = authority_ids || $2::jsonb
+        WHERE id = $1
+        "#,
+    )
+    .bind(entity_id)
+    .bind(authority_ids)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 pub async fn find_entity_by_wikipedia_title(
     pool: &PgPool,
     wiki_lang: &str,
