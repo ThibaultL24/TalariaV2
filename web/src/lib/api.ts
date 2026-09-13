@@ -413,3 +413,23 @@ export async function fetchIngestJob(jobId: string): Promise<IngestJobResponse> 
   if (!response.ok) throw new Error("ingest job fetch failed");
   return response.json();
 }
+
+export interface ExplorerIngestStatus {
+  job_id: string;
+  status: "queued" | "running" | "done" | "failed" | string;
+  phase: string;
+  entity_id?: string | null;
+  timeline_events: number;
+  map_pins: number;
+  wiki_pages: number;
+  wdqs_events: number;
+  elapsed_ms?: number | null;
+  is_done: boolean;
+  error?: string | null;
+}
+
+export async function fetchExplorerStatus(jobId: string): Promise<ExplorerIngestStatus> {
+  const response = await fetch(`/api/v1/ingest/explorer/${jobId}/status`);
+  if (!response.ok) throw new Error("explorer status fetch failed");
+  return response.json();
+}

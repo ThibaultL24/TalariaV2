@@ -2,10 +2,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { searchEntities } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
-import { runExplorerPersonIngest } from "@/lib/person-ingest";
 import type { SearchSuggestion } from "@/lib/schemas/entity";
 import { collapseToSinglePersonSuggestion } from "@/lib/search-suggestions";
 import { useExplorerStore } from "@/stores/explorer-store";
+import { useProgressiveIngest } from "./use-progressive-ingest";
 
 function namesOverlap(left: string, right: string): boolean {
   const a = left.trim().toLowerCase();
@@ -31,15 +31,22 @@ function preferDenseLocalAlias(
   return denser ?? item;
 }
 
-export function usePersonPicker(opts: { startLifeIngest?: boolean } = {}) {
+export interface UsePersonPickerOptions {
+  startLifeIngest?: boolean;
+  onCountsChanged?: (timeline: number, mapPins: number) => void;
+}
+
+export function usePersonPicker(opts: UsePersonPickerOptions = {}) {
   const startLifeIngest = opts.startLifeIngest ?? true;
-  const { locale, t } = useI18n();
+  const { locale } = useI18n();
   const { setEntity, setPersonFilter } = useExplorerStore();
   const [searchQuery, setSearchQuery] = useState("");
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [ingestBusy, setIngestBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  const progressiveIngest = useProgressiveIngest({
+    onCountsChanged: opts.onCountsChanged,
+  });
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -66,30 +73,26 @@ export function usePersonPicker(opts: { startLifeIngest?: boolean } = {}) {
   const selectPerson = useCallback(
     (item: SearchSuggestion) => {
       const chosen = preferDenseLocalAlias(item, suggestions);
-      setError(null);
+      
       if (chosen.known_locally && chosen.entity_id) {
         setEntity(chosen.entity_id, chosen.label, chosen.qid);
       } else {
         setPersonFilter(chosen.label, chosen.label, chosen.qid);
       }
+
       if (!startLifeIngest) return;
-      setIngestBusy(true);
-      void runExplorerPersonIngest({
+
+      progressiveIngest.startIngest({
         subject: chosen.label,
         qid: chosen.qid,
-        entityId: chosen.entity_id,
         wikiLang: locale,
-        onEntity: (id) => setEntity(id, chosen.label, chosen.qid),
-      })
-        .then((result) => {
-          if (result?.status === "failed") setError(result.error ?? t.loadingMap);
-        })
-        .catch((err) => {
-          setError(err instanceof Error ? err.message : t.loadingMap);
-        })
-        .finally(() => setIngestBusy(false));
+      }).then((job) => {
+        if (job?.entity_id) {
+          setEntity(job.entity_id, chosen.label, chosen.qid);
+        }
+      });
     },
-    [locale, setEntity, setPersonFilter, startLifeIngest, suggestions, t.loadingMap],
+    [locale, setEntity, setPersonFilter, startLifeIngest, suggestions, progressiveIngest],
   );
 
   return {
@@ -98,7 +101,13 @@ export function usePersonPicker(opts: { startLifeIngest?: boolean } = {}) {
     suggestions,
     searchLoading,
     selectPerson,
-    ingestBusy,
-    error,
+    ingestBusy: progressiveIngest.isRunning,
+    error: progressiveIngest.error,
+    // Progressive ingest state
+    ingestPhase: progressiveIngest.phase,
+    timelineEvents: progressiveIngest.timelineEvents,
+    mapPins: progressiveIngest.mapPins,
+    wikiPages: progressiveIngest.wikiPages,
+    elapsedMs: progressiveIngest.elapsedMs,
   };
 }

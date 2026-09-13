@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Map } from "maplibre-gl";
 import { EventDetailCard } from "@/components/detail/event-detail-card";
+import { IngestProgressBadge } from "@/components/explorer/ingest-progress-badge";
 import { Navbar } from "@/components/layout/navbar";
 import { ExplorerMapTimelineBar } from "@/components/map/explorer-map-timeline-bar";
 import { MapCanvas } from "@/components/map/map-canvas";
@@ -51,8 +52,24 @@ export function ExplorerPage() {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [untilYear, setUntilYear] = useState<number | null>(null);
-  const { suggestions, setSearchQuery, searchLoading, selectPerson, ingestBusy, error } =
-    usePersonPicker();
+  const [dataVersion, setDataVersion] = useState(0);
+
+  const handleCountsChanged = useCallback((_timeline: number, _mapPins: number) => {
+    setDataVersion((v) => v + 1);
+  }, []);
+
+  const {
+    suggestions,
+    setSearchQuery,
+    searchLoading,
+    selectPerson,
+    ingestBusy,
+    error,
+    ingestPhase,
+    timelineEvents,
+    mapPins,
+    wikiPages,
+  } = usePersonPicker({ onCountsChanged: handleCountsChanged });
 
   const { entityId, entityLabel, personFilter, selectedEventId, setSelectedEventId, closeDetail } =
     useExplorerStore();
@@ -119,7 +136,7 @@ export function ExplorerPage() {
       cancelled = true;
       window.clearInterval(tick);
     };
-  }, [entityId, personFilter, hasEntity, ingestBusy]);
+  }, [entityId, personFilter, hasEntity, ingestBusy, dataVersion]);
 
   useEffect(() => {
     if (!map) return;
@@ -214,15 +231,32 @@ export function ExplorerPage() {
   const banner = error ?? loadError;
   const fittedEntity = useRef<string>("");
 
+  // Track if we've done initial fit for current entity
+  const initialFitDone = useRef(false);
+
+  // Reset initial fit flag when entity changes
+  useEffect(() => {
+    initialFitDone.current = false;
+    fittedEntity.current = "";
+  }, [entityId, personFilter]);
+
   useEffect(() => {
     const entityKey = entityId ?? personFilter ?? "";
     if (!map || !entityKey || !mapData?.features.length) return;
+    
+    // Only fit bounds on initial load or when switching entities
+    // Skip during incremental updates to preserve user's camera position
+    if (initialFitDone.current && ingestBusy) return;
+    
     const token = `${entityKey}:${ingestBusy ? "busy" : "idle"}`;
     if (fittedEntity.current === token) return;
-    if (fittedEntity.current.startsWith(`${entityKey}:busy`) && ingestBusy) return;
+    
     const box = boundsOfMapFeatures(mapData);
     if (!box) return;
+    
     fittedEntity.current = token;
+    initialFitDone.current = true;
+    
     map.fitBounds(box, {
       padding: { top: 56, bottom: 120, left: 24, right: 96 },
       maxZoom: 6,
@@ -257,13 +291,18 @@ export function ExplorerPage() {
           </div>
         ) : null}
 
-        {ingestBusy || loading ? (
-          <div className="pointer-events-none absolute top-3 left-1/2 z-10 -translate-x-1/2 rounded-full border border-(--map-panel-border) bg-(--color-bg-elevated)/85 px-3 py-1 text-[11px] text-(--color-text-secondary) backdrop-blur-sm">
-            {ingestBusy ? t.searchInProgress : t.loadingMap}
-          </div>
-        ) : null}
+        {(ingestBusy || loading) && (
+          <IngestProgressBadge
+            phase={ingestPhase}
+            timelineEvents={timelineEvents}
+            mapPins={mapPins}
+            wikiPages={wikiPages}
+            isRunning={ingestBusy}
+            error={error}
+          />
+        )}
 
-        {banner ? (
+        {!ingestBusy && banner ? (
           <p className="absolute top-14 left-1/2 z-10 -translate-x-1/2 rounded-lg bg-red-950/80 px-3 py-1.5 text-sm text-red-200">
             {banner}
           </p>
