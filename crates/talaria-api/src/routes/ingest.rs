@@ -27,6 +27,18 @@ use talaria_store::{
 pub const LANE_EXPLORER: &str = "explorer";
 pub const LANE_AGORA: &str = "agora";
 
+#[derive(Debug, Clone, Default)]
+pub struct IngestProgress {
+    pub phase: String,
+    pub timeline_events: u32,
+    pub map_pins: u32,
+    pub sources_done: u32,
+    pub sources_pending: u32,
+    pub wiki_pages: u32,
+    pub wdqs_events: u32,
+    pub last_update_ms: u64,
+}
+
 #[derive(Debug, Clone)]
 pub struct IngestJob {
     pub id: Uuid,
@@ -37,6 +49,8 @@ pub struct IngestJob {
     pub entity_id: Option<Uuid>,
     pub report: Option<Value>,
     pub error: Option<String>,
+    pub progress: IngestProgress,
+    pub started_at: Option<std::time::Instant>,
 }
 
 pub type IngestJobMap = Arc<Mutex<HashMap<Uuid, IngestJob>>>;
@@ -274,6 +288,11 @@ async fn start_lane_ingest(
         entity_id,
         report: None,
         error: None,
+        progress: IngestProgress {
+            phase: "queued".into(),
+            ..Default::default()
+        },
+        started_at: None,
     };
     state.ingest_jobs.lock().await.insert(job_id, job);
 
@@ -311,12 +330,14 @@ async fn start_lane_ingest(
             let mut jobs = jobs.lock().await;
             if let Some(job) = jobs.get_mut(&job_id) {
                 job.status = "running".into();
+                job.started_at = Some(std::time::Instant::now());
+                job.progress.phase = "starting".into();
             }
         }
 
         let result = if lane_owned == LANE_EXPLORER {
             let seed_list = seed_list_display.expect("explorer seed list");
-            run_explorer_lane(
+            run_explorer_lane_progressive(
                 &config,
                 &subject_for_job,
                 qid.as_deref(),
@@ -324,6 +345,8 @@ async fn start_lane_ingest(
                 &wiki_lang,
                 max_titles,
                 max_documents,
+                job_id,
+                jobs.clone(),
             )
             .await
         } else {
@@ -345,10 +368,12 @@ async fn start_lane_ingest(
                 job.entity_id = parse_entity_id_from_report(&report).or(job.entity_id);
                 job.report = Some(report);
                 job.status = "done".into();
+                job.progress.phase = "done".into();
             }
             Err(err) => {
                 job.status = "failed".into();
                 job.error = Some(err.to_string());
+                job.progress.phase = "failed".into();
             }
         }
     });
@@ -399,6 +424,71 @@ async fn run_explorer_lane(
     .await?;
 
     let entity_id = parse_entity_id_from_report(&person);
+
+    Ok(json!({
+        "lane": LANE_EXPLORER,
+        "purpose": lane_purpose(LANE_EXPLORER),
+        "pipeline": "person",
+        "person": person,
+        "subject": {
+            "entity_id": entity_id.map(|id| id.to_string()),
+            "label": subject,
+            "qid": qid,
+        },
+    }))
+}
+
+async fn run_explorer_lane_progressive(
+    config: &talaria_core::AppConfig,
+    subject: &str,
+    qid: Option<&str>,
+    seed_list: &std::path::Path,
+    wiki_lang: &str,
+    _max_titles: Option<u32>,
+    max_documents: u32,
+    job_id: Uuid,
+    jobs: IngestJobMap,
+) -> anyhow::Result<Value> {
+    // Update phase helper
+    async fn update_progress(jobs: &IngestJobMap, job_id: Uuid, phase: &str) {
+        let mut jobs = jobs.lock().await;
+        if let Some(job) = jobs.get_mut(&job_id) {
+            job.progress.phase = phase.to_string();
+            job.progress.last_update_ms = job.started_at
+                .map(|s| s.elapsed().as_millis() as u64)
+                .unwrap_or(0);
+        }
+    }
+
+    update_progress(&jobs, job_id, "resolving").await;
+    
+    // Run the actual person ingest - counts are updated via database queries
+    let person = crate::person_ingest::run_person_ingest(
+        config,
+        subject,
+        qid,
+        wiki_lang,
+        max_documents,
+        Some(seed_list),
+    )
+    .await?;
+
+    let entity_id = parse_entity_id_from_report(&person);
+    
+    // Update final progress from report
+    {
+        let mut jobs = jobs.lock().await;
+        if let Some(job) = jobs.get_mut(&job_id) {
+            job.entity_id = entity_id;
+            job.progress.phase = "persisting".to_string();
+            if let Some(wiki_pages) = person.get("wiki_pages").and_then(|v| v.as_u64()) {
+                job.progress.wiki_pages = wiki_pages as u32;
+            }
+            if let Some(wdqs) = person.get("wdqs_events").and_then(|v| v.as_u64()) {
+                job.progress.wdqs_events = wdqs as u32;
+            }
+        }
+    }
 
     Ok(json!({
         "lane": LANE_EXPLORER,
@@ -480,6 +570,7 @@ pub async fn get_ingest_job(
             .unwrap_or((0, 0)),
         None => (0, 0),
     };
+    let elapsed_ms = job.started_at.map(|s| s.elapsed().as_millis() as u64);
     Ok(Json(json!({
         "job_id": job.id,
         "lane": job.lane,
@@ -492,6 +583,61 @@ pub async fn get_ingest_job(
         "map_events": map_events,
         "error": job.error,
         "report": job.report,
+        "progress": {
+            "phase": job.progress.phase,
+            "wiki_pages": job.progress.wiki_pages,
+            "wdqs_events": job.progress.wdqs_events,
+            "elapsed_ms": elapsed_ms,
+        },
+    })))
+}
+
+/// Lightweight status endpoint for progressive UI updates.
+/// Returns only status, phase, and counts - no full report.
+pub async fn get_explorer_status(
+    State(state): State<AppState>,
+    Path(job_id): Path<Uuid>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let job = {
+        let jobs = state.ingest_jobs.lock().await;
+        jobs.get(&job_id).cloned()
+    };
+    let Some(job) = job else {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "job_not_found" })),
+        ));
+    };
+    
+    if job.lane != LANE_EXPLORER {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "not_explorer_lane" })),
+        ));
+    }
+    
+    let (timeline_events, map_pins) = match job.entity_id {
+        Some(entity_id) => person_density_counts(&state.pool, entity_id)
+            .await
+            .unwrap_or((0, 0)),
+        None => (0, 0),
+    };
+    
+    let elapsed_ms = job.started_at.map(|s| s.elapsed().as_millis() as u64);
+    let is_done = matches!(job.status.as_str(), "done" | "failed");
+    
+    Ok(Json(json!({
+        "job_id": job.id,
+        "status": job.status,
+        "phase": job.progress.phase,
+        "entity_id": job.entity_id,
+        "timeline_events": timeline_events,
+        "map_pins": map_pins,
+        "wiki_pages": job.progress.wiki_pages,
+        "wdqs_events": job.progress.wdqs_events,
+        "elapsed_ms": elapsed_ms,
+        "is_done": is_done,
+        "error": job.error,
     })))
 }
 
