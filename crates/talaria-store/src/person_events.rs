@@ -37,6 +37,9 @@ pub struct PersonEventInsert {
     pub occurrence_key: String,
     pub occurrence_stem: Option<String>,
     pub predicate: String,
+    /// Wikidata QID for the resolved place identity (from TGN, WHG, or Wikidata search).
+    /// Separate from geocoding — identity resolution establishes this before coordinates.
+    pub place_identity_qid: Option<String>,
 }
 
 pub async fn find_active_person_event_by_occurrence(
@@ -86,13 +89,13 @@ pub async fn insert_person_event(pool: &PgPool, event: &PersonEventInsert) -> an
                 place_label, geom, confidence, map_eligible,
                 historically_valid, timeline_eligible, source_count, evidence_count,
                 fingerprint, occurrence_key, occurrence_stem, is_active, predicate,
-                assembler_version, pipeline
+                assembler_version, pipeline, place_identity_qid
             )
             VALUES (
                 $1,$2,$3,$4,$5,$6,$7,$8,
                 ST_SetSRID(ST_MakePoint($9,$10),4326)::geography,
                 $11,$12,true,true,1,1,
-                $13,$14,$15,true,$16,'person_ingest:v1','person'
+                $13,$14,$15,true,$16,'person_ingest:v1','person',$17
             )
             RETURNING id
             "#,
@@ -113,6 +116,7 @@ pub async fn insert_person_event(pool: &PgPool, event: &PersonEventInsert) -> an
         .bind(&event.occurrence_key)
         .bind(&event.occurrence_stem)
         .bind(&event.predicate)
+        .bind(&event.place_identity_qid)
         .fetch_one(pool)
         .await?
     } else {
@@ -123,12 +127,12 @@ pub async fn insert_person_event(pool: &PgPool, event: &PersonEventInsert) -> an
                 place_label, confidence, map_eligible,
                 historically_valid, timeline_eligible, source_count, evidence_count,
                 fingerprint, occurrence_key, occurrence_stem, is_active, predicate,
-                assembler_version, pipeline
+                assembler_version, pipeline, place_identity_qid
             )
             VALUES (
                 $1,$2,$3,$4,$5,$6,$7,$8,$9,false,
                 true,true,1,1,
-                $10,$11,$12,true,$13,'person_ingest:v1','person'
+                $10,$11,$12,true,$13,'person_ingest:v1','person',$14
             )
             RETURNING id
             "#,
@@ -146,6 +150,7 @@ pub async fn insert_person_event(pool: &PgPool, event: &PersonEventInsert) -> an
         .bind(&event.occurrence_key)
         .bind(&event.occurrence_stem)
         .bind(&event.predicate)
+        .bind(&event.place_identity_qid)
         .fetch_one(pool)
         .await?
     };

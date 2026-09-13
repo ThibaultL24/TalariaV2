@@ -137,3 +137,110 @@ pub async fn apply_coords_to_event(
     .await?;
     Ok(())
 }
+
+/// Apply place identity QID to an existing canonical event.
+/// This is separate from coordinates — identity resolution establishes QID,
+/// geocoding provides coordinates afterward.
+pub async fn apply_place_identity_to_event(
+    pool: &PgPool,
+    event_id: Uuid,
+    place_identity_qid: &str,
+) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"
+        UPDATE canonical_events
+        SET place_identity_qid = $2
+        WHERE id = $1 AND is_active
+        "#,
+    )
+    .bind(event_id)
+    .bind(place_identity_qid)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Apply both place identity QID and coordinates to an existing event.
+pub async fn apply_full_place_grounding(
+    pool: &PgPool,
+    event_id: Uuid,
+    place_identity_qid: Option<&str>,
+    lat: f64,
+    lon: f64,
+) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"
+        UPDATE canonical_events
+        SET geom = ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography,
+            map_eligible = true,
+            place_identity_qid = COALESCE($2, place_identity_qid)
+        WHERE id = $1 AND is_active
+        "#,
+    )
+    .bind(event_id)
+    .bind(place_identity_qid)
+    .bind(lon)
+    .bind(lat)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Parameters for upserting a place resolution audit record.
+#[derive(Debug, Clone)]
+pub struct PlaceResolutionInsert {
+    pub place_entity_id: Option<Uuid>,
+    pub place_label: String,
+    pub method: String,
+    pub wikidata_qid: Option<String>,
+    pub tgn_id: Option<String>,
+    pub whg_id: Option<String>,
+    pub geonames_id: Option<String>,
+    pub lat: Option<f64>,
+    pub lon: Option<f64>,
+    pub score: Option<f32>,
+    pub identity_source: Option<String>,
+    pub raw_json: serde_json::Value,
+}
+
+/// Upsert a place resolution record (audit trail for place identity grounding).
+/// Deduplicated by (place_label, method, wikidata_qid).
+pub async fn upsert_place_resolution(
+    pool: &PgPool,
+    res: &PlaceResolutionInsert,
+) -> anyhow::Result<Uuid> {
+    let id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO place_resolutions (
+            place_entity_id, place_label, method, wikidata_qid,
+            tgn_id, whg_id, geonames_id, lat, lon, score,
+            identity_source, raw_json
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        ON CONFLICT (place_label, method, (COALESCE(wikidata_qid, '')))
+        DO UPDATE SET
+            place_entity_id = COALESCE(EXCLUDED.place_entity_id, place_resolutions.place_entity_id),
+            lat = COALESCE(EXCLUDED.lat, place_resolutions.lat),
+            lon = COALESCE(EXCLUDED.lon, place_resolutions.lon),
+            score = COALESCE(EXCLUDED.score, place_resolutions.score),
+            identity_source = COALESCE(EXCLUDED.identity_source, place_resolutions.identity_source),
+            raw_json = EXCLUDED.raw_json
+        RETURNING id
+        "#,
+    )
+    .bind(res.place_entity_id)
+    .bind(&res.place_label)
+    .bind(&res.method)
+    .bind(&res.wikidata_qid)
+    .bind(&res.tgn_id)
+    .bind(&res.whg_id)
+    .bind(&res.geonames_id)
+    .bind(res.lat)
+    .bind(res.lon)
+    .bind(res.score)
+    .bind(&res.identity_source)
+    .bind(&res.raw_json)
+    .fetch_one(pool)
+    .await?;
+    Ok(id)
+}

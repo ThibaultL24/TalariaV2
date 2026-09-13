@@ -1093,6 +1093,7 @@ pub(crate) async fn process_raw_candidate(
             supersedes: None,
             source_count: 1,
             evidence_count: 1,
+            place_identity_qid: None,
         },
     )
     .await?;

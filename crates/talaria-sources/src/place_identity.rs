@@ -343,7 +343,12 @@ fn percent_encode(s: &str) -> String {
 }
 
 /// Composite resolver that tries multiple identity sources in order.
-/// Order: alias gazetteer → TGN → WHG → Wikidata search.
+/// Order: alias gazetteer → TGN → WHG.
+///
+/// IMPORTANT: If alias gazetteer resolves but has no QID, we continue trying
+/// TGN/WHG to get a QID and merge results. Coordinates come from alias gazetteer
+/// (or page coords), identity comes from TGN/WHG. This ensures `place_identity_qid`
+/// gets populated even for places in our offline alias table.
 pub struct CompositeIdentityResolver {
     resolvers: Vec<Box<dyn PlaceIdentityResolver>>,
 }
@@ -375,12 +380,48 @@ impl Default for CompositeIdentityResolver {
 #[async_trait]
 impl PlaceIdentityResolver for CompositeIdentityResolver {
     async fn resolve(&self, mention: &str) -> Option<PlaceIdentity> {
+        let mut best_identity: Option<PlaceIdentity> = None;
+
         for resolver in &self.resolvers {
             if let Some(identity) = resolver.resolve(mention).await {
-                return Some(identity);
+                // If we have no identity yet, take this one
+                if best_identity.is_none() {
+                    best_identity = Some(identity.clone());
+                    // If this identity already has a QID, we're done
+                    if identity.has_qid() {
+                        return best_identity;
+                    }
+                    // Otherwise, continue trying other resolvers to find a QID
+                    continue;
+                }
+
+                // If we already have an identity without QID, and this one has a QID,
+                // merge them: keep original source info, add the QID and authority IDs
+                if let Some(ref mut best) = best_identity {
+                    if !best.has_qid() && identity.has_qid() {
+                        best.wikidata_qid = identity.wikidata_qid.clone();
+                        best.tgn_id = best.tgn_id.clone().or(identity.tgn_id.clone());
+                        best.whg_id = best.whg_id.clone().or(identity.whg_id.clone());
+                        best.geonames_id = best.geonames_id.clone().or(identity.geonames_id.clone());
+                        // Upgrade confidence if QID found via authority
+                        if identity.confidence > best.confidence {
+                            best.confidence = identity.confidence;
+                        }
+                        // Note which source provided the QID
+                        best.identity_source = format!("{}+{}", best.identity_source, identity.identity_source);
+                        tracing::debug!(
+                            mention = mention,
+                            qid = ?best.wikidata_qid,
+                            source = %best.identity_source,
+                            "merged identity from multiple sources"
+                        );
+                        return best_identity;
+                    }
+                }
             }
         }
-        None
+
+        best_identity
     }
 
     fn name(&self) -> &'static str {
@@ -413,6 +454,52 @@ impl PlaceIdentityResolver for AliasGazetteerResolver {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Mock resolver that returns identity without QID.
+    struct NoQidResolver;
+
+    #[async_trait]
+    impl PlaceIdentityResolver for NoQidResolver {
+        async fn resolve(&self, mention: &str) -> Option<PlaceIdentity> {
+            Some(PlaceIdentity {
+                label: mention.to_string(),
+                wikidata_qid: None,
+                tgn_id: None,
+                whg_id: None,
+                geonames_id: None,
+                identity_source: "no_qid_resolver".into(),
+                confidence: 0.8,
+            })
+        }
+
+        fn name(&self) -> &'static str {
+            "no_qid_resolver"
+        }
+    }
+
+    /// Mock resolver that returns identity WITH a QID.
+    struct QidResolver {
+        qid: String,
+    }
+
+    #[async_trait]
+    impl PlaceIdentityResolver for QidResolver {
+        async fn resolve(&self, mention: &str) -> Option<PlaceIdentity> {
+            Some(PlaceIdentity {
+                label: mention.to_string(),
+                wikidata_qid: Some(self.qid.clone()),
+                tgn_id: Some("TGN123".into()),
+                whg_id: None,
+                geonames_id: None,
+                identity_source: "qid_resolver".into(),
+                confidence: 0.9,
+            })
+        }
+
+        fn name(&self) -> &'static str {
+            "qid_resolver"
+        }
+    }
 
     #[tokio::test]
     async fn tgn_resolver_basic() {
@@ -475,5 +562,84 @@ mod tests {
 
         let result = handle.await.expect("spawned task should complete");
         assert!(result.is_some());
+    }
+
+    /// Regression test: composite resolver continues trying TGN/WHG when alias gazetteer lacks QID.
+    /// This is the fix for PR #23/#25 where place_identity_qid = 0%.
+    #[tokio::test]
+    async fn composite_merges_qid_from_second_resolver() {
+        // Build a custom composite: no_qid first, then qid resolver
+        let resolver = CompositeIdentityResolver {
+            resolvers: vec![
+                Box::new(NoQidResolver),
+                Box::new(QidResolver { qid: "Q90".into() }),
+            ],
+        };
+
+        let identity = resolver
+            .resolve("Test Place")
+            .await
+            .expect("should resolve");
+
+        // Should have the label from first resolver
+        assert_eq!(identity.label, "Test Place");
+        // Should have the QID merged from second resolver
+        assert_eq!(identity.wikidata_qid.as_deref(), Some("Q90"));
+        // Should have the TGN ID from second resolver
+        assert_eq!(identity.tgn_id.as_deref(), Some("TGN123"));
+        // Source should show the merge
+        assert!(
+            identity.identity_source.contains("no_qid_resolver"),
+            "should include first resolver source"
+        );
+        assert!(
+            identity.identity_source.contains("qid_resolver"),
+            "should include second resolver source"
+        );
+    }
+
+    /// Test: when first resolver already has QID, don't continue trying others.
+    #[tokio::test]
+    async fn composite_stops_early_when_qid_found() {
+        let resolver = CompositeIdentityResolver {
+            resolvers: vec![
+                Box::new(QidResolver { qid: "Q100".into() }),
+                Box::new(QidResolver { qid: "Q200".into() }),
+            ],
+        };
+
+        let identity = resolver
+            .resolve("Test Place")
+            .await
+            .expect("should resolve");
+
+        // Should have the QID from first resolver (stopped early)
+        assert_eq!(identity.wikidata_qid.as_deref(), Some("Q100"));
+        // Source should only be from first resolver
+        assert_eq!(identity.identity_source, "qid_resolver");
+    }
+
+    /// Test: alias gazetteer returns coords but no QID, TGN provides QID.
+    #[tokio::test]
+    async fn alias_gazetteer_coords_tgn_qid_merge() {
+        // Use real alias gazetteer which has coords but no QID for most places
+        let resolver = CompositeIdentityResolver {
+            resolvers: vec![
+                Box::new(AliasGazetteerResolver),
+                Box::new(QidResolver { qid: "Q90".into() }),
+            ],
+        };
+
+        // Paris is in alias gazetteer but alias gazetteer returns wikidata_qid: None
+        let identity = resolver.resolve("Paris").await.expect("should resolve");
+
+        // Alias gazetteer doesn't have QID, so we should get one from QidResolver
+        // Note: The alias gazetteer in resolve_place_offline returns wikidata_qid: None
+        if identity.wikidata_qid.is_none() {
+            // If alias gazetteer didn't short-circuit, we'd have a QID
+            // This test confirms the merge behavior when alias has no QID
+            panic!("Expected QID to be merged from second resolver");
+        }
+        assert_eq!(identity.wikidata_qid.as_deref(), Some("Q90"));
     }
 }

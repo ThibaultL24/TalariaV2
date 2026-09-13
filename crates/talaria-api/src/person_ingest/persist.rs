@@ -79,6 +79,7 @@ pub async fn persist_gated_item(
     occurrence_key: &str,
     time: &TypedTime,
     coords: Option<(f64, f64)>,
+    place_identity_qid: Option<&str>,
     source_locator: &str,
 ) -> anyhow::Result<PersistOutcome> {
     let fingerprint = gating::fingerprint_for(subject, item, time, raw_document_id);
@@ -164,6 +165,7 @@ pub async fn persist_gated_item(
             occurrence_key: occurrence_key.to_string(),
             occurrence_stem: None,
             predicate: item.role.clone(),
+            place_identity_qid: place_identity_qid.map(String::from),
         },
     )
     .await?;
@@ -212,7 +214,24 @@ pub async fn persist_fact_item(
         meta.military_subject,
     );
     let decision = gating::judge_item(&candidate, ctx, attribution);
-    let coords = typing::resolve_coords(item.place_surface.as_deref(), meta.coords).await;
+
+    // Full place grounding: identity resolution (TGN/WHG) + geocoding
+    let grounding = typing::ground_place_full(item.place_surface.as_deref(), meta.coords).await;
+
+    // Persist place resolution to audit trail if identity was resolved
+    if let Some(ref identity) = grounding.identity {
+        if let Err(e) = typing::persist_place_resolution(
+            pool,
+            item.place_surface.as_deref().unwrap_or_default(),
+            identity,
+            grounding.coords,
+        )
+        .await
+        {
+            tracing::warn!(error = %e, "failed to persist place resolution audit trail");
+        }
+    }
+
     let outcome = persist_gated_item(
         pool,
         entity_id,
@@ -223,7 +242,8 @@ pub async fn persist_fact_item(
         meta.raw_document_id,
         &occ,
         &time,
-        coords,
+        grounding.coords,
+        grounding.identity_qid.as_deref(),
         meta.source_locator,
     )
     .await?;

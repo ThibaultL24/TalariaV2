@@ -81,8 +81,9 @@ pub use phrase_candidates::{
     PhraseCandidateRecord,
 };
 pub use places::{
-    apply_coords_to_event, apply_geocode_to_events, get_place_geocode,
-    list_place_labels_needing_geocode, upsert_place_geocode, PlaceGeocodeRow,
+    apply_coords_to_event, apply_full_place_grounding, apply_geocode_to_events,
+    apply_place_identity_to_event, get_place_geocode, list_place_labels_needing_geocode,
+    upsert_place_geocode, upsert_place_resolution, PlaceGeocodeRow, PlaceResolutionInsert,
 };
 pub use person_events::{
     evidence_hash, find_active_person_event_by_fingerprint, find_active_person_event_by_occurrence,
