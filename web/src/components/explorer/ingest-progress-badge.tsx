@@ -3,12 +3,14 @@ import { useI18n, type AppMessages } from "@/lib/i18n";
 
 interface IngestProgressBadgeProps {
   phase: string | null;
+  currentPage?: string | null;
   timelineEvents: number;
   mapPins: number;
   preciseDates: number;
   preciseCoords: number;
   evidenceCount: number;
   wikiPages: number;
+  sourcesPending?: number;
   isRunning: boolean;
   error?: string | null;
 }
@@ -17,9 +19,13 @@ const PHASE_LABELS: Record<string, string> = {
   queued: "Queued…",
   starting: "Resolving entity…",
   resolving: "Resolving entity…",
-  collecting: "Collecting sources…",
+  wikidata: "Fetching Wikidata…",
+  wikipedia: "Fetching Wikipedia…",
   extracting: "Extracting events…",
+  wdqs: "Querying WDQS…",
+  following_links: "Following links…",
   grounding: "Grounding places…",
+  corpus_enrichment: "Enriching with sources…",
   persisting: "Saving…",
   done: "Complete",
   failed: "Failed",
@@ -30,14 +36,22 @@ function phaseLabel(phase: string | null, t: AppMessages): string {
   return PHASE_LABELS[phase] ?? t.searchInProgress;
 }
 
+function truncateTitle(title: string | null | undefined, maxLen = 28): string | null {
+  if (!title) return null;
+  if (title.length <= maxLen) return title;
+  return title.slice(0, maxLen - 1) + "…";
+}
+
 export function IngestProgressBadge({
   phase,
+  currentPage,
   timelineEvents,
   mapPins,
   preciseDates,
   preciseCoords,
   evidenceCount,
   wikiPages,
+  sourcesPending,
   isRunning,
   error,
 }: IngestProgressBadgeProps) {
@@ -53,7 +67,7 @@ export function IngestProgressBadge({
 
   const hasEvents = timelineEvents > 0 || mapPins > 0;
   const countsText = hasEvents
-    ? `${timelineEvents} événements · ${mapPins} pins`
+    ? `${timelineEvents} events · ${mapPins} pins`
     : null;
 
   const precisionText = hasEvents && (preciseDates > 0 || preciseCoords > 0)
@@ -67,6 +81,9 @@ export function IngestProgressBadge({
       ].filter(Boolean).join(" · ")
     : null;
 
+  const truncatedPage = truncateTitle(currentPage);
+  const showFollowProgress = (sourcesPending ?? 0) > 0 && phase === "following_links";
+
   return (
     <div className="pointer-events-none absolute top-3 left-1/2 z-10 -translate-x-1/2 flex flex-col items-center gap-1">
       {isRunning && (
@@ -75,7 +92,14 @@ export function IngestProgressBadge({
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
           </span>
-          <span>{phaseLabel(phase, t)}</span>
+          <span className="flex flex-col items-center">
+            <span>{phaseLabel(phase, t)}</span>
+            {truncatedPage && (
+              <span className="text-[9px] text-(--color-text-muted)/70 max-w-[180px] truncate">
+                {truncatedPage}
+              </span>
+            )}
+          </span>
         </div>
       )}
       {countsText && (
@@ -83,9 +107,13 @@ export function IngestProgressBadge({
           {countsText}
         </div>
       )}
-      {(precisionText || sourcesText) && (
+      {(precisionText || sourcesText || showFollowProgress) && (
         <div className="rounded-full border border-(--map-panel-border) bg-(--color-bg-elevated)/65 px-2 py-0.5 text-[9px] text-(--color-text-muted)/80 backdrop-blur-sm">
-          {[precisionText, sourcesText].filter(Boolean).join(" · ")}
+          {[
+            precisionText,
+            sourcesText,
+            showFollowProgress ? `${sourcesPending} queued` : null,
+          ].filter(Boolean).join(" · ")}
         </div>
       )}
     </div>

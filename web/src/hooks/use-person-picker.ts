@@ -105,12 +105,15 @@ export function usePersonPicker(opts: UsePersonPickerOptions = {}) {
     error: progressiveIngest.error,
     // Progressive ingest state
     ingestPhase: progressiveIngest.phase,
+    currentPage: progressiveIngest.currentPage,
     timelineEvents: progressiveIngest.timelineEvents,
     mapPins: progressiveIngest.mapPins,
     preciseDates: progressiveIngest.preciseDates,
     preciseCoords: progressiveIngest.preciseCoords,
     evidenceCount: progressiveIngest.evidenceCount,
     wikiPages: progressiveIngest.wikiPages,
+    wdqsEvents: progressiveIngest.wdqsEvents,
+    sourcesPending: progressiveIngest.sourcesPending,
     elapsedMs: progressiveIngest.elapsedMs,
   };
 }

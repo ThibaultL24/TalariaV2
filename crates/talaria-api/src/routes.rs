@@ -3,7 +3,7 @@ mod documents;
 mod entities;
 mod events;
 mod facets;
-mod ingest;
+pub mod ingest;
 
 use axum::{
     routing::{get, post},

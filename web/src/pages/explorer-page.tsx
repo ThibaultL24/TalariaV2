@@ -66,12 +66,14 @@ export function ExplorerPage() {
     ingestBusy,
     error,
     ingestPhase,
+    currentPage,
     timelineEvents,
     mapPins,
     preciseDates,
     preciseCoords,
     evidenceCount,
     wikiPages,
+    sourcesPending,
   } = usePersonPicker({ onCountsChanged: handleCountsChanged });
 
   const { entityId, entityLabel, personFilter, selectedEventId, setSelectedEventId, closeDetail } =
@@ -133,8 +135,14 @@ export function ExplorerPage() {
       }
     }
 
+    // Initial load
     load();
-    const tick = window.setInterval(load, ingestBusy ? INGEST_POLL_MS : POLL_MS);
+    
+    // Periodic refresh: faster during ingest, slower otherwise
+    // dataVersion changes also trigger this effect for immediate refresh when counts change
+    const pollInterval = ingestBusy ? INGEST_POLL_MS : POLL_MS;
+    const tick = window.setInterval(load, pollInterval);
+    
     return () => {
       cancelled = true;
       window.clearInterval(tick);
@@ -297,12 +305,14 @@ export function ExplorerPage() {
         {(ingestBusy || loading) && (
           <IngestProgressBadge
             phase={ingestPhase}
+            currentPage={currentPage}
             timelineEvents={timelineEvents}
             mapPins={mapPins}
             preciseDates={preciseDates}
             preciseCoords={preciseCoords}
             evidenceCount={evidenceCount}
             wikiPages={wikiPages}
+            sourcesPending={sourcesPending}
             isRunning={ingestBusy}
             error={error}
           />

@@ -26,7 +26,22 @@ use talaria_store::{
 use uuid::Uuid;
 
 use crate::llm;
+use crate::routes::ingest::ProgressHandle;
 use persist::{PersistMeta, PersistOutcome};
+
+/// Run person ingest with optional progress handle for UI updates.
+pub async fn run_person_ingest_progressive(
+    config: &AppConfig,
+    subject: &str,
+    qid: Option<&str>,
+    wiki_lang: &str,
+    max_documents: u32,
+    seed_list: Option<&Path>,
+    progress: Option<ProgressHandle>,
+) -> anyhow::Result<Value> {
+    run_person_ingest_inner(config, subject, qid, wiki_lang, max_documents, seed_list, progress)
+        .await
+}
 
 pub async fn run_person_ingest(
     config: &AppConfig,
@@ -36,6 +51,21 @@ pub async fn run_person_ingest(
     max_documents: u32,
     seed_list: Option<&Path>,
 ) -> anyhow::Result<Value> {
+    run_person_ingest_inner(config, subject, qid, wiki_lang, max_documents, seed_list, None).await
+}
+
+async fn run_person_ingest_inner(
+    config: &AppConfig,
+    subject: &str,
+    qid: Option<&str>,
+    wiki_lang: &str,
+    max_documents: u32,
+    seed_list: Option<&Path>,
+    progress: Option<ProgressHandle>,
+) -> anyhow::Result<Value> {
+    if let Some(ref p) = progress {
+        p.set_phase("resolving").await;
+    }
     let resolved_qid = resolve::require_person_qid(qid, subject, wiki_lang).await?;
     let pool = connect(config).await?;
     run_migrations(&pool).await?;
@@ -52,6 +82,9 @@ pub async fn run_person_ingest(
     let mut aliases = collect::subject_aliases(subject);
     let follow_cap = collect::follow_budget(max_documents);
 
+    if let Some(ref p) = progress {
+        p.set_phase("wikidata").await;
+    }
     let wd_meta = match crate::lot_e::fetch_wikidata_subject_meta(&resolved_qid, wiki_lang, Some(&pool))
         .await
     {
@@ -86,6 +119,11 @@ pub async fn run_person_ingest(
         subject,
     )
     .await?;
+
+    // Notify progress handle of resolved entity_id
+    if let Some(ref p) = progress {
+        p.set_entity_id(entity_id).await;
+    }
 
     // Persist authority bundle (P268 BnF, P214 VIAF, P213 ISNI, P269 IdRef) when available.
     if let Some(meta) = wd_meta.as_ref() {
@@ -151,6 +189,9 @@ pub async fn run_person_ingest(
         }
     }
 
+    if let Some(ref p) = progress {
+        p.set_phase("wikipedia").await;
+    }
     for lang in collect::wiki_langs(wiki_lang) {
         match collect::fetch_wiki_extract(&lang, subject).await {
             Ok((title, text, links)) => {
@@ -161,6 +202,10 @@ pub async fn run_person_ingest(
                     primary_title = title.clone();
                 }
                 wiki_pages += 1;
+                if let Some(ref p) = progress {
+                    p.set_phase_with_page("extracting", &title).await;
+                    p.increment_wiki_pages().await;
+                }
                 follow_queue.extend(collect::follow_titles_from_page_links(&links, follow_cap));
                 let (ins, re, deb, drop) = ingest_wiki_text(
                     &pool,
@@ -223,9 +268,15 @@ pub async fn run_person_ingest(
         }
     }
 
+    if let Some(ref p) = progress {
+        p.set_phase("wdqs").await;
+    }
     match fetch_events_for_person(&resolved_qid).await {
         Ok(events) => {
             wdqs_events = events.len() as u32;
+            if let Some(ref p) = progress {
+                p.set_wdqs_events(wdqs_events).await;
+            }
             let (wdqs_ins, wdqs_re) = persist_wdqs_events(
                 &pool,
                 entity_id,
@@ -251,6 +302,11 @@ pub async fn run_person_ingest(
         }
     }
 
+    if let Some(ref p) = progress {
+        p.set_phase("following_links").await;
+        p.set_sources_pending(follow_queue.len() as u32).await;
+    }
+
     let extra = follow_cap.saturating_sub(wiki_pages);
     let mut followed = 0u32;
     for title in follow_queue {
@@ -262,6 +318,9 @@ pub async fn run_person_ingest(
         }
         if !seen_titles.insert(title.to_lowercase()) {
             continue;
+        }
+        if let Some(ref p) = progress {
+            p.set_phase_with_page("following_links", &title).await;
         }
         match ingest_follow_page(
             &pool,
@@ -279,6 +338,9 @@ pub async fn run_person_ingest(
                 followed += 1;
                 if ins + re > 0 {
                     wiki_pages += 1;
+                    if let Some(ref p) = progress {
+                        p.increment_wiki_pages().await;
+                    }
                 }
                 facts_inserted += ins;
                 facts_reinforced += re;
@@ -287,8 +349,14 @@ pub async fn run_person_ingest(
         }
     }
 
+    if let Some(ref p) = progress {
+        p.set_phase("grounding").await;
+    }
     typing::backfill_person_geocodes(&pool, entity_id).await?;
 
+    if let Some(ref p) = progress {
+        p.set_phase("corpus_enrichment").await;
+    }
     // Corpus evidence enrichment (Vague A): query HAL, Gallica, BnF, Persée, theses.fr, OpenAlex
     // to reinforce existing canonical events with additional evidence. Never creates new pins.
     let corpus_stats = {
