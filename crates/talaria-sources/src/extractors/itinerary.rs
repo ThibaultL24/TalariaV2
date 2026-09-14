@@ -56,6 +56,14 @@ const MOTION_CUES: &[&str] = &[
     "à l’hôtel",
     "à l'hotel",
     "at the hotel",
+    "quitte ",
+    "quitta ",
+    "quittent ",
+    "repart ",
+    "repartit ",
+    "fait escale",
+    "fit escale",
+    "faire escale",
 ];
 
 const PLACE_CUES: &[&str] = &[
@@ -108,6 +116,12 @@ const PLACE_CUES: &[&str] = &[
     "at the hotel ",
     "vers ",
     "via ",
+    "quitte ",
+    "quitta ",
+    "quittent ",
+    "fait escale à ",
+    "fit escale à ",
+    "faire escale à ",
 ];
 
 impl CandidateExtractor for ItineraryExtractor {
@@ -307,6 +321,8 @@ fn classify_stop(paragraph: &str, place: &str, single_first: bool) -> (&'static 
     if lower.contains(&format!("partent de {place_l}"))
         || lower.contains(&format!("departed {place_l}"))
         || lower.contains(&format!("left {place_l}"))
+        || lower.contains(&format!("quitte {place_l}"))
+        || lower.contains(&format!("quitta {place_l}"))
     {
         return ("departure", "departed_from");
     }
@@ -319,6 +335,9 @@ fn classify_stop(paragraph: &str, place: &str, single_first: bool) -> (&'static 
     if lower.contains(&format!("passa par {place_l}"))
         || lower.contains(&format!("via {place_l}"))
         || lower.contains(&format!("passed through {place_l}"))
+        || lower.contains(&format!("fait escale à {place_l}"))
+        || lower.contains(&format!("fit escale à {place_l}"))
+        || lower.contains(&format!("faire escale à {place_l}"))
     {
         return ("passage", "passed_through");
     }
@@ -326,7 +345,9 @@ fn classify_stop(paragraph: &str, place: &str, single_first: bool) -> (&'static 
         && (lower.contains("partit pour")
             || lower.contains("partent pour")
             || lower.contains("left for")
-            || lower.contains("departed"))
+            || lower.contains("departed")
+            || lower.contains("quitte ")
+            || lower.contains("quitta "))
     {
         return ("departure", "departed_for");
     }

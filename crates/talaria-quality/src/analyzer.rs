@@ -348,6 +348,36 @@ fn classify_predicate(clause: &str) -> Option<(&'static str, &'static str)> {
             "meeting",
             "met",
         ),
+        (
+            &[
+                "est inscrit",
+                "est inscrite",
+                "inscrit au",
+                "inscrite au",
+                "inscrit à",
+                "inscrite à",
+                "pensionnaire au",
+                "au collège",
+                "au lycée",
+                "studied at",
+                "enrolled at",
+                "enrolled in",
+            ],
+            "education",
+            "studied_at",
+        ),
+        (
+            &[
+                "inhumé au",
+                "inhumée au",
+                "inhumé à",
+                "inhumée à",
+                "buried at",
+                "buried in",
+            ],
+            "burial",
+            "buried_at",
+        ),
     ];
     for (cues, et, pred) in RULES {
         if cues.iter().any(|c| lower.contains(c)) {
