@@ -8,7 +8,7 @@ mod gating;
 mod grounding;
 mod persist;
 mod resolve;
-mod typing;
+pub(crate) mod typing;
 
 use std::collections::HashSet;
 use std::path::Path;
