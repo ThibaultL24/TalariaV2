@@ -15,6 +15,10 @@ pub enum RejectionCode {
     DuplicateCandidate,
     CompetingPlace,
     SubjectNotAttributed,
+    /// Death event extracted for a subject confirmed alive (no Wikidata P570).
+    DeathForLivingSubject,
+    /// Death event year is at or before the birth year.
+    DeathBeforeOrAtBirth,
 }
 
 impl RejectionCode {
@@ -30,6 +34,8 @@ impl RejectionCode {
             Self::DuplicateCandidate => "duplicate_candidate",
             Self::CompetingPlace => "competing_place",
             Self::SubjectNotAttributed => "subject_not_attributed",
+            Self::DeathForLivingSubject => "death_for_living_subject",
+            Self::DeathBeforeOrAtBirth => "death_before_or_at_birth",
         }
     }
 
@@ -45,6 +51,8 @@ impl RejectionCode {
             "duplicate_candidate" => Self::DuplicateCandidate,
             "competing_place" => Self::CompetingPlace,
             "subject_not_attributed" => Self::SubjectNotAttributed,
+            "death_for_living_subject" => Self::DeathForLivingSubject,
+            "death_before_or_at_birth" => Self::DeathBeforeOrAtBirth,
             _ => return None,
         })
     }
@@ -65,6 +73,9 @@ pub struct GateContext {
     pub cross_clause_join_detected: bool,
     /// Kind of entity assigned to place_entity_id (if any).
     pub place_entity_kind: Option<EntityKind>,
+    /// True when Wikidata confirms subject has no death date (P570 absent) — subject is alive.
+    /// Death events from non-authoritative sources should be rejected for living subjects.
+    pub subject_confirmed_alive: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -228,11 +239,18 @@ pub fn apply_gates(candidate: &EventCandidate, ctx: &GateContext) -> GateDecisio
         rejects.push(RejectionCode::SingletonCardinalityViolation);
     }
 
-    // Death year before birth year when both known on the candidate itself via context.
+    // Death validation gates — prevent spurious death events from cascading rejections.
     if candidate.event_type == "death" {
+        // Gate: death for subject confirmed alive (no Wikidata P570).
+        // Noisy Wikipedia extractions should not create death events for living people.
+        if ctx.subject_confirmed_alive && ctx.subject_death_year.is_none() {
+            rejects.push(RejectionCode::DeathForLivingSubject);
+        }
+
+        // Gate: death year at or before birth year is implausible.
         if let (Some(ey), Some(by)) = (event_year, ctx.subject_birth_year) {
-            if ey < by {
-                rejects.push(RejectionCode::EventBeforeSubjectBirth);
+            if ey <= by {
+                rejects.push(RejectionCode::DeathBeforeOrAtBirth);
             }
         }
     }
@@ -485,5 +503,97 @@ mod tests {
         assert!(apply_gates(&c, &ctx)
             .codes()
             .contains(&"event_before_subject_birth".into()));
+    }
+
+    // --- Death validation gates (Bug 2: Trump cascade regression tests) ---
+
+    #[test]
+    fn rejects_death_for_living_subject() {
+        // Trump scenario: subject born 1946, alive (no Wikidata P570), noisy extraction says died 1947
+        let c = base_candidate("death", 1947);
+        let ctx = GateContext {
+            subject_birth_year: Some(1946),
+            subject_death_year: None,
+            subject_confirmed_alive: true,
+            ..Default::default()
+        };
+        let codes = apply_gates(&c, &ctx).codes();
+        assert!(
+            codes.contains(&"death_for_living_subject".into()),
+            "Death event for living subject should be rejected: {codes:?}"
+        );
+    }
+
+    #[test]
+    fn rejects_death_at_birth_year() {
+        // Death in same year as birth is implausible
+        let c = base_candidate("death", 1946);
+        let ctx = GateContext {
+            subject_birth_year: Some(1946),
+            subject_death_year: None,
+            ..Default::default()
+        };
+        let codes = apply_gates(&c, &ctx).codes();
+        assert!(
+            codes.contains(&"death_before_or_at_birth".into()),
+            "Death at birth year should be rejected: {codes:?}"
+        );
+    }
+
+    #[test]
+    fn rejects_death_before_birth_year() {
+        // Death before birth is impossible
+        let c = base_candidate("death", 1800);
+        let ctx = GateContext {
+            subject_birth_year: Some(1821),
+            subject_death_year: None,
+            ..Default::default()
+        };
+        let codes = apply_gates(&c, &ctx).codes();
+        assert!(
+            codes.contains(&"death_before_or_at_birth".into()),
+            "Death before birth year should be rejected: {codes:?}"
+        );
+    }
+
+    #[test]
+    fn accepts_legitimate_historical_death() {
+        // Baudelaire scenario: subject born 1821, died 1867 — legitimate death
+        let c = base_candidate("death", 1867);
+        let ctx = GateContext {
+            subject_birth_year: Some(1821),
+            subject_death_year: Some(1867), // Wikidata has death date
+            subject_confirmed_alive: false,
+            ..Default::default()
+        };
+        let decision = apply_gates(&c, &ctx);
+        // Should be Accept (no rejection codes related to death validation)
+        let codes = decision.codes();
+        assert!(
+            !codes.contains(&"death_for_living_subject".into()),
+            "Legitimate death should not be rejected as living: {codes:?}"
+        );
+        assert!(
+            !codes.contains(&"death_before_or_at_birth".into()),
+            "Legitimate death should not be rejected as before/at birth: {codes:?}"
+        );
+    }
+
+    #[test]
+    fn death_without_wikidata_but_subject_not_confirmed_alive_is_needs_review() {
+        // Subject has no Wikidata death date, but also not confirmed alive (unknown status)
+        // This should proceed to other gates, not be auto-rejected
+        let c = base_candidate("death", 1867);
+        let ctx = GateContext {
+            subject_birth_year: Some(1821),
+            subject_death_year: None,
+            subject_confirmed_alive: false, // Death date unknown, not confirmed alive
+            ..Default::default()
+        };
+        let codes = apply_gates(&c, &ctx).codes();
+        assert!(
+            !codes.contains(&"death_for_living_subject".into()),
+            "Death with unknown lifespan should not be auto-rejected: {codes:?}"
+        );
     }
 }

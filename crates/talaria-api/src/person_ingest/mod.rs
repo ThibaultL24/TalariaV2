@@ -97,9 +97,17 @@ pub async fn run_person_ingest(
         }
     }
 
+    // Subject is "confirmed alive" if Wikidata was successfully queried but returned no death date.
+    // This prevents noisy Wikipedia extractions from creating spurious death events for living people.
+    let subject_confirmed_alive = wd_meta
+        .as_ref()
+        .map(|m| m.death_year.is_none())
+        .unwrap_or(false);
+
     let mut ctx = GateContext {
         subject_birth_year: wd_meta.as_ref().and_then(|m| m.birth_year),
         subject_death_year: wd_meta.as_ref().and_then(|m| m.death_year),
+        subject_confirmed_alive,
         ..Default::default()
     };
 

@@ -361,17 +361,34 @@ fn classify_predicate(clause: &str) -> Option<(&'static str, &'static str)> {
     None
 }
 
-fn extract_place_after_cue(clause: &str, lower: &str) -> Option<String> {
+/// Safely slice a string at a byte position, returning None if not on a char boundary.
+fn safe_slice_from(s: &str, byte_pos: usize) -> Option<&str> {
+    if s.is_char_boundary(byte_pos) {
+        Some(&s[byte_pos..])
+    } else {
+        None
+    }
+}
+
+fn extract_place_after_cue(_clause: &str, lower: &str) -> Option<String> {
     // Prefer last geographic cue; stop before years and further cues.
+    // Work entirely in the lowercased domain to avoid UTF-8 boundary issues when
+    // multi-byte chars have different lengths after lowercasing (e.g. Turkish İ → i).
     let mut best = None;
     for cue in [
         " in ", " at ", " to ", " on ", " near ", " depuis ", " à ", " au ", " aux ", " en ",
         " chez ",
     ] {
         let mut search_from = 0usize;
-        while let Some(rel) = lower[search_from..].find(cue) {
+        while let Some(rel) = safe_slice_from(lower, search_from)
+            .and_then(|slice| slice.find(cue))
+        {
             let pos = search_from + rel;
-            let after = &clause[pos + cue.len()..];
+            // Slice from `lower` (where we found the position), not `clause`
+            let Some(after) = safe_slice_from(lower, pos + cue.len()) else {
+                search_from = pos + 1;
+                continue;
+            };
             let token = after
                 .split(|c: char| c == '.' || c == ';' || c == ',' || c.is_ascii_digit())
                 .next()
@@ -395,10 +412,33 @@ fn extract_place_after_cue(clause: &str, lower: &str) -> Option<String> {
             if token.len() >= 2 {
                 best = Some(token);
             }
+            let Some(next_slice) = safe_slice_from(lower, pos + cue.len()) else {
+                break;
+            };
             search_from = pos + cue.len();
+            let _ = next_slice; // validate slice is valid
         }
     }
-    best
+    // Title-case the result for better display (lowercased input means lowercase output)
+    best.map(|s| title_case_place(&s))
+}
+
+/// Convert a lowercased place name to title case.
+fn title_case_place(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut capitalize_next = true;
+    for c in s.chars() {
+        if c == ' ' || c == '-' {
+            result.push(c);
+            capitalize_next = true;
+        } else if capitalize_next {
+            result.extend(c.to_uppercase());
+            capitalize_next = false;
+        } else {
+            result.push(c);
+        }
+    }
+    result
 }
 
 fn find_place_or_person_object(clause: &str) -> (Option<String>, Option<String>) {
@@ -411,7 +451,9 @@ fn find_place_or_person_object(clause: &str) -> (Option<String>, Option<String>)
     (place, object)
 }
 
-fn person_object_after_cue(lower: &str, clause: &str) -> Option<String> {
+fn person_object_after_cue(lower: &str, _clause: &str) -> Option<String> {
+    // Work in lowercased domain to avoid UTF-8 boundary panics when multi-byte
+    // chars have different lengths after lowercasing (e.g. Turkish İ → i).
     const CUES: &[&str] = &[
         " rencontre avec ",
         " rencontre ",
@@ -422,7 +464,10 @@ fn person_object_after_cue(lower: &str, clause: &str) -> Option<String> {
     ];
     for cue in CUES {
         let Some(pos) = lower.find(cue) else { continue };
-        let after = clause[pos + cue.len()..].trim();
+        let Some(after) = safe_slice_from(lower, pos + cue.len()) else {
+            continue;
+        };
+        let after = after.trim();
         let name = after
             .split(" in ")
             .next()
@@ -443,7 +488,8 @@ fn person_object_after_cue(lower: &str, clause: &str) -> Option<String> {
             .trim_matches(|c: char| !c.is_alphabetic() && c != ' ' && c != '-' && c != '\'')
             .to_string();
         if !name.is_empty() {
-            return Some(name);
+            // Title-case the result since we're working in lowercased domain
+            return Some(title_case_place(&name));
         }
     }
     None
@@ -684,5 +730,45 @@ mod tests {
             start_offset: 0,
         });
         assert!(xs.is_empty());
+    }
+
+    #[test]
+    fn utf8_turkish_i_does_not_panic() {
+        // Regression test: Turkish dotted İ (U+0130, 2 bytes) lowercases to 'i' (1 byte).
+        // Using byte offsets from lowercase find() to slice original string caused panics.
+        let analyzer = DeterministicClauseAnalyzer;
+        // İstanbul contains İ which has different byte length when lowercased
+        let xs = analyzer.analyze_sentence(&ClauseAnalyzeInput {
+            text: "He was born in İstanbul in 1821.".into(),
+            page_title: Some("Test Subject".into()),
+            start_offset: 0,
+        });
+        let birth = xs.iter().find(|x| x.event_type == "birth").expect("birth");
+        assert_eq!(birth.time_surface.as_deref(), Some("1821"));
+        // Place should be extracted despite the multi-byte char
+        assert!(birth.place_surface.is_some());
+    }
+
+    #[test]
+    fn utf8_german_eszett_does_not_panic() {
+        // German ß (1 byte) uppercases to SS (2 bytes), testing the reverse direction
+        let analyzer = DeterministicClauseAnalyzer;
+        let xs = analyzer.analyze_sentence(&ClauseAnalyzeInput {
+            text: "She died in Großbeeren in 1813.".into(),
+            page_title: Some("Test Subject".into()),
+            start_offset: 0,
+        });
+        let death = xs.iter().find(|x| x.event_type == "death").expect("death");
+        assert_eq!(death.time_surface.as_deref(), Some("1813"));
+    }
+
+    #[test]
+    fn extract_place_after_cue_handles_multibyte_cue_position() {
+        // Test the internal function directly with problematic input
+        let clause = "Événement İmportant in Paris in 1800";
+        let lower = clause.to_lowercase();
+        // This should not panic when extracting place after " in "
+        let place = extract_place_after_cue(clause, &lower);
+        assert!(place.is_some());
     }
 }
