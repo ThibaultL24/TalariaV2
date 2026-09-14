@@ -3,6 +3,7 @@
 
 mod collect;
 pub mod corpus_evidence;
+pub mod crawl_queue;
 mod extract;
 mod gating;
 mod grounding;
@@ -10,7 +11,6 @@ mod persist;
 mod resolve;
 pub(crate) mod typing;
 
-use std::collections::HashSet;
 use std::path::Path;
 
 use serde_json::{json, Value};
@@ -26,8 +26,14 @@ use talaria_store::{
 use uuid::Uuid;
 
 use crate::llm;
+use crate::routes::ingest::ProgressHandle;
+use crawl_queue::{
+    crawl_items_from_page_links, crawl_items_from_seed_list, crawl_items_from_wdqs,
+    CrawlPriority, PriorityCrawlQueue,
+};
 use persist::{PersistMeta, PersistOutcome};
 
+/// Run person ingest without progress tracking (backward compatibility).
 pub async fn run_person_ingest(
     config: &AppConfig,
     subject: &str,
@@ -36,6 +42,25 @@ pub async fn run_person_ingest(
     max_documents: u32,
     seed_list: Option<&Path>,
 ) -> anyhow::Result<Value> {
+    run_person_ingest_progressive(config, subject, qid, wiki_lang, max_documents, seed_list, None)
+        .await
+}
+
+/// Run person ingest with optional progress tracking for real-time UI updates.
+/// Uses prioritized crawl queue to process core subject pages first, then expand.
+pub async fn run_person_ingest_progressive(
+    config: &AppConfig,
+    subject: &str,
+    qid: Option<&str>,
+    wiki_lang: &str,
+    max_documents: u32,
+    seed_list: Option<&Path>,
+    progress: Option<ProgressHandle>,
+) -> anyhow::Result<Value> {
+    if let Some(ref p) = progress {
+        p.set_phase("resolving").await;
+    }
+
     let resolved_qid = resolve::require_person_qid(qid, subject, wiki_lang).await?;
     let pool = connect(config).await?;
     run_migrations(&pool).await?;
@@ -46,11 +71,14 @@ pub async fn run_person_ingest(
     let mut dropped = 0u32;
     let mut wiki_pages = 0u32;
     let mut wdqs_events = 0u32;
-    let mut seen_titles: HashSet<String> = HashSet::new();
-    let mut follow_queue: Vec<String> = Vec::new();
+    let mut crawl_queue = PriorityCrawlQueue::new();
     let mut primary_title = subject.to_string();
     let mut aliases = collect::subject_aliases(subject);
     let follow_cap = collect::follow_budget(max_documents);
+
+    if let Some(ref p) = progress {
+        p.set_phase("wikidata").await;
+    }
 
     let wd_meta = match crate::lot_e::fetch_wikidata_subject_meta(&resolved_qid, wiki_lang, Some(&pool))
         .await
@@ -86,6 +114,10 @@ pub async fn run_person_ingest(
         subject,
     )
     .await?;
+
+    if let Some(ref p) = progress {
+        p.set_entity_id(entity_id).await;
+    }
 
     // Persist authority bundle (P268 BnF, P214 VIAF, P213 ISNI, P269 IdRef) when available.
     if let Some(meta) = wd_meta.as_ref() {
@@ -151,17 +183,28 @@ pub async fn run_person_ingest(
         }
     }
 
+    // Phase 1: Core subject pages (Core priority - processed immediately)
+    if let Some(ref p) = progress {
+        p.set_phase("core_extract").await;
+    }
+
     for lang in collect::wiki_langs(wiki_lang) {
         match collect::fetch_wiki_extract(&lang, subject).await {
             Ok((title, text, links)) => {
-                if !seen_titles.insert(title.to_lowercase()) {
+                if crawl_queue.is_seen(&title) {
                     continue;
                 }
+                crawl_queue.mark_seen(&title);
                 if wiki_pages == 0 {
                     primary_title = title.clone();
                 }
                 wiki_pages += 1;
-                follow_queue.extend(collect::follow_titles_from_page_links(&links, follow_cap));
+                if let Some(ref p) = progress {
+                    p.set_phase_with_page("core_extract", &title).await;
+                    p.increment_wiki_pages().await;
+                }
+                // Add page links to queue with appropriate priorities
+                crawl_queue.extend(crawl_items_from_page_links(&links, &title, subject, follow_cap));
                 let (ins, re, deb, drop) = ingest_wiki_text(
                     &pool,
                     entity_id,
@@ -223,9 +266,16 @@ pub async fn run_person_ingest(
         }
     }
 
+    if let Some(ref p) = progress {
+        p.set_phase("wdqs").await;
+    }
+
     match fetch_events_for_person(&resolved_qid).await {
         Ok(events) => {
             wdqs_events = events.len() as u32;
+            if let Some(ref p) = progress {
+                p.set_wdqs_events(wdqs_events).await;
+            }
             let (wdqs_ins, wdqs_re) = persist_wdqs_events(
                 &pool,
                 entity_id,
@@ -239,36 +289,71 @@ pub async fn run_person_ingest(
             .await?;
             facts_inserted += wdqs_ins;
             facts_reinforced += wdqs_re;
-            follow_queue.extend(collect::follow_titles_from_wdqs(&events, follow_cap));
+            // WDQS events get High priority - direct subject participation
+            crawl_queue.extend(crawl_items_from_wdqs(&events, subject, follow_cap));
         }
         Err(err) => tracing::warn!(error = %err, "wdqs participation harvest failed"),
     }
 
+    // Add seed list items with appropriate priorities
     if let Some(path) = seed_list {
         match load_seed_titles(path) {
-            Ok(seeds) => follow_queue.extend(seeds),
+            Ok(seeds) => {
+                crawl_queue.extend(crawl_items_from_seed_list(seeds, subject));
+            }
             Err(err) => tracing::debug!(error = %err, "seed list not loaded"),
         }
     }
 
+    // Sort queue by priority before processing follow pages
+    crawl_queue.sort_by_priority();
+
+    // Update progress with queue stats
+    if let Some(ref p) = progress {
+        p.set_priority_counts(crawl_queue.count_by_priority()).await;
+    }
+
+    // Phase 2+3: Process follow pages in priority order
+    // High priority pages (birth/death places, WDQS events) first,
+    // then Medium (battles, treaties), then Low (generic links)
     let extra = follow_cap.saturating_sub(wiki_pages);
     let mut followed = 0u32;
-    for title in follow_queue {
+    let mut current_priority: Option<CrawlPriority> = None;
+
+    while let Some(item) = crawl_queue.pop() {
         if followed >= extra {
             break;
         }
-        if !collect::should_pin_follow_title(&title) {
+
+        // Update phase when priority tier changes
+        if current_priority != Some(item.priority) {
+            current_priority = Some(item.priority);
+            let phase = item.priority.phase_name();
+            if let Some(ref p) = progress {
+                p.set_phase(phase).await;
+                p.set_priority_counts(crawl_queue.count_by_priority()).await;
+            }
+        }
+
+        if !collect::should_pin_follow_title(&item.title) {
             continue;
         }
-        if !seen_titles.insert(title.to_lowercase()) {
-            continue;
+
+        if let Some(ref p) = progress {
+            p.set_phase_with_page(
+                current_priority.map_or("expand_links", |pr| pr.phase_name()),
+                &item.title,
+            )
+            .await;
+            p.set_sources_pending(crawl_queue.remaining() as u32).await;
         }
+
         match ingest_follow_page(
             &pool,
             entity_id,
             subject,
             wiki_lang,
-            &title,
+            &item.title,
             &mut ctx,
             &aliases,
             military_subject,
@@ -279,15 +364,26 @@ pub async fn run_person_ingest(
                 followed += 1;
                 if ins + re > 0 {
                     wiki_pages += 1;
+                    if let Some(ref p) = progress {
+                        p.increment_wiki_pages().await;
+                    }
                 }
                 facts_inserted += ins;
                 facts_reinforced += re;
             }
-            Err(err) => tracing::debug!(title, error = %err, "follow wikipedia page skipped"),
+            Err(err) => tracing::debug!(title = %item.title, error = %err, "follow wikipedia page skipped"),
         }
     }
 
+    if let Some(ref p) = progress {
+        p.set_phase("grounding").await;
+    }
+
     typing::backfill_person_geocodes(&pool, entity_id).await?;
+
+    if let Some(ref p) = progress {
+        p.set_phase("corpus_enrichment").await;
+    }
 
     // Corpus evidence enrichment (Vague A): query HAL, Gallica, BnF, Persée, theses.fr, OpenAlex
     // to reinforce existing canonical events with additional evidence. Never creates new pins.
