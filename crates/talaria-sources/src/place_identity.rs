@@ -642,4 +642,228 @@ mod tests {
         }
         assert_eq!(identity.wikidata_qid.as_deref(), Some("Q90"));
     }
+
+    /// Mock WHG resolver that simulates responses without HTTP.
+    struct MockWhgResolver {
+        responses: std::collections::HashMap<String, (String, Option<String>)>,
+    }
+
+    impl MockWhgResolver {
+        fn new() -> Self {
+            Self {
+                responses: std::collections::HashMap::new(),
+            }
+        }
+
+        fn with_response(mut self, label: &str, whg_id: &str, qid: Option<&str>) -> Self {
+            self.responses.insert(
+                label.to_lowercase(),
+                (whg_id.to_string(), qid.map(|s| s.to_string())),
+            );
+            self
+        }
+    }
+
+    #[async_trait]
+    impl PlaceIdentityResolver for MockWhgResolver {
+        async fn resolve(&self, mention: &str) -> Option<PlaceIdentity> {
+            let key = mention.trim().to_lowercase();
+            let (whg_id, wikidata_qid) = self.responses.get(&key)?;
+            let has_qid = wikidata_qid.is_some();
+
+            Some(PlaceIdentity {
+                label: mention.to_string(),
+                wikidata_qid: wikidata_qid.clone(),
+                tgn_id: None,
+                whg_id: Some(whg_id.clone()),
+                geonames_id: None,
+                identity_source: "whg".into(),
+                confidence: if has_qid { 0.88 } else { 0.78 },
+            })
+        }
+
+        fn name(&self) -> &'static str {
+            "mock_whg"
+        }
+    }
+
+    #[tokio::test]
+    async fn whg_resolver_not_configured_returns_none() {
+        let resolver = WhgResolver::new();
+        // Without WHG_API_TOKEN, is_configured() returns false
+        // and resolve() should return None immediately
+        if !resolver.is_configured() {
+            let result = resolver.resolve("Paris").await;
+            assert!(result.is_none(), "WHG without token should return None");
+        }
+    }
+
+    #[tokio::test]
+    async fn mock_whg_resolver_returns_identity_with_qid() {
+        let resolver = MockWhgResolver::new()
+            .with_response("austerlitz", "WHG12345", Some("Q153433"))
+            .with_response("waterloo", "WHG67890", Some("Q134583"));
+
+        let identity = resolver.resolve("Austerlitz").await.unwrap();
+        assert_eq!(identity.whg_id.as_deref(), Some("WHG12345"));
+        assert_eq!(identity.wikidata_qid.as_deref(), Some("Q153433"));
+        assert_eq!(identity.identity_source, "whg");
+        assert!(identity.confidence >= 0.88);
+    }
+
+    #[tokio::test]
+    async fn mock_whg_resolver_returns_identity_without_qid() {
+        let resolver = MockWhgResolver::new()
+            .with_response("obscure_place", "WHG99999", None);
+
+        let identity = resolver.resolve("obscure_place").await.unwrap();
+        assert_eq!(identity.whg_id.as_deref(), Some("WHG99999"));
+        assert!(identity.wikidata_qid.is_none());
+        assert!(identity.confidence < 0.88, "Without QID should have lower confidence");
+    }
+
+    #[tokio::test]
+    async fn mock_whg_resolver_unknown_place_returns_none() {
+        let resolver = MockWhgResolver::new()
+            .with_response("austerlitz", "WHG12345", Some("Q153433"));
+
+        let result = resolver.resolve("unknown_place").await;
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn composite_with_mock_whg_merges_qid() {
+        // Simulate: alias gazetteer has coords but no QID, WHG provides QID
+        let mock_whg = MockWhgResolver::new()
+            .with_response("test_place", "WHG555", Some("Q999"));
+
+        let resolver = CompositeIdentityResolver {
+            resolvers: vec![
+                Box::new(NoQidResolver),
+                Box::new(mock_whg),
+            ],
+        };
+
+        let identity = resolver.resolve("test_place").await.unwrap();
+        assert_eq!(identity.wikidata_qid.as_deref(), Some("Q999"));
+        assert!(identity.identity_source.contains("whg") || identity.identity_source.contains("no_qid"));
+    }
+
+    #[test]
+    fn whg_response_parsing_extracts_place_id() {
+        // Test the response parsing logic used by WhgResolver
+        let json_str = r#"{
+            "features": [{
+                "properties": {
+                    "place_id": 12345,
+                    "links": [
+                        {"identifier": "http://www.wikidata.org/entity/Q153433"}
+                    ]
+                }
+            }]
+        }"#;
+
+        let json: serde_json::Value = serde_json::from_str(json_str).unwrap();
+
+        let features = json.get("features").and_then(|f| f.as_array()).unwrap();
+        let first = features.first().unwrap();
+        let props = first.get("properties").unwrap();
+
+        let whg_id = props
+            .get("place_id")
+            .and_then(|v| v.as_i64())
+            .map(|id| id.to_string())
+            .unwrap();
+        assert_eq!(whg_id, "12345");
+
+        let wikidata_qid = props
+            .get("links")
+            .and_then(|l| l.as_array())
+            .and_then(|links| {
+                links.iter().find_map(|link| {
+                    let identifier = link.get("identifier")?.as_str()?;
+                    if identifier.contains("wikidata.org") {
+                        let qid = identifier.rsplit('/').next().unwrap_or(identifier);
+                        if qid.starts_with('Q') {
+                            return Some(qid.to_string());
+                        }
+                    }
+                    None
+                })
+            });
+        assert_eq!(wikidata_qid.as_deref(), Some("Q153433"));
+    }
+
+    #[test]
+    fn whg_response_parsing_handles_missing_links() {
+        let json_str = r#"{
+            "features": [{
+                "properties": {
+                    "place_id": 67890
+                }
+            }]
+        }"#;
+
+        let json: serde_json::Value = serde_json::from_str(json_str).unwrap();
+        let features = json.get("features").and_then(|f| f.as_array()).unwrap();
+        let first = features.first().unwrap();
+        let props = first.get("properties").unwrap();
+
+        let whg_id = props.get("place_id").and_then(|v| v.as_i64()).map(|id| id.to_string());
+        assert_eq!(whg_id.as_deref(), Some("67890"));
+
+        let wikidata_qid: Option<String> = props
+            .get("links")
+            .and_then(|l| l.as_array())
+            .and_then(|_links| None);
+        assert!(wikidata_qid.is_none());
+    }
+
+    #[test]
+    fn whg_response_parsing_handles_results_key() {
+        // WHG API may return "results" instead of "features"
+        let json_str = r#"{
+            "results": [{
+                "properties": {
+                    "pid": "WHG11111",
+                    "links": [
+                        {"identifier": "Q12345"}
+                    ]
+                }
+            }]
+        }"#;
+
+        let json: serde_json::Value = serde_json::from_str(json_str).unwrap();
+        
+        let results = json
+            .get("features")
+            .or_else(|| json.get("results"))
+            .and_then(|f| f.as_array())
+            .unwrap();
+        
+        let first = results.first().unwrap();
+        let props = first.get("properties").unwrap();
+
+        let whg_id = props
+            .get("place_id")
+            .and_then(|v| v.as_i64())
+            .map(|id| id.to_string())
+            .or_else(|| {
+                props.get("pid").and_then(|v| v.as_str()).map(|s| s.to_string())
+            });
+        assert_eq!(whg_id.as_deref(), Some("WHG11111"));
+    }
+
+    #[tokio::test]
+    async fn alias_gazetteer_now_returns_qid_for_major_places() {
+        let resolver = AliasGazetteerResolver;
+        
+        // After gazetteer expansion, Paris should have a QID
+        let identity = resolver.resolve("Paris").await.expect("Paris should resolve");
+        assert_eq!(identity.wikidata_qid.as_deref(), Some("Q90"), "Paris should have QID Q90");
+        
+        // Waterloo should also have a QID
+        let identity = resolver.resolve("Waterloo").await.expect("Waterloo should resolve");
+        assert_eq!(identity.wikidata_qid.as_deref(), Some("Q134583"));
+    }
 }

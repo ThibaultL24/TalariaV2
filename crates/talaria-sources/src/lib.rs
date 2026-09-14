@@ -61,7 +61,8 @@ pub use place_identity::{
     CompositeIdentityResolver, PlaceIdentity, PlaceIdentityResolver, TgnResolver, WhgResolver,
 };
 pub use places::{
-    place_hint_from_title, place_query_variants, resolve_place_offline, PlaceResolution,
+    gazetteer_entry_count, gazetteer_qid_count, place_hint_from_title, place_query_variants,
+    resolve_place_offline, PlaceResolution,
 };
 pub use plan::{plan_sources, PlannedSource, ResolvedSubject, SourcePlan};
 pub use registry::{ConnectorRegistration, SourceRegistry};
