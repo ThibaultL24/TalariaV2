@@ -39,9 +39,12 @@ pub struct IngestProgress {
     pub wdqs_events: u32,
     pub last_update_ms: u64,
     pub current_page: Option<String>,
+    pub priority_counts: [u32; 4],
 }
 
 /// Handle for updating job progress from within ingest functions.
+/// Allows the person ingest pipeline to report real-time status updates
+/// including priority queue counts for Core→High→Medium→Low crawl ordering.
 #[derive(Clone)]
 pub struct ProgressHandle {
     job_id: Uuid,
@@ -95,6 +98,15 @@ impl ProgressHandle {
         let mut jobs = self.jobs.lock().await;
         if let Some(job) = jobs.get_mut(&self.job_id) {
             job.progress.sources_pending = count;
+            job.progress.last_update_ms = self.started_at.elapsed().as_millis() as u64;
+        }
+    }
+
+    pub async fn set_priority_counts(&self, counts: [u32; 4]) {
+        let mut jobs = self.jobs.lock().await;
+        if let Some(job) = jobs.get_mut(&self.job_id) {
+            job.progress.priority_counts = counts;
+            job.progress.sources_pending = counts.iter().sum();
             job.progress.last_update_ms = self.started_at.elapsed().as_millis() as u64;
         }
     }
@@ -518,8 +530,8 @@ async fn run_explorer_lane_progressive(
     jobs: IngestJobMap,
 ) -> anyhow::Result<Value> {
     let progress = ProgressHandle::new(job_id, jobs.clone());
-    
-    // Run the actual person ingest with progress handle for mid-ingest updates
+    progress.set_phase("resolving").await;
+
     let person = crate::person_ingest::run_person_ingest_progressive(
         config,
         subject,
@@ -532,8 +544,8 @@ async fn run_explorer_lane_progressive(
     .await?;
 
     let entity_id = parse_entity_id_from_report(&person);
-    
-    // Final status update
+
+    // Final status update - clear current_page since we're done
     {
         let mut jobs = jobs.lock().await;
         if let Some(job) = jobs.get_mut(&job_id) {
@@ -699,6 +711,12 @@ pub async fn get_explorer_status(
         "wiki_pages": job.progress.wiki_pages,
         "wdqs_events": job.progress.wdqs_events,
         "sources_pending": job.progress.sources_pending,
+        "priority_counts": {
+            "core": job.progress.priority_counts[0],
+            "high": job.progress.priority_counts[1],
+            "medium": job.progress.priority_counts[2],
+            "low": job.progress.priority_counts[3],
+        },
         "elapsed_ms": elapsed_ms,
         "is_done": is_done,
         "error": job.error,
@@ -721,6 +739,7 @@ mod tests {
             wdqs_events: 0,
             last_update_ms: 0,
             current_page: None,
+            priority_counts: [0; 4],
         }
     }
 
