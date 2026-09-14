@@ -95,6 +95,9 @@ async fn judge_and_maybe_assemble(
             fingerprint_exists: false,
             cross_clause_join_detected: cross_clause_join,
             place_entity_kind,
+            // For re-gating existing candidates, we don't have the original Wikidata context.
+            // Default to false (not confirmed alive) to avoid blocking legitimate re-evaluations.
+            subject_confirmed_alive: false,
         };
 
         let decision = apply_gates(shell, &ctx);

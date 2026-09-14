@@ -650,6 +650,19 @@ mod tests {
     use super::*;
     use crate::corpus_ingest::explorer_fact_providers;
 
+    fn default_progress() -> IngestProgress {
+        IngestProgress {
+            phase: "queued".into(),
+            timeline_events: 0,
+            map_pins: 0,
+            sources_done: 0,
+            sources_pending: 0,
+            wiki_pages: 0,
+            wdqs_events: 0,
+            last_update_ms: 0,
+        }
+    }
+
     #[test]
     fn explorer_queued_job_has_null_entity_until_report() {
         let job = IngestJob {
@@ -661,6 +674,8 @@ mod tests {
             entity_id: None,
             report: None,
             error: None,
+            progress: default_progress(),
+            started_at: None,
         };
         let Json(body) = job_started_response(&job, false, json!({}));
         assert!(body.get("entity_id").unwrap().is_null());
@@ -678,6 +693,8 @@ mod tests {
             entity_id: Some(entity_id),
             report: None,
             error: None,
+            progress: default_progress(),
+            started_at: None,
         };
         let Json(body) = job_started_response(&job, false, json!({ "x": 1 }));
         assert_eq!(

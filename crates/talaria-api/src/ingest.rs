@@ -906,6 +906,10 @@ pub(crate) async fn process_raw_candidate(
                 .map(|s| EntityKind::parse(&s)),
             None => None,
         };
+        // Subject is "confirmed alive" if we have Wikidata info (QID present) but no death year.
+        // This prevents noisy extractions from creating spurious death events for living people.
+        let subject_confirmed_alive =
+            subject.qid.is_some() && subject.death_year.is_none() && death_year.is_none();
         let ctx = GateContext {
             subject_birth_year: subject.birth_year.or(birth_year),
             subject_death_year: subject.death_year.or(death_year),
@@ -914,6 +918,7 @@ pub(crate) async fn process_raw_candidate(
             fingerprint_exists: false,
             cross_clause_join_detected: raw.cross_clause_join,
             place_entity_kind,
+            subject_confirmed_alive,
         };
         let decision = apply_gates(&shell, &ctx);
         let status = decision.status().as_str();

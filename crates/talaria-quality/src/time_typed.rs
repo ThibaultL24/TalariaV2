@@ -124,22 +124,25 @@ fn scan_day_month_year(text: &str) -> Option<String> {
 }
 
 fn parse_day_month_year(text: &str) -> Option<(i32, u32, u32, String)> {
+    // Work entirely in the lowercased domain to avoid UTF-8 boundary issues when
+    // multi-byte chars have different lengths after lowercasing (e.g. Turkish İ → i).
     let lower = text.to_lowercase();
     for (name, month) in MONTHS {
         let mut from = 0usize;
-        while let Some(rel) = lower[from..].find(name) {
+        while let Some(rel) = lower.get(from..)?.find(name) {
             let mstart = from + rel;
             let mend = mstart + name.len();
             if !month_boundaries(&lower, mstart, mend) {
                 from = mend;
                 continue;
             }
-            let after = text[mend..].trim_start_matches(|c: char| c == ',' || c == ' ');
+            // Slice from `lower` (where positions came from), not `text`
+            let after = lower.get(mend..)?.trim_start_matches(|c: char| c == ',' || c == ' ');
             let Some(year) = leading_year(after) else {
                 from = mend;
                 continue;
             };
-            let before = text[..mstart].trim_end();
+            let before = lower.get(..mstart)?.trim_end();
             let Some(day) = trailing_day(before) else {
                 from = mend;
                 continue;
