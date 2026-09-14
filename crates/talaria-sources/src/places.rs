@@ -1,7 +1,18 @@
 // crates/talaria-sources/src/places.rs
 //! ResolvePlaces — label/alias/QID → coordinates.
+//!
+//! This module provides offline place resolution via a gazetteer loaded from
+//! `fixtures/gazetteer/historical_places.json`. The gazetteer includes:
+//! - Coordinates (lat/lon) for map placement
+//! - Wikidata QIDs for identity resolution (new in this expansion)
+//! - Precision indicators (exact, approximate, centroid)
+//!
+//! The QID field enables `place_identity_qid` population without HTTP lookups,
+//! significantly improving identity resolution fill rates.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlaceResolution {
@@ -15,8 +26,104 @@ pub struct PlaceResolution {
     pub score: f32,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct GazetteerEntry {
+    label: String,
+    lat: f64,
+    lon: f64,
+    precision: String,
+    #[serde(default)]
+    qid: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct GazetteerFile {
+    #[allow(dead_code)]
+    version: String,
+    #[allow(dead_code)]
+    description: String,
+    places: Vec<GazetteerEntry>,
+}
+
+static GAZETTEER_MAP: OnceLock<HashMap<String, GazetteerEntry>> = OnceLock::new();
+
+fn get_gazetteer_map() -> &'static HashMap<String, GazetteerEntry> {
+    GAZETTEER_MAP.get_or_init(|| {
+        let json_str = include_str!("../../../fixtures/gazetteer/historical_places.json");
+        match serde_json::from_str::<GazetteerFile>(json_str) {
+            Ok(file) => {
+                let mut map = HashMap::with_capacity(file.places.len());
+                for entry in file.places {
+                    map.insert(entry.label.clone(), entry);
+                }
+                map
+            }
+            Err(e) => {
+                tracing::error!("Failed to parse gazetteer JSON: {}", e);
+                HashMap::new()
+            }
+        }
+    })
+}
+
 fn lookup_alias(key: &str) -> Option<PlaceResolution> {
-    const ALIASES: &[(&str, f64, f64, &str)] = &[
+    let gazetteer = get_gazetteer_map();
+    
+    if let Some(entry) = gazetteer.get(key) {
+        return Some(PlaceResolution {
+            label: key.to_string(),
+            method: "alias_gazetteer".into(),
+            wikidata_qid: entry.qid.clone(),
+            lat: entry.lat,
+            lon: entry.lon,
+            precision: entry.precision.clone(),
+            uncertainty_radius_m: if entry.precision == "exact" {
+                Some(500.0)
+            } else {
+                Some(5000.0)
+            },
+            score: if entry.qid.is_some() { 0.90 } else { 0.85 },
+        });
+    }
+    
+    let mut best: Option<&GazetteerEntry> = None;
+    for (alias, entry) in gazetteer.iter() {
+        if key.contains(alias.as_str()) {
+            if best.map_or(true, |prev| alias.len() > prev.label.len()) {
+                best = Some(entry);
+            }
+        }
+    }
+    
+    best.map(|entry| PlaceResolution {
+        label: key.to_string(),
+        method: "alias_gazetteer".into(),
+        wikidata_qid: entry.qid.clone(),
+        lat: entry.lat,
+        lon: entry.lon,
+        precision: entry.precision.clone(),
+        uncertainty_radius_m: if entry.precision == "exact" {
+            Some(500.0)
+        } else {
+            Some(5000.0)
+        },
+        score: if entry.qid.is_some() { 0.90 } else { 0.85 },
+    })
+}
+
+/// Count of entries in the offline gazetteer.
+pub fn gazetteer_entry_count() -> usize {
+    get_gazetteer_map().len()
+}
+
+/// Count of entries in the offline gazetteer that have a Wikidata QID.
+pub fn gazetteer_qid_count() -> usize {
+    get_gazetteer_map().values().filter(|e| e.qid.is_some()).count()
+}
+
+// Legacy const array preserved for reference; actual lookups use the JSON gazetteer above.
+#[allow(dead_code)]
+const LEGACY_ALIASES: &[(&str, f64, f64, &str)] = &[
         ("ajaccio", 41.9267, 8.7369, "exact"),
         ("paris", 48.8566, 2.3522, "exact"),
         ("waterloo", 50.6794, 4.4047, "exact"),
@@ -277,29 +384,6 @@ fn lookup_alias(key: &str) -> Option<PlaceResolution> {
         ("philadelphia", 39.9526, -75.1652, "exact"),
         ("washington", 38.9072, -77.0369, "exact"),
     ];
-    let mut best: Option<(&str, f64, f64, &str)> = None;
-    for (alias, lat, lon, precision) in ALIASES {
-        if *alias == key || key.contains(alias) {
-            if best.map_or(true, |(prev, _, _, _)| alias.len() > prev.len()) {
-                best = Some((*alias, *lat, *lon, *precision));
-            }
-        }
-    }
-    best.map(|(_alias, lat, lon, precision)| PlaceResolution {
-        label: key.to_string(),
-        method: "alias_gazetteer".into(),
-        wikidata_qid: None,
-        lat,
-        lon,
-        precision: precision.into(),
-        uncertainty_radius_m: if precision == "exact" {
-            Some(500.0)
-        } else {
-            Some(5000.0)
-        },
-        score: 0.85,
-    })
-}
 
 pub fn place_query_variants(label: &str) -> Vec<String> {
     let mut out = Vec::new();
@@ -435,5 +519,137 @@ mod tests {
         );
         assert!(resolve_place_offline("her house").is_none());
         assert!(resolve_place_offline("the institute").is_none());
+    }
+
+    #[test]
+    fn gazetteer_loaded_from_json() {
+        let count = gazetteer_entry_count();
+        assert!(count > 100, "Expected at least 100 gazetteer entries, got {count}");
+    }
+
+    #[test]
+    fn gazetteer_has_qids() {
+        let qid_count = gazetteer_qid_count();
+        assert!(qid_count > 100, "Expected at least 100 entries with QIDs, got {qid_count}");
+    }
+
+    #[test]
+    fn napoleon_battle_sites_have_qids() {
+        let battles = [
+            ("Waterloo", "Q134583"),
+            ("Austerlitz", "Q153433"),
+            ("Borodino", "Q200679"),
+            ("Marengo", "Q178181"),
+            ("Leipzig", "Q2079"),
+            ("Jena", "Q3150"),
+            ("Wagram", "Q48828"),
+        ];
+        
+        for (name, expected_qid) in battles {
+            let r = resolve_place_offline(name).unwrap_or_else(|| panic!("{name} should resolve"));
+            assert!(
+                r.wikidata_qid.is_some(),
+                "{name} should have a QID, got None"
+            );
+            assert_eq!(
+                r.wikidata_qid.as_deref(),
+                Some(expected_qid),
+                "{name} should have QID {expected_qid}"
+            );
+        }
+    }
+
+    #[test]
+    fn major_countries_have_qids() {
+        let countries = [
+            ("France", "Q142"),
+            ("Austria", "Q40"),
+            ("Russia", "Q159"),
+            ("Spain", "Q29"),
+            ("Italy", "Q38"),
+            ("Germany", "Q183"),
+            ("Poland", "Q36"),
+        ];
+        
+        for (name, expected_qid) in countries {
+            let r = resolve_place_offline(name).unwrap_or_else(|| panic!("{name} should resolve"));
+            assert_eq!(
+                r.wikidata_qid.as_deref(),
+                Some(expected_qid),
+                "{name} should have QID {expected_qid}"
+            );
+        }
+    }
+
+    #[test]
+    fn major_capitals_have_qids() {
+        let capitals = [
+            ("Paris", "Q90"),
+            ("Vienna", "Q1741"),
+            ("Berlin", "Q64"),
+            ("Moscow", "Q649"),
+            ("London", "Q84"),
+            ("Madrid", "Q2807"),
+            ("Rome", "Q220"),
+        ];
+        
+        for (name, expected_qid) in capitals {
+            let r = resolve_place_offline(name).unwrap_or_else(|| panic!("{name} should resolve"));
+            assert_eq!(
+                r.wikidata_qid.as_deref(),
+                Some(expected_qid),
+                "{name} should have QID {expected_qid}"
+            );
+        }
+    }
+
+    #[test]
+    fn saint_helena_variants_resolve() {
+        for variant in ["Saint Helena", "St Helena", "sainte-hélène"] {
+            let r = resolve_place_offline(variant)
+                .unwrap_or_else(|| panic!("{variant} should resolve"));
+            assert_eq!(r.wikidata_qid.as_deref(), Some("Q34497"));
+        }
+    }
+
+    #[test]
+    fn elba_exile_resolves_with_qid() {
+        let r = resolve_place_offline("Elba").unwrap();
+        assert_eq!(r.wikidata_qid.as_deref(), Some("Q13334"));
+    }
+
+    #[test]
+    fn entries_with_qid_have_higher_score() {
+        let paris = resolve_place_offline("Paris").unwrap();
+        assert!(paris.score >= 0.90, "Entry with QID should have score >= 0.90");
+    }
+
+    #[test]
+    fn compound_battles_resolve() {
+        let r = resolve_place_offline("Jena-Auerstedt").unwrap();
+        assert!(r.wikidata_qid.is_some());
+        
+        let r2 = resolve_place_offline("Aspern-Essling").unwrap();
+        assert_eq!(r2.wikidata_qid.as_deref(), Some("Q159821"));
+    }
+
+    #[test]
+    fn treaty_locations_have_qids() {
+        let treaties = [
+            ("Tilsit", "Q5705"),
+            ("Campo Formio", "Q245038"),
+            ("Lunéville", "Q203875"),
+            ("Pressburg", "Q1780"),
+            ("Amiens", "Q41688"),
+        ];
+        
+        for (name, expected_qid) in treaties {
+            let r = resolve_place_offline(name).unwrap_or_else(|| panic!("{name} should resolve"));
+            assert_eq!(
+                r.wikidata_qid.as_deref(),
+                Some(expected_qid),
+                "{name} should have QID {expected_qid}"
+            );
+        }
     }
 }

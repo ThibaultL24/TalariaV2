@@ -101,9 +101,9 @@ mention → place identity → geocode
 ```
 
 **Step 1: Place Identity Resolution**
-- Alias gazetteer (~250 known places)
-- Getty TGN (stub — identity layer, not coordinates)
-- World Historical Gazetteer (stub — identity layer)
+- Alias gazetteer (~300 known places with embedded QIDs from `fixtures/gazetteer/historical_places.json`)
+- Getty TGN (SPARQL endpoint — identity layer, not coordinates)
+- World Historical Gazetteer (REST API — identity layer, requires `WHG_API_TOKEN`)
 - Wikidata search
 
 **Step 2: Geocoding**
@@ -180,7 +180,6 @@ Rejected events stay in `event_candidates` — they must **never** appear in `ca
 
 ## Future Work (Deferred from P0)
 
-- Full TGN/WHG connectors (currently stubs)
 - IdRef → VIAF → ISNI cascade connectors
 - Gallica ALTO/IIIF/texteBrut integration
 - Wikidata geoPrecision extraction
