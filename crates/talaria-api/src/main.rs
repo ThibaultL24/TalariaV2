@@ -382,8 +382,9 @@ async fn main() -> anyhow::Result<()> {
             subject,
             all_unresolved,
             live: _,
+            qid_only,
         } => {
-            let report = lot_e::run_resolve_places(&config, &subject, all_unresolved).await?;
+            let report = lot_e::run_resolve_places(&config, &subject, all_unresolved, qid_only).await?;
             println!("{report}");
         }
         Commands::DensityReport {

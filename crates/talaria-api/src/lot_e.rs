@@ -27,7 +27,7 @@ use talaria_sources::{
     DensityTargets, ResolvedSubject,
 };
 use talaria_store::{
-    add_claim_support, apply_coords_to_event, apply_place_to_quality_event, connect,
+    add_claim_support, apply_place_to_quality_event, connect,
     density_report_counts,
     find_active_quality_event_by_occurrence_key, get_event_candidate_by_fingerprint,
     insert_document_fragment, insert_document_snapshot, insert_quality_canonical_event,
@@ -2025,19 +2025,38 @@ pub async fn run_resolve_places(
     config: &AppConfig,
     subject: &str,
     _all_unresolved: bool,
+    qid_only: bool,
 ) -> anyhow::Result<String> {
+    use talaria_store::{apply_full_place_grounding, apply_place_identity_to_event, upsert_place_resolution, PlaceResolutionInsert};
+
     let (pool, subject_id) = open_db_for_subject(config, subject, "person").await?;
 
-    let unresolved: Vec<(Uuid, Option<String>)> = sqlx::query_as(
-        r#"
-        SELECT id, place_label FROM canonical_events
-        WHERE pipeline IN ('quality', 'person') AND is_active AND timeline_eligible AND NOT map_eligible
-          AND entity_id = $1 AND place_label IS NOT NULL
-        "#,
-    )
-    .bind(subject_id)
-    .fetch_all(&pool)
-    .await?;
+    // Mode 1: Normal resolve (timeline-eligible but not map-eligible)
+    // Mode 2: QID-only backfill (map-eligible but no place_identity_qid)
+    let unresolved: Vec<(Uuid, Option<String>)> = if qid_only {
+        sqlx::query_as(
+            r#"
+            SELECT id, place_label FROM canonical_events
+            WHERE pipeline IN ('quality', 'person') AND is_active AND map_eligible
+              AND place_identity_qid IS NULL
+              AND entity_id = $1 AND place_label IS NOT NULL AND place_label != ''
+            "#,
+        )
+        .bind(subject_id)
+        .fetch_all(&pool)
+        .await?
+    } else {
+        sqlx::query_as(
+            r#"
+            SELECT id, place_label FROM canonical_events
+            WHERE pipeline IN ('quality', 'person') AND is_active AND timeline_eligible AND NOT map_eligible
+              AND entity_id = $1 AND place_label IS NOT NULL
+            "#,
+        )
+        .bind(subject_id)
+        .fetch_all(&pool)
+        .await?
+    };
 
     let mut by_label: HashMap<String, Vec<Uuid>> = HashMap::new();
     for (eid, label) in unresolved {
@@ -2054,49 +2073,249 @@ pub async fn run_resolve_places(
     let mut join = tokio::task::JoinSet::new();
     for label in unique_labels {
         let sem = sem.clone();
+        let qid_only_mode = qid_only;
         join.spawn(async move {
             let _permit = sem.acquire_owned().await.ok();
-            let hit = resolve_label_coords(&label).await;
-            (label, hit)
+            if qid_only_mode {
+                // For QID-only mode, just look up the QID in Wikidata
+                let qid = fetch_wikidata_qid_for_label(&label, "en").await;
+                (label, qid)
+            } else {
+                // Full resolve mode - get coords and QID
+                let hit = resolve_label_coords(&label).await;
+                (label, hit.map(|h| h.qid).flatten())
+            }
         });
     }
 
     let mut resolved = 0u32;
+    let mut resolved_with_qid = 0u32;
     let mut failed = 0u32;
     let mut samples = Vec::new();
     while let Some(joined) = join.join_next().await {
-        let Ok((label, hit)) = joined else {
+        let Ok((label, qid_result)) = joined else {
             failed += 1;
             continue;
         };
         let Some(ids) = by_label.get(&label) else {
             continue;
         };
-        if let Some(hit) = hit {
-            for eid in ids {
-                apply_coords_to_event(&pool, *eid, hit.lat, hit.lon).await?;
-                resolved += 1;
+
+        if qid_only {
+            // QID-only mode: just update the QID
+            if let Some(qid) = qid_result {
+                // Record place resolution for audit trail
+                if let Err(e) = upsert_place_resolution(
+                    &pool,
+                    &PlaceResolutionInsert {
+                        place_entity_id: None,
+                        place_label: label.clone(),
+                        method: "wikidata_qid_backfill".into(),
+                        wikidata_qid: Some(qid.clone()),
+                        tgn_id: None,
+                        whg_id: None,
+                        geonames_id: None,
+                        lat: None,
+                        lon: None,
+                        score: None,
+                        identity_source: Some("wikidata".into()),
+                        raw_json: serde_json::json!({
+                            "label": label,
+                            "qid": qid,
+                            "source": "resolve-places-qid-backfill"
+                        }),
+                    },
+                )
+                .await
+                {
+                    tracing::warn!(error = %e, label = %label, "failed to record place resolution");
+                }
+
+                for eid in ids {
+                    apply_place_identity_to_event(&pool, *eid, &qid).await?;
+                    resolved += 1;
+                    resolved_with_qid += 1;
+                }
+            } else {
+                failed += ids.len() as u32;
+                if samples.len() < 25 {
+                    samples.push(label);
+                }
             }
         } else {
-            failed += ids.len() as u32;
-            if samples.len() < 25 {
-                samples.push(label);
+            // Full resolve mode - need to get full PlaceHit
+            let hit = resolve_label_coords(&label).await;
+            if let Some(hit) = hit {
+                // Record place resolution for audit trail
+                if let Err(e) = upsert_place_resolution(
+                    &pool,
+                    &PlaceResolutionInsert {
+                        place_entity_id: None,
+                        place_label: label.clone(),
+                        method: hit.precision.clone(),
+                        wikidata_qid: hit.qid.clone(),
+                        tgn_id: None,
+                        whg_id: None,
+                        geonames_id: None,
+                        lat: Some(hit.lat),
+                        lon: Some(hit.lon),
+                        score: None,
+                        identity_source: Some(hit.precision.clone()),
+                        raw_json: serde_json::json!({
+                            "label": label,
+                            "lat": hit.lat,
+                            "lon": hit.lon,
+                            "qid": hit.qid,
+                            "precision": hit.precision,
+                            "source": "resolve-places-backfill"
+                        }),
+                    },
+                )
+                .await
+                {
+                    tracing::warn!(error = %e, label = %label, "failed to record place resolution");
+                }
+
+                for eid in ids {
+                    apply_full_place_grounding(&pool, *eid, hit.qid.as_deref(), hit.lat, hit.lon).await?;
+                    resolved += 1;
+                    if hit.qid.is_some() {
+                        resolved_with_qid += 1;
+                    }
+                }
+            } else {
+                failed += ids.len() as u32;
+                if samples.len() < 25 {
+                    samples.push(label);
+                }
             }
         }
     }
 
     let density = density_report_counts(&pool, Some(subject_id)).await?;
+
+    // Count place_identity_qid fill rate after backfill
+    let qid_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint FROM canonical_events
+        WHERE pipeline IN ('quality', 'person') AND is_active AND entity_id = $1
+          AND place_identity_qid IS NOT NULL
+        "#,
+    )
+    .bind(subject_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap_or(0);
+
+    let mode = if qid_only { "qid_only" } else { "full_resolve" };
+
     Ok(serde_json::to_string_pretty(&serde_json::json!({
         "subject": subject,
+        "mode": mode,
         "attempted": resolved + failed,
         "unique_labels": unique_n,
         "resolved": resolved,
+        "resolved_with_qid": resolved_with_qid,
         "still_unresolved": failed,
         "unresolved_samples": samples,
         "map_eligible": density.map_eligible,
         "timeline_eligible": density.timeline_eligible,
         "events_without_place": density.events_without_place,
+        "place_identity_qid_count": qid_count,
     }))?)
+}
+
+/// Fetch only the Wikidata QID for a place label (no coordinates)
+async fn fetch_wikidata_qid_for_label(label: &str, lang: &str) -> Option<String> {
+    if !is_plausible_place_label(label) {
+        return None;
+    }
+    let client = reqwest::Client::builder()
+        .user_agent("TalariaEngine/0.1 (qid-backfill; https://www.wikidata.org/wiki/Wikidata:Data_access)")
+        .timeout(Duration::from_secs(12))
+        .build()
+        .ok()?;
+
+    // Try direct label search
+    if let Some(qid) = wb_search_place_qid(&client, label, lang).await {
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        return Some(qid);
+    }
+
+    // Try with title hint (e.g., "Battle of X" -> "X")
+    if let Some(hint) = place_hint_from_title(label) {
+        if hint != label {
+            if let Some(qid) = wb_search_place_qid(&client, &hint, lang).await {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+                return Some(qid);
+            }
+        }
+    }
+
+    None
+}
+
+/// Search Wikidata for a place QID (returns first place result with P625 coords)
+async fn wb_search_place_qid(
+    client: &reqwest::Client,
+    label: &str,
+    lang: &str,
+) -> Option<String> {
+    let search = client
+        .get("https://www.wikidata.org/w/api.php")
+        .query(&[
+            ("action", "wbsearchentities"),
+            ("search", label),
+            ("language", lang),
+            ("limit", "5"),
+            ("format", "json"),
+            ("type", "item"),
+        ])
+        .send()
+        .await
+        .ok()?
+        .json::<serde_json::Value>()
+        .await
+        .ok()?;
+    let ids: Vec<String> = search
+        .get("search")?
+        .as_array()?
+        .iter()
+        .filter_map(|h| h.get("id").and_then(|v| v.as_str()).map(str::to_string))
+        .collect();
+    if ids.is_empty() {
+        return None;
+    }
+    let ids_joined = ids.join("|");
+    let entity = client
+        .get("https://www.wikidata.org/w/api.php")
+        .query(&[
+            ("action", "wbgetentities"),
+            ("ids", ids_joined.as_str()),
+            ("props", "claims"),
+            ("format", "json"),
+        ])
+        .send()
+        .await
+        .ok()?
+        .json::<serde_json::Value>()
+        .await
+        .ok()?;
+    // Return first QID that is a place (has P625 coordinates) and is not human
+    for qid in &ids {
+        if entity_is_human(&entity, qid) {
+            continue;
+        }
+        // Check if has P625 (coordinate location)
+        if entity
+            .pointer(&format!("/entities/{qid}/claims/P625"))
+            .and_then(|v| v.as_array())
+            .is_some_and(|a| !a.is_empty())
+        {
+            return Some(qid.clone());
+        }
+    }
+    None
 }
 
 pub(crate) struct PlaceHit {
@@ -2104,6 +2323,7 @@ pub(crate) struct PlaceHit {
     pub lon: f64,
     pub precision: String,
     pub uncertainty: Option<f64>,
+    pub qid: Option<String>,
 }
 
 pub(crate) async fn resolve_label_coords(label: &str) -> Option<PlaceHit> {
@@ -2113,6 +2333,7 @@ pub(crate) async fn resolve_label_coords(label: &str) -> Option<PlaceHit> {
             lon: res.lon,
             precision: res.precision,
             uncertainty: res.uncertainty_radius_m,
+            qid: None,
         });
     }
     if let Some(hint) = place_hint_from_title(label) {
@@ -2122,27 +2343,30 @@ pub(crate) async fn resolve_label_coords(label: &str) -> Option<PlaceHit> {
                 lon: res.lon,
                 precision: res.precision,
                 uncertainty: res.uncertainty_radius_m,
+                qid: None,
             });
         }
     }
-    if let Some((_, lat, lon)) = fetch_wikidata_coords_for_label(label, "en").await {
+    if let Some((qid, lat, lon)) = fetch_wikidata_coords_for_label(label, "en").await {
         tokio::time::sleep(Duration::from_millis(250)).await;
         return Some(PlaceHit {
             lat,
             lon,
             precision: "wikidata_p625".into(),
             uncertainty: Some(5000.0),
+            qid: Some(qid),
         });
     }
     if let Some(hint) = place_hint_from_title(label) {
         if hint != label {
-            if let Some((_, lat, lon)) = fetch_wikidata_coords_for_label(&hint, "en").await {
+            if let Some((qid, lat, lon)) = fetch_wikidata_coords_for_label(&hint, "en").await {
                 tokio::time::sleep(Duration::from_millis(250)).await;
                 return Some(PlaceHit {
                     lat,
                     lon,
                     precision: "wikidata_p625".into(),
                     uncertainty: Some(5000.0),
+                    qid: Some(qid),
                 });
             }
         }
