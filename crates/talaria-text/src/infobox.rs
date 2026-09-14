@@ -286,6 +286,24 @@ fn first_place_in_value(value: &str) -> Option<String> {
             }
         }
     }
+    // Fallback: plain text place value without wikilinks or cues (e.g., "Paris, France")
+    // Take the first comma-separated part, stripping template noise
+    let clean = value
+        .trim()
+        .trim_start_matches(|c: char| c == '{' || c == '|')
+        .trim_end_matches(|c: char| c == '}' || c == '|');
+    if clean.is_empty() || clean.contains("{{") || clean.starts_with("death") || clean.starts_with("birth") {
+        return None;
+    }
+    let first_part = clean
+        .split(',')
+        .next()
+        .unwrap_or(clean)
+        .trim()
+        .trim_matches(|c: char| !c.is_alphabetic() && c != ' ' && c != '-' && c != '\'');
+    if first_part.len() >= 2 && first_part.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+        return Some(first_part.to_string());
+    }
     None
 }
 
@@ -347,5 +365,34 @@ Lead [[Sorbonne]] text.
             links.iter().find(|l| l.target == "Venise").unwrap().display,
             "Venice"
         );
+    }
+
+    #[test]
+    fn plain_text_place_value_extracted() {
+        // Baudelaire's Wikipedia infobox uses plain text "Paris, France" without wikilinks
+        assert_eq!(first_place_in_value("Paris, France"), Some("Paris".to_string()));
+        assert_eq!(first_place_in_value("London"), Some("London".to_string()));
+        assert_eq!(first_place_in_value("New York City, USA"), Some("New York City".to_string()));
+        // Should still prefer wikilinks when present
+        assert_eq!(first_place_in_value("[[Paris]]"), Some("Paris".to_string()));
+        assert_eq!(first_place_in_value("[[Varsovie|Warsaw]]"), Some("Warsaw".to_string()));
+    }
+
+    #[test]
+    fn baudelaire_infobox_extracts_places() {
+        const BAUDELAIRE_INFOBOX: &str = r#"
+{{Infobox writer
+| birth_name       = Charles-Pierre Baudelaire
+| birth_date       = 9 April 1821
+| birth_place      = Paris, France
+| death_date       = {{Death date and age|1867|8|31|1821|4|9|df=y}}
+| death_place      = Paris, France
+}}
+"#;
+        let facts = infobox_life_facts(BAUDELAIRE_INFOBOX);
+        assert_eq!(facts.birth_place.as_deref(), Some("Paris"), "birth_place should be Paris");
+        assert_eq!(facts.death_place.as_deref(), Some("Paris"), "death_place should be Paris");
+        assert_eq!(facts.birth_year.as_deref(), Some("1821"));
+        assert_eq!(facts.death_year.as_deref(), Some("1867"));
     }
 }

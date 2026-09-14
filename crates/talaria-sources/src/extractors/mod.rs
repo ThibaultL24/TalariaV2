@@ -141,13 +141,14 @@ fn clause_names_subject(clause: &str, subject: &str) -> bool {
 }
 
 /// Keep extract on the bio page and on place/battle pages we chose to follow.
-/// Birth/death come only from infobox / Wikidata — never from another bio.
+/// Birth/death come only from the SUBJECT'S OWN page infobox / Wikidata — never from another bio.
 pub fn keep_extracted_raw(raw: &RawCandidate, page_title: &str, subject: &str) -> bool {
     if matches!(raw.event_type.as_str(), "birth" | "death") {
+        // Birth/death only from subject's own biography page, not from linked pages
         return matches!(
             raw.extractor_id.as_str(),
             "infobox" | "structured_statement"
-        );
+        ) && page_is_subject_biography(page_title, subject);
     }
     if raw.extractor_id == "infobox" || raw.extractor_id == "structured_statement" {
         return true;
@@ -354,6 +355,33 @@ mod subject_clause_tests {
         assert!(super::default_extractor_stack()
             .iter()
             .any(|e| e.extractor_id() == "military_campaign"));
+    }
+
+    #[test]
+    fn birth_death_from_other_page_rejected() {
+        // Birth/death from Louis XVI's page should NOT be kept for Baudelaire
+        let raw = super::RawCandidate {
+            event_type: "birth".into(),
+            predicate: "born_in".into(),
+            subject_surface: "Charles Baudelaire".into(),
+            time_surface: Some("1754".into()),
+            place_surface: Some("Palace of Versailles".into()),
+            object_surface: None,
+            participant_surfaces: vec![],
+            clause_text: "Louis XVI was born at the Palace of Versailles on 23 August 1754.".into(),
+            clause_index: 0,
+            start_offset: 0,
+            end_offset: 70,
+            cross_clause_join: false,
+            extractor_id: "infobox".into(),
+            is_posthumous: false,
+            lat: None,
+            lon: None,
+        };
+        // From Louis XVI's page - should be rejected
+        assert!(!super::keep_extracted_raw(&raw, "Louis XVI", "Charles Baudelaire"));
+        // From Baudelaire's own page - should be kept
+        assert!(super::keep_extracted_raw(&raw, "Charles Baudelaire", "Charles Baudelaire"));
     }
 }
 
