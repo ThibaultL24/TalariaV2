@@ -32,31 +32,68 @@ fn strip_block_tags(input: &str, tag: &str) -> String {
     let close = format!("</{tag}>");
     let mut text = input.to_string();
     loop {
-        let Some(start) = text.to_lowercase().find(&open) else {
-            break;
+        // Find position using case-insensitive search on the current text
+        let start = match find_case_insensitive(&text, &open) {
+            Some(pos) => pos,
+            None => break,
         };
-        let Some(rel_end) = text.to_lowercase()[start..].find(&close) else {
-            text.replace_range(start.., " ");
-            break;
+        // Find closing tag position from start
+        let search_from = &text[start..];
+        let rel_end = match find_case_insensitive(search_from, &close) {
+            Some(pos) => pos,
+            None => {
+                // No closing tag found, truncate from start
+                text.truncate(start);
+                text.push(' ');
+                break;
+            }
         };
         let end = start + rel_end + close.len();
+        if end > text.len() {
+            // Safety check: shouldn't happen but avoid panic
+            text.truncate(start);
+            text.push(' ');
+            break;
+        }
         text.replace_range(start..end, " ");
     }
     text
+}
+
+/// Case-insensitive search that returns byte position valid in the original string.
+fn find_case_insensitive(haystack: &str, needle: &str) -> Option<usize> {
+    let needle_lower = needle.to_lowercase();
+    let needle_chars: Vec<char> = needle_lower.chars().collect();
+    if needle_chars.is_empty() {
+        return Some(0);
+    }
+    
+    let mut char_indices = haystack.char_indices().peekable();
+    while let Some((byte_pos, _)) = char_indices.peek().copied() {
+        let remaining: String = haystack[byte_pos..].chars().take(needle_chars.len()).collect();
+        if remaining.to_lowercase().chars().collect::<Vec<_>>() == needle_chars {
+            return Some(byte_pos);
+        }
+        char_indices.next();
+    }
+    None
 }
 
 fn strip_self_closing_tags(input: &str, tag: &str) -> String {
     let open = format!("<{tag}");
     let mut text = input.to_string();
     loop {
-        let lower = text.to_lowercase();
-        let Some(start) = lower.find(&open) else {
-            break;
+        let start = match find_case_insensitive(&text, &open) {
+            Some(pos) => pos,
+            None => break,
         };
         let Some(rel_end) = text[start..].find('>') else {
             break;
         };
         let end = start + rel_end + 1;
+        if end > text.len() {
+            break;
+        }
         text.replace_range(start..end, " ");
     }
     text

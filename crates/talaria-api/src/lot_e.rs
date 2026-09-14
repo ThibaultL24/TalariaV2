@@ -40,6 +40,7 @@ use talaria_store::{
 };
 
 use crate::cli_helpers::open_db_for_subject;
+use crate::person_ingest::typing::{ground_place_full, persist_place_resolution};
 
 fn campaign_page_title(title: &str) -> bool {
     let lower = title.to_lowercase();
@@ -994,6 +995,30 @@ async fn process_one(
     let mut lon = None;
     let mut location_precision = None;
     let mut uncertainty = None;
+
+    // Full place grounding: identity resolution (TGN/WHG) + geocoding
+    let given_coords = if raw.lat.is_some() && raw.lon.is_some() {
+        Some((raw.lat.unwrap(), raw.lon.unwrap()))
+    } else {
+        page_coords
+    };
+    let grounding = ground_place_full(shell.place_label.as_deref(), given_coords).await;
+    let mut place_identity_qid = grounding.identity_qid;
+
+    // Persist place resolution to audit trail if identity was resolved
+    if let Some(ref identity) = grounding.identity {
+        if let Err(e) = persist_place_resolution(
+            pool,
+            shell.place_label.as_deref().unwrap_or_default(),
+            identity,
+            grounding.coords,
+        )
+        .await
+        {
+            tracing::warn!(error = %e, "failed to persist place resolution audit trail");
+        }
+    }
+
     if raw.lat.is_some() && raw.lon.is_some() {
         lat = raw.lat;
         lon = raw.lon;
@@ -1007,6 +1032,22 @@ async fn process_one(
             shell.place_label = Some(pl.clone());
             shell.place_entity_id =
                 Some(upsert_entity_with_kind(pool, &config.wiki_lang, &pl, "place").await?);
+        }
+    } else if let Some((gla, glo)) = grounding.coords {
+        // Use coordinates from grounding (TGN/WHG/Wikidata P625)
+        lat = Some(gla);
+        lon = Some(glo);
+        location_precision = Some(
+            grounding
+                .identity
+                .as_ref()
+                .map(|i| format!("identity:{}", i.identity_source))
+                .unwrap_or_else(|| "grounding".into()),
+        );
+        uncertainty = Some(5000.0);
+        if let Some(ref pl) = shell.place_label {
+            shell.place_entity_id =
+                Some(upsert_entity_with_kind(pool, &config.wiki_lang, pl, "place").await?);
         }
     } else if let Some(ref pl) = shell.place_label {
         if let Some(pres) = resolve_place_offline(pl) {
@@ -1025,7 +1066,10 @@ async fn process_one(
             uncertainty = Some(5000.0);
             shell.place_entity_id =
                 Some(upsert_entity_with_kind(pool, &config.wiki_lang, pl, "place").await?);
-            let _ = qid;
+            // If we got a QID from wikidata lookup, use it as place_identity_qid
+            if place_identity_qid.is_none() {
+                place_identity_qid = Some(qid);
+            }
         } else if let Some((pla, plo)) = page_coords {
             // Wikipedia page coordinates — only for page-level / title-tied occurrences
             if raw.extractor_id == "military_campaign"
@@ -1303,7 +1347,7 @@ async fn process_one(
             supersedes: None,
             source_count: 1,
             evidence_count: 1,
-            place_identity_qid: None,
+            place_identity_qid,
         },
     )
     .await?;

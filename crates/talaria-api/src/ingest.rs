@@ -39,6 +39,7 @@ use talaria_store::{
 use uuid::Uuid;
 
 use crate::cli_helpers::open_db_for_subject;
+use crate::person_ingest::typing::{ground_place_full, persist_place_resolution};
 use crate::place_conflict::{abstain_if_competing_place, competing_place_codes};
 
 #[derive(Debug, Default, Clone)]
@@ -1052,17 +1053,46 @@ pub(crate) async fn process_raw_candidate(
 
     let proj = projections.from_candidate(&shell, &subject.label);
     let title_derived = projections.display_label(&proj);
-    let (lat, lon, map_eligible) = if raw.lat.is_some() && raw.lon.is_some() {
-        (raw.lat, raw.lon, true)
+
+    // Full place grounding: identity resolution (TGN/WHG) + geocoding
+    let given_coords = if raw.lat.is_some() && raw.lon.is_some() {
+        Some((raw.lat.unwrap(), raw.lon.unwrap()))
     } else {
-        let place = shell.place_label.as_deref().map(parse_place_surface);
-        let map_eligible = place.as_ref().is_some_and(|p| p.map_eligible());
-        let (lat, lon) = place
-            .as_ref()
-            .map(|p| (p.lat, p.lon))
-            .unwrap_or((None, None));
-        (lat, lon, map_eligible)
+        None
     };
+    let grounding = ground_place_full(shell.place_label.as_deref(), given_coords).await;
+
+    // Persist place resolution to audit trail if identity was resolved
+    if let Some(ref identity) = grounding.identity {
+        if let Err(e) = persist_place_resolution(
+            pool,
+            shell.place_label.as_deref().unwrap_or_default(),
+            identity,
+            grounding.coords,
+        )
+        .await
+        {
+            tracing::warn!(error = %e, "failed to persist place resolution audit trail");
+        }
+    }
+
+    let (lat, lon) = match grounding.coords {
+        Some((lat, lon)) => (Some(lat), Some(lon)),
+        None => {
+            let place = shell.place_label.as_deref().map(parse_place_surface);
+            place
+                .as_ref()
+                .map(|p| (p.lat, p.lon))
+                .unwrap_or((None, None))
+        }
+    };
+    let map_eligible = (lat.is_some() && lon.is_some())
+        || shell
+            .place_label
+            .as_deref()
+            .map(parse_place_surface)
+            .as_ref()
+            .is_some_and(|p| p.map_eligible());
     let map_eligible = map_eligible && event_type_is_map_locus(&shell.event_type);
 
     let event_id = insert_quality_canonical_event(
@@ -1093,7 +1123,7 @@ pub(crate) async fn process_raw_candidate(
             supersedes: None,
             source_count: 1,
             evidence_count: 1,
-            place_identity_qid: None,
+            place_identity_qid: grounding.identity_qid,
         },
     )
     .await?;
