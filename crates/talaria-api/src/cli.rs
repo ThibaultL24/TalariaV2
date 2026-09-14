@@ -184,6 +184,8 @@ pub enum Commands {
         all_unresolved: bool,
         #[arg(long, help = "Allow live Wikidata P625 (optional; offline used first)")]
         live: bool,
+        #[arg(long, help = "Backfill QIDs for places that have coords but no place_identity_qid")]
+        qid_only: bool,
     },
     /// Density / multi-source quality report for a subject
     DensityReport {
