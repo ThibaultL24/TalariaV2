@@ -3,6 +3,7 @@
 
 mod claim;
 mod dense;
+mod education;
 mod infobox;
 mod itinerary;
 mod keywords;
@@ -15,6 +16,7 @@ mod travel;
 
 pub use claim::{claim_fingerprint, ClaimKey};
 pub use dense::DenseClauseExtractor;
+pub use education::EducationLifeExtractor;
 pub use infobox::InfoboxExtractor;
 pub use itinerary::{is_country_or_region, ItineraryExtractor};
 pub use keywords::KeywordMineExtractor;
@@ -364,6 +366,7 @@ pub fn default_extractor_stack() -> Vec<Box<dyn CandidateExtractor>> {
         Box::new(TimelineListExtractor),
         Box::new(MilitaryCampaignExtractor),
         Box::new(ItineraryExtractor),
+        Box::new(EducationLifeExtractor),
         Box::new(DenseClauseExtractor),
         Box::new(KeywordMineExtractor),
         Box::new(TravelResidenceExtractor),

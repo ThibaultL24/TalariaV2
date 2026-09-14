@@ -300,6 +300,7 @@ pub fn event_type_is_map_locus(event_type: &str) -> bool {
             | "work"
             | "burial"
             | "treaty"
+            | "health_event"
     )
 }
 
