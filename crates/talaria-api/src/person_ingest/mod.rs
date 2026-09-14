@@ -33,6 +33,21 @@ use crawl_queue::{
 };
 use persist::{PersistMeta, PersistOutcome};
 
+/// Run person ingest with optional progress handle for UI updates.
+/// Uses prioritized crawl queue to process core subject pages first, then expand.
+pub async fn run_person_ingest_progressive(
+    config: &AppConfig,
+    subject: &str,
+    qid: Option<&str>,
+    wiki_lang: &str,
+    max_documents: u32,
+    seed_list: Option<&Path>,
+    progress: Option<ProgressHandle>,
+) -> anyhow::Result<Value> {
+    run_person_ingest_inner(config, subject, qid, wiki_lang, max_documents, seed_list, progress)
+        .await
+}
+
 /// Run person ingest without progress tracking (backward compatibility).
 pub async fn run_person_ingest(
     config: &AppConfig,
@@ -42,13 +57,11 @@ pub async fn run_person_ingest(
     max_documents: u32,
     seed_list: Option<&Path>,
 ) -> anyhow::Result<Value> {
-    run_person_ingest_progressive(config, subject, qid, wiki_lang, max_documents, seed_list, None)
-        .await
+    run_person_ingest_inner(config, subject, qid, wiki_lang, max_documents, seed_list, None).await
 }
 
-/// Run person ingest with optional progress tracking for real-time UI updates.
-/// Uses prioritized crawl queue to process core subject pages first, then expand.
-pub async fn run_person_ingest_progressive(
+/// Internal implementation with optional progress tracking and prioritized crawl queue.
+async fn run_person_ingest_inner(
     config: &AppConfig,
     subject: &str,
     qid: Option<&str>,
@@ -115,6 +128,7 @@ pub async fn run_person_ingest_progressive(
     )
     .await?;
 
+    // Notify progress handle of resolved entity_id
     if let Some(ref p) = progress {
         p.set_entity_id(entity_id).await;
     }

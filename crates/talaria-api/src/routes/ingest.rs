@@ -43,7 +43,8 @@ pub struct IngestProgress {
 }
 
 /// Handle for updating job progress from within ingest functions.
-/// Allows the person ingest pipeline to report real-time status updates.
+/// Allows the person ingest pipeline to report real-time status updates
+/// including priority queue counts for Core→High→Medium→Low crawl ordering.
 #[derive(Clone)]
 pub struct ProgressHandle {
     job_id: Uuid,
@@ -544,11 +545,13 @@ async fn run_explorer_lane_progressive(
 
     let entity_id = parse_entity_id_from_report(&person);
 
+    // Final status update - clear current_page since we're done
     {
         let mut jobs = jobs.lock().await;
         if let Some(job) = jobs.get_mut(&job_id) {
             job.entity_id = entity_id;
             job.progress.phase = "done".to_string();
+            job.progress.current_page = None;
             if let Some(wiki_pages) = person.get("wiki_pages").and_then(|v| v.as_u64()) {
                 job.progress.wiki_pages = wiki_pages as u32;
             }
