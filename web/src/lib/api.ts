@@ -418,6 +418,7 @@ export interface ExplorerIngestStatus {
   job_id: string;
   status: "queued" | "running" | "done" | "failed" | string;
   phase: string;
+  current_page?: string | null;
   entity_id?: string | null;
   timeline_events: number;
   map_pins: number;
@@ -426,6 +427,7 @@ export interface ExplorerIngestStatus {
   evidence_count: number;
   wiki_pages: number;
   wdqs_events: number;
+  sources_pending?: number;
   elapsed_ms?: number | null;
   is_done: boolean;
   error?: string | null;

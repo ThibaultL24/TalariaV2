@@ -38,6 +38,73 @@ pub struct IngestProgress {
     pub wiki_pages: u32,
     pub wdqs_events: u32,
     pub last_update_ms: u64,
+    pub current_page: Option<String>,
+}
+
+/// Handle for updating job progress from within ingest functions.
+#[derive(Clone)]
+pub struct ProgressHandle {
+    job_id: Uuid,
+    jobs: IngestJobMap,
+    started_at: std::time::Instant,
+}
+
+impl ProgressHandle {
+    pub fn new(job_id: Uuid, jobs: IngestJobMap) -> Self {
+        Self {
+            job_id,
+            jobs,
+            started_at: std::time::Instant::now(),
+        }
+    }
+
+    pub async fn set_phase(&self, phase: &str) {
+        let mut jobs = self.jobs.lock().await;
+        if let Some(job) = jobs.get_mut(&self.job_id) {
+            job.progress.phase = phase.to_string();
+            job.progress.last_update_ms = self.started_at.elapsed().as_millis() as u64;
+        }
+    }
+
+    pub async fn set_phase_with_page(&self, phase: &str, page_title: &str) {
+        let mut jobs = self.jobs.lock().await;
+        if let Some(job) = jobs.get_mut(&self.job_id) {
+            job.progress.phase = phase.to_string();
+            job.progress.current_page = Some(page_title.to_string());
+            job.progress.last_update_ms = self.started_at.elapsed().as_millis() as u64;
+        }
+    }
+
+    pub async fn increment_wiki_pages(&self) {
+        let mut jobs = self.jobs.lock().await;
+        if let Some(job) = jobs.get_mut(&self.job_id) {
+            job.progress.wiki_pages += 1;
+            job.progress.last_update_ms = self.started_at.elapsed().as_millis() as u64;
+        }
+    }
+
+    pub async fn set_wdqs_events(&self, count: u32) {
+        let mut jobs = self.jobs.lock().await;
+        if let Some(job) = jobs.get_mut(&self.job_id) {
+            job.progress.wdqs_events = count;
+            job.progress.last_update_ms = self.started_at.elapsed().as_millis() as u64;
+        }
+    }
+
+    pub async fn set_sources_pending(&self, count: u32) {
+        let mut jobs = self.jobs.lock().await;
+        if let Some(job) = jobs.get_mut(&self.job_id) {
+            job.progress.sources_pending = count;
+            job.progress.last_update_ms = self.started_at.elapsed().as_millis() as u64;
+        }
+    }
+
+    pub async fn set_entity_id(&self, entity_id: Uuid) {
+        let mut jobs = self.jobs.lock().await;
+        if let Some(job) = jobs.get_mut(&self.job_id) {
+            job.entity_id = Some(entity_id);
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -450,38 +517,29 @@ async fn run_explorer_lane_progressive(
     job_id: Uuid,
     jobs: IngestJobMap,
 ) -> anyhow::Result<Value> {
-    // Update phase helper
-    async fn update_progress(jobs: &IngestJobMap, job_id: Uuid, phase: &str) {
-        let mut jobs = jobs.lock().await;
-        if let Some(job) = jobs.get_mut(&job_id) {
-            job.progress.phase = phase.to_string();
-            job.progress.last_update_ms = job.started_at
-                .map(|s| s.elapsed().as_millis() as u64)
-                .unwrap_or(0);
-        }
-    }
-
-    update_progress(&jobs, job_id, "resolving").await;
+    let progress = ProgressHandle::new(job_id, jobs.clone());
     
-    // Run the actual person ingest - counts are updated via database queries
-    let person = crate::person_ingest::run_person_ingest(
+    // Run the actual person ingest with progress handle for mid-ingest updates
+    let person = crate::person_ingest::run_person_ingest_progressive(
         config,
         subject,
         qid,
         wiki_lang,
         max_documents,
         Some(seed_list),
+        Some(progress),
     )
     .await?;
 
     let entity_id = parse_entity_id_from_report(&person);
     
-    // Update final progress from report
+    // Final status update
     {
         let mut jobs = jobs.lock().await;
         if let Some(job) = jobs.get_mut(&job_id) {
             job.entity_id = entity_id;
-            job.progress.phase = "persisting".to_string();
+            job.progress.phase = "done".to_string();
+            job.progress.current_page = None;
             if let Some(wiki_pages) = person.get("wiki_pages").and_then(|v| v.as_u64()) {
                 job.progress.wiki_pages = wiki_pages as u32;
             }
@@ -631,6 +689,7 @@ pub async fn get_explorer_status(
         "job_id": job.id,
         "status": job.status,
         "phase": job.progress.phase,
+        "current_page": job.progress.current_page,
         "entity_id": job.entity_id,
         "timeline_events": counts.timeline_events,
         "map_pins": counts.map_pins,
@@ -639,6 +698,7 @@ pub async fn get_explorer_status(
         "evidence_count": counts.evidence_count,
         "wiki_pages": job.progress.wiki_pages,
         "wdqs_events": job.progress.wdqs_events,
+        "sources_pending": job.progress.sources_pending,
         "elapsed_ms": elapsed_ms,
         "is_done": is_done,
         "error": job.error,
@@ -660,6 +720,7 @@ mod tests {
             wiki_pages: 0,
             wdqs_events: 0,
             last_update_ms: 0,
+            current_page: None,
         }
     }
 
