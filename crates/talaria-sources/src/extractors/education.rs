@@ -59,6 +59,7 @@ impl CandidateExtractor for EducationLifeExtractor {
 
 fn classify_education_life(lower: &str) -> Option<(&'static str, &'static str)> {
     // Education patterns (French + English)
+    // Enrollment patterns
     if lower.contains("inscrit à")
         || lower.contains("inscrit au")
         || lower.contains("inscrite à")
@@ -68,8 +69,29 @@ fn classify_education_life(lower: &str) -> Option<(&'static str, &'static str)> 
         || lower.contains("est inscrite")
         || lower.contains("enrolled at")
         || lower.contains("enrolled in")
+        || lower.contains("entered the")  // "entered the university"
+        || lower.contains("entered a")    // "entered a boarding school"
+        || lower.contains("was sent to")  // "was sent to boarding school"
+        || lower.contains("sent to school")
+        || lower.contains("admitted to") && (lower.contains("school") || lower.contains("college") || lower.contains("university"))
     {
         return Some(("education", "enrolled_at"));
+    }
+
+    // Studied/attended patterns (English)
+    if lower.contains("studied at")
+        || lower.contains("studied in")
+        || lower.contains("attended school")
+        || lower.contains("attended the")
+        || lower.contains("attended college")
+        || lower.contains("attended university")
+        || lower.contains("was educated at")
+        || lower.contains("was educated in")
+        || lower.contains("education at")
+        || lower.contains("student at")
+        || lower.contains("pupil at")
+    {
+        return Some(("education", "studied_at"));
     }
 
     if lower.contains("suit les cours")
@@ -80,10 +102,13 @@ fn classify_education_life(lower: &str) -> Option<(&'static str, &'static str)> 
         return Some(("education", "studied_at"));
     }
 
+    // Boarding patterns
     if lower.contains("pensionnaire au collège")
         || lower.contains("pensionnaire au lycée")
         || lower.contains("pensionnaire à")
         || lower.contains("boarding student")
+        || lower.contains("boarding school")
+        || lower.contains("as a boarder")
     {
         return Some(("education", "boarded_at"));
     }
@@ -108,25 +133,40 @@ fn classify_education_life(lower: &str) -> Option<(&'static str, &'static str)> 
             || lower.contains("redoubl")
             || lower.contains("enters")
             || lower.contains("attends")
-            || lower.contains("enrolled");
+            || lower.contains("attended")
+            || lower.contains("enrolled")
+            || lower.contains("studied");
         if has_edu_verb {
             return Some(("education", "studied_at"));
         }
     }
 
+    // Graduation patterns (English + French)
     if lower.contains("baccalauréat")
         || lower.contains("baccalaureat")
         || lower.contains("passe son bac")
         || lower.contains("obtient son bac")
         || lower.contains("reçu au bac")
+        || lower.contains("graduated from")
+        || lower.contains("received his degree")
+        || lower.contains("received her degree")
+        || lower.contains("completed his studies")
+        || lower.contains("completed her studies")
+        || lower.contains("finished his education")
+        || lower.contains("finished her education")
+        || lower.contains("earned his degree")
+        || lower.contains("earned her degree")
     {
         return Some(("education", "graduated_from"));
     }
 
+    // Expulsion patterns
     if lower.contains("renvoyé du lycée")
         || lower.contains("renvoyé du collège")
         || lower.contains("renvoyée du")
         || lower.contains("expelled from")
+        || lower.contains("was expelled")
+        || lower.contains("dismissed from")
     {
         return Some(("education", "expelled_from"));
     }
@@ -138,7 +178,7 @@ fn classify_education_life(lower: &str) -> Option<(&'static str, &'static str)> 
         return Some(("education", "received_prize"));
     }
 
-    // Burial patterns
+    // Burial patterns (French + English)
     if lower.contains("inhumé au")
         || lower.contains("inhumée au")
         || lower.contains("inhumé à")
@@ -149,6 +189,11 @@ fn classify_education_life(lower: &str) -> Option<(&'static str, &'static str)> 
         || lower.contains("enterrée à")
         || lower.contains("buried at")
         || lower.contains("buried in")
+        || lower.contains("interred at")
+        || lower.contains("interred in")
+        || lower.contains("laid to rest")
+        || lower.contains("remains were buried")
+        || lower.contains("remains are buried")
         || lower.contains("cimetière")
         || lower.contains("cemetery")
     {
@@ -161,16 +206,22 @@ fn classify_education_life(lower: &str) -> Option<(&'static str, &'static str)> 
         || lower.contains("s'effondre")
         || lower.contains("collapsed")
         || lower.contains("loses consciousness")
+        || lower.contains("lost consciousness")
+        || lower.contains("suffered a stroke")
+        || lower.contains("was taken ill")
     {
         return Some(("health_event", "collapsed_at"));
     }
 
     // Admission to institution (hospital, maison de santé)
-    if (lower.contains("admis dans") || lower.contains("admise dans"))
+    if (lower.contains("admis dans") || lower.contains("admise dans") || lower.contains("admitted to"))
         && (lower.contains("maison de santé")
             || lower.contains("hôpital")
             || lower.contains("hospital")
-            || lower.contains("clinique"))
+            || lower.contains("clinic")
+            || lower.contains("clinique")
+            || lower.contains("nursing home")
+            || lower.contains("sanatorium"))
     {
         return Some(("residence", "admitted_to"));
     }
@@ -179,8 +230,9 @@ fn classify_education_life(lower: &str) -> Option<(&'static str, &'static str)> 
 }
 
 fn find_education_place(s: &str, lower: &str) -> Option<String> {
-    // Try specific institution patterns first
+    // Try specific institution patterns first (English + French)
     for pattern in [
+        // French patterns
         "collège royal de ",
         "collège de ",
         "collège ",
@@ -189,10 +241,19 @@ fn find_education_place(s: &str, lower: &str) -> Option<String> {
         "pension ",
         "école ",
         "université de ",
+        // English patterns
         "university of ",
         "school of ",
-        "at the ",
+        "college of ",
+        "academy of ",
+        " the ",  // "at the University of X"
+        "attended ",
+        "studied at ",
+        "educated at ",
+        "enrolled at ",
+        "enrolled in ",
         "at ",
+        "in ",
     ] {
         if let Some(pos) = lower.find(pattern) {
             let after = &s[pos + pattern.len()..];
@@ -233,13 +294,33 @@ fn find_education_place(s: &str, lower: &str) -> Option<String> {
         }
     }
 
-    // Cemetery specific
+    // Cemetery specific (French + English)
     if lower.contains("cimetière") || lower.contains("cemetery") {
-        for cue in ["cimetière du ", "cimetière de ", "cemetery of ", "cimetière "] {
+        for cue in [
+            "cimetière du ",
+            "cimetière de ",
+            "cimetière ",
+            "cemetery of ",
+            "cemetery in ",
+            " cemetery",
+        ] {
             if let Some(pos) = lower.find(cue) {
                 let after = &s[pos + cue.len()..];
                 if let Some(name) = take_institution_name(after) {
-                    return Some(format!("Cimetière {}", name));
+                    if name.len() >= 2 {
+                        return Some(format!("Cimetière {}", name));
+                    }
+                }
+            }
+        }
+        // Try to extract cemetery name before "Cemetery"
+        if let Some(pos) = lower.find(" cemetery") {
+            let before = &s[..pos];
+            let words: Vec<&str> = before.split_whitespace().collect();
+            if let Some(last_word) = words.last() {
+                let clean = last_word.trim_matches(|c: char| !c.is_alphabetic());
+                if clean.len() >= 2 && clean.chars().next().is_some_and(|c| c.is_uppercase()) {
+                    return Some(format!("{} Cemetery", clean));
                 }
             }
         }
@@ -426,6 +507,143 @@ mod tests {
                 && r.predicate == "admitted_to"
                 && r.time_surface.as_deref() == Some("1866")),
             "should find hospital admission in 1866: {raws:?}"
+        );
+    }
+
+    // English pattern tests
+    #[test]
+    fn english_studied_at() {
+        let raws = EducationLifeExtractor.extract(&ExtractorInput {
+            text: "In 1836, he studied at the Collège Louis-le-Grand in Paris.".into(),
+            page_title: Some("Charles Baudelaire".into()),
+            subject_label: Some("Charles Baudelaire".into()),
+            document_type: "article".into(),
+            subject_death_year: Some(1867),
+            ..Default::default()
+        });
+        assert!(
+            raws.iter().any(|r| r.event_type == "education" 
+                && r.time_surface.as_deref() == Some("1836")),
+            "should find 1836 education: {raws:?}"
+        );
+    }
+
+    #[test]
+    fn english_attended_school() {
+        let raws = EducationLifeExtractor.extract(&ExtractorInput {
+            text: "He attended school in Lyon from 1831 to 1836.".into(),
+            page_title: Some("Charles Baudelaire".into()),
+            subject_label: Some("Charles Baudelaire".into()),
+            document_type: "article".into(),
+            subject_death_year: Some(1867),
+            ..Default::default()
+        });
+        assert!(
+            raws.iter().any(|r| r.event_type == "education" 
+                && r.time_surface.as_deref() == Some("1831")),
+            "should find 1831 education: {raws:?}"
+        );
+    }
+
+    #[test]
+    fn english_was_educated_at() {
+        let raws = EducationLifeExtractor.extract(&ExtractorInput {
+            text: "Baudelaire was educated at Lyon in 1836.".into(),
+            page_title: Some("Charles Baudelaire".into()),
+            subject_label: Some("Charles Baudelaire".into()),
+            document_type: "article".into(),
+            subject_death_year: Some(1867),
+            ..Default::default()
+        });
+        assert!(
+            raws.iter().any(|r| r.event_type == "education"
+                && r.time_surface.as_deref() == Some("1836")),
+            "should find education in 1836: {raws:?}"
+        );
+    }
+
+    #[test]
+    fn english_boarding_school() {
+        let raws = EducationLifeExtractor.extract(&ExtractorInput {
+            text: "In 1832, he was sent to a boarding school in Lyon.".into(),
+            page_title: Some("Charles Baudelaire".into()),
+            subject_label: Some("Charles Baudelaire".into()),
+            document_type: "article".into(),
+            subject_death_year: Some(1867),
+            ..Default::default()
+        });
+        assert!(
+            raws.iter().any(|r| r.event_type == "education" 
+                && r.time_surface.as_deref() == Some("1832")),
+            "should find 1832 boarding school: {raws:?}"
+        );
+    }
+
+    #[test]
+    fn english_burial_at_cemetery() {
+        let raws = EducationLifeExtractor.extract(&ExtractorInput {
+            text: "He was buried at Montparnasse Cemetery in Paris.".into(),
+            page_title: Some("Charles Baudelaire".into()),
+            subject_label: Some("Charles Baudelaire".into()),
+            document_type: "article".into(),
+            subject_death_year: Some(1867),
+            ..Default::default()
+        });
+        assert!(
+            raws.iter().any(|r| r.event_type == "burial"
+                && r.place_surface.as_deref().is_some_and(|p| p.contains("Montparnasse"))),
+            "should find burial at Montparnasse: {raws:?}"
+        );
+    }
+
+    #[test]
+    fn english_interred_at() {
+        let raws = EducationLifeExtractor.extract(&ExtractorInput {
+            text: "His remains were interred at the Cimetière du Montparnasse.".into(),
+            page_title: Some("Charles Baudelaire".into()),
+            subject_label: Some("Charles Baudelaire".into()),
+            document_type: "article".into(),
+            subject_death_year: Some(1867),
+            ..Default::default()
+        });
+        assert!(
+            raws.iter().any(|r| r.event_type == "burial"),
+            "should find burial: {raws:?}"
+        );
+    }
+
+    #[test]
+    fn english_suffered_stroke() {
+        let raws = EducationLifeExtractor.extract(&ExtractorInput {
+            text: "In 1866, he suffered a stroke in Namur, Belgium.".into(),
+            page_title: Some("Charles Baudelaire".into()),
+            subject_label: Some("Charles Baudelaire".into()),
+            document_type: "article".into(),
+            subject_death_year: Some(1867),
+            ..Default::default()
+        });
+        assert!(
+            raws.iter().any(|r| r.event_type == "health_event" 
+                && r.time_surface.as_deref() == Some("1866")),
+            "should find 1866 health event: {raws:?}"
+        );
+    }
+
+    #[test]
+    fn english_graduated_from() {
+        let raws = EducationLifeExtractor.extract(&ExtractorInput {
+            text: "He graduated from the University of Paris in 1841.".into(),
+            page_title: Some("Test Subject".into()),
+            subject_label: Some("Test Subject".into()),
+            document_type: "article".into(),
+            subject_death_year: None,
+            ..Default::default()
+        });
+        assert!(
+            raws.iter().any(|r| r.event_type == "education" 
+                && r.predicate == "graduated_from"
+                && r.time_surface.as_deref() == Some("1841")),
+            "should find graduation in 1841: {raws:?}"
         );
     }
 }
