@@ -271,7 +271,7 @@ pub async fn list_place_labels_for_occurrence_stem(
             SELECT place_label FROM canonical_events
             WHERE entity_id = $1
               AND occurrence_stem = $2
-              AND pipeline = 'quality'
+              AND pipeline = 'person'
               AND is_active
               AND place_label IS NOT NULL
               AND btrim(place_label) <> ''
@@ -319,7 +319,7 @@ pub async fn mark_quality_events_uncertain_by_stem(
             epistemic_status = 'uncertain'
         WHERE entity_id = $1
           AND occurrence_stem = $2
-          AND pipeline = 'quality'
+          AND pipeline = 'person'
           AND is_active
         "#,
     )

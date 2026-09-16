@@ -20,6 +20,10 @@ impl CandidateExtractor for TravelResidenceExtractor {
             let lower = line.to_lowercase();
             let (etype, pred) = if lower.contains("departed")
                 || lower.contains("left for")
+                || lower.contains("set sail")
+                || lower.contains("set off")
+                || lower.contains("embarked for")
+                || lower.contains("embarked on")
                 || lower.contains("partit pour")
                 || lower.contains("partent pour")
                 || lower.contains("parti pour")
@@ -31,6 +35,10 @@ impl CandidateExtractor for TravelResidenceExtractor {
             {
                 ("departure", "departed_for")
             } else if lower.contains("arrived")
+                || lower.contains("reached")
+                || lower.contains("landed in")
+                || lower.contains("landed at")
+                || lower.contains("disembarked")
                 || lower.contains("arriva")
                 || lower.contains("arrive en métropole")
                 || lower.contains("arrive en metropole")
@@ -39,8 +47,24 @@ impl CandidateExtractor for TravelResidenceExtractor {
                 || lower.contains("faire escale")
             {
                 ("arrival", "arrived_in")
+            } else if lower.contains("traveled to")
+                || lower.contains("travelled to")
+                || lower.contains("journeyed to")
+                || lower.contains("sailed to")
+                || lower.contains("voyage to")
+                || lower.contains("voyage à")
+                || lower.contains("trip to")
+                || lower.contains("went to")
+            {
+                ("travel", "traveled_to")
             } else if lower.contains("lived in")
-                || lower.contains("resided")
+                || lower.contains("lived at")
+                || lower.contains("resided in")
+                || lower.contains("resided at")
+                || lower.contains("settled in")
+                || lower.contains("settled at")
+                || lower.contains("moved to")
+                || lower.contains("relocated to")
                 || lower.contains("vécut")
                 || lower.contains("vecut")
                 || lower.contains("habita")
@@ -59,7 +83,10 @@ impl CandidateExtractor for TravelResidenceExtractor {
                 || lower.contains("domiciliée")
             {
                 ("residence", "resided_in")
-            } else if lower.contains("stayed in") || lower.contains("stayed at") {
+            } else if lower.contains("stayed in")
+                || lower.contains("stayed at")
+                || lower.contains("spent time in")
+            {
                 ("residence", "stayed_at")
             } else if lower.contains("revient à")
                 || lower.contains("revint à")
@@ -67,17 +94,24 @@ impl CandidateExtractor for TravelResidenceExtractor {
                 || lower.contains("retourna à")
                 || lower.contains("returns to")
                 || lower.contains("returned to")
+                || lower.contains("went back to")
+                || lower.contains("came back to")
                 || lower.contains("on le ramène")
                 || lower.contains("ramené à")
                 || lower.contains("ramenée à")
             {
                 ("arrival", "returned_to")
-            } else if lower.contains("rend visite")
+            } else if lower.contains("visited")
+                || lower.contains("rend visite")
                 || lower.contains("rendit visite")
                 || lower.contains("rend plusieurs visites")
             {
                 ("meeting", "visited")
-            } else if lower.contains("exiled") || lower.contains("s'exila") || lower.contains("exilé") {
+            } else if lower.contains("exiled")
+                || lower.contains("banished")
+                || lower.contains("s'exila")
+                || lower.contains("exilé")
+            {
                 ("exile", "exiled_to")
             } else {
                 continue;
@@ -286,6 +320,148 @@ mod tests {
         assert!(
             raws.iter().any(|r| r.event_type == "meeting" && r.predicate == "visited"),
             "should find visit/meeting: {raws:?}"
+        );
+    }
+
+    // English pattern tests
+    #[test]
+    fn english_traveled_to() {
+        let raws = TravelResidenceExtractor.extract(&ExtractorInput {
+            text: "In 1841, Baudelaire traveled to Mauritius on a merchant ship.".into(),
+            page_title: Some("Charles Baudelaire".into()),
+            subject_label: Some("Charles Baudelaire".into()),
+            document_type: "article".into(),
+            subject_death_year: Some(1867),
+            ..Default::default()
+        });
+        assert!(
+            raws.iter().any(|r| r.event_type == "travel"
+                && r.time_surface.as_deref() == Some("1841")),
+            "should find travel in 1841: {raws:?}"
+        );
+    }
+
+    #[test]
+    fn english_sailed_to() {
+        let raws = TravelResidenceExtractor.extract(&ExtractorInput {
+            text: "He sailed to Réunion Island in 1841.".into(),
+            page_title: Some("Charles Baudelaire".into()),
+            subject_label: Some("Charles Baudelaire".into()),
+            document_type: "article".into(),
+            subject_death_year: Some(1867),
+            ..Default::default()
+        });
+        assert!(
+            raws.iter().any(|r| r.event_type == "travel"
+                && r.time_surface.as_deref() == Some("1841")),
+            "should find travel in 1841: {raws:?}"
+        );
+    }
+
+    #[test]
+    fn english_moved_to() {
+        let raws = TravelResidenceExtractor.extract(&ExtractorInput {
+            text: "In 1864, Baudelaire moved to Brussels.".into(),
+            page_title: Some("Charles Baudelaire".into()),
+            subject_label: Some("Charles Baudelaire".into()),
+            document_type: "article".into(),
+            subject_death_year: Some(1867),
+            ..Default::default()
+        });
+        assert!(
+            raws.iter().any(|r| r.event_type == "residence"
+                && r.place_surface.as_deref() == Some("Brussels")
+                && r.time_surface.as_deref() == Some("1864")),
+            "should find Brussels residence: {raws:?}"
+        );
+    }
+
+    #[test]
+    fn english_returned_to() {
+        let raws = TravelResidenceExtractor.extract(&ExtractorInput {
+            text: "He returned to Paris in 1842.".into(),
+            page_title: Some("Charles Baudelaire".into()),
+            subject_label: Some("Charles Baudelaire".into()),
+            document_type: "article".into(),
+            subject_death_year: Some(1867),
+            ..Default::default()
+        });
+        assert!(
+            raws.iter().any(|r| r.event_type == "arrival"
+                && r.predicate == "returned_to"
+                && r.place_surface.as_deref() == Some("Paris")
+                && r.time_surface.as_deref() == Some("1842")),
+            "should find return to Paris: {raws:?}"
+        );
+    }
+
+    #[test]
+    fn english_visited() {
+        let raws = TravelResidenceExtractor.extract(&ExtractorInput {
+            text: "He visited Belgium in 1864.".into(),
+            page_title: Some("Charles Baudelaire".into()),
+            subject_label: Some("Charles Baudelaire".into()),
+            document_type: "article".into(),
+            subject_death_year: Some(1867),
+            ..Default::default()
+        });
+        assert!(
+            raws.iter().any(|r| r.event_type == "meeting"
+                && r.time_surface.as_deref() == Some("1864")),
+            "should find visit in 1864: {raws:?}"
+        );
+    }
+
+    #[test]
+    fn english_set_sail() {
+        let raws = TravelResidenceExtractor.extract(&ExtractorInput {
+            text: "The ship set sail for Calcutta in June 1841.".into(),
+            page_title: Some("Charles Baudelaire".into()),
+            subject_label: Some("Charles Baudelaire".into()),
+            document_type: "article".into(),
+            subject_death_year: Some(1867),
+            ..Default::default()
+        });
+        assert!(
+            raws.iter().any(|r| r.event_type == "departure"
+                && r.time_surface.as_deref() == Some("1841")),
+            "should find departure in 1841: {raws:?}"
+        );
+    }
+
+    #[test]
+    fn english_arrived_in() {
+        let raws = TravelResidenceExtractor.extract(&ExtractorInput {
+            text: "He arrived in Paris, 1842.".into(),
+            page_title: Some("Charles Baudelaire".into()),
+            subject_label: Some("Charles Baudelaire".into()),
+            document_type: "article".into(),
+            subject_death_year: Some(1867),
+            ..Default::default()
+        });
+        assert!(
+            raws.iter().any(|r| r.event_type == "arrival"
+                && r.place_surface.as_deref() == Some("Paris")
+                && r.time_surface.as_deref() == Some("1842")),
+            "should find arrival in Paris: {raws:?}"
+        );
+    }
+
+    #[test]
+    fn english_settled_in() {
+        let raws = TravelResidenceExtractor.extract(&ExtractorInput {
+            text: "He settled at Brussels, 1864.".into(),
+            page_title: Some("Charles Baudelaire".into()),
+            subject_label: Some("Charles Baudelaire".into()),
+            document_type: "article".into(),
+            subject_death_year: Some(1867),
+            ..Default::default()
+        });
+        assert!(
+            raws.iter().any(|r| r.event_type == "residence"
+                && r.place_surface.as_deref() == Some("Brussels")
+                && r.time_surface.as_deref() == Some("1864")),
+            "should find residence in Brussels: {raws:?}"
         );
     }
 }
