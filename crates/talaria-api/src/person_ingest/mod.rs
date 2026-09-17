@@ -187,6 +187,8 @@ async fn run_person_ingest_inner(
                             structured_source: true,
                             military_subject,
                             aliases: &aliases,
+                            document_text: None,
+                            section_heading: None,
                         },
                     )
                     .await?,
@@ -270,6 +272,8 @@ async fn run_person_ingest_inner(
                             structured_source: true,
                             military_subject,
                             aliases: &aliases,
+                            document_text: None,
+                            section_heading: None,
                         },
                     )
                     .await?,
@@ -513,6 +517,8 @@ async fn ingest_wiki_text(
                     structured_source: false,
                     military_subject,
                     aliases,
+                    document_text: Some(text),
+                    section_heading: None,
                 },
             )
             .await?,
@@ -558,6 +564,8 @@ async fn ingest_wiki_text(
                                 structured_source: false,
                                 military_subject,
                                 aliases,
+                                document_text: Some(&chunk),
+                                section_heading: None,
                             },
                         )
                         .await?,
@@ -626,6 +634,8 @@ async fn ingest_follow_page(
                     structured_source: false,
                     military_subject,
                     aliases,
+                    document_text: Some(&doc),
+                    section_heading: None,
                 },
             )
             .await?,
@@ -658,6 +668,8 @@ async fn ingest_follow_page(
                     structured_source: false,
                     military_subject,
                     aliases,
+                    document_text: Some(&doc),
+                    section_heading: None,
                 },
             )
             .await?,
@@ -716,6 +728,8 @@ async fn persist_wdqs_events(
                         structured_source: true,
                         military_subject,
                         aliases,
+                        document_text: None,
+                        section_heading: None,
                     },
                 )
                 .await?,

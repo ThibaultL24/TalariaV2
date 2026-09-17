@@ -33,6 +33,10 @@ pub struct PersistMeta<'a> {
     pub structured_source: bool,
     pub military_subject: bool,
     pub aliases: &'a [String],
+    /// Full document text for paragraph context in year inference.
+    pub document_text: Option<&'a str>,
+    /// Section heading for year inference (if extracted from Wikipedia sections).
+    pub section_heading: Option<&'a str>,
 }
 
 fn person_event_fingerprint(entity_id: Uuid, occurrence_key: &str) -> String {
@@ -193,7 +197,18 @@ pub async fn persist_fact_item(
     ctx: &mut GateContext,
     meta: PersistMeta<'_>,
 ) -> anyhow::Result<PersistOutcome> {
-    let time = typing::typed_time_from_year(item.year);
+    let time = if item.year.is_none() && !meta.structured_source {
+        let infer_ctx = typing::YearInferenceContext {
+            clause_text: &item.quoted_text,
+            paragraph_context: meta.document_text,
+            section_heading: meta.section_heading,
+            birth_year: ctx.subject_birth_year,
+            death_year: ctx.subject_death_year,
+        };
+        typing::typed_time_from_year_with_context(item.year, &item.event_type, &infer_ctx)
+    } else {
+        typing::typed_time_from_year(item.year)
+    };
     let occ = occurrence_key_for_event(
         subject,
         &item.event_type,

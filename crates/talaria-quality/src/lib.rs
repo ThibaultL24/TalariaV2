@@ -3,6 +3,7 @@
 
 mod analyzer;
 mod attribution;
+mod context_year;
 mod explorer;
 mod assertion;
 mod fingerprint;
@@ -57,4 +58,8 @@ pub use resume::{
 };
 pub use time_typed::{
     extract_time_surface, parse_typed_time, start_time_from_typed, time_to_json, typed_time_year,
+};
+pub use context_year::{
+    approx_typed_time, infer_approximate_year, is_approx_eligible_type, scan_years_in_range,
+    year_from_nearby_context, years_from_section_heading,
 };

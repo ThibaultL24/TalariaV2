@@ -8,7 +8,9 @@
 //! TGN and WHG are identity layers (fully async); they resolve place names to
 //! authoritative identifiers which can then be geocoded via P625.
 
-use talaria_quality::{place_query, TypedTime};
+use talaria_quality::{
+    approx_typed_time, infer_approximate_year, is_approx_eligible_type, place_query, TypedTime,
+};
 use talaria_sources::{
     resolve_place_offline, CompositeIdentityResolver, PlaceIdentity, PlaceIdentityResolver,
 };
@@ -36,6 +38,52 @@ pub fn typed_time_from_year(year: Option<i32>) -> TypedTime {
         },
         None => TypedTime::Unknown { surface: None },
     }
+}
+
+/// Context for inferring approximate years from surrounding text.
+#[derive(Default)]
+pub struct YearInferenceContext<'a> {
+    pub clause_text: &'a str,
+    pub paragraph_context: Option<&'a str>,
+    pub section_heading: Option<&'a str>,
+    pub birth_year: Option<i32>,
+    pub death_year: Option<i32>,
+}
+
+/// Create TypedTime with context-aware approximate year inference.
+/// If the event has no explicit year but is an eligible anecdote type,
+/// try to infer an approximate year from surrounding context.
+pub fn typed_time_from_year_with_context(
+    year: Option<i32>,
+    event_type: &str,
+    ctx: &YearInferenceContext<'_>,
+) -> TypedTime {
+    // If we have an explicit year, use it
+    if let Some(y) = year {
+        return TypedTime::Exact {
+            year: y,
+            month: None,
+            day: None,
+            surface: Some(y.to_string()),
+        };
+    }
+
+    // Try to infer an approximate year from context
+    if is_approx_eligible_type(event_type) {
+        if let Some((inferred_year, source)) = infer_approximate_year(
+            event_type,
+            ctx.clause_text,
+            ctx.paragraph_context,
+            ctx.section_heading,
+            ctx.birth_year,
+            ctx.death_year,
+        ) {
+            return approx_typed_time(inferred_year, source);
+        }
+    }
+
+    // Fall back to unknown
+    TypedTime::Unknown { surface: None }
 }
 
 /// Resolve place identity WITHOUT coordinates (async).
