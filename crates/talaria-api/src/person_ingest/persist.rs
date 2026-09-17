@@ -198,9 +198,12 @@ pub async fn persist_fact_item(
     meta: PersistMeta<'_>,
 ) -> anyhow::Result<PersistOutcome> {
     let time = if item.year.is_none() && !meta.structured_source {
+        let local = meta
+            .document_text
+            .map(|doc| talaria_quality::local_context_window(doc, &item.quoted_text, 400));
         let infer_ctx = typing::YearInferenceContext {
             clause_text: &item.quoted_text,
-            paragraph_context: meta.document_text,
+            paragraph_context: local,
             section_heading: meta.section_heading,
             birth_year: ctx.subject_birth_year,
             death_year: ctx.subject_death_year,

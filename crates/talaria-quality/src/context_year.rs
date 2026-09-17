@@ -141,6 +141,45 @@ pub fn year_from_lifespan_midpoint(
     }
 }
 
+/// Narrow a full document to text near the clause (avoids pinning every anecdote
+/// to the first lifespan year in the article).
+pub fn local_context_window<'a>(full: &'a str, clause: &str, radius: usize) -> &'a str {
+    let clause = clause.trim();
+    if clause.is_empty() || full.is_empty() {
+        return full;
+    }
+    let Some(pos) = full.find(clause) else {
+        // Fall back to a prefix window — better than whole-doc first-year bias.
+        return full.get(..radius.min(full.len())).unwrap_or(full);
+    };
+    let start = pos.saturating_sub(radius);
+    let end = (pos + clause.len().saturating_add(radius)).min(full.len());
+    // Expand to char boundaries
+    let start = floor_char_boundary(full, start);
+    let end = ceil_char_boundary(full, end);
+    &full[start..end]
+}
+
+fn floor_char_boundary(s: &str, mut i: usize) -> usize {
+    if i >= s.len() {
+        return s.len();
+    }
+    while i > 0 && !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
+}
+
+fn ceil_char_boundary(s: &str, mut i: usize) -> usize {
+    if i >= s.len() {
+        return s.len();
+    }
+    while i < s.len() && !s.is_char_boundary(i) {
+        i += 1;
+    }
+    i
+}
+
 /// Main entry point: infer an approximate year for an undated event.
 /// Returns (year, inference_source) if inference succeeded.
 pub fn infer_approximate_year(
@@ -288,6 +327,33 @@ mod tests {
         let clause = "Something happened.";
         let paragraph = "In 1999, unrelated event. In 1857, relevant event.";
         let result = infer_approximate_year("trial", clause, Some(paragraph), None, Some(1821), Some(1867));
+        assert_eq!(result, Some((1857, "paragraph_context")));
+    }
+
+    #[test]
+    fn local_window_keeps_nearby_years_not_article_start() {
+        let filler = "x".repeat(500);
+        let full = format!(
+            "Charles Baudelaire was born in 1821 in Paris. {filler} \
+             In 1857 Les Fleurs du mal was published. \
+             Baudelaire was successfully prosecuted for creating an offense against public morals. \
+             He died in 1867."
+        );
+        let clause = "Baudelaire was successfully prosecuted for creating an offense against public morals.";
+        let window = local_context_window(&full, clause, 120);
+        assert!(window.contains("1857"), "window={window}");
+        assert!(
+            !window.contains("1821"),
+            "birth year should be outside the local window: {window}"
+        );
+        let result = infer_approximate_year(
+            "trial",
+            clause,
+            Some(window),
+            None,
+            Some(1821),
+            Some(1867),
+        );
         assert_eq!(result, Some((1857, "paragraph_context")));
     }
 }
