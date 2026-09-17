@@ -378,6 +378,79 @@ fn classify_predicate(clause: &str) -> Option<(&'static str, &'static str)> {
             "burial",
             "buried_at",
         ),
+        // Relationship/romance patterns
+        (
+            &[
+                "s'éprend de",
+                "s'éprend d'",
+                "fell in love",
+                "liaison avec",
+                "affair with",
+            ],
+            "meeting",
+            "fell_in_love_with",
+        ),
+        // Trial/legal patterns
+        (
+            &[
+                "poursuivi en justice",
+                "poursuivies en justice",
+                "poursuivie en justice",
+                "successfully prosecuted",
+                "was prosecuted",
+                "were prosecuted",
+                "brought to trial",
+            ],
+            "trial",
+            "prosecuted",
+        ),
+        (
+            &[
+                "condamné à",
+                "condamnée à",
+                "condamné pour",
+                "condamnée pour",
+                "was convicted",
+                "found guilty",
+                "sentenced to",
+            ],
+            "trial",
+            "convicted",
+        ),
+        // Suicide attempt patterns
+        (
+            &[
+                "tente de se suicider",
+                "tenta de se suicider",
+                "tentative de suicide",
+                "suicide attempt",
+                "attempted suicide",
+            ],
+            "health_event",
+            "suicide_attempt",
+        ),
+        // Political/Revolution patterns
+        (
+            &[
+                "participe aux barricades",
+                "participa aux barricades",
+                "aux barricades",
+                "took part in the revolution",
+                "participated in the revolution",
+            ],
+            "political_event",
+            "participated_in_revolution",
+        ),
+        // Financial/Legal arrangements
+        (
+            &[
+                "conseil judiciaire",
+                "placed under guardianship",
+                "property in trust",
+            ],
+            "legal_event",
+            "placed_under_guardianship",
+        ),
     ];
     for (cues, et, pred) in RULES {
         if cues.iter().any(|c| lower.contains(c)) {
@@ -385,7 +458,7 @@ fn classify_predicate(clause: &str) -> Option<(&'static str, &'static str)> {
         }
     }
     // "She met Darwin" / "il rencontra X" without the longer cues above.
-    if lower.contains(" met ") || lower.contains("rencontra") {
+    if lower.contains(" met ") || lower.contains("rencontra") || lower.contains(" rencontre ") {
         return Some(("meeting", "met"));
     }
     None

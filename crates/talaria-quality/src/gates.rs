@@ -301,6 +301,9 @@ pub fn event_type_is_map_locus(event_type: &str) -> bool {
             | "burial"
             | "treaty"
             | "health_event"
+            | "trial"
+            | "legal_event"
+            | "political_event"
     )
 }
 
@@ -466,6 +469,15 @@ mod tests {
         assert!(event_type_is_map_locus("burial"));
         assert!(event_type_is_map_locus("treaty"));
         assert!(!event_type_is_map_locus("historical_fact"));
+    }
+
+    #[test]
+    fn anecdote_event_types_are_map_loci() {
+        assert!(event_type_is_map_locus("trial"));
+        assert!(event_type_is_map_locus("legal_event"));
+        assert!(event_type_is_map_locus("political_event"));
+        assert!(!event_type_is_map_locus("financial_event"));
+        assert!(!event_type_is_map_locus("censorship"));
     }
 
     #[test]

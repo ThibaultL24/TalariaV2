@@ -105,8 +105,16 @@ impl CandidateExtractor for TravelResidenceExtractor {
                 || lower.contains("rend visite")
                 || lower.contains("rendit visite")
                 || lower.contains("rend plusieurs visites")
+                || lower.contains("pays a visit")
+                || lower.contains("paid a visit")
             {
                 ("meeting", "visited")
+            } else if lower.contains("frequent")
+                || lower.contains("fréquente")
+                || lower.contains("fréquenta")
+                || lower.contains("frequented")
+            {
+                ("residence", "frequented")
             } else if lower.contains("exiled")
                 || lower.contains("banished")
                 || lower.contains("s'exila")

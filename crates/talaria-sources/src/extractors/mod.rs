@@ -1,6 +1,7 @@
 // crates/talaria-sources/src/extractors/mod.rs
 //! Multi-strategy extractors → EventCandidate fields (never write canonical events).
 
+mod anecdote;
 mod claim;
 mod dense;
 mod education;
@@ -14,6 +15,7 @@ mod structured;
 mod timeline;
 mod travel;
 
+pub use anecdote::AnecdoteLifeExtractor;
 pub use claim::{claim_fingerprint, ClaimKey};
 pub use dense::DenseClauseExtractor;
 pub use education::EducationLifeExtractor;
@@ -395,6 +397,7 @@ pub fn default_extractor_stack() -> Vec<Box<dyn CandidateExtractor>> {
         Box::new(MilitaryCampaignExtractor),
         Box::new(ItineraryExtractor),
         Box::new(EducationLifeExtractor),
+        Box::new(AnecdoteLifeExtractor),
         Box::new(DenseClauseExtractor),
         Box::new(KeywordMineExtractor),
         Box::new(TravelResidenceExtractor),
