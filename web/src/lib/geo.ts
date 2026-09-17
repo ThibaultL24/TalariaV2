@@ -198,9 +198,43 @@ export function buildYearHistogram(events: TimelineEvent[]): { year: number; cou
     .sort((a, b) => a.year - b.year);
 }
 
-export function formatDateLabel(startTime?: string | null): string {
+export function formatDateLabel(
+  startTime?: string | null,
+  precision?: "day" | "month" | "year",
+): string {
+  if (!startTime) return "—";
+
+  if (precision === "day") {
+    const match = startTime.match(/^(-?\d{4})-(\d{2})-(\d{2})/);
+    if (match) {
+      const [, year, month, day] = match;
+      return `${parseInt(day, 10)} ${MONTH_ABBREV[parseInt(month, 10) - 1] ?? month} ${year}`;
+    }
+  }
+
+  if (precision === "month") {
+    const match = startTime.match(/^(-?\d{4})-(\d{2})/);
+    if (match) {
+      const [, year, month] = match;
+      return `${MONTH_ABBREV[parseInt(month, 10) - 1] ?? month} ${year}`;
+    }
+  }
+
   const year = extractYear(startTime);
-  return year != null ? String(year) : "—";
+  if (year == null) return "—";
+  return precision === "year" ? `~${year}` : String(year);
+}
+
+const MONTH_ABBREV = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+export function sanitizePlaceLabel(label?: string | null): string | null {
+  if (!label) return null;
+  const trimmed = label.trim();
+  if (/^Q\d+$/i.test(trimmed)) return null;
+  return trimmed;
 }
 
 export function eventTypeLabel(eventType: string): string {
