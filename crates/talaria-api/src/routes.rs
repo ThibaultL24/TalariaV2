@@ -1,4 +1,5 @@
 // crates/talaria-api/src/routes.rs
+mod agora;
 mod documents;
 mod entities;
 mod events;
@@ -9,6 +10,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use agora::{theory_positions, theory_signals, theory_simulation};
 use documents::{
     get_document, list_document_fragments, list_entity_bibliography, list_entity_documents,
 };
@@ -51,6 +53,15 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/v1/entities/search", get(search_entities))
         .route("/api/v1/entities/{entity_id}", get(get_entity))
         .route("/api/v1/entities/{entity_id}/claims", get(list_claims))
+        .route("/api/v1/agora/theories/{claim_id}/signals", get(theory_signals))
+        .route(
+            "/api/v1/agora/theories/{claim_id}/simulation",
+            post(theory_simulation),
+        )
+        .route(
+            "/api/v1/agora/theories/{claim_id}/positions",
+            post(theory_positions),
+        )
         .route(
             "/api/v1/entities/{entity_id}/documents",
             get(list_entity_documents),

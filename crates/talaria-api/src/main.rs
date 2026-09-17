@@ -8,12 +8,14 @@
 #![allow(clippy::unnecessary_cast)]
 #![allow(dead_code)]
 
+mod agora_stance;
 mod claim_extract;
 mod cli;
 mod cli_helpers;
 mod corpus_ingest;
 mod cosmos;
 mod dump_mine;
+mod display_i18n;
 mod dump_cosmos;
 mod dump_events;
 mod dump_ingest;

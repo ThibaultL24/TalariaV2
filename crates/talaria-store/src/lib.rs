@@ -32,6 +32,7 @@ pub use canonical_events::{
 pub use claims::{
     backfill_life_event_claims, find_claim_by_text, insert_claim, insert_claim_evidence,
     insert_claim_relation, list_claim_evidence, list_claims_for_entity, list_sentences_for_claims,
+    get_claim,
     ClaimEvidenceRow, ClaimInsert, ClaimRow, SentenceForClaims,
 };
 pub use corpus::{
@@ -63,6 +64,7 @@ pub use entities::{
 };
 pub use intuition::{
     find_quality_event_for_stem, get_intuition_publication_by_fingerprint, get_quality_event_pointer,
+    find_intuition_publication_for_claim,
     list_conflict_quality_claims, list_exportable_soft_claims, mark_intuition_failed,
     mark_intuition_pin_failed, mark_intuition_published, upsert_intuition_publication, EventPointerRow, IntuitionPublicationInsert,
     IntuitionPublicationRow, QualityConflictRow, SoftClaimExportRow,
@@ -82,7 +84,8 @@ pub use phrase_candidates::{
 };
 pub use places::{
     apply_coords_to_event, apply_full_place_grounding, apply_geocode_to_events,
-    apply_place_identity_to_event, get_place_geocode, list_place_labels_needing_geocode,
+    apply_place_identity_to_event, enrich_person_event_place_if_empty,
+    find_active_person_singleton_event, get_place_geocode, list_place_labels_needing_geocode,
     upsert_place_geocode, upsert_place_resolution, PlaceGeocodeRow, PlaceResolutionInsert,
 };
 pub use person_events::{

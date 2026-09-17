@@ -461,7 +461,9 @@ pub fn place_hint_from_title(title: &str) -> Option<String> {
         "treaty of ",
         "treaties of ",
         "bataille de ",
+        "bataille d'",
         "siège de ",
+        "siège d'",
         "traite de ",
         "traité de ",
     ] {

@@ -148,11 +148,10 @@ fn clause_names_subject(clause: &str, subject: &str) -> bool {
 /// Birth/death come only from the SUBJECT'S OWN page infobox / Wikidata — never from another bio.
 pub fn keep_extracted_raw(raw: &RawCandidate, page_title: &str, subject: &str) -> bool {
     if matches!(raw.event_type.as_str(), "birth" | "death") {
-        // Birth/death only from subject's own biography page, not from linked pages
-        return matches!(
-            raw.extractor_id.as_str(),
-            "infobox" | "structured_statement"
-        ) && page_is_subject_biography(page_title, subject);
+        // Own biography only, and the clause must be about the subject
+        // (prose may carry P19/P20 places that Wikidata statements omit).
+        return page_is_subject_biography(page_title, subject)
+            && clause_is_about_subject(&raw.clause_text, subject);
     }
     if raw.extractor_id == "infobox" || raw.extractor_id == "structured_statement" {
         return true;
@@ -182,6 +181,9 @@ pub fn clause_is_about_subject(clause: &str, subject: &str) -> bool {
             return true;
         }
     }
+    if clause_mentions_given_name(clause, subject) {
+        return true;
+    }
     if let Some(agent) = leading_person_agent(clause) {
         let agent_l = agent.to_lowercase();
         if subject_l.contains(&agent_l) || agent_l.contains(&subject_l) {
@@ -195,6 +197,21 @@ pub fn clause_is_about_subject(clause: &str, subject: &str) -> bool {
         return false;
     }
     true
+}
+
+fn clause_mentions_given_name(clause: &str, subject: &str) -> bool {
+    let first = subject
+        .split('(')
+        .next()
+        .unwrap_or(subject)
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .trim_matches(|c: char| !c.is_alphabetic() && c != '-');
+    if first.chars().count() < 3 {
+        return false;
+    }
+    clause.split(|c: char| !c.is_alphabetic() && c != '-').any(|w| w.eq_ignore_ascii_case(first))
 }
 
 fn leading_person_agent(clause: &str) -> Option<String> {
@@ -248,8 +265,8 @@ mod subject_clause_tests {
             "George Sand"
         ));
         assert!(clause_is_about_subject(
-            "George Sand s'installe à Nohant en 1831.",
-            "George Sand"
+            "After Charles's coronation, Joan participated in the unsuccessful siege of Paris in September 1429.",
+            "Joan of Arc"
         ));
     }
 
@@ -384,8 +401,35 @@ mod subject_clause_tests {
         };
         // From Louis XVI's page - should be rejected
         assert!(!super::keep_extracted_raw(&raw, "Louis XVI", "Charles Baudelaire"));
-        // From Baudelaire's own page - should be kept
-        assert!(super::keep_extracted_raw(&raw, "Charles Baudelaire", "Charles Baudelaire"));
+        // Louis XVI clause on Baudelaire's page — still rejected (wrong agent)
+        assert!(!super::keep_extracted_raw(
+            &raw,
+            "Charles Baudelaire",
+            "Charles Baudelaire"
+        ));
+        let own = super::RawCandidate {
+            event_type: "birth".into(),
+            predicate: "born_in".into(),
+            subject_surface: "Charles Baudelaire".into(),
+            time_surface: Some("1821".into()),
+            place_surface: Some("Paris".into()),
+            object_surface: None,
+            participant_surfaces: vec![],
+            clause_text: "Baudelaire was born in Paris, France, on 9 April 1821.".into(),
+            clause_index: 0,
+            start_offset: 0,
+            end_offset: 55,
+            cross_clause_join: false,
+            extractor_id: "keywords".into(),
+            is_posthumous: false,
+            lat: None,
+            lon: None,
+        };
+        assert!(super::keep_extracted_raw(
+            &own,
+            "Charles Baudelaire",
+            "Charles Baudelaire"
+        ));
     }
 }
 

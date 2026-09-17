@@ -12,8 +12,11 @@ const SOURCE_LABELS: Record<string, string> = {
   europeana: "Europeana",
 };
 
-export function sourceSystemLabel(source: string | null | undefined): string {
-  if (!source) return "Source";
+export function sourceSystemLabel(
+  source: string | null | undefined,
+  fallback = "Source",
+): string {
+  if (!source) return fallback;
   const key = source.trim().toLowerCase();
   return SOURCE_LABELS[key] ?? source.replace(/_/g, " ");
 }

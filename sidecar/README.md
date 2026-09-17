@@ -53,4 +53,4 @@ Opinions only (`question —has-proposition→ proposition`). Install once:
 cd sidecar/intuition && npm install
 ```
 
-`talaria intuition-publish --subject Napoleon --live` spawns `npx tsx writeOnChain.ts` with `INTUITION_PRIVATE_KEY`. Dry-run (`intuition-plan` / `intuition-export`) does not need Node.
+`talaria intuition-plan` / `intuition-export` write debate JSON only. `intuition-publish --live` is blocked until IPFS atom IDs and transaction simulation are fixed. Do not use the removed `writeOnChain.ts` path.

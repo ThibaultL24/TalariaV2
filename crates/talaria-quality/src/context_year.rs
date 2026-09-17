@@ -29,6 +29,10 @@ const APPROX_ELIGIBLE_TYPES: &[&str] = &[
     "departure",
     "travel",
     "exile",
+    "battle",
+    "siege",
+    "work",
+    "imprisonment",
 ];
 
 /// Check if an event type is eligible for approximate year inference.

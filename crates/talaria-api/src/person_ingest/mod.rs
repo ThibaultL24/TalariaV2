@@ -20,8 +20,8 @@ use talaria_sources::has_military_signal;
 use talaria_sources::load_seed_titles;
 use talaria_sources::wdqs::fetch_events_for_person;
 use talaria_store::{
-    connect, run_migrations, update_entity_authority_ids, upsert_person_by_qid,
-    upsert_raw_wikidata_document, upsert_raw_wikipedia_document,
+    connect, quality_lifespan_years, run_migrations, update_entity_authority_ids,
+    upsert_person_by_qid, upsert_raw_wikidata_document, upsert_raw_wikipedia_document,
 };
 use uuid::Uuid;
 
@@ -150,9 +150,19 @@ async fn run_person_ingest_inner(
         .map(|m| m.death_year.is_none())
         .unwrap_or(false);
 
+    let (db_birth_year, db_death_year, has_birth, has_death) =
+        quality_lifespan_years(&pool, entity_id).await?;
     let mut ctx = GateContext {
-        subject_birth_year: wd_meta.as_ref().and_then(|m| m.birth_year),
-        subject_death_year: wd_meta.as_ref().and_then(|m| m.death_year),
+        subject_birth_year: wd_meta
+            .as_ref()
+            .and_then(|m| m.birth_year)
+            .or(db_birth_year),
+        subject_death_year: wd_meta
+            .as_ref()
+            .and_then(|m| m.death_year)
+            .or(db_death_year),
+        has_active_birth: has_birth,
+        has_active_death: has_death,
         subject_confirmed_alive,
         ..Default::default()
     };
@@ -207,9 +217,13 @@ async fn run_person_ingest_inner(
     for lang in collect::wiki_langs(wiki_lang) {
         match collect::fetch_wiki_extract(&lang, subject).await {
             Ok((title, text, links)) => {
-                if crawl_queue.is_seen(&title) {
+                // Key by lang+title so EN and FR subject pages both ingest
+                // (same display title must not skip the other language).
+                let lang_title_key = format!("{lang}:{title}");
+                if crawl_queue.is_seen(&lang_title_key) {
                     continue;
                 }
+                crawl_queue.mark_seen(&lang_title_key);
                 crawl_queue.mark_seen(&title);
                 if wiki_pages == 0 {
                     primary_title = title.clone();

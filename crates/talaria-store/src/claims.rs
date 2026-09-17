@@ -179,6 +179,22 @@ pub async fn list_claims_for_entity(
     Ok(rows)
 }
 
+pub async fn get_claim(pool: &PgPool, claim_id: Uuid) -> anyhow::Result<Option<ClaimRow>> {
+    let row = sqlx::query_as::<_, ClaimRow>(
+        r#"
+        SELECT id, entity_id, claim_kind, text, epistemic_status, relation_to_subject,
+               event_time, place_label, confidence, canonical_event_id,
+               debate_type, evidence_layer
+        FROM soft_claims
+        WHERE id = $1
+        "#,
+    )
+    .bind(claim_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
+}
+
 pub async fn list_claim_evidence(
     pool: &PgPool,
     claim_id: Uuid,

@@ -270,7 +270,7 @@ pub enum Commands {
     IntuitionPublish {
         #[arg(long)]
         subject: String,
-        #[arg(long, help = "Broadcast to Intuition testnet (needs INTUITION_PRIVATE_KEY)")]
+        #[arg(long, help = "Blocked: live Intuition writes are disabled until IPFS atom IDs and tx simulation are fixed")]
         live: bool,
     },
     /// Operator admin actions (destructive rebuild is explicit)

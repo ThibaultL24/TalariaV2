@@ -262,6 +262,7 @@ pub struct EntityClaimsQuery {
     pub limit: i64,
     #[serde(default = "default_true")]
     pub debates_only: bool,
+    pub lang: Option<String>,
 }
 
 fn default_claims_limit() -> i64 {
@@ -332,6 +333,15 @@ pub async fn list_claims(
             "evidence_layer": claim.evidence_layer,
             "evidence": evidence_items,
         }));
+    }
+
+    if let Some(lang) = crate::display_i18n::normalize_ui_lang(query.lang.as_deref()) {
+        crate::display_i18n::localize_json_string_fields(&mut items, lang, &["text"]).await;
+        for item in &mut items {
+            if let Some(evidence) = item.get_mut("evidence").and_then(Value::as_array_mut) {
+                crate::display_i18n::localize_json_string_fields(evidence, lang, &["quote"]).await;
+            }
+        }
     }
 
     Json(json!({

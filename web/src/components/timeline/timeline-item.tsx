@@ -1,6 +1,7 @@
 // web/src/components/timeline/timeline-item.tsx
 import type { TimelineItem as TimelineItemType } from "@/features/events/mappers/timeline";
 import { epistemicBadgeClass } from "@/lib/event-taxonomy";
+import { useI18n } from "@/lib/i18n";
 
 interface TimelineItemProps extends TimelineItemType {
   selected?: boolean;
@@ -15,11 +16,13 @@ export function TimelineItem({
   epistemicStatus,
   epistemicStatusKey,
   confidence,
+  place,
   isVisibleOnMap,
   selected,
   onClick,
   onHover,
 }: TimelineItemProps) {
+  const { t } = useI18n();
   return (
     <button
       type="button"
@@ -49,15 +52,18 @@ export function TimelineItem({
                 : "bg-amber-500/12 text-amber-200"
             }`}
           >
-            {isVisibleOnMap ? "On map" : "No coords"}
+            {isVisibleOnMap ? t.onMapBadge : t.offMapBadge}
           </span>
         ) : null}
       </div>
 
       <div className="mt-1 font-medium">{title}</div>
+      {place ? (
+        <div className="mt-1 text-[11px] text-(--color-text-muted)">{place}</div>
+      ) : null}
       {confidence != null ? (
         <div className="mt-2 text-xs opacity-70">
-          Model confidence: {Math.round(confidence * 100)}%
+          {t.modelConfidence(Math.round(confidence * 100))}
         </div>
       ) : null}
     </button>

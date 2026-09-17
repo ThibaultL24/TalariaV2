@@ -41,14 +41,102 @@ export const EPISTEMIC_STATUS_OPTIONS = [
 
 export type EpistemicStatus = (typeof EPISTEMIC_STATUS_OPTIONS)[number]["key"];
 
-export function eventTypeLabel(eventType: string): string {
-  const hit = EVENT_TYPE_OPTIONS.find((option) => option.key === eventType);
-  return hit?.label ?? eventType.replace(/_/g, " ");
+export function eventTypeLabel(eventType: string, locale: "en" | "fr" = "en"): string {
+  const labels =
+    locale === "fr"
+      ? {
+          birth: "Naissance",
+          death: "Mort",
+          marriage: "Mariage",
+          divorce: "Divorce",
+          education: "Études",
+          employment: "Emploi",
+          relocation: "Déménagement",
+          travel: "Voyage",
+          residence: "Résidence",
+          exile: "Exil",
+          imprisonment: "Emprisonnement",
+          battle: "Bataille",
+          siege: "Siège",
+          diplomatic: "Diplomatie",
+          meeting: "Rencontre",
+          office: "Charge",
+          speech: "Discours",
+          award: "Distinction",
+          publication: "Publication",
+          creation: "Création",
+          discovery: "Découverte",
+          anecdote: "Anecdote",
+          statue: "Statue",
+          museum: "Musée",
+          street_naming: "Odonymie",
+          memorial: "Mémorial",
+          life_event: "Fait de vie",
+          historical_fact: "Fait historique",
+          trial: "Procès",
+          legal_event: "Fait juridique",
+          political_event: "Fait politique",
+          health_event: "Santé",
+          financial_event: "Argent",
+          censorship: "Censure",
+        }
+      : {
+          birth: "Birth",
+          death: "Death",
+          marriage: "Marriage",
+          divorce: "Divorce",
+          education: "Education",
+          employment: "Employment",
+          relocation: "Relocation",
+          travel: "Travel",
+          residence: "Residence",
+          exile: "Exile",
+          imprisonment: "Imprisonment",
+          battle: "Battle",
+          siege: "Siege",
+          diplomatic: "Diplomatic",
+          meeting: "Meeting",
+          office: "Office",
+          speech: "Speech",
+          award: "Award",
+          publication: "Publication",
+          creation: "Creation",
+          discovery: "Discovery",
+          anecdote: "Anecdote",
+          statue: "Statue",
+          museum: "Museum",
+          street_naming: "Street naming",
+          memorial: "Memorial",
+          life_event: "Life event",
+          historical_fact: "Historical fact",
+          trial: "Trial",
+          legal_event: "Legal event",
+          political_event: "Political event",
+          health_event: "Health",
+          financial_event: "Money",
+          censorship: "Censorship",
+        };
+  return labels[eventType as keyof typeof labels] ?? eventType.replace(/_/g, " ");
 }
 
-export function epistemicStatusLabel(status: string): string {
-  const hit = EPISTEMIC_STATUS_OPTIONS.find((option) => option.key === status);
-  return hit?.label ?? status.replace(/_/g, " ");
+export function epistemicStatusLabel(status: string, locale: "en" | "fr" = "en"): string {
+  const labels =
+    locale === "fr"
+      ? {
+          established: "Établi",
+          attested: "Attesté",
+          uncertain: "Incertain",
+          theory: "Théorie",
+          rumor: "Rumeur",
+        }
+      : {
+          established: "Established fact",
+          attested: "Attested",
+          uncertain: "Uncertain",
+          theory: "Theory",
+          rumor: "Rumor",
+        };
+  return labels[status as keyof typeof labels] ?? status.replace(/_/g, " ");
 }
 
 export function epistemicBadgeClass(status: string): string {

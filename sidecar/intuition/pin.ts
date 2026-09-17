@@ -45,3 +45,11 @@ export async function pinThing(input: {
   }
   return uri;
 }
+
+export function atomDataFromPinUri(uri: string): string {
+  const trimmed = uri.trim();
+  if (!trimmed.startsWith("ipfs://")) {
+    throw new Error("expected ipfs:// uri");
+  }
+  return trimmed;
+}

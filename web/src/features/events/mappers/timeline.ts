@@ -2,6 +2,7 @@
 import { formatDateLabel } from "@/lib/geo";
 import { eventTypeLabel, epistemicStatusLabel } from "@/lib/event-taxonomy";
 import type { TimelineEvent } from "@/lib/api";
+import type { AppLocale } from "@/lib/i18n";
 
 export interface TimelineItem {
   id: string;
@@ -33,14 +34,17 @@ function timelineEventDateLabel(event: TimelineEvent): string {
   return formatDateLabel(event.time?.start ?? event.start_time);
 }
 
-export function mapTimelineEventToItem(event: TimelineEvent): TimelineItem {
+export function mapTimelineEventToItem(
+  event: TimelineEvent,
+  locale: AppLocale = "en",
+): TimelineItem {
   return {
     id: event.id,
     title: event.title,
     dateLabel: timelineEventDateLabel(event),
-    eventType: eventTypeLabel(event.event_type),
+    eventType: eventTypeLabel(event.event_type, locale),
     eventTypeKey: event.event_type,
-    epistemicStatus: epistemicStatusLabel(event.epistemic_status),
+    epistemicStatus: epistemicStatusLabel(event.epistemic_status, locale),
     epistemicStatusKey: event.epistemic_status,
     place: event.place_label ?? undefined,
     year: timelineEventYear(event),

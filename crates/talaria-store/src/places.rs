@@ -87,6 +87,35 @@ pub async fn list_place_labels_needing_geocode(
     Ok(rows.into_iter().map(|(label,)| label).collect())
 }
 
+/// Event types that may become map pins (mirrors talaria_quality::event_type_is_map_locus).
+const MAP_LOCUS_TYPES: &[&str] = &[
+    "birth",
+    "death",
+    "residence",
+    "arrival",
+    "departure",
+    "passage",
+    "meeting",
+    "exile",
+    "battle",
+    "siege",
+    "education",
+    "office",
+    "marriage",
+    "divorce",
+    "travel",
+    "imprisonment",
+    "diplomatic",
+    "employment",
+    "work",
+    "burial",
+    "treaty",
+    "health_event",
+    "trial",
+    "legal_event",
+    "political_event",
+];
+
 pub async fn apply_geocode_to_events(
     pool: &PgPool,
     wiki_lang: &str,
@@ -98,7 +127,7 @@ pub async fn apply_geocode_to_events(
         r#"
         UPDATE canonical_events
         SET geom = ST_SetSRID(ST_MakePoint($4, $3), 4326)::geography,
-            map_eligible = true
+            map_eligible = (event_type = ANY($5))
         WHERE place_label = $2
           AND EXISTS (
             SELECT 1 FROM entities e
@@ -110,6 +139,7 @@ pub async fn apply_geocode_to_events(
     .bind(place_label)
     .bind(lat)
     .bind(lon)
+    .bind(MAP_LOCUS_TYPES)
     .execute(pool)
     .await?;
 
@@ -126,13 +156,14 @@ pub async fn apply_coords_to_event(
         r#"
         UPDATE canonical_events
         SET geom = ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography,
-            map_eligible = true
+            map_eligible = (event_type = ANY($4))
         WHERE id = $1 AND is_active
         "#,
     )
     .bind(event_id)
     .bind(lon)
     .bind(lat)
+    .bind(MAP_LOCUS_TYPES)
     .execute(pool)
     .await?;
     Ok(())
@@ -172,7 +203,7 @@ pub async fn apply_full_place_grounding(
         r#"
         UPDATE canonical_events
         SET geom = ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography,
-            map_eligible = true,
+            map_eligible = (event_type = ANY($5)),
             place_identity_qid = COALESCE($2, place_identity_qid)
         WHERE id = $1 AND is_active
         "#,
@@ -181,9 +212,82 @@ pub async fn apply_full_place_grounding(
     .bind(place_identity_qid)
     .bind(lon)
     .bind(lat)
+    .bind(MAP_LOCUS_TYPES)
     .execute(pool)
     .await?;
     Ok(())
+}
+
+/// Fill place + coords on an existing active event when it still has no place label.
+pub async fn enrich_person_event_place_if_empty(
+    pool: &PgPool,
+    event_id: Uuid,
+    place_label: &str,
+    lat: Option<f64>,
+    lon: Option<f64>,
+    place_identity_qid: Option<&str>,
+    map_eligible: bool,
+) -> anyhow::Result<bool> {
+    let updated = if let (Some(lat), Some(lon)) = (lat, lon) {
+        sqlx::query(
+            r#"
+            UPDATE canonical_events
+            SET place_label = $2,
+                geom = ST_SetSRID(ST_MakePoint($4, $3), 4326)::geography,
+                map_eligible = $5,
+                place_identity_qid = COALESCE($6, place_identity_qid)
+            WHERE id = $1 AND is_active
+              AND (place_label IS NULL OR btrim(place_label) = '')
+            "#,
+        )
+        .bind(event_id)
+        .bind(place_label)
+        .bind(lat)
+        .bind(lon)
+        .bind(map_eligible)
+        .bind(place_identity_qid)
+        .execute(pool)
+        .await?
+        .rows_affected()
+    } else {
+        sqlx::query(
+            r#"
+            UPDATE canonical_events
+            SET place_label = $2,
+                place_identity_qid = COALESCE($3, place_identity_qid)
+            WHERE id = $1 AND is_active
+              AND (place_label IS NULL OR btrim(place_label) = '')
+            "#,
+        )
+        .bind(event_id)
+        .bind(place_label)
+        .bind(place_identity_qid)
+        .execute(pool)
+        .await?
+        .rows_affected()
+    };
+    Ok(updated > 0)
+}
+
+/// Active singleton life event (birth/death) for place enrichment.
+pub async fn find_active_person_singleton_event(
+    pool: &PgPool,
+    entity_id: Uuid,
+    event_type: &str,
+) -> anyhow::Result<Option<Uuid>> {
+    let id = sqlx::query_scalar(
+        r#"
+        SELECT id FROM canonical_events
+        WHERE entity_id = $1 AND event_type = $2
+          AND pipeline = 'person' AND is_active
+        LIMIT 1
+        "#,
+    )
+    .bind(entity_id)
+    .bind(event_type)
+    .fetch_optional(pool)
+    .await?;
+    Ok(id)
 }
 
 /// Parameters for upserting a place resolution audit record.

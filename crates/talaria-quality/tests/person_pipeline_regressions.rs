@@ -276,8 +276,12 @@ fn approx_eligible_types_include_anecdote_types() {
     assert!(is_approx_eligible_type("education"));
     assert!(is_approx_eligible_type("political_event"));
     assert!(is_approx_eligible_type("financial_event"));
-    assert!(is_approx_eligible_type("residence"));
-    assert!(is_approx_eligible_type("travel"));
+        assert!(is_approx_eligible_type("residence"));
+        assert!(is_approx_eligible_type("travel"));
+        assert!(is_approx_eligible_type("battle"));
+        assert!(is_approx_eligible_type("siege"));
+        assert!(is_approx_eligible_type("work"));
+        assert!(is_approx_eligible_type("imprisonment"));
     
     // Non-eligible types
     assert!(!is_approx_eligible_type("publication"));

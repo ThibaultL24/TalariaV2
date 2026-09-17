@@ -1,35 +1,64 @@
 // web/src/lib/agora-taxonomy.ts
-const DEBATE_TYPE_LABELS: Record<string, string> = {
-  birth_date: "Birth date",
-  nationality_origins: "Origins & nationality",
-  hero_villain: "Hero / villain framing",
-  revisionism: "Revisionism",
-  controversy: "Controversy",
-  interpretation: "Interpretation",
-  attribution: "Attribution",
+import type { AppLocale } from "@/stores/locale-store";
+
+const DEBATE_TYPE_LABELS: Record<AppLocale, Record<string, string>> = {
+  en: {
+    birth_date: "Birth date",
+    nationality_origins: "Origins & nationality",
+    hero_villain: "Hero / villain framing",
+    revisionism: "Revisionism",
+    controversy: "Controversy",
+    interpretation: "Interpretation",
+    attribution: "Attribution",
+  },
+  fr: {
+    birth_date: "Date de naissance",
+    nationality_origins: "Origines et nationalité",
+    hero_villain: "Héros / vilain",
+    revisionism: "Révisionnisme",
+    controversy: "Controverse",
+    interpretation: "Interprétation",
+    attribution: "Attribution",
+  },
 };
 
-const EVIDENCE_LAYER_LABELS: Record<string, string> = {
-  historiography: "Historiography",
-  academic_abstract: "Academic abstract",
-  catalog_metadata: "Catalog metadata",
-  thesis: "Thesis",
+const EVIDENCE_LAYER_LABELS: Record<AppLocale, Record<string, string>> = {
+  en: {
+    historiography: "Historiography",
+    academic_abstract: "Academic abstract",
+    catalog_metadata: "Catalog metadata",
+    thesis: "Thesis",
+  },
+  fr: {
+    historiography: "Historiographie",
+    academic_abstract: "Résumé académique",
+    catalog_metadata: "Métadonnées de catalogue",
+    thesis: "Thèse",
+  },
 };
 
-export function debateTypeLabel(value: string | null | undefined): string | null {
+export function debateTypeLabel(
+  value: string | null | undefined,
+  locale: AppLocale = "en",
+): string | null {
   if (!value) return null;
   const key = value.trim().toLowerCase();
-  return DEBATE_TYPE_LABELS[key] ?? value.replace(/_/g, " ");
+  return DEBATE_TYPE_LABELS[locale][key] ?? value.replace(/_/g, " ");
 }
 
-export function evidenceLayerLabel(value: string | null | undefined): string | null {
+export function evidenceLayerLabel(
+  value: string | null | undefined,
+  locale: AppLocale = "en",
+): string | null {
   if (!value) return null;
   const key = value.trim().toLowerCase();
-  return EVIDENCE_LAYER_LABELS[key] ?? value.replace(/_/g, " ");
+  return EVIDENCE_LAYER_LABELS[locale][key] ?? value.replace(/_/g, " ");
 }
 
 export function groupClaimsByDebateType<T extends { debate_type?: string | null }>(
   claims: T[],
+  locale: AppLocale = "en",
+  otherLabel = "Other debates",
 ): Array<{ key: string; label: string; claims: T[] }> {
   const buckets = new Map<string, T[]>();
   for (const claim of claims) {
@@ -42,7 +71,7 @@ export function groupClaimsByDebateType<T extends { debate_type?: string | null 
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, group]) => ({
       key,
-      label: debateTypeLabel(key) ?? "Other debates",
+      label: key === "other" ? otherLabel : (debateTypeLabel(key, locale) ?? otherLabel),
       claims: group,
     }));
 }

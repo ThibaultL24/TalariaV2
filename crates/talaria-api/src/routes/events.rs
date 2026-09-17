@@ -24,6 +24,8 @@ pub struct TimelineQuery {
     pub pipeline: Option<String>,
     #[serde(default = "default_limit")]
     pub limit: i64,
+    /// UI language (`en` | `fr`). Display overlay only.
+    pub lang: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -37,6 +39,7 @@ pub struct GeoJsonQuery {
     pub map_eligible: bool,
     #[serde(default = "default_limit")]
     pub limit: i64,
+    pub lang: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -89,9 +92,21 @@ pub async fn timeline(
     .await
     .unwrap_or_default();
 
+    let mut payload: Vec<Value> = events.iter().map(event_to_json).collect();
+    let display_lang = crate::display_i18n::normalize_ui_lang(query.lang.as_deref());
+    if let Some(lang) = display_lang {
+        crate::display_i18n::localize_json_string_fields(
+            &mut payload,
+            lang,
+            &["title", "summary", "place_label"],
+        )
+        .await;
+    }
+
     Json(json!({
-        "events": events.iter().map(|event| event_to_json(event)).collect::<Vec<_>>(),
-        "count": events.len(),
+        "events": payload,
+        "count": payload.len(),
+        "display_lang": display_lang,
     }))
     .into_response()
 }
@@ -117,10 +132,27 @@ pub async fn geojson(
     .await
     .unwrap_or_default();
 
-    let features: Vec<Value> = events
+    let mut features: Vec<Value> = events
         .iter()
         .filter_map(|event| geojson_feature(event))
         .collect();
+    if let Some(lang) = crate::display_i18n::normalize_ui_lang(query.lang.as_deref()) {
+        let mut props: Vec<Value> = features
+            .iter()
+            .filter_map(|f| f.get("properties").cloned())
+            .collect();
+        crate::display_i18n::localize_json_string_fields(
+            &mut props,
+            lang,
+            &["title", "summary", "place_label"],
+        )
+        .await;
+        for (feature, localized) in features.iter_mut().zip(props) {
+            if let Some(obj) = feature.as_object_mut() {
+                obj.insert("properties".into(), localized);
+            }
+        }
+    }
 
     Json(json!({
         "type": "FeatureCollection",
@@ -210,21 +242,24 @@ pub async fn detail(
         })
         .or_else(|| event.summary.clone());
 
-    let recap_lang = query
-        .lang
-        .as_deref()
-        .map(str::trim)
-        .filter(|lang| !lang.is_empty())
-        .unwrap_or(wiki_lang.as_str());
+    let display_lang = crate::display_i18n::normalize_ui_lang(query.lang.as_deref())
+        .unwrap_or_else(|| {
+            if wiki_lang.starts_with("fr") {
+                "fr"
+            } else {
+                "en"
+            }
+        });
 
-    let dossier = crate::narrative_dossier::build_event_dossier(
+    let mut dossier = crate::narrative_dossier::build_event_dossier(
         &state.pool,
         &event,
         fact_text.as_deref(),
         &narrative,
         &evidence_rows,
         wikipedia_title.as_deref(),
-        recap_lang,
+        &wiki_lang,
+        display_lang,
         state.offline_only,
     )
     .await;
@@ -256,8 +291,27 @@ pub async fn detail(
         .map(Value::String)
         .collect();
 
+    let mut event_json = event_to_json(&event);
+    crate::display_i18n::localize_json_string_fields(
+        std::slice::from_mut(&mut event_json),
+        display_lang,
+        &["title", "summary", "place_label"],
+    )
+    .await;
+    crate::display_i18n::localize_json_string_fields(
+        &mut source_refs,
+        display_lang,
+        &["snippet", "quote"],
+    )
+    .await;
+    let fact_display = if let Some(text) = fact_text.as_deref() {
+        crate::display_i18n::localize_string(display_lang, text).await
+    } else {
+        String::new()
+    };
+
     Json(json!({
-        "event": event_to_json(&event),
+        "event": event_json,
         "entity": entity.as_ref().map(|row| json!({
             "id": row.id,
             "label": row.canonical_name.clone().unwrap_or_else(|| row.wikipedia_title.clone()),
@@ -274,7 +328,7 @@ pub async fn detail(
         "narrative": {
             "event_summary": dossier.event_summary,
             "how_it_happened": dossier.how_it_happened,
-            "fact": fact_text,
+            "fact": if fact_display.is_empty() { Value::Null } else { json!(fact_display) },
             "context_sentences": narrative.iter().map(|row| json!({
                 "text": row.text,
                 "is_evidence": row.is_evidence,

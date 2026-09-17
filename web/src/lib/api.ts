@@ -148,6 +148,7 @@ export interface TimelineQuery {
   /** Active person-ingest events (default). Pass `quality` or `legacy` to inspect older rows. */
   pipeline?: "person" | "quality" | "legacy";
   limit?: number;
+  lang?: string;
 }
 
 function timelineSearchParams(query: TimelineQuery = {}): URLSearchParams {
@@ -159,6 +160,7 @@ function timelineSearchParams(query: TimelineQuery = {}): URLSearchParams {
   if (query.person?.trim()) params.set("person", query.person.trim());
   if (query.profileSlug) params.set("profile_slug", query.profileSlug);
   if (query.periodSlug) params.set("period_slug", query.periodSlug);
+  if (query.lang) params.set("lang", query.lang);
   return params;
 }
 
@@ -248,12 +250,13 @@ export interface EntityClaim {
 
 export async function fetchEntityClaims(
   entityId: string,
-  opts: { limit?: number; debatesOnly?: boolean } = {},
+  opts: { limit?: number; debatesOnly?: boolean; lang?: string } = {},
 ): Promise<EntityClaim[]> {
   const params = new URLSearchParams({
     limit: String(opts.limit ?? 50),
     debates_only: String(opts.debatesOnly ?? true),
   });
+  if (opts.lang) params.set("lang", opts.lang);
   const response = await fetch(`/api/v1/entities/${entityId}/claims?${params}`);
   if (!response.ok) throw new Error("claims fetch failed");
   const data = (await response.json()) as { claims?: EntityClaim[] };
@@ -437,4 +440,43 @@ export async function fetchExplorerStatus(jobId: string): Promise<ExplorerIngest
   const response = await fetch(`/api/v1/ingest/explorer/${jobId}/status`);
   if (!response.ok) throw new Error("explorer status fetch failed");
   return response.json();
+}
+
+export interface TheoryStanceResponse {
+  status: string;
+  code: string;
+  actionable: boolean;
+  claim_id?: string;
+  claim_kind?: string;
+  publication_status?: string | null;
+  triple_term_id?: string | null;
+  stance?: string;
+  vault?: string;
+  reason?: string;
+  calldata?: null;
+}
+
+export async function fetchTheorySignals(claimId: string): Promise<TheoryStanceResponse> {
+  const response = await fetch(`/api/v1/agora/theories/${claimId}/signals`);
+  const data = (await response.json()) as TheoryStanceResponse;
+  if (!response.ok && response.status !== 503) {
+    throw new Error(data.reason ?? data.code ?? "signals fetch failed");
+  }
+  return data;
+}
+
+export async function simulateTheoryStance(
+  claimId: string,
+  stance: "believe" | "dispute",
+): Promise<TheoryStanceResponse> {
+  const response = await fetch(`/api/v1/agora/theories/${claimId}/simulation`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stance, min_shares: "1" }),
+  });
+  const data = (await response.json()) as TheoryStanceResponse;
+  if (!response.ok && response.status !== 503) {
+    throw new Error(data.reason ?? data.code ?? "simulation failed");
+  }
+  return data;
 }
