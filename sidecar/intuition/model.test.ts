@@ -44,3 +44,12 @@ describe("modelDebate", () => {
     expect(a.eventAtom?.atomId).toBe(b.eventAtom?.atomId);
   });
 });
+
+describe("atomDataFromPinUri", () => {
+  it("keeps the ipfs uri as atom data", async () => {
+    const { atomDataFromPinUri } = await import("./pin.ts");
+    const uri = "ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi";
+    expect(atomDataFromPinUri(uri)).toBe(uri);
+    expect(() => atomDataFromPinUri("https://example.com")).toThrow(/ipfs/);
+  });
+});

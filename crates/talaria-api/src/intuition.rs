@@ -11,13 +11,21 @@ use talaria_intuition::{
     SoftClaimInput, SCHEMA_VERSION_V2,
 };
 use talaria_store::{
-    connect, find_entity_by_wikipedia_title, find_quality_event_for_stem,
-    get_intuition_publication_by_fingerprint, get_quality_event_pointer, list_conflict_quality_claims,
-    list_exportable_soft_claims, mark_intuition_failed, mark_intuition_pin_failed,
-    mark_intuition_published, run_migrations, search_local_entities, upsert_intuition_publication,
-    IntuitionPublicationInsert,
+    connect, find_entity_by_wikipedia_title, find_quality_event_for_stem, get_quality_event_pointer,
+    list_conflict_quality_claims, list_exportable_soft_claims, run_migrations, search_local_entities,
+    upsert_intuition_publication, IntuitionPublicationInsert,
 };
 use uuid::Uuid;
+
+pub const LIVE_PUBLISH_BLOCKED: &str =
+    "live_disabled: intuition-publish --live is blocked until IPFS atom IDs and tx simulation are fixed";
+
+pub fn live_publish_guard(live: bool) -> anyhow::Result<()> {
+    if live {
+        anyhow::bail!(LIVE_PUBLISH_BLOCKED);
+    }
+    Ok(())
+}
 
 fn time_key(v: &serde_json::Value) -> String {
     if let Some(s) = v.get("surface").and_then(|x| x.as_str()).filter(|s| !s.is_empty()) {
@@ -219,118 +227,8 @@ pub async fn run_intuition_publish(
     subject: &str,
     live: bool,
 ) -> anyhow::Result<()> {
-    if !live {
-        return run_intuition_export(config, subject).await;
-    }
-    let key = std::env::var("INTUITION_PRIVATE_KEY").unwrap_or_default();
-    if !key.starts_with("0x") || key.len() != 66 {
-        anyhow::bail!("INTUITION_PRIVATE_KEY must be a 0x-prefixed 32-byte hex key");
-    }
-    let pool = connect(config).await?;
-    run_migrations(&pool).await?;
-    let (id, label) = resolve_subject(&pool, &config.wiki_lang, subject).await?;
-    let facts = collect_facts(&pool, id, &label).await?;
-    let mut graphs = Vec::new();
-    for fact in &facts {
-        graphs.push(model_fact(fact).await?);
-    }
-    let pub_ids = persist_pending(&pool, id, &facts, &graphs).await?;
-    let mut results = Vec::new();
-    for (fact, pub_id) in facts.iter().zip(pub_ids.iter()) {
-        let fp = fact_fingerprint(fact);
-        if let Some(existing) = get_intuition_publication_by_fingerprint(&pool, &fp).await? {
-            if existing.status == "published" {
-                results.push(serde_json::json!({
-                    "debate_id": fact.debate_id,
-                    "status": "already_published",
-                    "triple_term_id": existing.triple_term_id,
-                }));
-                continue;
-            }
-            if existing.status == "planned" || existing.status == "exported" {
-                results.push(serde_json::json!({
-                    "debate_id": fact.debate_id,
-                    "status": "skipped_v1",
-                }));
-                continue;
-            }
-        }
-        match spawn_sidecar("publish", fact).await {
-            Ok(out) => {
-                let status = out.get("status").and_then(|s| s.as_str()).unwrap_or("failed");
-                if status == "pin_failed" {
-                    let err = out
-                        .get("error")
-                        .and_then(|s| s.as_str())
-                        .unwrap_or("pin failed");
-                    mark_intuition_pin_failed(&pool, *pub_id, err).await?;
-                    results.push(serde_json::json!({
-                        "debate_id": fact.debate_id,
-                        "status": "pin_failed",
-                        "error": err,
-                    }));
-                    continue;
-                }
-                if status != "ok" {
-                    let err = out
-                        .get("error")
-                        .and_then(|s| s.as_str())
-                        .unwrap_or("settle failed");
-                    mark_intuition_failed(&pool, *pub_id, err).await?;
-                    results.push(serde_json::json!({
-                        "debate_id": fact.debate_id,
-                        "status": "failed",
-                        "error": err,
-                    }));
-                    continue;
-                }
-                let chain_id = out
-                    .pointer("/network/observedChainId")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(13579) as i32;
-                let q_term = out
-                    .pointer("/terms/questionAtom/termId")
-                    .and_then(|v| v.as_str());
-                let t_term = out
-                    .pointer("/terms/mainTriple/termId")
-                    .and_then(|v| v.as_str());
-                let tx = out.pointer("/tx/mainTriple").and_then(|v| v.as_str());
-                mark_intuition_published(&pool, *pub_id, chain_id, q_term, t_term, tx).await?;
-                results.push(serde_json::json!({
-                    "debate_id": fact.debate_id,
-                    "status": "published",
-                    "sidecar": out,
-                }));
-            }
-            Err(err) => {
-                let msg = err.to_string();
-                if msg.contains("pin_failed") {
-                    mark_intuition_pin_failed(&pool, *pub_id, &msg).await?;
-                    results.push(serde_json::json!({
-                        "debate_id": fact.debate_id,
-                        "status": "pin_failed",
-                        "error": msg,
-                    }));
-                } else {
-                    mark_intuition_failed(&pool, *pub_id, &msg).await?;
-                    results.push(serde_json::json!({
-                        "debate_id": fact.debate_id,
-                        "status": "failed",
-                        "error": msg,
-                    }));
-                }
-            }
-        }
-    }
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&serde_json::json!({
-            "subject": label,
-            "live": true,
-            "results": results,
-        }))?
-    );
-    Ok(())
+    live_publish_guard(live)?;
+    run_intuition_export(config, subject).await
 }
 
 async fn spawn_sidecar(mode: &str, fact: &DebateFact) -> anyhow::Result<serde_json::Value> {
@@ -383,4 +281,16 @@ async fn spawn_sidecar(mode: &str, fact: &DebateFact) -> anyhow::Result<serde_js
         );
     }
     anyhow::bail!("sidecar non-JSON stdout: {stdout}; stderr={stderr}");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn live_publish_is_blocked() {
+        let err = live_publish_guard(true).unwrap_err().to_string();
+        assert!(err.contains("live_disabled"));
+        assert!(live_publish_guard(false).is_ok());
+    }
 }

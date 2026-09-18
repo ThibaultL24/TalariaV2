@@ -24,8 +24,7 @@ import {
   type PublicClient,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { modelDebate, type DebateFact, type DebateGraph } from "./model.ts";
-import { pinThing } from "./pin.ts";
+import { atomDataFromPinUri, pinThing } from "./pin.ts";
 
 const DEFAULT_RPC = "https://testnet.rpc.intuition.systems/http";
 const DEFAULT_RPC_FALLBACKS = ["https://rpc.intuition-testnet.rockx.com"];
@@ -156,40 +155,58 @@ export async function publishDebate(fact: DebateFact): Promise<Record<string, un
 
   try {
     const { config, rpcUrl, chainId } = await createConfig(key as `0x${string}`);
-    const atomTerms: Record<string, `0x${string}`> = {};
+    const predTerms: Record<string, `0x${string}`> = {};
     const txs: string[] = [];
-    const predicateDatas = [
-      PREDICATE_ATOM_DATA.hasProposition,
-      PREDICATE_ATOM_DATA.about,
-      createPredicateAtomData(
-        PREDICATE_DEFS.hasCategory.name,
-        PREDICATE_DEFS.hasCategory.description,
-      ),
-      createPredicateAtomData(
-        PREDICATE_DEFS.hasTag.name,
-        PREDICATE_DEFS.hasTag.description,
-      ),
+    const predicateDatas: Array<[string, string]> = [
+      ["hasProposition", PREDICATE_ATOM_DATA.hasProposition],
+      ["about", PREDICATE_ATOM_DATA.about],
+      [
+        "hasCategory",
+        createPredicateAtomData(
+          PREDICATE_DEFS.hasCategory.name,
+          PREDICATE_DEFS.hasCategory.description,
+        ),
+      ],
+      [
+        "hasTag",
+        createPredicateAtomData(PREDICATE_DEFS.hasTag.name, PREDICATE_DEFS.hasTag.description),
+      ],
     ];
-    for (const data of predicateDatas) {
+    for (const [role, data] of predicateDatas) {
       const ensured = await ensureAtom(config, data);
+      predTerms[role] = ensured.termId;
       if (ensured.txHash) txs.push(ensured.txHash);
     }
+    const atomTerms: Record<string, `0x${string}`> = {};
     for (const atom of graph.atoms) {
-      const ensured = await ensureAtom(config, atom.atomData);
+      const uri = pins[atom.role];
+      if (!uri) throw new Error(`missing pin for atom role ${atom.role}`);
+      const ensured = await ensureAtom(config, atomDataFromPinUri(uri));
+      if (ensured.termId !== calculateAtomId(atomDataFromPinUri(uri))) {
+        throw new Error(`atom id mismatch for ${atom.role}`);
+      }
       atomTerms[atom.role] = ensured.termId;
       if (ensured.txHash) txs.push(ensured.txHash);
     }
-    const vote = graph.triples.find((t) => t.role === "question_has_proposition");
-    if (!vote) throw new Error("missing vote-target triple");
-    const triple = await ensureTriple(
-      config,
-      vote.subjectId,
-      vote.predicateId,
-      vote.objectId,
-    );
+    const question = atomTerms.question;
+    const proposition = atomTerms.proposition;
+    if (!question || !proposition) throw new Error("missing question or proposition atom");
+    const hasProposition = predTerms.hasProposition;
+    if (!hasProposition) throw new Error("missing hasProposition predicate");
+    const triple = await ensureTriple(config, question, hasProposition, proposition);
     if (triple.txHash) txs.push(triple.txHash);
-    for (const t of graph.triples.filter((x) => x.role !== "question_has_proposition")) {
-      const extra = await ensureTriple(config, t.subjectId, t.predicateId, t.objectId);
+    const extras: Array<[`0x${string}`, `0x${string}`, `0x${string}`]> = [];
+    if (atomTerms.category && predTerms.hasCategory) {
+      extras.push([question, predTerms.hasCategory, atomTerms.category]);
+    }
+    if (atomTerms.event && predTerms.about) {
+      extras.push([proposition, predTerms.about, atomTerms.event]);
+    }
+    if (atomTerms.kind_tag && predTerms.hasTag) {
+      extras.push([question, predTerms.hasTag, atomTerms.kind_tag]);
+    }
+    for (const [s, p, o] of extras) {
+      const extra = await ensureTriple(config, s, p, o);
       if (extra.txHash) txs.push(extra.txHash);
     }
     return {

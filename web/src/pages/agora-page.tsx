@@ -18,7 +18,7 @@ import { pollIngestJob } from "@/lib/person-ingest";
 import { useExplorerStore } from "@/stores/explorer-store";
 
 export function AgoraPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const navigate = useNavigate();
   const { entityId, entityLabel, entityQid, personFilter, setEntity, setSelectedEventId } =
     useExplorerStore();
@@ -42,7 +42,7 @@ export function AgoraPage() {
     let cancelled = false;
     setLoading(true);
     Promise.all([
-      fetchEntityClaims(entityId, { debatesOnly: false, limit: 80 }),
+      fetchEntityClaims(entityId, { debatesOnly: false, limit: 80, lang: locale }),
       fetchEntityBibliography(entityId),
     ])
       .then(([nextClaims, biblio]) => {
@@ -62,7 +62,7 @@ export function AgoraPage() {
     return () => {
       cancelled = true;
     };
-  }, [entityId, busy]);
+  }, [entityId, busy, locale]);
 
   const runAgora = useCallback(async () => {
     if (!subject) return;

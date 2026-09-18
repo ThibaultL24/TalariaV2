@@ -44,7 +44,7 @@ export function ExplorerMapTimelineBar({
 
   return (
     <div
-      className="surface-nav nebula-panel pointer-events-auto absolute bottom-3 left-1/2 z-10 w-[min(26rem,calc(100%-18rem))] -translate-x-1/2 px-3 py-2"
+      className="surface-nav nebula-panel pointer-events-auto absolute bottom-3 left-1/2 z-10 w-[min(22rem,calc(100%-22rem))] -translate-x-1/2 px-3 py-2"
       role="region"
       aria-label={t.untilYear}
     >

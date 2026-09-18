@@ -5,10 +5,12 @@ use serde_json::json;
 use talaria_quality::{
     auto_accept_attribution, event_type_is_map_locus, explorer_headline, occurrence_key_for_event,
     start_time_from_typed, time_to_json, AttributionMatch, CandidateStatus, GateContext,
-    GateDecision, GroundedItem, TypedTime,
+    GateDecision, GroundedItem, RejectionCode, TypedTime,
 };
+use talaria_sources::is_plausible_place_label;
 use talaria_store::{
-    find_active_person_event_by_fingerprint, find_active_person_event_by_occurrence, insert_claim,
+    enrich_person_event_place_if_empty, find_active_person_event_by_fingerprint,
+    find_active_person_event_by_occurrence, find_active_person_singleton_event, insert_claim,
     insert_claim_evidence, insert_person_candidate, insert_person_event,
     insert_person_quote_evidence, mark_candidate_assembled, ClaimInsert, PersonCandidateInsert,
     PersonEventInsert,
@@ -33,6 +35,10 @@ pub struct PersistMeta<'a> {
     pub structured_source: bool,
     pub military_subject: bool,
     pub aliases: &'a [String],
+    /// Full document text for paragraph context in year inference.
+    pub document_text: Option<&'a str>,
+    /// Section heading for year inference (if extracted from Wikipedia sections).
+    pub section_heading: Option<&'a str>,
 }
 
 fn person_event_fingerprint(entity_id: Uuid, occurrence_key: &str) -> String {
@@ -66,6 +72,59 @@ fn attribution_label(m: AttributionMatch) -> &'static str {
         AttributionMatch::CoreferenceMatch => "coreference_match",
         AttributionMatch::Unattributed => "unattributed",
     }
+}
+
+fn life_singleton_type(event_type: &str) -> bool {
+    matches!(event_type, "birth" | "death")
+}
+
+async fn attach_evidence_to_existing(
+    pool: &sqlx::PgPool,
+    existing: Uuid,
+    candidate_id: Uuid,
+    item: &GroundedItem,
+    raw_document_id: Uuid,
+    coords: Option<(f64, f64)>,
+    place_identity_qid: Option<&str>,
+    source_locator: &str,
+) -> anyhow::Result<PersistOutcome> {
+    if let Some(place) = item
+        .place_surface
+        .as_deref()
+        .map(str::trim)
+        .filter(|p| !p.is_empty() && is_plausible_place_label(p))
+    {
+        let map_ok = coords.is_some() && event_type_is_map_locus(&item.event_type);
+        let _ = enrich_person_event_place_if_empty(
+            pool,
+            existing,
+            place,
+            coords.map(|c| c.0),
+            coords.map(|c| c.1),
+            place_identity_qid,
+            map_ok,
+        )
+        .await?;
+    }
+    insert_person_quote_evidence(
+        pool,
+        existing,
+        &item.quoted_text,
+        Some(raw_document_id),
+        item.confidence,
+        source_locator,
+    )
+    .await?;
+    mark_candidate_assembled(pool, candidate_id, existing).await?;
+    Ok(PersistOutcome::Canonical {
+        event_id: existing,
+        inserted: false,
+    })
+}
+
+fn is_singleton_unique_violation(err: &anyhow::Error) -> bool {
+    let msg = format!("{err:#}");
+    msg.contains("uq_canonical_active_singleton_birth_death")
 }
 
 pub async fn persist_gated_item(
@@ -112,6 +171,27 @@ pub async fn persist_gated_item(
 
     let accept_canonical =
         matches!(decision, GateDecision::Accept) && auto_accept_attribution(attribution);
+    let singleton_reject = matches!(decision, GateDecision::Reject(ref codes)
+        if codes.contains(&RejectionCode::SingletonCardinalityViolation));
+
+    if life_singleton_type(&item.event_type) && (accept_canonical || singleton_reject) {
+        if let Some(existing) =
+            find_active_person_singleton_event(pool, entity_id, &item.event_type).await?
+        {
+            return attach_evidence_to_existing(
+                pool,
+                existing,
+                candidate_id,
+                item,
+                raw_document_id,
+                coords,
+                place_identity_qid,
+                source_locator,
+            )
+            .await;
+        }
+    }
+
     if !accept_canonical {
         return Ok(PersistOutcome::CandidateOnly {
             candidate_id,
@@ -120,20 +200,17 @@ pub async fn persist_gated_item(
     }
 
     if let Some(existing) = find_existing_person_event(pool, entity_id, occurrence_key).await? {
-        insert_person_quote_evidence(
+        return attach_evidence_to_existing(
             pool,
             existing,
-            &item.quoted_text,
-            Some(raw_document_id),
-            item.confidence,
+            candidate_id,
+            item,
+            raw_document_id,
+            coords,
+            place_identity_qid,
             source_locator,
         )
-        .await?;
-        mark_candidate_assembled(pool, candidate_id, existing).await?;
-        return Ok(PersistOutcome::Canonical {
-            event_id: existing,
-            inserted: false,
-        });
+        .await;
     }
 
     let place_label = item.place_surface.clone();
@@ -146,7 +223,7 @@ pub async fn persist_gated_item(
         Some(item.quoted_text.as_str()),
         Some(item.summary.as_str()),
     );
-    let event_id = insert_person_event(
+    let inserted = insert_person_event(
         pool,
         &PersonEventInsert {
             entity_id,
@@ -168,7 +245,29 @@ pub async fn persist_gated_item(
             place_identity_qid: place_identity_qid.map(String::from),
         },
     )
-    .await?;
+    .await;
+    let event_id = match inserted {
+        Ok(id) => id,
+        Err(err) if life_singleton_type(&item.event_type) && is_singleton_unique_violation(&err) => {
+            if let Some(existing) =
+                find_active_person_singleton_event(pool, entity_id, &item.event_type).await?
+            {
+                return attach_evidence_to_existing(
+                    pool,
+                    existing,
+                    candidate_id,
+                    item,
+                    raw_document_id,
+                    coords,
+                    place_identity_qid,
+                    source_locator,
+                )
+                .await;
+            }
+            return Err(err);
+        }
+        Err(err) => return Err(err),
+    };
     insert_person_quote_evidence(
         pool,
         event_id,
@@ -193,7 +292,30 @@ pub async fn persist_fact_item(
     ctx: &mut GateContext,
     meta: PersistMeta<'_>,
 ) -> anyhow::Result<PersistOutcome> {
-    let time = typing::typed_time_from_year(item.year);
+    let clean_place = item
+        .place_surface
+        .as_deref()
+        .filter(|p| is_plausible_place_label(p))
+        .map(str::to_string);
+    let mut item = item.clone();
+    item.place_surface = clean_place;
+    let item = &item;
+
+    let time = if item.year.is_none() && !meta.structured_source {
+        let local = meta
+            .document_text
+            .map(|doc| talaria_quality::local_context_window(doc, &item.quoted_text, 400));
+        let infer_ctx = typing::YearInferenceContext {
+            clause_text: &item.quoted_text,
+            paragraph_context: local,
+            section_heading: meta.section_heading,
+            birth_year: ctx.subject_birth_year,
+            death_year: ctx.subject_death_year,
+        };
+        typing::typed_time_from_year_with_context(item.year, &item.event_type, &infer_ctx)
+    } else {
+        typing::typed_time_from_year(item.year)
+    };
     let occ = occurrence_key_for_event(
         subject,
         &item.event_type,
@@ -247,13 +369,7 @@ pub async fn persist_fact_item(
         meta.source_locator,
     )
     .await?;
-    if matches!(
-        outcome,
-        PersistOutcome::Canonical {
-            inserted: true,
-            ..
-        }
-    ) {
+    if matches!(outcome, PersistOutcome::Canonical { .. }) {
         if item.event_type == "birth" {
             ctx.has_active_birth = true;
             ctx.subject_birth_year = ctx.subject_birth_year.or(item.year);
@@ -301,3 +417,20 @@ pub async fn persist_debate(
     .await?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_singleton_unique_index_name() {
+        let err = anyhow::anyhow!(
+            "error returned from database: duplicate key value violates unique constraint \"uq_canonical_active_singleton_birth_death\""
+        );
+        assert!(is_singleton_unique_violation(&err));
+        assert!(!is_singleton_unique_violation(&anyhow::anyhow!(
+            "duplicate key value violates unique constraint \"uq_canonical_active_occurrence\""
+        )));
+    }
+}
+

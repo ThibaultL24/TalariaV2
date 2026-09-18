@@ -6,6 +6,7 @@ import {
   epistemicStatusLabel,
 } from "@/lib/event-taxonomy";
 import type { PeriodFacet, ProfileFacet } from "@/lib/schemas/entity";
+import { useI18n } from "@/lib/i18n";
 
 interface ExplorerEventFiltersProps {
   availableTypes: string[];
@@ -38,6 +39,7 @@ export function ExplorerEventFilters({
   onTogglePeriod,
   onClear,
 }: ExplorerEventFiltersProps) {
+  const { t, locale } = useI18n();
   const typeKeys =
     availableTypes.length > 0
       ? availableTypes
@@ -57,7 +59,7 @@ export function ExplorerEventFilters({
     <div className="space-y-3 border-b border-(--color-border-subtle) px-3 py-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[10px] font-semibold uppercase tracking-wide text-(--color-text-secondary)">
-          Filters
+          {t.filterTitle}
         </p>
         {hasFilter ? (
           <button
@@ -65,16 +67,16 @@ export function ExplorerEventFilters({
             onClick={onClear}
             className="text-[10px] text-(--color-accent) hover:underline"
           >
-            Show all
+            {t.showAll}
           </button>
         ) : (
-          <span className="text-[10px] text-(--color-text-muted)">All visible</span>
+          <span className="text-[10px] text-(--color-text-muted)">{t.filterAllVisible}</span>
         )}
       </div>
 
       {profiles.length > 0 && onToggleProfile ? (
         <div>
-          <p className="mb-1.5 text-[10px] text-(--color-text-muted)">Profile</p>
+          <p className="mb-1.5 text-[10px] text-(--color-text-muted)">{t.filterProfile}</p>
           <div className="flex flex-wrap gap-1.5">
             {profiles.map((profile) => {
               const active = !selectedProfileSlug || selectedProfileSlug === profile.slug;
@@ -100,7 +102,7 @@ export function ExplorerEventFilters({
 
       {periods.length > 0 && onTogglePeriod ? (
         <div>
-          <p className="mb-1.5 text-[10px] text-(--color-text-muted)">Period</p>
+          <p className="mb-1.5 text-[10px] text-(--color-text-muted)">{t.filterPeriod}</p>
           <div className="flex flex-wrap gap-1.5">
             {periods.map((period) => {
               const active = !selectedPeriodSlug || selectedPeriodSlug === period.slug;
@@ -125,7 +127,7 @@ export function ExplorerEventFilters({
       ) : null}
 
       <div>
-        <p className="mb-1.5 text-[10px] text-(--color-text-muted)">Category</p>
+        <p className="mb-1.5 text-[10px] text-(--color-text-muted)">{t.filterCategory}</p>
         <div className="flex flex-wrap gap-1.5">
           {typeKeys.map((type) => {
             const active = selectedTypes.length === 0 || selectedTypes.includes(type);
@@ -141,7 +143,7 @@ export function ExplorerEventFilters({
                     : "border-(--color-border-subtle) text-(--color-text-muted) opacity-50"
                 }`}
               >
-                {eventTypeLabel(type)}
+                {eventTypeLabel(type, locale)}
               </button>
             );
           })}
@@ -149,7 +151,7 @@ export function ExplorerEventFilters({
       </div>
 
       <div>
-        <p className="mb-1.5 text-[10px] text-(--color-text-muted)">Veracity</p>
+        <p className="mb-1.5 text-[10px] text-(--color-text-muted)">{t.filterVeracity}</p>
         <div className="flex flex-wrap gap-1.5">
           {statusKeys.map((status) => {
             const active = selectedStatuses.length === 0 || selectedStatuses.includes(status);
@@ -165,7 +167,7 @@ export function ExplorerEventFilters({
                     : "border-(--color-border-subtle) text-(--color-text-muted) opacity-50"
                 }`}
               >
-                {epistemicStatusLabel(status)}
+                {epistemicStatusLabel(status, locale)}
               </button>
             );
           })}

@@ -74,7 +74,12 @@ pub fn extract_wiki_rules(
                 continue;
             }
             let year = year_from_raw(&raw);
-            if year.is_none() && raw.place_surface.is_none() {
+            let place = raw
+                .place_surface
+                .as_deref()
+                .filter(|p| talaria_sources::is_plausible_place_label(p))
+                .map(str::to_string);
+            if year.is_none() && place.is_none() && raw.object_surface.is_none() {
                 continue;
             }
             let quote = raw.clause_text.trim();
@@ -82,10 +87,11 @@ pub fn extract_wiki_rules(
                 continue;
             }
             let key = format!(
-                "{}|{:?}|{:?}",
+                "{}|{:?}|{:?}|{:?}",
                 raw.event_type,
                 year,
-                raw.place_surface.as_deref().unwrap_or("")
+                place.as_deref().unwrap_or(""),
+                raw.object_surface.as_deref().unwrap_or("")
             );
             if !seen.insert(key) {
                 continue;
@@ -99,7 +105,7 @@ pub fn extract_wiki_rules(
                     raw.predicate
                 },
                 year,
-                place_surface: raw.place_surface,
+                place_surface: place,
                 summary: quote.chars().take(160).collect(),
                 quoted_text: quote.to_string(),
                 confidence: 0.82,
@@ -203,8 +209,9 @@ pub fn wdqs_event_to_extract(
 
 fn event_type_from_title(title: &str) -> String {
     let l = title.to_lowercase();
-    if l.contains("battle") || l.contains("bataille") || l.contains("siege") || l.contains("siège")
-    {
+    if l.contains("siège") || l.contains("siege") {
+        "siege".into()
+    } else if l.contains("battle") || l.contains("bataille") {
         "battle".into()
     } else if l.contains("treaty") || l.contains("traité") || l.contains("treaties") {
         "diplomatic".into()
@@ -336,6 +343,47 @@ mod tests {
                     .as_deref()
                     .is_some_and(|p| p.to_lowercase().contains("versailles"))),
             "missing Versailles: {items:?}"
+        );
+    }
+
+    #[test]
+    fn wiki_rules_joan_sieges_from_prose_paragraph() {
+        let items = extract_wiki_rules(
+            "Joan of Arc",
+            "Joan of Arc",
+            "Joan of Arc (1412 – 30 May 1431) is a patron saint of France.\n\
+             After Charles's coronation, Joan participated in the unsuccessful siege of Paris in September 1429 and the failed siege of La Charité in November.",
+            Some(1431),
+        );
+        assert!(
+            items.iter().any(|i| i.event_type == "siege"
+                && i.year == Some(1429)
+                && i.place_surface.as_deref().is_some_and(|p| p.contains("Paris"))),
+            "Joan Paris siege: {items:?}"
+        );
+    }
+
+    #[test]
+    fn wiki_rules_baudelaire_cafe_not_art_salon() {
+        let items = extract_wiki_rules(
+            "Charles Baudelaire",
+            "Charles Baudelaire",
+            "Baudelaire fréquentait beaucoup les cafés. Il affectionnait aussi La Rotonde, un café du Quartier latin.\n\
+             His first published work was his art review Salon of 1845.",
+            Some(1867),
+        );
+        assert!(
+            items.iter().any(|i| i.event_type == "residence"
+                && i.place_surface
+                    .as_deref()
+                    .is_some_and(|p| p.to_lowercase().contains("quartier"))),
+            "café Quartier latin: {items:?}"
+        );
+        assert!(
+            !items.iter().any(|i| i.place_surface
+                .as_deref()
+                .is_some_and(|p| p.to_lowercase().contains("1845"))),
+            "must not geocode Salon of 1845: {items:?}"
         );
     }
 

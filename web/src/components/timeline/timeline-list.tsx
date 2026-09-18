@@ -1,7 +1,7 @@
 // web/src/components/timeline/timeline-list.tsx
 import { useExplorerStore } from "@/stores/explorer-store";
 import type { TimelineItem as TimelineItemType } from "@/features/events/mappers/timeline";
-import { strings } from "@/lib/strings";
+import { useI18n } from "@/lib/i18n";
 import { TimelineItem } from "./timeline-item";
 
 interface TimelineListProps {
@@ -18,6 +18,7 @@ export function TimelineList({
   onSelectEvent,
 }: TimelineListProps) {
   const { selectedEventId, setSelectedEventId, setHoveredEventId } = useExplorerStore();
+  const { t } = useI18n();
 
   function handleSelect(id: string) {
     setSelectedEventId(id);
@@ -27,19 +28,19 @@ export function TimelineList({
   if (!hasEntity) {
     return (
       <div className="p-4 text-center text-sm leading-relaxed text-(--color-text-muted)">
-        {strings.emptySearch}
+        {t.emptySearch}
       </div>
     );
   }
 
   if (isLoading && items.length === 0) {
-    return <p className="p-4 text-center text-sm text-(--color-text-muted)">Loading timeline…</p>;
+    return <p className="p-4 text-center text-sm text-(--color-text-muted)">{t.loadingTimeline}</p>;
   }
 
   if (items.length === 0) {
     return (
       <div className="p-4 text-center text-sm text-(--color-text-muted)">
-        {strings.emptyTimeline}
+        {t.emptyTimeline}
       </div>
     );
   }

@@ -1,7 +1,9 @@
 // web/src/pages/explorer-page.tsx
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import type { Map } from "maplibre-gl";
 import { EventDetailCard } from "@/components/detail/event-detail-card";
+import { ExplorerFactsPanel } from "@/components/explorer/explorer-facts-panel";
 import { IngestProgressBadge } from "@/components/explorer/ingest-progress-badge";
 import { Navbar } from "@/components/layout/navbar";
 import { ExplorerMapTimelineBar } from "@/components/map/explorer-map-timeline-bar";
@@ -13,6 +15,7 @@ import { MapSourceManager } from "@/components/map/map-source-manager";
 import { EntitySearchBox } from "@/components/search/entity-search-box";
 import { usePersonPicker } from "@/hooks/use-person-picker";
 import {
+  fetchEntity,
   fetchGeoJson,
   fetchStatus,
   fetchTimeline,
@@ -45,7 +48,7 @@ function toMapCollection(data: GeoJsonFeatureCollection): TalariaFeatureCollecti
 }
 
 export function ExplorerPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [map, setMap] = useState<Map | null>(null);
   const [allEvents, setAllEvents] = useState<TimelineEvent[]>([]);
   const [geojson, setGeojson] = useState<GeoJsonFeatureCollection | null>(null);
@@ -76,8 +79,30 @@ export function ExplorerPage() {
     sourcesPending,
   } = usePersonPicker({ onCountsChanged: handleCountsChanged });
 
-  const { entityId, entityLabel, personFilter, selectedEventId, setSelectedEventId, closeDetail } =
+  const { entityId, entityLabel, personFilter, selectedEventId, setSelectedEventId, closeDetail, setEntity } =
     useExplorerStore();
+  const [searchParams] = useSearchParams();
+  const entityFromUrl = searchParams.get("entity");
+
+  useEffect(() => {
+    if (!entityFromUrl || entityId === entityFromUrl) return;
+    let cancelled = false;
+    fetchEntity(entityFromUrl)
+      .then((entity) => {
+        if (cancelled) return;
+        if (entity) {
+          setEntity(entity.id, entity.label, entity.qid);
+          return;
+        }
+        setEntity(entityFromUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setEntity(entityFromUrl);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [entityFromUrl, entityId, setEntity]);
 
   const hasEntity = Boolean(entityId || personFilter);
 
@@ -102,6 +127,7 @@ export function ExplorerPage() {
       entityId: entityId ?? undefined,
       person: personFilter ?? undefined,
       limit: LIVE_LIMIT,
+      lang: locale,
     };
 
     async function load() {
@@ -124,7 +150,7 @@ export function ExplorerPage() {
         setLoadError(null);
       } catch (err) {
         if (!cancelled && first) {
-          setLoadError(err instanceof Error ? err.message : "load failed");
+          setLoadError(err instanceof Error ? err.message : t.loadFailed);
         }
       } finally {
         inFlight = false;
@@ -147,7 +173,7 @@ export function ExplorerPage() {
       cancelled = true;
       window.clearInterval(tick);
     };
-  }, [entityId, personFilter, hasEntity, ingestBusy, dataVersion]);
+  }, [entityId, personFilter, hasEntity, ingestBusy, dataVersion, locale, t.loadFailed]);
 
   useEffect(() => {
     if (!map) return;
@@ -330,7 +356,18 @@ export function ExplorerPage() {
           </div>
         ) : null}
 
-        {hasEntity && allEvents.length > 0 ? <MapLegend presentKeys={presentKeys} /> : null}
+        {hasEntity && allEvents.length > 0 ? (
+          <MapLegend presentKeys={presentKeys} />
+        ) : null}
+
+        {hasEntity && allEvents.length > 0 ? (
+          <ExplorerFactsPanel
+            events={visibleEvents}
+            mapPinCount={visibleEvents.filter((event) => event.map_eligible).length}
+            isLoading={loading}
+            onSelectEvent={handleSelectEvent}
+          />
+        ) : null}
 
         {hasEntity && allEvents.length > 0 ? (
           <ExplorerMapTimelineBar

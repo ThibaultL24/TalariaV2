@@ -21,6 +21,14 @@ pub fn model() -> String {
         .unwrap_or_else(|| DEFAULT_MODEL.to_string())
 }
 
+fn translation_model() -> String {
+    std::env::var("TRANSLATION_MODEL")
+        .ok()
+        .map(|m| m.trim().to_string())
+        .filter(|m| !m.is_empty())
+        .unwrap_or_else(model)
+}
+
 pub fn is_configured() -> bool {
     api_key().is_some()
 }
@@ -322,6 +330,33 @@ Events:\n{payload}"
     talaria_quality::parse_overlay_verdicts(&text).map_err(|e| anyhow::anyhow!(e))
 }
 
+fn translation_output_text(body: &Value) -> Option<String> {
+    let mut texts = Vec::new();
+    if let Some(s) = body.get("output_text").and_then(|v| v.as_str()) {
+        if !s.is_empty() {
+            texts.push(s.to_string());
+        }
+    }
+    if let Some(output) = body.get("output").and_then(|v| v.as_array()) {
+        for item in output {
+            if let Some(content) = item.get("content").and_then(|c| c.as_array()) {
+                for part in content {
+                    if let Some(t) = part.get("text").and_then(|v| v.as_str()) {
+                        if !t.is_empty() {
+                            texts.push(t.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    texts
+        .iter()
+        .find(|t| t.contains('['))
+        .cloned()
+        .or_else(|| texts.into_iter().next())
+}
+
 fn output_text(body: &Value) -> Option<String> {
     if let Some(s) = body.get("output_text").and_then(|v| v.as_str()) {
         return Some(s.to_string());
@@ -452,6 +487,250 @@ Sources:\n{sources}",
     keep_grounded_recap(&text, req.sources.len())
 }
 
+/// Display-only translation. Never persist. Same length as `texts`; originals on failure.
+pub async fn translate_display_texts(target_lang: &str, texts: &[String]) -> Vec<String> {
+    if texts.is_empty() {
+        return Vec::new();
+    }
+    let target = if target_lang.starts_with("fr") { "fr" } else { "en" };
+    let mut out: Vec<String> = texts.to_vec();
+    let mut pending_idx = Vec::new();
+    let mut pending_text = Vec::new();
+    for (i, text) in texts.iter().enumerate() {
+        let trimmed = text.trim();
+        if trimmed.is_empty() || !display_text_needs_translation(trimmed, target) {
+            continue;
+        }
+        if let Some(hit) = translation_cache_get(target, trimmed) {
+            out[i] = hit;
+            continue;
+        }
+        pending_idx.push(i);
+        pending_text.push(trimmed.to_string());
+    }
+    if pending_text.is_empty() {
+        tracing::info!(target, "display translation skipped (already target language)");
+        return out;
+    }
+    let Some(key) = api_key() else {
+        tracing::warn!("display translation skipped (no OPENAI_API_KEY)");
+        return out;
+    };
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(45))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return out,
+    };
+
+    const CHUNK: usize = 8;
+    for chunk_start in (0..pending_text.len()).step_by(CHUNK) {
+        let chunk_end = (chunk_start + CHUNK).min(pending_text.len());
+        let chunk = &pending_text[chunk_start..chunk_end];
+        let Ok(payload) = serde_json::to_string(chunk) else {
+            continue;
+        };
+        let prompt = format!(
+            "Translate each string into {target}. Return ONLY a JSON array of strings, same length and order.\n\
+Keep personal names, place names, years, and [n] citation markers unchanged.\n\
+Do not add facts. Do not wrap in markdown.\n\
+Input: {payload}"
+        );
+        let mut translated: Option<Vec<String>> = None;
+        let mut delay = std::time::Duration::from_millis(500);
+        for attempt in 1..=6 {
+            let response = client
+                .post(OPENAI_RESPONSES_URL)
+                .bearer_auth(&key)
+                .json(&json!({
+                    "model": translation_model(),
+                    "input": prompt,
+                    "store": false,
+                }))
+                .send()
+                .await;
+            let resp = match response {
+                Ok(resp) => resp,
+                Err(err) => {
+                    tracing::warn!(attempt, error = %err, "display translation request failed");
+                    tokio::time::sleep(delay).await;
+                    delay = (delay * 2).min(std::time::Duration::from_secs(8));
+                    continue;
+                }
+            };
+            if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                tracing::warn!(attempt, "display translation rate-limited, retrying");
+                tokio::time::sleep(delay).await;
+                delay = (delay * 2).min(std::time::Duration::from_secs(8));
+                continue;
+            }
+            if !resp.status().is_success() {
+                tracing::warn!(attempt, status = %resp.status(), "display translation http error");
+                break;
+            }
+            let Ok(body) = resp.json::<Value>().await else {
+                tracing::warn!("display translation json body missing");
+                break;
+            };
+            let Some(raw) = translation_output_text(&body) else {
+                tracing::warn!("display translation empty model output");
+                break;
+            };
+            match parse_translation_strings(&raw, chunk.len()) {
+                Some(items) => {
+                    translated = Some(items);
+                    break;
+                }
+                None => {
+                    tracing::warn!(
+                        n = chunk.len(),
+                        sample = %raw.chars().take(180).collect::<String>(),
+                        "display translation parse failed"
+                    );
+                    break;
+                }
+            }
+        }
+        let Some(translated) = translated else {
+            continue;
+        };
+        for (offset, rendered) in translated.into_iter().enumerate() {
+            let i = pending_idx[chunk_start + offset];
+            let original = &pending_text[chunk_start + offset];
+            let value = if rendered.trim().is_empty() {
+                original.clone()
+            } else {
+                rendered
+            };
+            translation_cache_put(target, original, &value);
+            out[i] = value;
+        }
+        if chunk_end < pending_text.len() {
+            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        }
+    }
+    out
+}
+
+fn translation_cache_get(lang: &str, text: &str) -> Option<String> {
+    TRANSLATION_CACHE
+        .get()
+        .and_then(|c| c.lock().ok())
+        .and_then(|guard| guard.get(&(lang.to_string(), text.to_string())).cloned())
+}
+
+fn translation_cache_put(lang: &str, src: &str, dst: &str) {
+    let cache = TRANSLATION_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    if let Ok(mut guard) = cache.lock() {
+        if guard.len() > 8000 {
+            guard.clear();
+        }
+        guard.insert((lang.to_string(), src.to_string()), dst.to_string());
+    }
+}
+
+static TRANSLATION_CACHE: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<(String, String), String>>,
+> = std::sync::OnceLock::new();
+
+pub fn display_text_needs_translation(text: &str, target: &str) -> bool {
+    let fr = french_marker_score(text);
+    let en = english_marker_score(text);
+    if target.starts_with("fr") {
+        en > fr && en > 0
+    } else {
+        fr > en && fr > 0
+    }
+}
+
+fn french_marker_score(text: &str) -> i32 {
+    let l = format!(" {} ", text.to_lowercase());
+    let mut n = 0;
+    for w in [
+        " le ", " la ", " les ", " un ", " une ", " des ", " du ", " à ", " au ", " aux ", " et ",
+        " est ", " dans ", " par ", " pour ", " que ", " qui ", " il ", " elle ", " son ", " sa ",
+        " ses ", " en ", " sur ", " avec ", " cette ", " cet ",
+    ] {
+        if l.contains(w) {
+            n += 1;
+        }
+    }
+    if text.chars().any(|c| "éèêëàâùûçœîïÉÈÀÇ".contains(c)) {
+        n += 2;
+    }
+    n
+}
+
+fn english_marker_score(text: &str) -> i32 {
+    let l = format!(" {} ", text.to_lowercase());
+    let mut n = 0;
+    for w in [
+        " the ", " of ", " and ", " was ", " were ", " in ", " at ", " for ", " with ", " from ",
+        " his ", " her ", " this ", " that ", " born ", " died ", " married ",
+    ] {
+        if l.contains(w) {
+            n += 1;
+        }
+    }
+    n
+}
+
+pub fn parse_json_string_array(raw: &str) -> Option<Vec<String>> {
+    parse_translation_strings(raw, 0)
+}
+
+fn parse_translation_strings(raw: &str, expected_len: usize) -> Option<Vec<String>> {
+    let trimmed = raw.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();
+    if expected_len == 1 && !trimmed.starts_with('[') && !trimmed.starts_with('{') {
+        let line = trimmed.trim_matches('"').trim();
+        if !line.is_empty() {
+            return Some(vec![line.to_string()]);
+        }
+    }
+    let json_slice = if let (Some(start), Some(end)) = (trimmed.find('['), trimmed.rfind(']')) {
+        &trimmed[start..=end]
+    } else {
+        trimmed
+    };
+    if let Ok(items) = serde_json::from_str::<Vec<String>>(json_slice) {
+        if expected_len == 0 || items.len() == expected_len {
+            return Some(items);
+        }
+    }
+    if let Ok(value) = serde_json::from_str::<Value>(json_slice) {
+        if let Some(items) = json_string_vec(&value) {
+            if expected_len == 0 || items.len() == expected_len {
+                return Some(items);
+            }
+        }
+    }
+    if let Ok(value) = serde_json::from_str::<Value>(trimmed) {
+        if let Some(items) = json_string_vec(&value) {
+            if expected_len == 0 || items.len() == expected_len {
+                return Some(items);
+            }
+        }
+    }
+    None
+}
+
+fn json_string_vec(value: &Value) -> Option<Vec<String>> {
+    match value {
+        Value::Array(items) => {
+            let mut out = Vec::with_capacity(items.len());
+            for item in items {
+                out.push(item.as_str()?.to_string());
+            }
+            Some(out)
+        }
+        Value::Object(map) => map
+            .values()
+            .find_map(|inner| json_string_vec(inner)),
+        _ => None,
+    }
+}
+
 fn first_year(surface: &str) -> Option<i32> {
     let mut digits = String::new();
     for c in surface.chars() {
@@ -492,5 +771,28 @@ mod tests {
     fn recap_rejects_empty_or_uncited_prose() {
         assert!(keep_grounded_recap("EMPTY", 2).is_none());
         assert!(keep_grounded_recap("A nice story without sources.", 1).is_none());
+    }
+
+    #[test]
+    fn french_prose_needs_english_translation() {
+        assert!(display_text_needs_translation(
+            "En 1848, il participe aux barricades.",
+            "en"
+        ));
+        assert!(!display_text_needs_translation(
+            "En 1848, il participe aux barricades.",
+            "fr"
+        ));
+        assert!(display_text_needs_translation("He was born in Paris in 1821.", "fr"));
+        assert!(!display_text_needs_translation("Paris", "en"));
+    }
+
+    #[test]
+    fn parse_translation_array_strips_fences() {
+        let raw = "```json\n[\"Born in 1848.\",\"Paris\"]\n```";
+        assert_eq!(
+            parse_json_string_array(raw).as_deref(),
+            Some(["Born in 1848.".to_string(), "Paris".to_string()].as_slice())
+        );
     }
 }

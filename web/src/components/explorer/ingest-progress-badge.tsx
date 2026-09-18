@@ -15,25 +15,26 @@ interface IngestProgressBadgeProps {
   error?: string | null;
 }
 
-const PHASE_LABELS: Record<string, string> = {
-  queued: "Queued…",
-  starting: "Resolving entity…",
-  resolving: "Resolving entity…",
-  wikidata: "Fetching Wikidata…",
-  wikipedia: "Fetching Wikipedia…",
-  extracting: "Extracting events…",
-  wdqs: "Querying WDQS…",
-  following_links: "Following links…",
-  grounding: "Grounding places…",
-  corpus_enrichment: "Enriching with sources…",
-  persisting: "Saving…",
-  done: "Complete",
-  failed: "Failed",
+const PHASE_LABELS: Record<string, { en: string; fr: string }> = {
+  queued: { en: "Queued…", fr: "En file…" },
+  starting: { en: "Resolving entity…", fr: "Résolution de l’entité…" },
+  resolving: { en: "Resolving entity…", fr: "Résolution de l’entité…" },
+  wikidata: { en: "Fetching Wikidata…", fr: "Lecture de Wikidata…" },
+  wikipedia: { en: "Fetching Wikipedia…", fr: "Lecture de Wikipédia…" },
+  extracting: { en: "Extracting events…", fr: "Extraction des faits…" },
+  core_extract: { en: "Extracting events…", fr: "Extraction des faits…" },
+  wdqs: { en: "Querying WDQS…", fr: "Requête WDQS…" },
+  following_links: { en: "Following links…", fr: "Suivi des liens…" },
+  grounding: { en: "Grounding places…", fr: "Ancrage des lieux…" },
+  corpus_enrichment: { en: "Enriching with sources…", fr: "Enrichissement des sources…" },
+  persisting: { en: "Saving…", fr: "Enregistrement…" },
+  done: { en: "Complete", fr: "Terminé" },
+  failed: { en: "Failed", fr: "Échec" },
 };
 
-function phaseLabel(phase: string | null, t: AppMessages): string {
+function phaseLabel(phase: string | null, t: AppMessages, locale: "en" | "fr"): string {
   if (!phase) return t.loadingMap;
-  return PHASE_LABELS[phase] ?? t.searchInProgress;
+  return PHASE_LABELS[phase]?.[locale] ?? t.searchInProgress;
 }
 
 function truncateTitle(title: string | null | undefined, maxLen = 28): string | null {
@@ -55,7 +56,7 @@ export function IngestProgressBadge({
   isRunning,
   error,
 }: IngestProgressBadgeProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
   if (error) {
     return (
@@ -66,20 +67,17 @@ export function IngestProgressBadge({
   }
 
   const hasEvents = timelineEvents > 0 || mapPins > 0;
-  const countsText = hasEvents
-    ? `${timelineEvents} events · ${mapPins} pins`
-    : null;
+  const countsText = hasEvents ? t.ingestEventsPins(timelineEvents, mapPins) : null;
 
-  const precisionText = hasEvents && (preciseDates > 0 || preciseCoords > 0)
-    ? `${preciseDates} dated · ${preciseCoords} located`
-    : null;
+  const precisionText =
+    hasEvents && (preciseDates > 0 || preciseCoords > 0)
+      ? t.ingestDatedLocated(preciseDates, preciseCoords)
+      : null;
 
-  const sourcesText = wikiPages > 0 || evidenceCount > 0
-    ? [
-        wikiPages > 0 ? `${wikiPages} pages` : null,
-        evidenceCount > 0 ? `${evidenceCount} sources` : null,
-      ].filter(Boolean).join(" · ")
-    : null;
+  const sourcesText =
+    wikiPages > 0 || evidenceCount > 0
+      ? t.ingestPagesSources(wikiPages, evidenceCount)
+      : null;
 
   const truncatedPage = truncateTitle(currentPage);
   const showFollowProgress = (sourcesPending ?? 0) > 0 && phase === "following_links";
@@ -93,7 +91,7 @@ export function IngestProgressBadge({
             <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
           </span>
           <span className="flex flex-col items-center">
-            <span>{phaseLabel(phase, t)}</span>
+            <span>{phaseLabel(phase, t, locale)}</span>
             {truncatedPage && (
               <span className="text-[9px] text-(--color-text-muted)/70 max-w-[180px] truncate">
                 {truncatedPage}
@@ -112,7 +110,7 @@ export function IngestProgressBadge({
           {[
             precisionText,
             sourcesText,
-            showFollowProgress ? `${sourcesPending} queued` : null,
+            showFollowProgress ? t.ingestQueuedPages(sourcesPending ?? 0) : null,
           ].filter(Boolean).join(" · ")}
         </div>
       )}

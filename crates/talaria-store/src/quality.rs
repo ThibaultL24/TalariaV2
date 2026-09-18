@@ -625,8 +625,8 @@ pub async fn quality_lifespan_years(
     Ok((
         birth_year,
         death_year,
-        birth_year.is_some(),
-        death_year.is_some(),
+        birth.is_some(),
+        death.is_some(),
     ))
 }
 

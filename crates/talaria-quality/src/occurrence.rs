@@ -133,6 +133,21 @@ mod tests {
     }
 
     #[test]
+    fn birth_with_and_without_place_are_distinct_keys() {
+        let t = year(1412);
+        let a = occurrence_key_for_event("Joan of Arc", "birth", "born_in", &t, None, None);
+        let b = occurrence_key_for_event(
+            "Joan of Arc",
+            "birth",
+            "born_in",
+            &t,
+            Some("Domrémy"),
+            None,
+        );
+        assert_ne!(a, b);
+    }
+
+    #[test]
     fn two_extractors_same_fact_same_occurrence() {
         let t = year(1815);
         // Historically identical args — extractor must not appear in the key.

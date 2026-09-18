@@ -7,9 +7,9 @@
     "node": ">=20"
   },
   "scripts": {
-    "write": "tsx writeOnChain.ts",
     "model": "tsx cli.ts model",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@0xintuition/classifications": "alpha",

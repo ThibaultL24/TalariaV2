@@ -99,7 +99,7 @@ pub async fn get_quality_event_pointer(
         r#"
         SELECT id, title, place_label, event_type, time_json
         FROM canonical_events
-        WHERE id = $1 AND pipeline = 'quality'
+        WHERE id = $1 AND pipeline = 'person' AND is_active
         "#,
     )
     .bind(event_id)
@@ -119,7 +119,7 @@ pub async fn find_quality_event_for_stem(
         FROM canonical_events
         WHERE entity_id = $1
           AND occurrence_stem = $2
-          AND pipeline = 'quality'
+          AND pipeline = 'person'
           AND is_active
         ORDER BY created_at ASC
         LIMIT 1
@@ -127,6 +127,30 @@ pub async fn find_quality_event_for_stem(
     )
     .bind(subject_entity_id)
     .bind(stem)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
+}
+
+pub async fn find_intuition_publication_for_claim(
+    pool: &PgPool,
+    claim_id: Uuid,
+) -> anyhow::Result<Option<IntuitionPublicationRow>> {
+    let needle = format!("%{claim_id}%");
+    let row = sqlx::query_as::<_, IntuitionPublicationRow>(
+        r#"
+        SELECT id, debate_id, bundle_fingerprint, kind, status, triple_term_id, tx_hash
+        FROM intuition_publications
+        WHERE kind = 'theory'
+          AND (
+            debate_id ILIKE $1
+            OR COALESCE(payload_json::text, '') ILIKE $1
+          )
+        ORDER BY CASE WHEN status = 'published' THEN 0 ELSE 1 END, updated_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(needle)
     .fetch_optional(pool)
     .await?;
     Ok(row)

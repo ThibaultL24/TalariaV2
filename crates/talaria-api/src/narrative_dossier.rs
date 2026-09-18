@@ -31,6 +31,7 @@ pub async fn build_event_dossier(
     evidence: &[EventEvidenceRow],
     wikipedia_title: Option<&str>,
     wiki_lang: &str,
+    display_lang: &str,
     offline_only: bool,
 ) -> EventDossier {
     let mut claims = local_claims(event, fact, narrative, evidence);
@@ -58,7 +59,7 @@ pub async fn build_event_dossier(
         }
     }
 
-    let mut dossier = assemble_dossier(event, fact, claims, wiki_lang);
+    let mut dossier = assemble_dossier(event, fact, claims, display_lang);
     if !offline_only {
         let year = event
             .start_time
@@ -74,7 +75,7 @@ pub async fn build_event_dossier(
             .collect();
         if let Some(recap) = crate::llm::synthesize_event_recap(crate::llm::EventRecapRequest {
             person: &event.person_name,
-            lang: wiki_lang,
+            lang: display_lang,
             event_type: &event.event_type,
             year: year.as_deref(),
             place: event.place_label.as_deref(),
@@ -86,6 +87,15 @@ pub async fn build_event_dossier(
             dossier.how_it_happened = recap;
         }
     }
+    dossier.how_it_happened =
+        crate::display_i18n::localize_string(display_lang, &dossier.how_it_happened).await;
+    dossier.event_summary = dossier.how_it_happened.clone();
+    crate::display_i18n::localize_json_string_fields(
+        &mut dossier.source_refs,
+        display_lang,
+        &["snippet", "quote"],
+    )
+    .await;
     dossier
 }
 

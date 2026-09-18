@@ -4,6 +4,7 @@
 
 use crate::extractors::travel::find_year;
 use crate::extractors::{CandidateExtractor, ExtractorInput, RawCandidate};
+use crate::place_quality::is_plausible_place_label;
 
 pub struct AnecdoteLifeExtractor;
 
@@ -13,7 +14,7 @@ impl CandidateExtractor for AnecdoteLifeExtractor {
     }
 
     fn version(&self) -> &str {
-        "anecdote_life:v1"
+        "anecdote_life:v2"
     }
 
     fn extract(&self, input: &ExtractorInput) -> Vec<RawCandidate> {
@@ -29,13 +30,11 @@ impl CandidateExtractor for AnecdoteLifeExtractor {
             
             if let Some((etype, pred)) = classify_anecdote(&lower) {
                 let year = find_year(line);
-                let place = find_anecdote_place(line, &lower);
+                let place = find_venue_place(line, &lower).or_else(|| find_anecdote_place(line, &lower));
                 let person = find_related_person(line, &lower);
-                
-                if year.is_none() && place.is_none() && person.is_none() {
-                    continue;
-                }
-                
+
+                // Patterns are high-signal; year/place/person enrich but are not required
+                // (EN often puts the year in a neighbouring sentence).
                 out.push(RawCandidate {
                     event_type: etype.into(),
                     predicate: pred.into(),
@@ -192,7 +191,9 @@ fn classify_anecdote(lower: &str) -> Option<(&'static str, &'static str)> {
         || lower.contains("participa aux barricades")
         || lower.contains("aux barricades")
         || lower.contains("took part in the revolution")
+        || lower.contains("took part in the revolutions")
         || lower.contains("participated in the revolution")
+        || lower.contains("participated in the revolutions")
         || lower.contains("joined the uprising")
     {
         return Some(("political_event", "participated_in_revolution"));
@@ -206,6 +207,16 @@ fn classify_anecdote(lower: &str) -> Option<(&'static str, &'static str)> {
         return Some(("political_event", "revolution"));
     }
     
+    if is_art_salon_review(lower) {
+        // "Salon de 1845" is an art-criticism title, not a literary salon.
+    } else if is_literary_salon(lower) {
+        return Some(("meeting", "met_at_salon"));
+    }
+
+    if is_life_locus_haunt(lower) {
+        return Some(("residence", "frequented"));
+    }
+
     // Enhanced meeting patterns
     if (lower.contains(" rencontre ") || lower.contains(" rencontra "))
         && !lower.contains("rencontre avec")
@@ -249,6 +260,82 @@ fn classify_anecdote(lower: &str) -> Option<(&'static str, &'static str)> {
     None
 }
 
+fn is_art_salon_review(lower: &str) -> bool {
+    (lower.contains("salon de 1") || lower.contains("salon of 1") || lower.contains("salon de 18"))
+        && !lower.contains("salon littéraire")
+        && !lower.contains("literary salon")
+}
+
+fn is_literary_salon(lower: &str) -> bool {
+    lower.contains("literary salon")
+        || lower.contains("salon littéraire")
+        || lower.contains("salon litteraire")
+        || lower.contains("frequented the salon")
+        || lower.contains("fréquentait les salons")
+        || lower.contains("frequente les salons")
+        || lower.contains("fréquenta les salons")
+        || lower.contains("dans les salons")
+        || (lower.contains("au salon de") && !is_art_salon_review(lower))
+        || lower.contains("met at the salon")
+        || lower.contains("met in the salon")
+}
+
+fn is_life_locus_haunt(lower: &str) -> bool {
+    lower.contains("lupanar")
+        || lower.contains("brothel")
+        || lower.contains("bordel")
+        || lower.contains("maison close")
+        || lower.contains("house of ill fame")
+        || lower.contains("taverns of")
+        || lower.contains("dans les cafés")
+        || lower.contains("dans les cafes")
+        || lower.contains("fréquentait beaucoup les cafés")
+        || lower.contains("frequentait beaucoup les cafes")
+        || lower.contains("fréquentait les cafés")
+        || lower.contains("frequentait les cafes")
+        || lower.contains("composait dans les cafés")
+        || lower.contains("composait dans les cafes")
+        || ((lower.contains("frequent prostitutes") || lower.contains("fréquentait les prostitu"))
+            && (lower.contains(" in ") || lower.contains(" à ") || lower.contains("paris")))
+        || lower.contains("café du ")
+        || lower.contains("cafe du ")
+        || lower.contains("un café du")
+        || lower.contains("un cafe du")
+}
+
+fn find_venue_place(s: &str, lower: &str) -> Option<String> {
+    for (needle, label) in [
+        ("quartier latin", "Quartier latin"),
+        ("latin quarter", "Latin Quarter"),
+        ("closerie des lilas", "Closerie des Lilas"),
+        ("hôtel pimodan", "Hôtel Pimodan"),
+        ("hotel pimodan", "Hôtel Pimodan"),
+        ("hôtel de lauzun", "Hôtel de Lauzun"),
+        ("hotel de lauzun", "Hôtel de Lauzun"),
+    ] {
+        if lower.contains(needle) {
+            return Some(label.to_string());
+        }
+    }
+    for cue in ["café ", "cafe "] {
+        if let Some(pos) = lower.find(cue) {
+            let after = &s[pos + cue.len()..];
+            if let Some(name) = extract_person_name(after) {
+                if is_plausible_place_label(&name) {
+                    return Some(format!("café {name}"));
+                }
+            }
+        }
+    }
+    if let Some(pos) = lower.find("taverns of ") {
+        let after = &s[pos + "taverns of ".len()..];
+        if let Some(name) = extract_person_name(after) {
+            return Some(name);
+        }
+    }
+    None
+}
+
 fn find_anecdote_place(s: &str, lower: &str) -> Option<String> {
     // Common place cues
     for cue in [
@@ -256,12 +343,14 @@ fn find_anecdote_place(s: &str, lower: &str) -> Option<String> {
     ] {
         if let Some(pos) = lower.rfind(cue) {
             let after = &s[pos + cue.len()..];
-            let raw = after
+            let clipped = after
                 .split(|c: char| c == '.' || c.is_ascii_digit() || c == ',')
                 .next()?
                 .trim()
                 .trim_matches(|c: char| !c.is_alphabetic() && c != ' ' && c != '-' && c != '\'');
-            let token = raw
+            let clipped = clipped.split(" and ").next().unwrap_or(clipped);
+            let clipped = clipped.split(" et ").next().unwrap_or(clipped);
+            let token = clipped
                 .trim_end_matches(" en")
                 .trim_end_matches(" in")
                 .trim_start_matches("l'")
@@ -273,6 +362,7 @@ fn find_anecdote_place(s: &str, lower: &str) -> Option<String> {
                 && !token.eq_ignore_ascii_case("le")
                 && !token.eq_ignore_ascii_case("la")
                 && !is_person_name_prefix(&token)
+                && is_plausible_place_label(&token)
             {
                 return Some(token);
             }
@@ -282,6 +372,21 @@ fn find_anecdote_place(s: &str, lower: &str) -> Option<String> {
 }
 
 fn find_related_person(s: &str, lower: &str) -> Option<String> {
+    // EN often puts the name before the cue: "Jeanne Duval … became his mistress"
+    for cue in [
+        " became his mistress",
+        " became her mistress",
+        " became his lover",
+        " became her lover",
+        " became his partner",
+        " became her partner",
+    ] {
+        if let Some(pos) = lower.find(cue) {
+            if let Some(name) = extract_trailing_person_name(&s[..pos]) {
+                return Some(name);
+            }
+        }
+    }
     // Look for person names after relationship cues
     for cue in [
         "s'éprend de ",
@@ -289,8 +394,6 @@ fn find_related_person(s: &str, lower: &str) -> Option<String> {
         "liaison avec ",
         "rencontre ",
         "rencontra ",
-        "became his mistress",
-        "became her lover",
         "fell in love with ",
         "affair with ",
         "acquainted with ",
@@ -306,6 +409,42 @@ fn find_related_person(s: &str, lower: &str) -> Option<String> {
         }
     }
     None
+}
+
+fn extract_trailing_person_name(before: &str) -> Option<String> {
+    let tokens: Vec<String> = before
+        .split_whitespace()
+        .map(|w| {
+            w.trim_matches(|c: char| !c.is_alphabetic() && c != '-' && c != '\'')
+                .to_string()
+        })
+        .filter(|w| !w.is_empty())
+        .collect();
+
+    // Last run of ≥2 capitalized name tokens (skip trailing appositions like "a French-born actress").
+    let mut best: Option<String> = None;
+    let mut cur: Vec<String> = Vec::new();
+    for t in &tokens {
+        let first = t.chars().next().unwrap_or(' ');
+        if first.is_uppercase()
+            || (!cur.is_empty()
+                && matches!(
+                    t.to_lowercase().as_str(),
+                    "de" | "du" | "van" | "von" | "la" | "le"
+                ))
+        {
+            cur.push(t.clone());
+            continue;
+        }
+        if cur.len() >= 2 {
+            best = Some(cur.join(" "));
+        }
+        cur.clear();
+    }
+    if cur.len() >= 2 {
+        best = Some(cur.join(" "));
+    }
+    best
 }
 
 fn extract_person_name(after: &str) -> Option<String> {
@@ -378,6 +517,15 @@ mod tests {
                 && r.object_surface.as_deref().is_some_and(|p| p.contains("Jeanne Duval"))),
             "should find Jeanne Duval relationship: {raws:?}"
         );
+        let hit = raws.iter().find(|r| r.event_type == "meeting").unwrap();
+        assert!(
+            crate::extractors::keep_extracted_raw(
+                hit,
+                "Charles Baudelaire",
+                "Charles Baudelaire"
+            ),
+            "Duval clause must be kept on subject biography"
+        );
     }
 
     #[test]
@@ -389,6 +537,22 @@ mod tests {
             raws.iter().any(|r| r.event_type == "meeting" 
                 && r.time_surface.as_deref() == Some("1842")),
             "should find 1842 mistress relationship: {raws:?}"
+        );
+    }
+
+    #[test]
+    fn english_jeanne_duval_mistress_name_before_cue_no_year() {
+        let raws = AnecdoteLifeExtractor.extract(&make_input(
+            "During this time, Jeanne Duval, a French-born actress, became his mistress."
+        ));
+        assert!(
+            raws.iter().any(|r| {
+                r.event_type == "meeting"
+                    && r.object_surface
+                        .as_deref()
+                        .is_some_and(|p| p.contains("Jeanne Duval"))
+            }),
+            "should recover Jeanne Duval before mistress cue: {raws:?}"
         );
     }
 
@@ -563,6 +727,62 @@ mod tests {
             raws.iter().any(|r| r.event_type == "censorship" 
                 && r.time_surface.as_deref() == Some("1857")),
             "should find 1857 ban: {raws:?}"
+        );
+    }
+
+    #[test]
+    fn french_cafe_quartier_latin_is_residence() {
+        let raws = AnecdoteLifeExtractor.extract(&make_input(
+            "Il affectionnait aussi La Rotonde, un café du Quartier latin.",
+        ));
+        assert!(
+            raws.iter().any(|r| r.event_type == "residence"
+                && r.place_surface
+                    .as_deref()
+                    .is_some_and(|p| p.to_lowercase().contains("quartier"))),
+            "Quartier latin café: {raws:?}"
+        );
+    }
+
+    #[test]
+    fn english_taverns_of_paris() {
+        let raws = AnecdoteLifeExtractor.extract(&make_input(
+            "On returning to the taverns of Paris, he began to compose some of the poems of Les Fleurs du Mal.",
+        ));
+        assert!(
+            raws.iter().any(|r| r.event_type == "residence"
+                && r.place_surface.as_deref() == Some("Paris")),
+            "taverns of Paris: {raws:?}"
+        );
+    }
+
+    #[test]
+    fn literary_salon_is_meeting_not_art_review() {
+        let salon = AnecdoteLifeExtractor.extract(&make_input(
+            "Baudelaire fréquenta les salons de Paris et y rencontra d'autres auteurs.",
+        ));
+        assert!(
+            salon.iter().any(|r| r.event_type == "meeting"),
+            "literary salons: {salon:?}"
+        );
+        let review = AnecdoteLifeExtractor.extract(&make_input(
+            "His first published work was his art review \"Salon of 1845\".",
+        ));
+        assert!(
+            !review.iter().any(|r| r.event_type == "meeting" || r.event_type == "residence"),
+            "art Salon of 1845 must not become a haunt: {review:?}"
+        );
+    }
+
+    #[test]
+    fn brothel_anecdote_keeps_place() {
+        let raws = AnecdoteLifeExtractor.extract(&make_input(
+            "He began to frequent prostitutes in Paris and may have contracted syphilis.",
+        ));
+        assert!(
+            raws.iter().any(|r| r.event_type == "residence"
+                && r.place_surface.as_deref() == Some("Paris")),
+            "brothel/prostitute Paris: {raws:?}"
         );
     }
 }

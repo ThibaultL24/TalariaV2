@@ -99,6 +99,17 @@ pub fn agent_is_other_person(quote: &str, subject: &str) -> bool {
     if surname.is_empty() {
         return false;
     }
+    let quote_l = quote.to_lowercase();
+    // Subject named anywhere in the clause → not another person's event.
+    if contains_name_token(&quote_l, &subject_l) || contains_name_token(&quote_l, &surname) {
+        return false;
+    }
+    for part in subject_l.split_whitespace() {
+        if part.chars().count() >= 5 && contains_name_token(&quote_l, part) {
+            return false;
+        }
+    }
+
     let tokens: Vec<&str> = quote.split_whitespace().collect();
     let mut i = 0;
     while i < tokens.len() {
@@ -107,15 +118,25 @@ pub fn agent_is_other_person(quote: &str, subject: &str) -> bool {
         if cleaned.is_empty()
             || is_year_or_day(raw)
             || SKIP_NAME.contains(&cleaned.to_lowercase().as_str())
+            || LEADING_FUNCTION.contains(&cleaned.to_lowercase().as_str())
             || !looks_like_name_token(raw)
         {
+            i += 1;
+            continue;
+        }
+        // "De retour à Paris, Charles …" — Paris is a place, not the agent.
+        if is_likely_place_token(&cleaned) {
             i += 1;
             continue;
         }
         let mut parts = vec![cleaned];
         let mut j = i + 1;
         while j < tokens.len() && looks_like_name_token(tokens[j]) {
-            parts.push(clean_token(tokens[j]));
+            let nxt = clean_token(tokens[j]);
+            if is_likely_place_token(&nxt) {
+                break;
+            }
+            parts.push(nxt);
             j += 1;
         }
         let name = parts.join(" ").to_lowercase();
@@ -128,6 +149,35 @@ pub fn agent_is_other_person(quote: &str, subject: &str) -> bool {
         return true;
     }
     false
+}
+
+const LEADING_FUNCTION: &[&str] = &[
+    "de", "du", "des", "le", "la", "les", "un", "une", "au", "aux", "en", "et", "ou",
+    "ses", "son", "sa", "ces", "cette", "cet", "mon", "ma", "mes", "ton", "ta", "tes",
+    "dans", "pour", "avec", "sans", "sous", "sur", "chez", "vers", "entre", "après",
+    "avant", "depuis", "lors", "lorsque", "quand", "comme", "mais", "car", "donc",
+    "puis", "ainsi", "alors", "or", "ni", "retour", "moins",
+];
+
+fn is_likely_place_token(tok: &str) -> bool {
+    const PLACES: &[&str] = &[
+        "paris", "lyon", "marseille", "brussels", "bruxelles", "belgium", "belgique",
+        "france", "london", "londres", "rome", "venice", "venise", "vienna", "vienne",
+        "honfleur", "ajaccio", "waterloo", "elba", "austerlitz", "moscow", "moscou",
+        "india", "inde", "mauritius", "réunion", "reunion", "bordeaux", "pantheon",
+        "panthéon",
+    ];
+    PLACES.contains(&tok.to_lowercase().as_str())
+}
+
+fn contains_name_token(haystack_lower: &str, needle_lower: &str) -> bool {
+    if needle_lower.is_empty() {
+        return false;
+    }
+    haystack_lower
+        .split(|c: char| !c.is_alphabetic() && c != '-' && c != '\'')
+        .filter(|w| !w.is_empty())
+        .any(|w| w == needle_lower)
 }
 
 pub fn parse_lane(raw: &str) -> Lane {
@@ -251,5 +301,17 @@ mod tests {
         let got = accept_items("Marie Curie", doc, raw);
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].event_type, "commemoration");
+    }
+
+    #[test]
+    fn place_before_subject_is_not_other_person() {
+        let q = "De retour à Paris, Charles s'éprend de Jeanne Duval, une jeune mulâtresse haïtienne.";
+        assert!(!agent_is_other_person(q, "Charles Baudelaire"));
+    }
+
+    #[test]
+    fn baudelaire_suicide_clause_is_not_other_person() {
+        let q = "Cette situation infantilisante inflige à Baudelaire une telle humiliation qu'il tente de se suicider.";
+        assert!(!agent_is_other_person(q, "Charles Baudelaire"));
     }
 }

@@ -330,6 +330,26 @@
     {"label": "école normale supérieure", "lat": 48.8417, "lon": 2.3444, "precision": "exact", "qid": "Q273570"},
     {"label": "ecole normale superieure", "lat": 48.8417, "lon": 2.3444, "precision": "exact", "qid": "Q273570"},
     {"label": "gênes", "lat": 44.4056, "lon": 8.9463, "precision": "exact", "qid": "Q1449"},
-    {"label": "venedig", "lat": 45.4408, "lon": 12.3155, "precision": "exact", "qid": "Q641"}
+    {"label": "venedig", "lat": 45.4408, "lon": 12.3155, "precision": "exact", "qid": "Q641"},
+    {"label": "orléans", "lat": 47.9025, "lon": 1.9090, "precision": "exact", "qid": "Q6548"},
+    {"label": "orleans", "lat": 47.9025, "lon": 1.9090, "precision": "exact", "qid": "Q6548"},
+    {"label": "chinon", "lat": 47.167, "lon": 0.243, "precision": "exact", "qid": "Q210749"},
+    {"label": "rouen", "lat": 49.4431, "lon": 1.0993, "precision": "exact", "qid": "Q30974"},
+    {"label": "compiègne", "lat": 49.4179, "lon": 2.8261, "precision": "exact", "qid": "Q180920"},
+    {"label": "compiegne", "lat": 49.4179, "lon": 2.8261, "precision": "exact", "qid": "Q180920"},
+    {"label": "vaucouleurs", "lat": 48.601, "lon": 5.666, "precision": "exact", "qid": "Q326963"},
+    {"label": "patay", "lat": 48.048, "lon": 1.696, "precision": "exact", "qid": "Q667096"},
+    {"label": "jargeau", "lat": 47.866, "lon": 2.122, "precision": "exact", "qid": "Q1143988"},
+    {"label": "blois", "lat": 47.593, "lon": 1.328, "precision": "exact", "qid": "Q160927"},
+    {"label": "reims", "lat": 49.2583, "lon": 4.0317, "precision": "exact", "qid": "Q41876"},
+    {"label": "quartier latin", "lat": 48.8506, "lon": 2.3430, "precision": "centroid", "qid": "Q194371"},
+    {"label": "latin quarter", "lat": 48.8506, "lon": 2.3430, "precision": "centroid", "qid": "Q194371"},
+    {"label": "closerie des lilas", "lat": 48.8402, "lon": 2.3369, "precision": "exact"},
+    {"label": "hôtel pimodan", "lat": 48.851, "lon": 2.359, "precision": "exact", "qid": "Q1643072"},
+    {"label": "hotel pimodan", "lat": 48.851, "lon": 2.359, "precision": "exact", "qid": "Q1643072"},
+    {"label": "hôtel de lauzun", "lat": 48.851, "lon": 2.359, "precision": "exact", "qid": "Q1643072"},
+    {"label": "hotel de lauzun", "lat": 48.851, "lon": 2.359, "precision": "exact", "qid": "Q1643072"},
+    {"label": "domrémy", "lat": 48.442, "lon": 5.443, "precision": "exact", "qid": "Q215811"},
+    {"label": "domremy", "lat": 48.442, "lon": 5.443, "precision": "exact", "qid": "Q215811"}
   ]
 }
