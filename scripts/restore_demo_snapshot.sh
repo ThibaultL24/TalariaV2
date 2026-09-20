@@ -78,6 +78,15 @@ else
     --no-owner --no-acl <"$DUMP" || true
 fi
 
+# If schema was applied outside sqlx (psql -f migrations/*.sql), _sqlx_migrations
+# can be empty — then `talaria serve` re-runs CREATE TABLE and crash-loops (502).
+mig_n="$(psql "$DATABASE_URL" -tAc "SELECT COUNT(*) FROM _sqlx_migrations" 2>/dev/null || echo 0)"
+mig_n="${mig_n//[[:space:]]/}"
+if [[ "${mig_n:-0}" -eq 0 ]] && [[ -f scripts/mark_sqlx_migrations.py ]]; then
+  echo "==> _sqlx_migrations empty — marking embedded migrations as applied"
+  python3 scripts/mark_sqlx_migrations.py | psql "$DATABASE_URL" -v ON_ERROR_STOP=1
+fi
+
 echo "==> post-restore counts"
 psql "$DATABASE_URL" -c "
 SELECT
