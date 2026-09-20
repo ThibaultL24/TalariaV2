@@ -1,5 +1,5 @@
 // web/src/features/events/mappers/timeline.ts
-import { formatDateLabel } from "@/lib/geo";
+import { formatDateLabel, sanitizePlaceLabel } from "@/lib/geo";
 import { eventTypeLabel, epistemicStatusLabel } from "@/lib/event-taxonomy";
 import type { TimelineEvent } from "@/lib/api";
 import type { AppLocale } from "@/lib/i18n";
@@ -31,7 +31,7 @@ function timelineEventYear(event: TimelineEvent): number | null {
 
 function timelineEventDateLabel(event: TimelineEvent): string {
   if (event.time?.surface) return event.time.surface;
-  return formatDateLabel(event.time?.start ?? event.start_time);
+  return formatDateLabel(event.time?.start ?? event.start_time, event.time?.precision);
 }
 
 export function mapTimelineEventToItem(
@@ -46,7 +46,7 @@ export function mapTimelineEventToItem(
     eventTypeKey: event.event_type,
     epistemicStatus: epistemicStatusLabel(event.epistemic_status, locale),
     epistemicStatusKey: event.epistemic_status,
-    place: event.place_label ?? undefined,
+    place: sanitizePlaceLabel(event.place_label) ?? undefined,
     year: timelineEventYear(event),
     isVisibleOnMap: event.map_eligible,
   };

@@ -1,6 +1,6 @@
 // web/src/components/detail/event-detail-card.tsx
 import { useEffect, useRef, useState } from "react";
-import { formatDateLabel } from "@/lib/geo";
+import { formatDateLabel, sanitizePlaceLabel } from "@/lib/geo";
 import {
   fetchEventDetail,
   type EventDetailResponse,
@@ -90,10 +90,7 @@ export function EventDetailCard({ event, onClose, offlineOnly = false }: EventDe
     detail?.narrative?.event_summary?.trim() ||
     resolved.summary?.trim() ||
     null;
-  const placeLabel =
-    resolved.place_label && !/^Q\d+$/i.test(resolved.place_label.trim())
-      ? resolved.place_label
-      : null;
+  const placeLabel = sanitizePlaceLabel(resolved.place_label);
   const sourceRefs = collectSourceRefs(detail);
   const wikiLang =
     sourceRefs.find((ref) => ref.language)?.language ??
@@ -112,7 +109,10 @@ export function EventDetailCard({ event, onClose, offlineOnly = false }: EventDe
     }, 50);
   }
 
-  const datePlace = [formatDateLabel(resolved.start_time), placeLabel]
+  const datePlace = [
+    formatDateLabel(resolved.time?.start ?? resolved.start_time, resolved.time?.precision),
+    placeLabel,
+  ]
     .filter(Boolean)
     .join(" · ");
 
