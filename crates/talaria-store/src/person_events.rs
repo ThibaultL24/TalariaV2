@@ -62,6 +62,33 @@ pub async fn find_active_person_event_by_occurrence(
     Ok(id)
 }
 
+/// Exact display-title match — catches re-ingests that diverge on place label / occurrence_key.
+pub async fn find_active_person_event_by_title(
+    pool: &PgPool,
+    entity_id: Uuid,
+    title: &str,
+) -> anyhow::Result<Option<Uuid>> {
+    let trimmed = title.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let id = sqlx::query_scalar(
+        r#"
+        SELECT id FROM canonical_events
+        WHERE entity_id = $1
+          AND pipeline = 'person' AND is_active
+          AND lower(trim(title)) = lower(trim($2))
+        ORDER BY map_eligible DESC, evidence_count DESC NULLS LAST, created_at ASC
+        LIMIT 1
+        "#,
+    )
+    .bind(entity_id)
+    .bind(trimmed)
+    .fetch_optional(pool)
+    .await?;
+    Ok(id)
+}
+
 /// Global person fingerprint — unique index is not per-entity.
 pub async fn find_active_person_event_by_fingerprint(
     pool: &PgPool,

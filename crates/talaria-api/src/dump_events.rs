@@ -269,7 +269,7 @@ mod tests {
                 r#"
                 SELECT event_type, time_json, start_time
                 FROM canonical_events
-                WHERE entity_id = $1 AND pipeline = 'quality' AND is_active
+                WHERE entity_id = $1 AND pipeline = 'person' AND is_active
                 "#,
             )
             .bind(subject_id)
@@ -322,7 +322,7 @@ mod tests {
             FROM canonical_events ce
             JOIN event_candidates ec ON ec.id = ce.event_candidate_id
             JOIN document_fragments f ON f.id = ec.fragment_id
-            WHERE ce.entity_id = $1 AND ce.pipeline = 'quality' AND ce.is_active
+            WHERE ce.entity_id = $1 AND ce.pipeline = 'person' AND ce.is_active
             "#,
         )
         .bind(subject_id)
@@ -335,7 +335,7 @@ mod tests {
             r#"
             SELECT occurrence_key, COUNT(*)::bigint
             FROM canonical_events
-            WHERE entity_id = $1 AND pipeline = 'quality' AND is_active
+            WHERE entity_id = $1 AND pipeline = 'person' AND is_active
               AND occurrence_key IS NOT NULL
             GROUP BY occurrence_key
             HAVING COUNT(*) > 1

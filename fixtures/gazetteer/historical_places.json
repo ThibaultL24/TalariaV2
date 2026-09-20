@@ -2,7 +2,7 @@
   "version": "1.0",
   "description": "Historical places gazetteer with coordinates and Wikidata QIDs for identity resolution",
   "places": [
-    {"label": "ajaccio", "lat": 41.9267, "lon": 8.7369, "precision": "exact", "qid": "Q48335"},
+    {"label": "ajaccio", "lat": 41.9267, "lon": 8.7369, "precision": "exact", "qid": "Q40104"},
     {"label": "paris", "lat": 48.8566, "lon": 2.3522, "precision": "exact", "qid": "Q90"},
     {"label": "waterloo", "lat": 50.6794, "lon": 4.4047, "precision": "exact", "qid": "Q134583"},
     {"label": "austerlitz", "lat": 49.1533, "lon": 16.875, "precision": "exact", "qid": "Q153433"},

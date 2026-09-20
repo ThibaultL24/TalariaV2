@@ -362,6 +362,35 @@ pub async fn list_document_identifiers(
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]
+pub struct DocumentIdentifierWithDocRow {
+    pub corpus_document_id: Uuid,
+    pub scheme: String,
+    pub value_raw: String,
+    pub value_normalized: String,
+}
+
+/// Batch identifiers for many documents — one round-trip instead of N+1.
+pub async fn list_document_identifiers_for_docs(
+    pool: &PgPool,
+    document_ids: &[Uuid],
+) -> anyhow::Result<Vec<DocumentIdentifierWithDocRow>> {
+    if document_ids.is_empty() {
+        return Ok(vec![]);
+    }
+    Ok(sqlx::query_as(
+        r#"
+        SELECT corpus_document_id, scheme, value_raw, value_normalized
+        FROM document_identifiers
+        WHERE corpus_document_id = ANY($1)
+        ORDER BY corpus_document_id, scheme, value_normalized
+        "#,
+    )
+    .bind(document_ids)
+    .fetch_all(pool)
+    .await?)
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
 pub struct DocumentContributionRow {
     pub role: String,
     pub agent_name: String,
@@ -383,6 +412,37 @@ pub async fn list_document_contributions(
         "#,
     )
     .bind(corpus_document_id)
+    .fetch_all(pool)
+    .await?)
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct DocumentContributionWithDocRow {
+    pub corpus_document_id: Uuid,
+    pub role: String,
+    pub agent_name: String,
+    pub identifier_scheme: Option<String>,
+    pub identifier_value: Option<String>,
+    pub ordinal: i32,
+}
+
+/// Batch contributions for many documents — one round-trip instead of N+1.
+pub async fn list_document_contributions_for_docs(
+    pool: &PgPool,
+    document_ids: &[Uuid],
+) -> anyhow::Result<Vec<DocumentContributionWithDocRow>> {
+    if document_ids.is_empty() {
+        return Ok(vec![]);
+    }
+    Ok(sqlx::query_as(
+        r#"
+        SELECT corpus_document_id, role, agent_name, identifier_scheme, identifier_value, ordinal
+        FROM document_contributions
+        WHERE corpus_document_id = ANY($1)
+        ORDER BY corpus_document_id, role, ordinal, agent_name
+        "#,
+    )
+    .bind(document_ids)
     .fetch_all(pool)
     .await?)
 }

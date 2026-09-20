@@ -231,6 +231,8 @@ pub enum Commands {
     HistoriographyExtract {
         #[arg(long)]
         subject: String,
+        #[arg(long, help = "Optional Wikidata QID for precise entity resolve")]
+        qid: Option<String>,
         #[arg(long, help = "Optional prose fixture (no wiki dump required)")]
         file: Option<PathBuf>,
     },

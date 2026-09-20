@@ -719,7 +719,7 @@ pub async fn run_lot_e_density_ingest(
     let unresolved: Vec<(Uuid, Option<String>)> = sqlx::query_as(
         r#"
         SELECT id, place_label FROM canonical_events
-        WHERE pipeline = 'quality' AND is_active AND timeline_eligible AND NOT map_eligible
+        WHERE pipeline = 'person' AND is_active AND timeline_eligible AND NOT map_eligible
           AND entity_id = $1 AND place_label IS NOT NULL
         "#,
     )
@@ -1458,7 +1458,7 @@ async fn deactivate_mismatched_lifespan(
         let r = sqlx::query(
             r#"
             UPDATE canonical_events SET is_active = false
-            WHERE entity_id = $1 AND pipeline = 'quality' AND is_active
+            WHERE entity_id = $1 AND pipeline = 'person' AND is_active
               AND event_type = 'birth'
               AND EXTRACT(YEAR FROM start_time) IS DISTINCT FROM $2
             "#,
@@ -1473,7 +1473,7 @@ async fn deactivate_mismatched_lifespan(
         let r = sqlx::query(
             r#"
             UPDATE canonical_events SET is_active = false
-            WHERE entity_id = $1 AND pipeline = 'quality' AND is_active
+            WHERE entity_id = $1 AND pipeline = 'person' AND is_active
               AND event_type = 'death'
               AND EXTRACT(YEAR FROM start_time) IS DISTINCT FROM $2
             "#,
@@ -2515,7 +2515,7 @@ pub async fn deactivate_implausible_place_events(
     let rows: Vec<(Uuid, Option<String>)> = sqlx::query_as(
         r#"
         SELECT id, place_label FROM canonical_events
-        WHERE pipeline = 'quality' AND is_active AND entity_id = $1
+        WHERE pipeline = 'person' AND is_active AND entity_id = $1
           AND place_label IS NOT NULL
         "#,
     )
@@ -2529,7 +2529,7 @@ pub async fn deactivate_implausible_place_events(
             sqlx::query(
                 r#"
                 UPDATE canonical_events SET is_active = false
-                WHERE id = $1 AND pipeline = 'quality'
+                WHERE id = $1 AND pipeline = 'person'
                 "#,
             )
             .bind(id)
@@ -2557,7 +2557,7 @@ pub async fn deactivate_cross_subject_quality_events(
         FROM canonical_events ce
         JOIN event_candidates ec ON ec.id = ce.event_candidate_id
         JOIN document_snapshots ds ON ds.id = ec.snapshot_id
-        WHERE ce.pipeline = 'quality' AND ce.is_active AND ce.entity_id = $1
+        WHERE ce.pipeline = 'person' AND ce.is_active AND ce.entity_id = $1
         "#,
     )
     .bind(subject_id)
@@ -2574,7 +2574,7 @@ pub async fn deactivate_cross_subject_quality_events(
         sqlx::query(
             r#"
             UPDATE canonical_events SET is_active = false
-            WHERE id = $1 AND pipeline = 'quality'
+            WHERE id = $1 AND pipeline = 'person'
             "#,
         )
         .bind(id)
@@ -2680,7 +2680,7 @@ pub async fn run_density_report(
                 r#"
                 SELECT COALESCE(place_label, '(null)'), COUNT(*)::bigint
                 FROM canonical_events
-                WHERE pipeline = 'quality' AND is_active AND timeline_eligible AND NOT map_eligible
+                WHERE pipeline = 'person' AND is_active AND timeline_eligible AND NOT map_eligible
                   AND entity_id = $1
                 GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 40
                 "#,

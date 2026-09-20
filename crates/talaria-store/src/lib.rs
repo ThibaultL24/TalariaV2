@@ -30,20 +30,21 @@ pub use canonical_events::{
     NarrativeContextRow,
 };
 pub use claims::{
-    backfill_life_event_claims, find_claim_by_text, insert_claim, insert_claim_evidence,
-    insert_claim_relation, list_claim_evidence, list_claims_for_entity, list_sentences_for_claims,
-    get_claim,
-    ClaimEvidenceRow, ClaimInsert, ClaimRow, SentenceForClaims,
+    backfill_life_event_claims, find_claim_by_text, get_claim, insert_claim, insert_claim_evidence,
+    insert_claim_relation, list_claim_evidence, list_claim_evidence_for_claims,
+    list_claims_for_entity, list_sentences_for_claims, ClaimEvidenceRow, ClaimInsert, ClaimRow,
+    SentenceForClaims,
 };
 pub use corpus::{
     count_corpus_snapshots, get_corpus_document, link_corpus_snapshot, list_document_contributions,
-    find_corpus_document_by_locator, list_document_identifiers, list_entity_corpus_passages,
+    list_document_contributions_for_docs, find_corpus_document_by_locator,
+    list_document_identifiers, list_document_identifiers_for_docs, list_entity_corpus_passages,
     list_entity_documents,
     mark_discovered_corpus_document,
     replace_document_contributions, replace_document_identifiers, replace_document_subjects,
     upsert_corpus_document, upsert_entity_document_link, ContributionInsert, CorpusDocumentInsert,
     CorpusDocumentRow, CorpusLocatorMatchRow, CorpusPassageRow, DocumentContributionRow,
-    DocumentIdentifierRow,
+    DocumentContributionWithDocRow, DocumentIdentifierRow, DocumentIdentifierWithDocRow,
     EntityDocumentLinkInsert, EntityDocumentsFilter, EntityLinkedDocumentRow, SubjectInsert,
 };
 pub use corpus_dump::{
@@ -63,11 +64,12 @@ pub use entities::{
     upsert_entity_from_wikidata, upsert_entity_surface, upsert_person_by_qid, EntityRow,
 };
 pub use intuition::{
-    find_quality_event_for_stem, get_intuition_publication_by_fingerprint, get_quality_event_pointer,
-    find_intuition_publication_for_claim,
+    find_intuition_publication_for_claim, find_person_event_for_stem, find_quality_event_for_stem,
+    get_intuition_publication_by_fingerprint, get_person_event_pointer, get_quality_event_pointer,
     list_conflict_quality_claims, list_exportable_soft_claims, mark_intuition_failed,
-    mark_intuition_pin_failed, mark_intuition_published, upsert_intuition_publication, EventPointerRow, IntuitionPublicationInsert,
-    IntuitionPublicationRow, QualityConflictRow, SoftClaimExportRow,
+    mark_intuition_pin_failed, mark_intuition_published, upsert_intuition_publication,
+    upsert_intuition_term_binding, EventPointerRow, IntuitionPublicationInsert,
+    IntuitionPublicationRow, IntuitionTermBindingInsert, QualityConflictRow, SoftClaimExportRow,
 };
 pub use judgments::insert_judgment;
 pub use media::{upsert_media_asset, MediaAssetInsert};
@@ -90,7 +92,7 @@ pub use places::{
 };
 pub use person_events::{
     evidence_hash, find_active_person_event_by_fingerprint, find_active_person_event_by_occurrence,
-    find_active_person_events_for_entity, insert_person_candidate,
+    find_active_person_event_by_title, find_active_person_events_for_entity, insert_person_candidate,
     insert_person_event, insert_person_quote_evidence, person_density_counts,
     person_extended_density_counts, upsert_raw_corpus_document,
     upsert_raw_wikidata_document, upsert_raw_wikipedia_document,

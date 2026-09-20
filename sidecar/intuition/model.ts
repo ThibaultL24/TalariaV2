@@ -1,50 +1,33 @@
 // sidecar/intuition/model.ts
-// Off-chain debate graph via MetaSudo Alpha packages. No RPC.
+// Pure DebateFact → logical graph. No RPC. No definitive on-chain term ids.
 
 import { buildAtomData } from "@0xintuition/classifications";
-import {
-  calculateAtomId,
-  calculatePredicateId,
-  calculateTripleId,
-  createPredicateAtomData,
-} from "@0xintuition/ids";
-import { HAS_CATEGORY_ID, HAS_TAG_ID } from "@0xintuition/predicates";
+import type { PredicateKey } from "./predicates.ts";
+import type { DebateFact } from "./schemas.ts";
 
-export interface DebateText {
-  text: string;
+export type { DebateFact } from "./schemas.ts";
+
+export interface PinPayload {
+  name: string;
+  description: string;
+  url: string;
 }
 
-export interface AboutEvent {
-  canonical_event_id: string;
-  title: string;
-  event_type: string;
-  time_surface: string;
-}
-
-export interface DebateFact {
-  version: string;
-  debate_id: string;
-  kind: string;
-  question: DebateText;
-  proposition: DebateText;
-  about_event?: AboutEvent | null;
-}
-
-export interface ModeledAtom {
+export interface LogicalAtom {
   role: string;
   classification: string;
   name: string;
   sameAs?: string;
   startDate?: string;
-  atomData: string;
-  atomId: `0x${string}`;
+  /** Metadata for pinThing — on-chain atom data will be the returned ipfs:// URI. */
+  pin: PinPayload;
 }
 
-export interface ModeledTriple {
+export interface LogicalTriple {
   role: string;
-  subjectId: `0x${string}`;
-  predicateId: `0x${string}`;
-  objectId: `0x${string}`;
+  subjectRole: string;
+  predicateKey: PredicateKey;
+  objectRole: string;
 }
 
 export interface DebateGraph {
@@ -52,28 +35,10 @@ export interface DebateGraph {
   debate_id: string;
   kind: string;
   category: string;
-  atoms: ModeledAtom[];
-  triples: ModeledTriple[];
-  voteTripleId: `0x${string}`;
-  eventAtom?: ModeledAtom;
+  atoms: LogicalAtom[];
+  triples: LogicalTriple[];
+  voteTripleRole: "question_has_proposition";
 }
-
-const HAS_PROPOSITION_DATA = createPredicateAtomData(
-  "hasProposition",
-  "The question has this proposition as a vote target",
-);
-const ABOUT_DATA = createPredicateAtomData(
-  "about",
-  "The proposition is about this classified Talaria event pointer",
-);
-const HAS_PROPOSITION_ID = calculatePredicateId(
-  "hasProposition",
-  "The question has this proposition as a vote target",
-);
-const ABOUT_ID = calculatePredicateId(
-  "about",
-  "The proposition is about this classified Talaria event pointer",
-);
 
 export function categoryTerm(fact: DebateFact): string {
   const eventType = fact.about_event?.event_type?.trim() ?? "";
@@ -83,6 +48,7 @@ export function categoryTerm(fact: DebateFact): string {
   return kind;
 }
 
+/** Full calendar day only — never promote year/month surfaces. */
 export function startDateField(timeSurface: string): string | undefined {
   const s = timeSurface.trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
@@ -97,35 +63,40 @@ export function eventSameAs(canonicalEventId: string): string {
   return `talaria://canonical-event/${canonicalEventId}`;
 }
 
-function definedTerm(role: string, name: string): ModeledAtom {
-  const atomData = buildAtomData("defined-term", { name });
+function definedTerm(role: string, name: string): LogicalAtom {
   return {
     role,
     classification: "defined-term",
     name,
-    atomData,
-    atomId: calculateAtomId(atomData),
+    pin: {
+      name,
+      description: "defined-term",
+      url: "",
+    },
   };
 }
 
-function eventAtom(ev: AboutEvent): ModeledAtom {
+function eventAtom(ev: NonNullable<DebateFact["about_event"]>): LogicalAtom {
   const name = eventAtomName(ev.canonical_event_id);
   const sameAs = eventSameAs(ev.canonical_event_id);
   const startDate = startDateField(ev.time_surface);
-  const values: Record<string, unknown> = {
+  // Keep classification helper for offline fixtures; pin carries identity.
+  void buildAtomData("event", {
     name,
     sameAs: [sameAs],
-  };
-  if (startDate) values.startDate = startDate;
-  const atomData = buildAtomData("event", values);
+    ...(startDate ? { startDate } : {}),
+  });
   return {
     role: "event",
     classification: "event",
     name,
     sameAs,
     startDate,
-    atomData,
-    atomId: calculateAtomId(atomData),
+    pin: {
+      name,
+      description: "event",
+      url: sameAs,
+    },
   };
 }
 
@@ -134,31 +105,29 @@ export function modelDebate(fact: DebateFact): DebateGraph {
   const question = definedTerm("question", fact.question.text);
   const proposition = definedTerm("proposition", fact.proposition.text);
   const categoryAtom = definedTerm("category", category);
-  const atoms: ModeledAtom[] = [question, proposition, categoryAtom];
-  const triples: ModeledTriple[] = [
+  const atoms: LogicalAtom[] = [question, proposition, categoryAtom];
+  const triples: LogicalTriple[] = [
     {
       role: "question_has_proposition",
-      subjectId: question.atomId,
-      predicateId: HAS_PROPOSITION_ID,
-      objectId: proposition.atomId,
+      subjectRole: "question",
+      predicateKey: "hasProposition",
+      objectRole: "proposition",
     },
     {
       role: "question_has_category",
-      subjectId: question.atomId,
-      predicateId: HAS_CATEGORY_ID,
-      objectId: categoryAtom.atomId,
+      subjectRole: "question",
+      predicateKey: "hasCategory",
+      objectRole: "category",
     },
   ];
 
-  let event: ModeledAtom | undefined;
   if (fact.about_event?.canonical_event_id) {
-    event = eventAtom(fact.about_event);
-    atoms.push(event);
+    atoms.push(eventAtom(fact.about_event));
     triples.push({
       role: "proposition_about_event",
-      subjectId: proposition.atomId,
-      predicateId: ABOUT_ID,
-      objectId: event.atomId,
+      subjectRole: "proposition",
+      predicateKey: "about",
+      objectRole: "event",
     });
   }
 
@@ -167,18 +136,14 @@ export function modelDebate(fact: DebateFact): DebateGraph {
     fact.kind !== "place_conflict" &&
     fact.kind.trim().length > 0
   ) {
-    const tag = definedTerm("kind_tag", fact.kind.trim());
-    atoms.push(tag);
+    atoms.push(definedTerm("kind_tag", fact.kind.trim()));
     triples.push({
       role: "question_has_tag",
-      subjectId: question.atomId,
-      predicateId: HAS_TAG_ID,
-      objectId: tag.atomId,
+      subjectRole: "question",
+      predicateKey: "hasTag",
+      objectRole: "kind_tag",
     });
   }
-
-  const vote = triples.find((t) => t.role === "question_has_proposition");
-  if (!vote) throw new Error("missing vote-target triple");
 
   return {
     version: fact.version,
@@ -187,12 +152,6 @@ export function modelDebate(fact: DebateFact): DebateGraph {
     category,
     atoms,
     triples,
-    voteTripleId: calculateTripleId(vote.subjectId, vote.predicateId, vote.objectId),
-    eventAtom: event,
+    voteTripleRole: "question_has_proposition",
   };
 }
-
-export const PREDICATE_ATOM_DATA = {
-  hasProposition: HAS_PROPOSITION_DATA,
-  about: ABOUT_DATA,
-};

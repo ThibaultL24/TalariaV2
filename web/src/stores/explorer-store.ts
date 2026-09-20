@@ -2,10 +2,12 @@
 import { create } from "zustand";
 
 export interface ExplorerFilters {
-  /** Empty = show all types */
+  /** Empty = show all event types */
   types: string[];
   /** Empty = show all epistemic statuses */
   statuses: string[];
+  /** Empty = show all legend categories (life, conflict, …) */
+  legendKeys: string[];
   /** Single selected profile slug, or undefined = all */
   profileSlug?: string;
   /** Single selected period slug, or undefined = all */
@@ -30,6 +32,7 @@ interface ExplorerState {
   setFilters: (patch: Partial<ExplorerFilters>) => void;
   toggleTypeFilter: (type: string) => void;
   toggleStatusFilter: (status: string) => void;
+  toggleLegendFilter: (legendKey: string) => void;
   setProfileFilter: (slug?: string) => void;
   setPeriodFilter: (slug?: string) => void;
   setEntityQid: (entityQid?: string | null) => void;
@@ -38,7 +41,7 @@ interface ExplorerState {
   clearEntity: () => void;
 }
 
-const DEFAULT_FILTERS: ExplorerFilters = { types: [], statuses: [] };
+const DEFAULT_FILTERS: ExplorerFilters = { types: [], statuses: [], legendKeys: [] };
 
 function toggleInList(list: string[], value: string): string[] {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
@@ -81,6 +84,13 @@ export const useExplorerStore = create<ExplorerState>((set) => ({
     set((state) => ({
       filters: { ...state.filters, statuses: toggleInList(state.filters.statuses, status) },
     })),
+  toggleLegendFilter: (legendKey) =>
+    set((state) => ({
+      filters: {
+        ...state.filters,
+        legendKeys: toggleInList(state.filters.legendKeys, legendKey),
+      },
+    })),
   setProfileFilter: (profileSlug) =>
     set((state) => ({
       filters: {
@@ -98,7 +108,14 @@ export const useExplorerStore = create<ExplorerState>((set) => ({
   setEntityQid: (entityQid) => set({ entityQid: entityQid ?? undefined }),
   clearFilters: () =>
     set((state) => ({
-      filters: { ...state.filters, types: [], statuses: [], profileSlug: undefined, periodSlug: undefined },
+      filters: {
+        ...state.filters,
+        types: [],
+        statuses: [],
+        legendKeys: [],
+        profileSlug: undefined,
+        periodSlug: undefined,
+      },
     })),
   closeDetail: () => set({ selectedEventId: undefined }),
   clearEntity: () =>

@@ -153,6 +153,17 @@ pub fn scan_passage(text: &str) -> Vec<HistoriographyHit> {
 }
 
 pub fn scan_bibliographic(title: &str, abstract_text: Option<&str>) -> Vec<HistoriographyHit> {
+    scan_bibliographic_with_status(title, abstract_text, None)
+}
+
+/// Like [`scan_bibliographic`], but promotes linked academic works (thesis /
+/// peer-reviewed) into Agora theories when the title itself has no debate cue.
+/// Only call this for documents already entity-linked — never on bare catalogs.
+pub fn scan_bibliographic_with_status(
+    title: &str,
+    abstract_text: Option<&str>,
+    academic_status: Option<&str>,
+) -> Vec<HistoriographyHit> {
     let mut blob = title.to_string();
     if let Some(a) = abstract_text.filter(|s| !s.trim().is_empty()) {
         blob.push_str(". ");
@@ -164,7 +175,39 @@ pub fn scan_bibliographic(title: &str, abstract_text: Option<&str>) -> Vec<Histo
             hits.push(hit);
         }
     }
+    if hits.is_empty() {
+        if let Some(hit) = academic_work_hit(title, academic_status) {
+            hits.push(hit);
+        }
+    }
     hits
+}
+
+fn academic_work_hit(title: &str, academic_status: Option<&str>) -> Option<HistoriographyHit> {
+    let status = academic_status?.trim().to_ascii_lowercase();
+    let quote = title.trim();
+    if quote.len() < 12 {
+        return None;
+    }
+    match status.as_str() {
+        "doctoral_defended" => Some(HistoriographyHit {
+            debate_type: DebateType::InterpretationDispute,
+            evidence_layer: EvidenceLayer::TheoryOrLegend,
+            claim_kind: "theory",
+            epistemic_status: "hypothesized",
+            quote: quote.to_string(),
+            event_hint: None,
+        }),
+        "peer_reviewed" => Some(HistoriographyHit {
+            debate_type: DebateType::InterpretationDispute,
+            evidence_layer: EvidenceLayer::Interpretation,
+            claim_kind: "theory",
+            epistemic_status: "attested",
+            quote: quote.to_string(),
+            event_hint: None,
+        }),
+        _ => None,
+    }
 }
 
 fn historiographic_title_hit(title: &str) -> Option<HistoriographyHit> {
@@ -254,6 +297,17 @@ fn historiographic_title_hit(title: &str) -> Option<HistoriographyHit> {
             "postérité",
             "posterite",
             "modern controvers",
+            "populism",
+            "populisme",
+            "authoritarian",
+            "autoritaire",
+            "impeachment",
+            "légitimité",
+            "legitimacy",
+            "conspiracy",
+            "complot",
+            "disputed election",
+            "élection contest",
         ],
     ) {
         return Some(HistoriographyHit {

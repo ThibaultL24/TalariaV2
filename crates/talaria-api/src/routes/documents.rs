@@ -192,14 +192,35 @@ pub async fn list_entity_bibliography(
         None
     };
 
-    let mut items = Vec::new();
+    let doc_ids: Vec<_> = page.iter().map(|r| r.id).collect();
+    let ident_rows = talaria_store::list_document_identifiers_for_docs(&state.pool, &doc_ids)
+        .await
+        .unwrap_or_default();
+    let contrib_rows = talaria_store::list_document_contributions_for_docs(&state.pool, &doc_ids)
+        .await
+        .unwrap_or_default();
+
+    let mut idents_by_doc: std::collections::HashMap<uuid::Uuid, Vec<_>> =
+        std::collections::HashMap::with_capacity(doc_ids.len());
+    for row in ident_rows {
+        idents_by_doc
+            .entry(row.corpus_document_id)
+            .or_default()
+            .push(row);
+    }
+    let mut contribs_by_doc: std::collections::HashMap<uuid::Uuid, Vec<_>> =
+        std::collections::HashMap::with_capacity(doc_ids.len());
+    for row in contrib_rows {
+        contribs_by_doc
+            .entry(row.corpus_document_id)
+            .or_default()
+            .push(row);
+    }
+
+    let mut items = Vec::with_capacity(page.len());
     for row in &page {
-        let idents = talaria_store::list_document_identifiers(&state.pool, row.id)
-            .await
-            .unwrap_or_default();
-        let contribs = talaria_store::list_document_contributions(&state.pool, row.id)
-            .await
-            .unwrap_or_default();
+        let idents = idents_by_doc.remove(&row.id).unwrap_or_default();
+        let contribs = contribs_by_doc.remove(&row.id).unwrap_or_default();
         items.push(json!({
             "id": row.id,
             "title": row.title,

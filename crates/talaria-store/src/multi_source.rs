@@ -419,7 +419,7 @@ pub async fn density_report_counts(
         sqlx::query_scalar(
             r#"
             SELECT COUNT(*)::bigint FROM canonical_events
-            WHERE pipeline = 'quality' AND is_active AND entity_id = $1
+            WHERE pipeline = 'person' AND is_active AND entity_id = $1
             "#,
         )
         .bind(sid)
@@ -427,7 +427,7 @@ pub async fn density_report_counts(
         .await?
     } else {
         sqlx::query_scalar(
-            r#"SELECT COUNT(*)::bigint FROM canonical_events WHERE pipeline = 'quality' AND is_active"#,
+            r#"SELECT COUNT(*)::bigint FROM canonical_events WHERE pipeline = 'person' AND is_active"#,
         )
         .fetch_one(pool)
         .await?
@@ -437,7 +437,7 @@ pub async fn density_report_counts(
         sqlx::query_scalar(
             r#"
             SELECT COUNT(*)::bigint FROM canonical_events
-            WHERE pipeline = 'quality' AND is_active AND timeline_eligible AND entity_id = $1
+            WHERE pipeline = 'person' AND is_active AND timeline_eligible AND entity_id = $1
             "#,
         )
         .bind(sid)
@@ -447,7 +447,7 @@ pub async fn density_report_counts(
         sqlx::query_scalar(
             r#"
             SELECT COUNT(*)::bigint FROM canonical_events
-            WHERE pipeline = 'quality' AND is_active AND timeline_eligible
+            WHERE pipeline = 'person' AND is_active AND timeline_eligible
             "#,
         )
         .fetch_one(pool)
@@ -458,7 +458,7 @@ pub async fn density_report_counts(
         sqlx::query_scalar(
             r#"
             SELECT COUNT(*)::bigint FROM canonical_events
-            WHERE pipeline = 'quality' AND is_active AND map_eligible AND entity_id = $1
+            WHERE pipeline = 'person' AND is_active AND map_eligible AND entity_id = $1
             "#,
         )
         .bind(sid)
@@ -468,7 +468,7 @@ pub async fn density_report_counts(
         sqlx::query_scalar(
             r#"
             SELECT COUNT(*)::bigint FROM canonical_events
-            WHERE pipeline = 'quality' AND is_active AND map_eligible
+            WHERE pipeline = 'person' AND is_active AND map_eligible
             "#,
         )
         .fetch_one(pool)
@@ -479,7 +479,7 @@ pub async fn density_report_counts(
         sqlx::query_scalar(
             r#"
             SELECT COUNT(*)::bigint FROM canonical_events
-            WHERE pipeline = 'quality' AND is_active AND timeline_eligible
+            WHERE pipeline = 'person' AND is_active AND timeline_eligible
               AND NOT map_eligible AND entity_id = $1
             "#,
         )
@@ -490,7 +490,7 @@ pub async fn density_report_counts(
         sqlx::query_scalar(
             r#"
             SELECT COUNT(*)::bigint FROM canonical_events
-            WHERE pipeline = 'quality' AND is_active AND timeline_eligible AND NOT map_eligible
+            WHERE pipeline = 'person' AND is_active AND timeline_eligible AND NOT map_eligible
             "#,
         )
         .fetch_one(pool)
@@ -501,7 +501,7 @@ pub async fn density_report_counts(
         sqlx::query_scalar(
             r#"
             SELECT COUNT(*)::bigint FROM canonical_events
-            WHERE pipeline = 'quality' AND is_active AND source_count > 1 AND entity_id = $1
+            WHERE pipeline = 'person' AND is_active AND source_count > 1 AND entity_id = $1
             "#,
         )
         .bind(sid)
@@ -511,7 +511,7 @@ pub async fn density_report_counts(
         sqlx::query_scalar(
             r#"
             SELECT COUNT(*)::bigint FROM canonical_events
-            WHERE pipeline = 'quality' AND is_active AND source_count > 1
+            WHERE pipeline = 'person' AND is_active AND source_count > 1
             "#,
         )
         .fetch_one(pool)

@@ -10,7 +10,8 @@ use talaria_quality::{
 use talaria_sources::is_plausible_place_label;
 use talaria_store::{
     enrich_person_event_place_if_empty, find_active_person_event_by_fingerprint,
-    find_active_person_event_by_occurrence, find_active_person_singleton_event, insert_claim,
+    find_active_person_event_by_occurrence, find_active_person_event_by_title,
+    find_active_person_singleton_event, insert_claim,
     insert_claim_evidence, insert_person_candidate, insert_person_event,
     insert_person_quote_evidence, mark_candidate_assembled, ClaimInsert, PersonCandidateInsert,
     PersonEventInsert,
@@ -49,17 +50,24 @@ async fn find_existing_person_event(
     pool: &sqlx::PgPool,
     entity_id: Uuid,
     occurrence_key: &str,
+    title: &str,
 ) -> anyhow::Result<Option<Uuid>> {
     if let Some(id) =
         find_active_person_event_by_occurrence(pool, entity_id, occurrence_key).await?
     {
         return Ok(Some(id));
     }
-    find_active_person_event_by_fingerprint(
+    if let Some(id) = find_active_person_event_by_fingerprint(
         pool,
         &person_event_fingerprint(entity_id, occurrence_key),
     )
-    .await
+    .await?
+    {
+        return Ok(Some(id));
+    }
+    // Re-ingest often changes place_label (QID vs label) and thus occurrence_key while
+    // the explorer title stays identical — collapse on display title.
+    find_active_person_event_by_title(pool, entity_id, title).await
 }
 
 fn attribution_label(m: AttributionMatch) -> &'static str {
@@ -199,7 +207,20 @@ pub async fn persist_gated_item(
         });
     }
 
-    if let Some(existing) = find_existing_person_event(pool, entity_id, occurrence_key).await? {
+    let place_label = item.place_surface.clone();
+    let map_eligible = coords.is_some() && event_type_is_map_locus(&item.event_type);
+    let title = explorer_headline(
+        subject,
+        &item.event_type,
+        item.year,
+        item.place_surface.as_deref(),
+        Some(item.quoted_text.as_str()),
+        Some(item.summary.as_str()),
+    );
+
+    if let Some(existing) =
+        find_existing_person_event(pool, entity_id, occurrence_key, &title).await?
+    {
         return attach_evidence_to_existing(
             pool,
             existing,
@@ -213,16 +234,6 @@ pub async fn persist_gated_item(
         .await;
     }
 
-    let place_label = item.place_surface.clone();
-    let map_eligible = coords.is_some() && event_type_is_map_locus(&item.event_type);
-    let title = explorer_headline(
-        subject,
-        &item.event_type,
-        item.year,
-        item.place_surface.as_deref(),
-        Some(item.quoted_text.as_str()),
-        Some(item.summary.as_str()),
-    );
     let inserted = insert_person_event(
         pool,
         &PersonEventInsert {

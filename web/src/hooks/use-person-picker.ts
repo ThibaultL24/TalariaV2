@@ -8,8 +8,10 @@ import { useExplorerStore } from "@/stores/explorer-store";
 import { useProgressiveIngest } from "./use-progressive-ingest";
 
 function namesOverlap(left: string, right: string): boolean {
-  const a = left.trim().toLowerCase();
-  const b = right.trim().toLowerCase();
+  const fold = (value: string) =>
+    value.normalize("NFD").replace(/\p{M}/gu, "").trim().toLowerCase();
+  const a = fold(left);
+  const b = fold(right);
   return a.includes(b) || b.includes(a);
 }
 
@@ -17,15 +19,14 @@ function preferDenseLocalAlias(
   item: SearchSuggestion,
   items: SearchSuggestion[],
 ): SearchSuggestion {
-  if (!item.known_locally || !item.label) return item;
   const denser = items
     .filter(
       (row) =>
         row.known_locally &&
         row.entity_id &&
         row.label &&
-        namesOverlap(row.label, item.label) &&
-        (row.event_count ?? 0) > (item.event_count ?? 0),
+        (item.qid ? row.qid === item.qid : namesOverlap(row.label, item.label ?? "")) &&
+        (row.event_count ?? 0) >= (item.event_count ?? 0),
     )
     .sort((a, b) => (b.event_count ?? 0) - (a.event_count ?? 0))[0];
   return denser ?? item;
@@ -49,24 +50,29 @@ export function usePersonPicker(opts: UsePersonPickerOptions = {}) {
   });
 
   useEffect(() => {
-    if (!searchQuery.trim()) {
+    const q = searchQuery.trim();
+    if (!q) {
       setSuggestions([]);
+      setSearchLoading(false);
       return;
     }
     let cancelled = false;
     setSearchLoading(true);
-    searchEntities(searchQuery, locale)
-      .then((items) => {
-        if (!cancelled) setSuggestions(collapseToSinglePersonSuggestion(searchQuery, items));
-      })
-      .catch(() => {
-        if (!cancelled) setSuggestions([]);
-      })
-      .finally(() => {
-        if (!cancelled) setSearchLoading(false);
-      });
+    const timer = window.setTimeout(() => {
+      searchEntities(q, locale)
+        .then((items) => {
+          if (!cancelled) setSuggestions(collapseToSinglePersonSuggestion(q, items));
+        })
+        .catch(() => {
+          if (!cancelled) setSuggestions([]);
+        })
+        .finally(() => {
+          if (!cancelled) setSearchLoading(false);
+        });
+    }, 220);
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [searchQuery, locale]);
 

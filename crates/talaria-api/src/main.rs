@@ -419,10 +419,14 @@ async fn main() -> anyhow::Result<()> {
             claim_extract::run_claims_extract(&config, limit).await?
         }
         Commands::DumpMine { limit } => dump_mine::run_dump_mine(&config, limit).await?,
-        Commands::HistoriographyExtract { subject, file } => {
-            let report =
-                historiography::run_historiography_extract(&config, &subject, file.as_deref(), None)
-                    .await?;
+        Commands::HistoriographyExtract { subject, qid, file } => {
+            let report = historiography::run_historiography_extract(
+                &config,
+                &subject,
+                file.as_deref(),
+                qid.as_deref(),
+            )
+            .await?;
             println!("{report}");
         }
         Commands::CorpusIngest {

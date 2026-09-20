@@ -13,9 +13,13 @@ export function isPersonSearchNoise(label: string): boolean {
   return false;
 }
 
+function foldAccents(value: string): string {
+  return value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+}
+
 function namesOverlap(query: string, label: string): boolean {
-  const q = query.trim().toLowerCase();
-  const l = label.trim().toLowerCase();
+  const q = foldAccents(query).trim();
+  const l = foldAccents(label).trim();
   if (!q || !l) return false;
   return l.includes(q) || q.includes(l);
 }

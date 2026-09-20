@@ -167,7 +167,14 @@ pub async fn list_claims_for_entity(
             OR claim_kind IN ('theory', 'controversy', 'debate_stance')
             OR relation_to_subject = 'historiography'
           )
-        ORDER BY confidence DESC, created_at ASC
+        ORDER BY
+          CASE
+            WHEN claim_kind = 'theory' THEN 0
+            WHEN claim_kind IN ('controversy', 'debate_stance') THEN 1
+            ELSE 2
+          END,
+          confidence DESC,
+          created_at ASC
         LIMIT $2
         "#,
     )
@@ -208,6 +215,28 @@ pub async fn list_claim_evidence(
         "#,
     )
     .bind(claim_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+/// Batch evidence for many claims — one round-trip instead of N+1.
+pub async fn list_claim_evidence_for_claims(
+    pool: &PgPool,
+    claim_ids: &[Uuid],
+) -> anyhow::Result<Vec<ClaimEvidenceRow>> {
+    if claim_ids.is_empty() {
+        return Ok(vec![]);
+    }
+    let rows = sqlx::query_as::<_, ClaimEvidenceRow>(
+        r#"
+        SELECT id, claim_id, source_system, locator, quote, sentence_id, confidence
+        FROM soft_claim_evidence
+        WHERE claim_id = ANY($1)
+        ORDER BY claim_id, confidence DESC
+        "#,
+    )
+    .bind(claim_ids)
     .fetch_all(pool)
     .await?;
     Ok(rows)

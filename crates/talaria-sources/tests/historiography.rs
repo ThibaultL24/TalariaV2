@@ -1,7 +1,7 @@
 // crates/talaria-sources/tests/historiography.rs
 use talaria_sources::historiography::{
-    is_historiography_section, scan_bibliographic, scan_passage, DebateType, EvidenceLayer,
-    EventHint,
+    is_historiography_section, scan_bibliographic, scan_bibliographic_with_status, scan_passage,
+    DebateType, EvidenceLayer, EventHint,
 };
 
 #[test]
@@ -130,5 +130,32 @@ fn hero_or_villain_title_is_interpretation() {
         None,
     );
     assert_eq!(hits[0].debate_type, DebateType::InterpretationDispute);
+    assert_eq!(hits[0].claim_kind, "debate_stance");
+}
+
+#[test]
+fn linked_thesis_without_debate_cue_becomes_theory() {
+    let hits = scan_bibliographic_with_status(
+        "Donald Trump et la rhétorique populiste américaine",
+        None,
+        Some("doctoral_defended"),
+    );
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].claim_kind, "theory");
+    assert_eq!(hits[0].evidence_layer, EvidenceLayer::TheoryOrLegend);
+}
+
+#[test]
+fn polymer_thesis_stays_ignored_without_academic_status() {
+    let hits = scan_bibliographic("La chimie des polymères au XXIe siècle", None);
+    assert!(hits.is_empty());
+}
+
+#[test]
+fn populism_title_is_debate_stance() {
+    let hits = scan_bibliographic(
+        "American hybrid: Donald Trump and the strange merger of populism and plutocracy",
+        None,
+    );
     assert_eq!(hits[0].claim_kind, "debate_stance");
 }

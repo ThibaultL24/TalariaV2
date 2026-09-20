@@ -1,5 +1,6 @@
 // crates/talaria-api/src/routes.rs
 mod agora;
+mod demo;
 mod documents;
 mod entities;
 mod events;
@@ -10,7 +11,9 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use agora::{theory_positions, theory_signals, theory_simulation};
+use agora::{
+    target_signals, target_simulation, theory_positions, theory_signals, theory_simulation,
+};
 use documents::{
     get_document, list_document_fragments, list_entity_bibliography, list_entity_documents,
 };
@@ -30,6 +33,7 @@ use std::sync::Arc;
 use talaria_core::AppConfig;
 use talaria_store::{connect, run_migrations, seed_default_periods, DbPool};
 use tokio::sync::Mutex;
+use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
@@ -49,6 +53,7 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
         .route("/health", get(health))
         .route("/up", get(health))
         .route("/api/v1/status", get(status))
+        .route("/api/v1/demo/roster", get(demo::demo_roster))
         .route("/api/v1/llm/ping", get(llm_ping))
         .route("/api/v1/entities/search", get(search_entities))
         .route("/api/v1/entities/{entity_id}", get(get_entity))
@@ -61,6 +66,14 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
         .route(
             "/api/v1/agora/theories/{claim_id}/positions",
             post(theory_positions),
+        )
+        .route(
+            "/api/v1/intuition/targets/{kind}/{target_id}/signals",
+            get(target_signals),
+        )
+        .route(
+            "/api/v1/intuition/targets/{kind}/{target_id}/simulation",
+            post(target_simulation),
         )
         .route(
             "/api/v1/entities/{entity_id}/documents",
@@ -93,6 +106,7 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
             ingest_jobs,
         })
         .layer(CorsLayer::permissive())
+        .layer(CompressionLayer::new())
         .layer(TraceLayer::new_for_http());
 
     let app = attach_web_ui(app);
@@ -155,11 +169,20 @@ async fn status(axum::extract::State(state): axum::extract::State<AppState>) -> 
         },
         "llm": {
             "configured": llm::is_configured(),
+            "provider": llm::provider_label(),
             "model": llm::model(),
         },
         "catalogs": {
             "openalex": env_present("OPENALEX_API_KEY"),
             "europeana": env_present("EUROPEANA_API_KEY"),
+        },
+        "object_storage": {
+            "configured": env_present("S3_BUCKET") && env_present("S3_ENDPOINT"),
+        },
+        "intuition": {
+            "network": "testnet",
+            "live_allowed": crate::intuition::live_publish_allowed(),
+            "pinata": env_present("PINATA_JWT"),
         }
     }))
 }
@@ -168,6 +191,7 @@ async fn llm_ping() -> Json<Value> {
     let result = llm::ping().await;
     Json(json!({
         "ok": result.ok,
+        "provider": llm::provider_label(),
         "model": result.model,
         "latency_ms": result.latency_ms,
         "error": result.error,

@@ -49,12 +49,14 @@ pub async fn search_local_entities(
             e.qid,
             e.wikipedia_title,
             e.canonical_name,
-            COUNT(ce.id)::bigint AS event_count
+            (
+              SELECT COUNT(*)::bigint
+              FROM canonical_events ce
+              WHERE ce.entity_id = e.id
+                AND ce.is_active
+                AND ce.pipeline = 'person'
+            ) AS event_count
         FROM entities e
-        LEFT JOIN canonical_events ce
-          ON ce.entity_id = e.id
-         AND ce.is_active
-         AND ce.pipeline = 'person'
         WHERE (
             e.qid ILIKE $1
             OR {predicate}
@@ -62,7 +64,6 @@ pub async fn search_local_entities(
           AND char_length(coalesce(e.canonical_name, e.wikipedia_title)) BETWEEN 2 AND 120
           AND coalesce(e.canonical_name, e.wikipedia_title) !~ '[=]{{2}}'
           AND coalesce(e.canonical_name, e.wikipedia_title) NOT IN ('He', 'She', 'They')
-        GROUP BY e.id
         ORDER BY event_count DESC, e.canonical_name ASC NULLS LAST
         LIMIT $2
         "#
@@ -85,14 +86,15 @@ pub async fn get_entity(pool: &PgPool, entity_id: Uuid) -> anyhow::Result<Option
             e.qid,
             e.wikipedia_title,
             e.canonical_name,
-            COUNT(ce.id)::bigint AS event_count
+            (
+              SELECT COUNT(*)::bigint
+              FROM canonical_events ce
+              WHERE ce.entity_id = e.id
+                AND ce.is_active
+                AND ce.pipeline = 'person'
+            ) AS event_count
         FROM entities e
-        LEFT JOIN canonical_events ce
-          ON ce.entity_id = e.id
-         AND ce.is_active
-         AND ce.pipeline = 'person'
         WHERE e.id = $1
-        GROUP BY e.id
         "#,
     )
     .bind(entity_id)
@@ -110,14 +112,15 @@ pub async fn find_entity_by_qid(pool: &PgPool, qid: &str) -> anyhow::Result<Opti
             e.qid,
             e.wikipedia_title,
             e.canonical_name,
-            COUNT(ce.id)::bigint AS event_count
+            (
+              SELECT COUNT(*)::bigint
+              FROM canonical_events ce
+              WHERE ce.entity_id = e.id
+                AND ce.is_active
+                AND ce.pipeline = 'person'
+            ) AS event_count
         FROM entities e
-        LEFT JOIN canonical_events ce
-          ON ce.entity_id = e.id
-         AND ce.is_active
-         AND ce.pipeline = 'person'
         WHERE e.qid ILIKE $1
-        GROUP BY e.id
         ORDER BY event_count DESC, e.created_at ASC
         LIMIT 1
         "#,

@@ -71,7 +71,20 @@ pub async fn search(
         })
         .collect();
 
-    if !state.offline_only && items.len() < query.limit as usize {
+    // Demo/local-first: if Postgres already has a dense person match, skip the
+    // live Wikidata round-trip — it dominates search latency for the roster.
+    let has_dense_local = items.iter().any(|item| {
+        item.get("known_locally")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false)
+            && item
+                .get("event_count")
+                .and_then(|value| value.as_i64())
+                .unwrap_or(0)
+                > 0
+    });
+
+    if !state.offline_only && !has_dense_local && items.len() < query.limit as usize {
         if let Ok(client) = WikidataClient::new() {
             if let Ok(hits) = client
                 .search_entities(trimmed, &query.lang, query.limit.max(10) as u32)
@@ -287,38 +300,35 @@ pub async fn list_claims(
     .await
     .unwrap_or_default();
 
+    let claim_ids: Vec<_> = claims.iter().map(|c| c.id).collect();
+    let evidence_rows = talaria_store::list_claim_evidence_for_claims(&state.pool, &claim_ids)
+        .await
+        .unwrap_or_default();
+    let mut evidence_by_claim: std::collections::HashMap<Uuid, Vec<_>> =
+        std::collections::HashMap::with_capacity(claim_ids.len());
+    for row in evidence_rows {
+        evidence_by_claim.entry(row.claim_id).or_default().push(row);
+    }
+
     let mut items = Vec::with_capacity(claims.len());
     for claim in claims {
-        let evidence = talaria_store::list_claim_evidence(&state.pool, claim.id)
-            .await
-            .unwrap_or_default();
-        let mut evidence_items = Vec::with_capacity(evidence.len());
-        for row in &evidence {
-            let mut item = json!({
-                "id": row.id,
-                "source_system": row.source_system,
-                "locator": row.locator,
-                "quote": row.quote,
-                "sentence_id": row.sentence_id,
-                "confidence": row.confidence,
-            });
-            if let Some(locator) = row.locator.as_deref() {
-                if let Ok(Some(doc)) = talaria_store::find_corpus_document_by_locator(
-                    &state.pool,
-                    locator,
-                    Some(row.source_system.as_str()),
-                )
-                .await
-                {
-                    item["document_id"] = json!(doc.id);
-                    item["document_title"] = json!(doc.title);
-                    item["document_url"] = json!(doc.canonical_url);
-                    item["document_type"] = json!(doc.document_type);
-                    item["source_kind"] = json!(doc.source_kind);
-                }
-            }
-            evidence_items.push(item);
-        }
+        let evidence = evidence_by_claim.remove(&claim.id).unwrap_or_default();
+        // Skip per-row corpus lookups here — they were an N×M Postgres/Wikidata-style
+        // stall on Agora. source_system is enough for filters; locator stays for links.
+        let evidence_items: Vec<_> = evidence
+            .iter()
+            .map(|row| {
+                json!({
+                    "id": row.id,
+                    "source_system": row.source_system,
+                    "source_kind": row.source_system,
+                    "locator": row.locator,
+                    "quote": row.quote,
+                    "sentence_id": row.sentence_id,
+                    "confidence": row.confidence,
+                })
+            })
+            .collect();
         items.push(json!({
             "id": claim.id,
             "claim_kind": claim.claim_kind,
@@ -335,20 +345,15 @@ pub async fn list_claims(
         }));
     }
 
-    if let Some(lang) = crate::display_i18n::normalize_ui_lang(query.lang.as_deref()) {
-        crate::display_i18n::localize_json_string_fields(&mut items, lang, &["text"]).await;
-        for item in &mut items {
-            if let Some(evidence) = item.get_mut("evidence").and_then(Value::as_array_mut) {
-                crate::display_i18n::localize_json_string_fields(evidence, lang, &["quote"]).await;
-            }
-        }
-    }
+    // Do not LLM-translate claim lists: OpenAI latency hangs Agora for minutes
+    // when `lang` is set. Source quotes stay as authored; UI locale is labels only.
+    let _ = query.lang;
 
     Json(json!({
         "claims": items,
         "count": items.len(),
         "epistemic": "historiographic_opinion",
-        "epistemic_note": "Soft claims are theories, debates, and historiographic interpretations — not quality map/timeline facts.",
+        "epistemic_note": "Soft claims are theories, debates, and historiographic interpretations — not map/timeline facts.",
     }))
 }
 

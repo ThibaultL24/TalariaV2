@@ -1,5 +1,7 @@
 // crates/talaria-intuition/src/plan.rs
-//! Map Talaria conflict / soft-claim rows to debate bundles.
+//! Legacy slug bundles (v1). Prefer [`crate::fact`] DebateFact v2 + sidecar model.
+//! `ConflictGroup` / `SoftClaimInput` remain the shared input shapes for the API collect path.
+//! `debate_from_*` builders are fixtures-only — not used by `intuition-plan` / publish.
 
 use crate::canon::{
     atom_record, build_debate_bundle, situated_context_triples, CanonError, DebateBundle,

@@ -36,6 +36,9 @@ export function Navbar({ center }: NavbarProps) {
         <NavLink to="/agora" className={linkClass}>
           {t.agora}
         </NavLink>
+        <NavLink to="/about" className={linkClass}>
+          {t.whitepaperNav}
+        </NavLink>
         <div className="flex overflow-hidden rounded-full border border-(--color-border-subtle) text-[11px] font-semibold">
           <button
             type="button"

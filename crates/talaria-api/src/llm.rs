@@ -1,36 +1,155 @@
 // crates/talaria-api/src/llm.rs
-//! OpenAI display-layer client. Never writes canonical_events.
+//! Display-layer LLM client (OpenAI Responses, or OpenRouter / OpenAI-compat chat).
+//! Never writes canonical_events.
 
 use serde_json::{json, Value};
 
-const OPENAI_RESPONSES_URL: &str = "https://api.openai.com/v1/responses";
-const DEFAULT_MODEL: &str = "gpt-5.4";
+const DEFAULT_OPENAI_MODEL: &str = "gpt-5.4";
+const DEFAULT_OPENROUTER_MODEL: &str = "openrouter/free";
+const OPENAI_BASE: &str = "https://api.openai.com/v1";
+const OPENROUTER_BASE: &str = "https://openrouter.ai/api/v1";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LlmApiKind {
+    /// OpenAI `/v1/responses` (`input` field).
+    Responses,
+    /// OpenAI-compatible `/v1/chat/completions` (OpenRouter, etc.).
+    ChatCompletions,
+}
+
+#[derive(Debug, Clone)]
+struct LlmCreds {
+    key: String,
+    base_url: String,
+    kind: LlmApiKind,
+    model: String,
+    /// OpenRouter optional attribution headers.
+    http_referer: Option<String>,
+    app_title: Option<String>,
+}
+
+fn env_nonempty(key: &str) -> Option<String> {
+    std::env::var(key)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
+/// Resolve LLM credentials. Preference: `OPENAI_API_KEY` → `OPENROUTER_API_KEY` → `LLM_API_KEY`.
+fn llm_creds() -> Option<LlmCreds> {
+    if let Some(key) = env_nonempty("OPENAI_API_KEY") {
+        let base = env_nonempty("LLM_BASE_URL").unwrap_or_else(|| OPENAI_BASE.into());
+        let kind = match env_nonempty("LLM_API")
+            .unwrap_or_else(|| "responses".into())
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "chat" | "chat_completions" | "completions" => LlmApiKind::ChatCompletions,
+            _ => LlmApiKind::Responses,
+        };
+        let model = env_nonempty("OPENAI_MODEL")
+            .or_else(|| env_nonempty("LLM_MODEL"))
+            .unwrap_or_else(|| DEFAULT_OPENAI_MODEL.into());
+        return Some(LlmCreds {
+            key,
+            base_url: base.trim_end_matches('/').to_string(),
+            kind,
+            model,
+            http_referer: None,
+            app_title: None,
+        });
+    }
+
+    if let Some(key) = env_nonempty("OPENROUTER_API_KEY") {
+        let base = env_nonempty("LLM_BASE_URL").unwrap_or_else(|| OPENROUTER_BASE.into());
+        let model = env_nonempty("OPENROUTER_MODEL")
+            .or_else(|| env_nonempty("LLM_MODEL"))
+            .unwrap_or_else(|| DEFAULT_OPENROUTER_MODEL.into());
+        return Some(LlmCreds {
+            key,
+            base_url: base.trim_end_matches('/').to_string(),
+            kind: LlmApiKind::ChatCompletions,
+            model,
+            http_referer: env_nonempty("OPENROUTER_HTTP_REFERER")
+                .or_else(|| Some("https://talaria.local".into())),
+            app_title: env_nonempty("OPENROUTER_APP_TITLE").or_else(|| Some("Talaria".into())),
+        });
+    }
+
+    // Generic OpenAI-compatible endpoint (Groq, Together, local llama.cpp, …).
+    let key = env_nonempty("LLM_API_KEY")?;
+    let base = env_nonempty("LLM_BASE_URL")?;
+    let model = env_nonempty("LLM_MODEL").unwrap_or_else(|| DEFAULT_OPENROUTER_MODEL.into());
+    Some(LlmCreds {
+        key,
+        base_url: base.trim_end_matches('/').to_string(),
+        kind: LlmApiKind::ChatCompletions,
+        model,
+        http_referer: None,
+        app_title: None,
+    })
+}
 
 pub fn api_key() -> Option<String> {
-    std::env::var("OPENAI_API_KEY")
-        .ok()
-        .map(|k| k.trim().to_string())
-        .filter(|k| !k.is_empty())
+    llm_creds().map(|c| c.key)
 }
 
 pub fn model() -> String {
-    std::env::var("OPENAI_MODEL")
-        .ok()
-        .map(|m| m.trim().to_string())
-        .filter(|m| !m.is_empty())
-        .unwrap_or_else(|| DEFAULT_MODEL.to_string())
+    llm_creds()
+        .map(|c| c.model)
+        .unwrap_or_else(|| DEFAULT_OPENAI_MODEL.into())
 }
 
 fn translation_model() -> String {
-    std::env::var("TRANSLATION_MODEL")
-        .ok()
-        .map(|m| m.trim().to_string())
-        .filter(|m| !m.is_empty())
-        .unwrap_or_else(model)
+    env_nonempty("TRANSLATION_MODEL").unwrap_or_else(model)
 }
 
 pub fn is_configured() -> bool {
-    api_key().is_some()
+    llm_creds().is_some()
+}
+
+pub fn provider_label() -> String {
+    match llm_creds() {
+        Some(c) if c.base_url.contains("openrouter") => "openrouter".into(),
+        Some(c) if c.base_url.contains("openai.com") => "openai".into(),
+        Some(_) => "compat".into(),
+        None => "none".into(),
+    }
+}
+
+async fn complete_prompt(
+    client: &reqwest::Client,
+    creds: &LlmCreds,
+    model: &str,
+    prompt: &str,
+) -> anyhow::Result<(reqwest::StatusCode, Value)> {
+    let mut req = match creds.kind {
+        LlmApiKind::Responses => client
+            .post(format!("{}/responses", creds.base_url))
+            .bearer_auth(&creds.key)
+            .json(&json!({
+                "model": model,
+                "input": prompt,
+                "store": false,
+            })),
+        LlmApiKind::ChatCompletions => client
+            .post(format!("{}/chat/completions", creds.base_url))
+            .bearer_auth(&creds.key)
+            .json(&json!({
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+            })),
+    };
+    if let Some(referer) = &creds.http_referer {
+        req = req.header("HTTP-Referer", referer);
+    }
+    if let Some(title) = &creds.app_title {
+        req = req.header("X-Title", title);
+    }
+    let response = req.send().await?;
+    let status = response.status();
+    let body: Value = response.json().await.unwrap_or(json!({}));
+    Ok((status, body))
 }
 
 pub struct PingResult {
@@ -40,17 +159,17 @@ pub struct PingResult {
     pub error: Option<String>,
 }
 
-/// Tiny round-trip so we know the v1 project key + model actually answer.
+/// Tiny round-trip so we know the configured key + model actually answer.
 pub async fn ping() -> PingResult {
-    let model = model();
-    let Some(key) = api_key() else {
+    let Some(creds) = llm_creds() else {
         return PingResult {
             ok: false,
-            model,
+            model: model(),
             latency_ms: 0,
-            error: Some("OPENAI_API_KEY missing".into()),
+            error: Some("no LLM key (OPENAI_API_KEY / OPENROUTER_API_KEY / LLM_API_KEY)".into()),
         };
     };
+    let model = creds.model.clone();
 
     let client = match reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(20))
@@ -68,22 +187,11 @@ pub async fn ping() -> PingResult {
     };
 
     let started = std::time::Instant::now();
-    let response = client
-        .post(OPENAI_RESPONSES_URL)
-        .bearer_auth(key)
-        .json(&json!({
-            "model": model,
-            "input": "Reply with the single word OK.",
-            "store": false,
-        }))
-        .send()
-        .await;
+    let response = complete_prompt(&client, &creds, &model, "Reply with the single word OK.").await;
     let latency_ms = started.elapsed().as_millis();
 
     match response {
-        Ok(resp) => {
-            let status = resp.status();
-            let body: Value = resp.json().await.unwrap_or(json!({}));
+        Ok((status, body)) => {
             if status.is_success() {
                 PingResult {
                     ok: true,
@@ -174,8 +282,8 @@ pub async fn extract_chunk(
     page_title: &str,
     chunk: &str,
 ) -> anyhow::Result<Vec<LlmExtractItem>> {
-    let Some(key) = api_key() else {
-        anyhow::bail!("OPENAI_API_KEY missing");
+    let Some(creds) = llm_creds() else {
+        anyhow::bail!("LLM key missing (OPENAI_API_KEY / OPENROUTER_API_KEY / LLM_API_KEY)");
     };
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(90))
@@ -190,17 +298,15 @@ pub async fn extract_chunk(
          Extract as many grounded facts as the text supports. Debates: controversies, theses, attribution disputes. Never invent quotes.\n\
          Text:\n{chunk}"
     );
-    let response = client
-        .post(OPENAI_RESPONSES_URL)
-        .bearer_auth(key)
-        .json(&json!({
-            "model": model(),
-            "input": prompt,
-            "store": false,
-        }))
-        .send()
-        .await?;
-    let body: Value = response.json().await.unwrap_or(json!({}));
+    let (status, body) = complete_prompt(&client, &creds, &creds.model, &prompt).await?;
+    if !status.is_success() {
+        let message = body
+            .pointer("/error/message")
+            .and_then(|v| v.as_str())
+            .unwrap_or(status.as_str())
+            .to_string();
+        anyhow::bail!(message);
+    }
     let text = output_text(&body).unwrap_or_default();
     Ok(parse_extract_items(&text))
 }
@@ -221,7 +327,7 @@ pub async fn judge_raw_candidates(
     if raws.is_empty() {
         return raws;
     }
-    let Some(key) = api_key() else {
+    let Some(creds) = llm_creds() else {
         return raws;
     };
 
@@ -235,7 +341,7 @@ pub async fn judge_raw_candidates(
             return raws;
         }
     };
-    let model = model();
+    let model = creds.model.clone();
     let occ = occupations.join(", ");
     let mut out = Vec::with_capacity(raws.len());
     for chunk in raws.chunks(12) {
@@ -250,7 +356,7 @@ pub async fn judge_raw_candidates(
                 clause: r.clause_text.chars().take(400).collect(),
             })
             .collect();
-        match judge_chunk(&client, &key, &model, subject, &occ, &items).await {
+        match judge_chunk(&client, &creds, &model, subject, &occ, &items).await {
             Ok(verdicts) => {
                 let by_i: std::collections::HashMap<usize, talaria_quality::OverlayVerdict> =
                     verdicts.into_iter().map(|v| (v.i, v)).collect();
@@ -283,7 +389,7 @@ pub async fn judge_raw_candidates(
 
 async fn judge_chunk(
     client: &reqwest::Client,
-    key: &str,
+    creds: &LlmCreds,
     model: &str,
     subject: &str,
     occupations: &str,
@@ -306,18 +412,7 @@ Rules:\n\
 Events:\n{payload}"
     );
 
-    let response = client
-        .post(OPENAI_RESPONSES_URL)
-        .bearer_auth(key)
-        .json(&json!({
-            "model": model,
-            "input": prompt,
-            "store": false,
-        }))
-        .send()
-        .await?;
-    let status = response.status();
-    let body: Value = response.json().await.unwrap_or(json!({}));
+    let (status, body) = complete_prompt(client, creds, model, &prompt).await?;
     if !status.is_success() {
         let message = body
             .pointer("/error/message")
@@ -331,6 +426,15 @@ Events:\n{payload}"
 }
 
 fn translation_output_text(body: &Value) -> Option<String> {
+    // Prefer chat-completions content when present (OpenRouter).
+    if let Some(content) = body
+        .pointer("/choices/0/message/content")
+        .and_then(|v| v.as_str())
+    {
+        if !content.is_empty() {
+            return Some(content.to_string());
+        }
+    }
     let mut texts = Vec::new();
     if let Some(s) = body.get("output_text").and_then(|v| v.as_str()) {
         if !s.is_empty() {
@@ -359,7 +463,18 @@ fn translation_output_text(body: &Value) -> Option<String> {
 
 fn output_text(body: &Value) -> Option<String> {
     if let Some(s) = body.get("output_text").and_then(|v| v.as_str()) {
-        return Some(s.to_string());
+        if !s.is_empty() {
+            return Some(s.to_string());
+        }
+    }
+    // OpenAI-compatible chat completions (OpenRouter, …).
+    if let Some(content) = body
+        .pointer("/choices/0/message/content")
+        .and_then(|v| v.as_str())
+    {
+        if !content.is_empty() {
+            return Some(content.to_string());
+        }
     }
     let output = body.get("output")?.as_array()?;
     for item in output {
@@ -432,7 +547,7 @@ pub async fn synthesize_event_recap(req: EventRecapRequest<'_>) -> Option<String
     if req.sources.is_empty() {
         return None;
     }
-    let key = api_key()?;
+    let creds = llm_creds()?;
     let lang = if req.lang.starts_with("fr") { "fr" } else { "en" };
     let place = req
         .place
@@ -468,34 +583,40 @@ Sources:\n{sources}",
         .timeout(std::time::Duration::from_secs(20))
         .build()
         .ok()?;
-    let response = client
-        .post(OPENAI_RESPONSES_URL)
-        .bearer_auth(key)
-        .json(&json!({
-            "model": model(),
-            "input": prompt,
-            "store": false,
-        }))
-        .send()
+    let (status, body) = complete_prompt(&client, &creds, &creds.model, &prompt)
         .await
         .ok()?;
-    if !response.status().is_success() {
+    if !status.is_success() {
         return None;
     }
-    let body: Value = response.json().await.ok()?;
     let text = output_text(&body)?;
     keep_grounded_recap(&text, req.sources.len())
 }
 
 /// Display-only translation. Never persist. Same length as `texts`; originals on failure.
 pub async fn translate_display_texts(target_lang: &str, texts: &[String]) -> Vec<String> {
+    translate_display_texts_budgeted(target_lang, texts, std::time::Duration::from_secs(45)).await
+}
+
+/// Like [`translate_display_texts`], but stops starting new LLM chunks after `budget`.
+/// Completed chunks are kept — never discard a whole batch on timeout.
+/// Falls back to MyMemory when no LLM key is set, rate-limited, or out of quota.
+pub async fn translate_display_texts_budgeted(
+    target_lang: &str,
+    texts: &[String],
+    budget: std::time::Duration,
+) -> Vec<String> {
     if texts.is_empty() {
         return Vec::new();
     }
+    let deadline = tokio::time::Instant::now() + budget;
     let target = if target_lang.starts_with("fr") { "fr" } else { "en" };
     let mut out: Vec<String> = texts.to_vec();
-    let mut pending_idx = Vec::new();
-    let mut pending_text = Vec::new();
+    let mut pending_unique: Vec<String> = Vec::new();
+    let mut pending_unique_owners: Vec<Vec<usize>> = Vec::new();
+    let mut pending_unique_index: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+
     for (i, text) in texts.iter().enumerate() {
         let trimmed = text.trim();
         if trimmed.is_empty() || !display_text_needs_translation(trimmed, target) {
@@ -505,113 +626,208 @@ pub async fn translate_display_texts(target_lang: &str, texts: &[String]) -> Vec
             out[i] = hit;
             continue;
         }
-        pending_idx.push(i);
-        pending_text.push(trimmed.to_string());
+        let entry = pending_unique_index
+            .entry(trimmed.to_string())
+            .or_insert_with(|| {
+                let idx = pending_unique.len();
+                pending_unique.push(trimmed.to_string());
+                pending_unique_owners.push(Vec::new());
+                idx
+            });
+        pending_unique_owners[*entry].push(i);
     }
-    if pending_text.is_empty() {
+    if pending_unique.is_empty() {
         tracing::info!(target, "display translation skipped (already target language)");
         return out;
     }
-    let Some(key) = api_key() else {
-        tracing::warn!("display translation skipped (no OPENAI_API_KEY)");
-        return out;
-    };
+
     let client = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(45))
+        .timeout(std::time::Duration::from_secs(20))
         .build()
     {
         Ok(c) => c,
         Err(_) => return out,
     };
 
-    const CHUNK: usize = 8;
-    for chunk_start in (0..pending_text.len()).step_by(CHUNK) {
-        let chunk_end = (chunk_start + CHUNK).min(pending_text.len());
-        let chunk = &pending_text[chunk_start..chunk_end];
-        let Ok(payload) = serde_json::to_string(chunk) else {
-            continue;
-        };
-        let prompt = format!(
-            "Translate each string into {target}. Return ONLY a JSON array of strings, same length and order.\n\
+    let mut openai_exhausted = translation_rate_limited() || llm_creds().is_none();
+    if !openai_exhausted {
+        if let Some(creds) = llm_creds() {
+            const CHUNK: usize = 6;
+            const MAX_CHUNKS_PER_REQUEST: usize = 2;
+            let mut chunks_started = 0usize;
+            let xlat_model = translation_model();
+            for chunk_start in (0..pending_unique.len()).step_by(CHUNK) {
+                if chunks_started >= MAX_CHUNKS_PER_REQUEST
+                    || tokio::time::Instant::now() >= deadline
+                {
+                    break;
+                }
+                // Skip strings already filled (should not happen in first pass).
+                let chunk_end = (chunk_start + CHUNK).min(pending_unique.len());
+                let chunk = &pending_unique[chunk_start..chunk_end];
+                chunks_started += 1;
+                let Ok(payload) = serde_json::to_string(chunk) else {
+                    continue;
+                };
+                let prompt = format!(
+                    "Translate each string into {target}. Return ONLY a JSON array of strings, same length and order.\n\
 Keep personal names, place names, years, and [n] citation markers unchanged.\n\
 Do not add facts. Do not wrap in markdown.\n\
 Input: {payload}"
-        );
-        let mut translated: Option<Vec<String>> = None;
-        let mut delay = std::time::Duration::from_millis(500);
-        for attempt in 1..=6 {
-            let response = client
-                .post(OPENAI_RESPONSES_URL)
-                .bearer_auth(&key)
-                .json(&json!({
-                    "model": translation_model(),
-                    "input": prompt,
-                    "store": false,
-                }))
-                .send()
-                .await;
-            let resp = match response {
-                Ok(resp) => resp,
-                Err(err) => {
-                    tracing::warn!(attempt, error = %err, "display translation request failed");
-                    tokio::time::sleep(delay).await;
-                    delay = (delay * 2).min(std::time::Duration::from_secs(8));
-                    continue;
-                }
-            };
-            if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-                tracing::warn!(attempt, "display translation rate-limited, retrying");
-                tokio::time::sleep(delay).await;
-                delay = (delay * 2).min(std::time::Duration::from_secs(8));
-                continue;
-            }
-            if !resp.status().is_success() {
-                tracing::warn!(attempt, status = %resp.status(), "display translation http error");
-                break;
-            }
-            let Ok(body) = resp.json::<Value>().await else {
-                tracing::warn!("display translation json body missing");
-                break;
-            };
-            let Some(raw) = translation_output_text(&body) else {
-                tracing::warn!("display translation empty model output");
-                break;
-            };
-            match parse_translation_strings(&raw, chunk.len()) {
-                Some(items) => {
-                    translated = Some(items);
+                );
+                let response = complete_prompt(&client, &creds, &xlat_model, &prompt).await;
+                let (status, body) = match response {
+                    Ok(pair) => pair,
+                    Err(err) => {
+                        tracing::warn!(error = %err, "display translation request failed");
+                        openai_exhausted = true;
+                        break;
+                    }
+                };
+                if status == reqwest::StatusCode::TOO_MANY_REQUESTS
+                    || status == reqwest::StatusCode::FORBIDDEN
+                    || status == reqwest::StatusCode::PAYMENT_REQUIRED
+                {
+                    tracing::warn!(
+                        status = %status,
+                        "display translation LLM unavailable; falling back"
+                    );
+                    mark_translation_rate_limited(60);
+                    openai_exhausted = true;
                     break;
                 }
-                None => {
+                if !status.is_success() {
+                    tracing::warn!(status = %status, "display translation http error");
+                    openai_exhausted = true;
+                    break;
+                }
+                let Some(raw) = translation_output_text(&body) else {
+                    openai_exhausted = true;
+                    break;
+                };
+                let Some(translated) = parse_translation_strings(&raw, chunk.len()) else {
                     tracing::warn!(
                         n = chunk.len(),
                         sample = %raw.chars().take(180).collect::<String>(),
                         "display translation parse failed"
                     );
+                    openai_exhausted = true;
                     break;
+                };
+                for (offset, rendered) in translated.into_iter().enumerate() {
+                    let unique_i = chunk_start + offset;
+                    let original = &pending_unique[unique_i];
+                    let value = if rendered.trim().is_empty() {
+                        original.clone()
+                    } else {
+                        rendered
+                    };
+                    translation_cache_put(target, original, &value);
+                    for &i in &pending_unique_owners[unique_i] {
+                        out[i] = value.clone();
+                    }
+                }
+                if chunk_end < pending_unique.len() {
+                    tokio::time::sleep(std::time::Duration::from_millis(120)).await;
                 }
             }
+        } else {
+            openai_exhausted = true;
         }
-        let Some(translated) = translated else {
+    }
+
+    // Fallback: MyMemory for any unique strings still untranslated.
+    let mut fallback_n = 0usize;
+    const MAX_FALLBACK: usize = 16;
+    for (unique_i, original) in pending_unique.iter().enumerate() {
+        if fallback_n >= MAX_FALLBACK || tokio::time::Instant::now() >= deadline {
+            break;
+        }
+        let owners = &pending_unique_owners[unique_i];
+        let Some(&first) = owners.first() else {
             continue;
         };
-        for (offset, rendered) in translated.into_iter().enumerate() {
-            let i = pending_idx[chunk_start + offset];
-            let original = &pending_text[chunk_start + offset];
-            let value = if rendered.trim().is_empty() {
-                original.clone()
-            } else {
-                rendered
-            };
-            translation_cache_put(target, original, &value);
-            out[i] = value;
+        if out[first] != *original {
+            continue; // already translated via OpenAI/cache
         }
-        if chunk_end < pending_text.len() {
-            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        if let Some(hit) = translation_cache_get(target, original) {
+            for &i in owners {
+                out[i] = hit.clone();
+            }
+            continue;
+        }
+        match mymemory_translate(&client, original, target).await {
+            Some(value) => {
+                fallback_n += 1;
+                translation_cache_put(target, original, &value);
+                for &i in owners {
+                    out[i] = value.clone();
+                }
+            }
+            None => {
+                tracing::warn!(sample = %original.chars().take(80).collect::<String>(), "mymemory translation failed");
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+    }
+    if fallback_n > 0 {
+        tracing::info!(target, fallback_n, "display translation used MyMemory fallback");
+    }
+    let _ = openai_exhausted;
+    out
+}
+
+async fn mymemory_translate(
+    client: &reqwest::Client,
+    text: &str,
+    target: &str,
+) -> Option<String> {
+    // Keep payloads short — MyMemory free tier is fragile on long Wikipedia extracts.
+    let clipped: String = text.chars().take(450).collect();
+    let source = if target == "fr" { "en" } else { "fr" };
+    let url = format!(
+        "https://api.mymemory.translated.net/get?q={}&langpair={}|{}",
+        urlencoding_minimal(&clipped),
+        source,
+        target
+    );
+    let resp = client.get(url).send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let body: Value = resp.json().await.ok()?;
+    let status = body.get("responseStatus").and_then(Value::as_u64).unwrap_or(0);
+    if status != 200 {
+        return None;
+    }
+    let translated = body
+        .pointer("/responseData/translatedText")
+        .and_then(Value::as_str)?
+        .trim();
+    if translated.is_empty() || translated.eq_ignore_ascii_case("MYMEMORY WARNING") {
+        return None;
+    }
+    // MyMemory sometimes prefixes quota warnings.
+    if translated.to_ascii_uppercase().contains("MYMEMORY WARNING") {
+        return None;
+    }
+    Some(translated.to_string())
+}
+
+fn urlencoding_minimal(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() * 2);
+    for b in text.as_bytes() {
+        match *b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(*b as char);
+            }
+            b' ' => out.push('+'),
+            _ => out.push_str(&format!("%{b:02X}")),
         }
     }
     out
 }
+
 
 fn translation_cache_get(lang: &str, text: &str) -> Option<String> {
     TRANSLATION_CACHE
@@ -634,14 +850,55 @@ static TRANSLATION_CACHE: std::sync::OnceLock<
     std::sync::Mutex<std::collections::HashMap<(String, String), String>>,
 > = std::sync::OnceLock::new();
 
+static TRANSLATION_RATE_LIMIT_UNTIL: std::sync::OnceLock<std::sync::Mutex<Option<tokio::time::Instant>>> =
+    std::sync::OnceLock::new();
+
+fn translation_rate_limited() -> bool {
+    let lock = TRANSLATION_RATE_LIMIT_UNTIL.get_or_init(|| std::sync::Mutex::new(None));
+    let Ok(guard) = lock.lock() else {
+        return false;
+    };
+    match *guard {
+        Some(until) if tokio::time::Instant::now() < until => true,
+        _ => false,
+    }
+}
+
+fn mark_translation_rate_limited(for_secs: u64) {
+    let lock = TRANSLATION_RATE_LIMIT_UNTIL.get_or_init(|| std::sync::Mutex::new(None));
+    if let Ok(mut guard) = lock.lock() {
+        *guard = Some(tokio::time::Instant::now() + std::time::Duration::from_secs(for_secs));
+    }
+}
+
+
 pub fn display_text_needs_translation(text: &str, target: &str) -> bool {
     let fr = french_marker_score(text);
     let en = english_marker_score(text);
     if target.starts_with("fr") {
         en > fr && en > 0
     } else {
-        fr > en && fr > 0
+        // Prefer translating clear French. Also catch long unmarked FR prose
+        // (titles without stop-words still often carry accents / elisions).
+        if fr > en && fr > 0 {
+            return true;
+        }
+        if en == 0 && fr == 0 && text.chars().count() >= 48 {
+            return looks_like_french_prose(text);
+        }
+        false
     }
+}
+
+fn looks_like_french_prose(text: &str) -> bool {
+    let l = format!(" {} ", text.to_lowercase());
+    if [" d'", " l'", " n'", " m'", " s'", " t'", " c'", " j'", " qu'"]
+        .iter()
+        .any(|m| l.contains(m))
+    {
+        return true;
+    }
+    text.chars().any(|c| "éèêëàâùûüôîïçœÉÈÊÀÂÙÛÔÎÏÇ".contains(c))
 }
 
 fn french_marker_score(text: &str) -> i32 {
@@ -650,13 +907,16 @@ fn french_marker_score(text: &str) -> i32 {
     for w in [
         " le ", " la ", " les ", " un ", " une ", " des ", " du ", " à ", " au ", " aux ", " et ",
         " est ", " dans ", " par ", " pour ", " que ", " qui ", " il ", " elle ", " son ", " sa ",
-        " ses ", " en ", " sur ", " avec ", " cette ", " cet ",
+        " ses ", " en ", " sur ", " avec ", " cette ", " cet ", " naît ", " nait ",
     ] {
         if l.contains(w) {
             n += 1;
         }
     }
     if text.chars().any(|c| "éèêëàâùûçœîïÉÈÀÇ".contains(c)) {
+        n += 2;
+    }
+    if [" d'", " l'", " qu'"].iter().any(|m| l.contains(m)) {
         n += 2;
     }
     n
@@ -794,5 +1054,13 @@ mod tests {
             parse_json_string_array(raw).as_deref(),
             Some(["Born in 1848.".to_string(), "Paris".to_string()].as_slice())
         );
+    }
+
+    #[test]
+    fn output_text_reads_chat_completions() {
+        let body = json!({
+            "choices": [{"message": {"content": "[\"ok\"]"}}]
+        });
+        assert_eq!(output_text(&body).as_deref(), Some("[\"ok\"]"));
     }
 }

@@ -12,3 +12,8 @@
 /sidecar/cosmos/
 /sidecar/intuition/node_modules/
 /backups/
+/demo/snapshots/*.dump
+/demo/snapshots/*.dump.tmp
+!/demo/snapshots/*.manifest.json
+!/demo/snapshots/README.md
+

@@ -1,12 +1,20 @@
 // web/src/components/detail/source-refs-list.tsx
 import type { EventSourceRef } from "@/lib/api";
 import { resolveSourceParagraphHref } from "@/components/detail/source-ref-url";
+import { IntuitionStanceBar } from "@/components/intuition/intuition-stance-bar";
 import { useI18n } from "@/lib/i18n";
 
 interface SourceRefsListProps {
   refs: EventSourceRef[];
   wikiLang?: string;
   activeCitationIndex?: number | null;
+}
+
+function sourceTargetId(ref: EventSourceRef, citeIndex: number): string {
+  if (ref.evidence_id) return ref.evidence_id;
+  if (ref.url) return ref.url.slice(0, 180);
+  if (ref.source_url) return ref.source_url.slice(0, 180);
+  return `source-${citeIndex}`;
 }
 
 export function SourceRefsList({
@@ -68,6 +76,11 @@ export function SourceRefsList({
                 “{snippet}”
               </blockquote>
             ) : null}
+            <IntuitionStanceBar
+              targetKind="source"
+              targetId={sourceTargetId(ref, citeIndex)}
+              compact
+            />
           </article>
         );
       })}

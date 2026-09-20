@@ -39,8 +39,8 @@ pub use corpus::{
 };
 pub use density::{DensityProgress, DensityTargets};
 pub use historiography::{
-    is_historiography_section, scan_bibliographic, scan_passage, DebateType, EventHint,
-    EvidenceLayer, HistoriographyHit,
+    is_historiography_section, scan_bibliographic, scan_bibliographic_with_status, scan_passage,
+    DebateType, EventHint, EvidenceLayer, HistoriographyHit,
 };
 pub use identifiers::{normalize_identifier, normalize_person_name};
 pub use kinds::{

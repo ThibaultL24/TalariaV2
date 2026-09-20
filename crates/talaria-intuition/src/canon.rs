@@ -1,5 +1,5 @@
 // crates/talaria-intuition/src/canon.rs
-//! Deterministic slugs + debate bundles (POC Canonicalizer port).
+//! Deterministic slugs + debate bundles (v1 POC). Prefer DebateFact v2 + sidecar.
 
 use deunicode::deunicode;
 use serde::Serialize;

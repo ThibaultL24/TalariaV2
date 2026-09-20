@@ -1,0 +1,85 @@
+{
+  "stamp": "20260920T091834Z",
+  "dump_file": "talaria-demo-20260920T091834Z.dump",
+  "dump_bytes": 143861453,
+  "created_at": "20260920T091834Z",
+  "notes": "Person-pipeline demo snapshot. Restore with scripts/restore_demo_snapshot.sh. Beta ingest works without OPENAI_API_KEY (structured Wikipedia/Wikidata + catalogs).",
+  "totals": {
+    "entities": 3122,
+    "person_events": 2218,
+    "claims": 1268,
+    "raw_documents": 1355
+  },
+  "roster": [
+    {
+      "qid": "Q517",
+      "name": "Napoleon Bonaparte",
+      "events": 465,
+      "pins": 261,
+      "claims": 332
+    },
+    {
+      "qid": "Q22686",
+      "name": "Donald Trump",
+      "events": 242,
+      "pins": 38,
+      "claims": 67
+    },
+    {
+      "qid": "Q2042",
+      "name": "Charles de Gaulle",
+      "events": 211,
+      "pins": 43,
+      "claims": 89
+    },
+    {
+      "qid": "Q76",
+      "name": "Barack Obama",
+      "events": 210,
+      "pins": 93,
+      "claims": 60
+    },
+    {
+      "qid": "Q535",
+      "name": "Victor Hugo",
+      "events": 208,
+      "pins": 54,
+      "claims": 110
+    },
+    {
+      "qid": "Q7742",
+      "name": "Louis XIV",
+      "events": 185,
+      "pins": 44,
+      "claims": 118
+    },
+    {
+      "qid": "Q3052772",
+      "name": "Emmanuel Macron",
+      "events": 162,
+      "pins": 45,
+      "claims": 48
+    },
+    {
+      "qid": "Q687",
+      "name": "Molière",
+      "events": 77,
+      "pins": 15,
+      "claims": 81
+    },
+    {
+      "qid": "Q7186",
+      "name": "Marie Curie",
+      "events": 74,
+      "pins": 19,
+      "claims": 50
+    },
+    {
+      "qid": "Q7226",
+      "name": "Joan of Arc",
+      "events": 60,
+      "pins": 31,
+      "claims": 53
+    }
+  ]
+}

@@ -5,7 +5,7 @@ use std::path::Path;
 
 use talaria_core::AppConfig;
 use talaria_sources::historiography::{
-    is_historiography_section, scan_bibliographic, scan_passage, HistoriographyHit,
+    is_historiography_section, scan_bibliographic_with_status, scan_passage, HistoriographyHit,
 };
 use talaria_store::{
     connect, find_active_singleton, find_claim_by_text, find_entity_by_qid,
@@ -92,14 +92,20 @@ pub async fn run_historiography_extract(
         }
     }
 
-    let docs = list_entity_corpus_passages(&pool, entity_id, 200).await?;
+    let docs = list_entity_corpus_passages(&pool, entity_id, 500).await?;
     for doc in docs {
         scanned += 1;
-        let hits = scan_bibliographic(&doc.title, doc.abstract_text.as_deref());
+        let hits = scan_bibliographic_with_status(
+            &doc.title,
+            doc.abstract_text.as_deref(),
+            Some(doc.academic_status.as_str()),
+        );
         let confidence = if doc.academic_status == "doctoral_defended" {
             0.55
         } else if doc.academic_status == "academic_unreviewed" {
             0.35
+        } else if doc.academic_status == "peer_reviewed" {
+            0.45
         } else {
             0.4
         };

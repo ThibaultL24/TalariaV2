@@ -31,7 +31,11 @@ export interface AppMessages {
   factsSplit: (onMap: number, offMap: number, total: number) => string;
   onMapBadge: string;
   offMapBadge: string;
+  factsTabAll: string;
+  factsTabOnMap: string;
+  factsTabOffMap: string;
   legendTitle: string;
+  legendClickHint: string;
   personSearch: string;
   imageUnavailable: string;
   home: string;
@@ -47,6 +51,15 @@ export interface AppMessages {
   livingMapDesc: string;
   homeAboutTitle: string;
   homeAboutSources: string;
+  homeAboutDoctrine: string;
+  homeAboutDoctrineBody: string;
+  homeAboutSeparates: string;
+  homeAboutSeparatesBody: string;
+  homeAboutFreedom: string;
+  homeAboutFreedomBody: string;
+  homeAboutWhitepaper: string;
+  whitepaperNav: string;
+  whitepaperToc: string;
   agoraEmpty: string;
   emptyTimeline: string;
   loadingTimeline: string;
@@ -84,7 +97,27 @@ export interface AppMessages {
   dispute: string;
   stanceHint: string;
   stanceNotOnChain: string;
+  stanceModeled: string;
   stanceLiveDisabled: string;
+  stanceNotEligible: string;
+  intuitionStanceLabel: string;
+  intuitionTheoriesTitle: string;
+  intuitionTheoriesHint: string;
+  agoraTabTheories: string;
+  agoraTabDebates: string;
+  agoraTabBibliography: string;
+  agoraSourceFilter: string;
+  agoraFilterEmpty: string;
+  demoRosterTitle: string;
+  demoRosterHint: string;
+  demoRosterStats: (events: number, pins: number, claims: number) => string;
+  demoRosterPending: string;
+  demoEraHistorical: string;
+  demoEraModern: string;
+  demoIntuitionStar: string;
+  demoIntuitionLive: string;
+  demoIntuitionModeled: string;
+  stanceTestnetReady: string;
 }
 
 const EN: AppMessages = {
@@ -116,7 +149,11 @@ const EN: AppMessages = {
     `${total} facts · ${onMap} on the map · ${offMap} without a pin`,
   onMapBadge: "On map",
   offMapBadge: "No place",
+  factsTabAll: "All",
+  factsTabOnMap: "On map",
+  factsTabOffMap: "No place",
   legendTitle: "Legend",
+  legendClickHint: "Click to filter",
   personSearch: "Person search",
   imageUnavailable: "",
   home: "Home",
@@ -132,6 +169,18 @@ const EN: AppMessages = {
   livingMapDesc: "Dated facts, anecdotes and places from Wikipedia and catalogs.",
   homeAboutTitle: "A life in space and argument",
   homeAboutSources: "Each point keeps its summary and the sources that mention it.",
+  homeAboutDoctrine: "About",
+  homeAboutDoctrineBody:
+    "Explore a life. Examine the evidence. Form your own judgment.",
+  homeAboutSeparates: "Two spaces",
+  homeAboutSeparatesBody:
+    "Explorer for situated facts. Agora for readings and controversies.",
+  homeAboutFreedom: "Freedom of opinion",
+  homeAboutFreedomBody:
+    "Believe or dispute on Intuition — person, event, theory, interpretation or source. Expression is the rule; Talaria does not crown a single historical truth.",
+  homeAboutWhitepaper: "Read the Talaria about page →",
+  whitepaperNav: "About",
+  whitepaperToc: "Contents",
   agoraEmpty: "Search a historical figure to load works, theories and controversies.",
   emptyTimeline: "No dated facts yet. Collect the life trace to fill the map and timeline.",
   loadingTimeline: "Loading timeline…",
@@ -173,8 +222,33 @@ const EN: AppMessages = {
   believe: "I believe this",
   dispute: "I don't believe this",
   stanceHint: "Signal with a deposit on Intuition. No deposit means no position.",
-  stanceNotOnChain: "This theory is not on Intuition yet.",
+  stanceNotOnChain: "This target is not on Intuition yet.",
+  stanceModeled:
+    "Modeled Intuition signal — community trust without rewriting evidence.",
   stanceLiveDisabled: "Deposits are paused until Intuition publish is repaired.",
+  stanceNotEligible: "This item is not an Intuition stance target.",
+  intuitionStanceLabel: "Intuition",
+  intuitionTheoriesTitle: "Intuition — community trust",
+  intuitionTheoriesHint:
+    "Believe or dispute a person, event, theory, interpretation or source. Signals never replace evidence.",
+  agoraTabTheories: "Theories",
+  agoraTabDebates: "Debates",
+  agoraTabBibliography: "Bibliography",
+  agoraSourceFilter: "Filter by catalog",
+  agoraFilterEmpty: "No items for this catalog.",
+  demoRosterTitle: "Demo figures",
+  demoRosterHint: "Ten curated lives — open the map or the Agora. Or search anyone else to collect a new life (no LLM required).",
+  demoRosterStats: (events, pins, claims) =>
+    `${events} facts · ${pins} on map · ${claims} debates`,
+  demoRosterPending: "Not loaded yet — open to collect.",
+  demoEraHistorical: "Historical",
+  demoEraModern: "Modern",
+  demoIntuitionStar: "Intuition",
+  demoIntuitionLive: "Intuition testnet publish enabled for this deployment.",
+  demoIntuitionModeled:
+    "Theories are modeled (MetaSudo). Operators enable testnet with INTUITION_ALLOW_LIVE=1.",
+  stanceTestnetReady:
+    "Modeled — ready for Intuition testnet publish (operator: intuition-publish --live).",
 };
 
 const FR: AppMessages = {
@@ -206,7 +280,11 @@ const FR: AppMessages = {
     `${total} faits · ${onMap} sur la carte · ${offMap} sans pin`,
   onMapBadge: "Sur la carte",
   offMapBadge: "Sans lieu",
+  factsTabAll: "Tous",
+  factsTabOnMap: "Sur carte",
+  factsTabOffMap: "Sans lieu",
   legendTitle: "Légende",
+  legendClickHint: "Cliquer pour filtrer",
   personSearch: "Recherche de personnalité",
   imageUnavailable: "",
   home: "Accueil",
@@ -222,6 +300,18 @@ const FR: AppMessages = {
   livingMapDesc: "Faits datés, anecdotes et lieux issus de Wikipédia et des catalogues.",
   homeAboutTitle: "Une vie dans l’espace et le débat",
   homeAboutSources: "Chaque point garde son résumé et les sources qui en parlent.",
+  homeAboutDoctrine: "À propos",
+  homeAboutDoctrineBody:
+    "Explorer une vie. Examiner les preuves. Former son propre jugement.",
+  homeAboutSeparates: "Deux espaces",
+  homeAboutSeparatesBody:
+    "Explorer pour les faits situés. Agora pour les lectures et controverses.",
+  homeAboutFreedom: "Liberté d’opinion",
+  homeAboutFreedomBody:
+    "Croire ou contester sur Intuition — personne, événement, théorie, interprétation ou source. L’expression est la règle ; Talaria ne couronne aucune vérité historique unique.",
+  homeAboutWhitepaper: "Lire la page À propos Talaria →",
+  whitepaperNav: "À propos",
+  whitepaperToc: "Sommaire",
   agoraEmpty: "Recherchez une personnalité pour charger travaux, théories et controverses.",
   emptyTimeline: "Pas encore de faits datés. Lancez l’ingest pour remplir la carte et la frise.",
   loadingTimeline: "Chargement de la frise…",
@@ -263,8 +353,34 @@ const FR: AppMessages = {
   believe: "J’y crois",
   dispute: "Je n’y crois pas",
   stanceHint: "Signaler en déposant sur Intuition. Pas de dépôt = pas de position.",
-  stanceNotOnChain: "Cette théorie n’est pas encore sur Intuition.",
-  stanceLiveDisabled: "Les dépôts sont en pause jusqu’à la réparation de la publication Intuition.",
+  stanceNotOnChain: "Cette cible n’est pas encore sur Intuition.",
+  stanceModeled:
+    "Signal Intuition modélisé — confiance communautaire sans réécrire les preuves.",
+  stanceLiveDisabled:
+    "Les dépôts sont en pause jusqu’à la réparation de la publication Intuition.",
+  stanceNotEligible: "Cet élément n’est pas une cible de prise de position Intuition.",
+  intuitionStanceLabel: "Intuition",
+  intuitionTheoriesTitle: "Intuition — confiance communautaire",
+  intuitionTheoriesHint:
+    "Croire ou contester une personne, un événement, une théorie, une interprétation ou une source. Les signaux ne remplacent jamais les preuves.",
+  agoraTabTheories: "Théories",
+  agoraTabDebates: "Débats",
+  agoraTabBibliography: "Bibliographie",
+  agoraSourceFilter: "Filtrer par catalogue",
+  agoraFilterEmpty: "Aucun élément pour ce catalogue.",
+  demoRosterTitle: "Figures de la démo",
+  demoRosterHint: "Dix vies choisies — ouvrir la carte ou l’Agora. Ou cherchez n’importe qui d’autre pour collecter une vie (sans LLM).",
+  demoRosterStats: (events, pins, claims) =>
+    `${events} faits · ${pins} sur carte · ${claims} débats`,
+  demoRosterPending: "Pas encore chargé — ouvrir pour collecter.",
+  demoEraHistorical: "Historique",
+  demoEraModern: "Moderne",
+  demoIntuitionStar: "Intuition",
+  demoIntuitionLive: "Publication Intuition testnet activée sur ce déploiement.",
+  demoIntuitionModeled:
+    "Théories modélisées (MetaSudo). Activer le testnet avec INTUITION_ALLOW_LIVE=1.",
+  stanceTestnetReady:
+    "Modélisée — prête pour publication testnet (opérateur : intuition-publish --live).",
 };
 
 export const messages: Record<AppLocale, AppMessages> = { en: EN, fr: FR };

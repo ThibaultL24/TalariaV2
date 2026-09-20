@@ -92,15 +92,16 @@ pub async fn timeline(
     .await
     .unwrap_or_default();
 
-    let mut payload: Vec<Value> = events.iter().map(event_to_json).collect();
+    // List payload: skip long summaries (detail route loads them) — cuts ~30–50% JSON.
+    let mut payload: Vec<Value> = events.iter().map(|e| event_to_json_list(e)).collect();
     let display_lang = crate::display_i18n::normalize_ui_lang(query.lang.as_deref());
     if let Some(lang) = display_lang {
-        crate::display_i18n::localize_json_string_fields(
+        // Deterministic overlays only — never LLM on the list path (was 10s+ for FR).
+        crate::display_i18n::localize_json_string_fields_fast(
             &mut payload,
             lang,
-            &["title", "summary", "place_label"],
-        )
-        .await;
+            &["title", "place_label"],
+        );
     }
 
     Json(json!({
@@ -134,19 +135,18 @@ pub async fn geojson(
 
     let mut features: Vec<Value> = events
         .iter()
-        .filter_map(|event| geojson_feature(event))
+        .filter_map(|event| geojson_feature_list(event))
         .collect();
     if let Some(lang) = crate::display_i18n::normalize_ui_lang(query.lang.as_deref()) {
         let mut props: Vec<Value> = features
             .iter()
             .filter_map(|f| f.get("properties").cloned())
             .collect();
-        crate::display_i18n::localize_json_string_fields(
+        crate::display_i18n::localize_json_string_fields_fast(
             &mut props,
             lang,
-            &["title", "summary", "place_label"],
-        )
-        .await;
+            &["title", "place_label"],
+        );
         for (feature, localized) in features.iter_mut().zip(props) {
             if let Some(obj) = feature.as_object_mut() {
                 obj.insert("properties".into(), localized);
@@ -467,6 +467,23 @@ fn event_to_json(event: &CanonicalEventRow) -> Value {
     })
 }
 
+/// Timeline list: omit summary (loaded via event detail) to shrink payload.
+fn event_to_json_list(event: &CanonicalEventRow) -> Value {
+    json!({
+        "id": event.id,
+        "entity_id": event.entity_id,
+        "person": event.person_name,
+        "event_type": event.event_type,
+        "epistemic_status": event.epistemic_status,
+        "title": display_title(event),
+        "start_time": event.start_time,
+        "time": event.time_json,
+        "place_label": display_place(event),
+        "map_eligible": event.map_eligible,
+        "coordinates": coords_json(event),
+    })
+}
+
 fn geojson_feature(event: &CanonicalEventRow) -> Option<Value> {
     let (lat, lon) = (event.lat?, event.lon?);
     Some(json!({
@@ -484,6 +501,29 @@ fn geojson_feature(event: &CanonicalEventRow) -> Option<Value> {
             "epistemic_status": event.epistemic_status,
             "title": display_title(event),
             "summary": display_summary(event),
+            "start_time": event.start_time,
+            "time": event.time_json,
+            "place_label": display_place(event),
+        }
+    }))
+}
+
+fn geojson_feature_list(event: &CanonicalEventRow) -> Option<Value> {
+    let (lat, lon) = (event.lat?, event.lon?);
+    Some(json!({
+        "type": "Feature",
+        "id": event.id.to_string(),
+        "geometry": {
+            "type": "Point",
+            "coordinates": [lon, lat],
+        },
+        "properties": {
+            "id": event.id,
+            "entity_id": event.entity_id,
+            "person": event.person_name,
+            "event_type": event.event_type,
+            "epistemic_status": event.epistemic_status,
+            "title": display_title(event),
             "start_time": event.start_time,
             "time": event.time_json,
             "place_label": display_place(event),

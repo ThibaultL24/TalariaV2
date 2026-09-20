@@ -1,12 +1,13 @@
 // web/src/components/explorer/agora-panel.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  fetchTheorySignals,
-  simulateTheoryStance,
   type BibliographyItem,
   type EntityClaim,
-  type TheoryStanceResponse,
 } from "@/lib/api";
+import {
+  IntuitionStanceBar,
+  isStanceClaimKind,
+} from "@/components/intuition/intuition-stance-bar";
 import {
   debateTypeLabel,
   evidenceLayerLabel,
@@ -26,77 +27,27 @@ interface AgoraPanelProps {
   claimsOnly?: boolean;
 }
 
+type AgoraTab = "theories" | "debates" | "bibliography";
+
 function evidenceHref(locator: string | null | undefined): string | null {
   if (!locator) return null;
   return /^https?:\/\//i.test(locator) ? locator : null;
 }
 
-function TheoryStanceBar({ claimId }: { claimId: string }) {
-  const { t } = useI18n();
-  const [signals, setSignals] = useState<TheoryStanceResponse | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchTheorySignals(claimId)
-      .then((payload) => {
-        if (!cancelled) setSignals(payload);
-      })
-      .catch(() => {
-        if (!cancelled) setSignals(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [claimId]);
-
-  async function onStance(stance: "believe" | "dispute") {
-    setBusy(true);
-    setMessage(null);
-    try {
-      const result = await simulateTheoryStance(claimId, stance);
-      if (result.code === "not_on_chain") setMessage(t.stanceNotOnChain);
-      else if (result.code === "live_disabled") setMessage(t.stanceLiveDisabled);
-      else setMessage(result.reason ?? t.stanceLiveDisabled);
-    } catch {
-      setMessage(t.stanceLiveDisabled);
-    } finally {
-      setBusy(false);
-    }
+function claimSources(claim: EntityClaim): string[] {
+  const keys = new Set<string>();
+  for (const row of claim.evidence) {
+    const raw = (row.source_kind ?? row.source_system ?? "").trim().toLowerCase();
+    if (raw) keys.add(raw);
   }
+  return [...keys];
+}
 
-  const hint =
-    message ??
-    (signals?.code === "not_on_chain"
-      ? t.stanceNotOnChain
-      : signals?.code === "live_disabled"
-        ? t.stanceLiveDisabled
-        : t.stanceHint);
-
-  return (
-    <div className="mt-3 border-t border-(--color-border-subtle)/70 pt-2">
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void onStance("believe")}
-          className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-100 disabled:opacity-40"
-        >
-          {t.believe}
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void onStance("dispute")}
-          className="rounded-md border border-rose-500/40 bg-rose-500/10 px-2.5 py-1 text-[11px] font-medium text-rose-100 disabled:opacity-40"
-        >
-          {t.dispute}
-        </button>
-      </div>
-      <p className="mt-1.5 text-[10px] leading-relaxed text-(--color-text-muted)">{hint}</p>
-    </div>
-  );
+function claimMatchesSource(claim: EntityClaim, source: string | null): boolean {
+  if (!source) return true;
+  const sources = claimSources(claim);
+  if (source === "other") return sources.length === 0;
+  return sources.includes(source);
 }
 
 function ClaimCard({
@@ -107,7 +58,8 @@ function ClaimCard({
   onOpenEvent?: (eventId: string) => void;
 }) {
   const { locale, t } = useI18n();
-  const debateType = debateTypeLabel(claim.debate_type, locale) ?? debateTypeLabel(claim.claim_kind, locale);
+  const debateType =
+    debateTypeLabel(claim.debate_type, locale) ?? debateTypeLabel(claim.claim_kind, locale);
   const layer = evidenceLayerLabel(claim.evidence_layer, locale);
   const linked = claim.canonical_event_id;
 
@@ -134,13 +86,13 @@ function ClaimCard({
       {claim.evidence.length > 0 ? (
         <ul className="mt-2 space-y-2 text-[11px] text-(--color-text-secondary)">
           {claim.evidence.map((row) => {
-            const href =
-              evidenceHref(row.document_url) ??
-              evidenceHref(row.locator) ??
-              null;
+            const href = evidenceHref(row.document_url) ?? evidenceHref(row.locator) ?? null;
             const source = row.source_kind ?? row.source_system;
             return (
-              <li key={row.id} className="rounded-md border border-(--color-border-subtle)/60 bg-black/10 px-2 py-1.5">
+              <li
+                key={row.id}
+                className="rounded-md border border-(--color-border-subtle)/60 bg-black/10 px-2 py-1.5"
+              >
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span
                     className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${sourceKindBadgeClass(source)}`}
@@ -180,65 +132,182 @@ function ClaimCard({
           {t.relatedEvent}
         </button>
       ) : null}
-      {claim.claim_kind.trim().toLowerCase() === "theory" ? (
-        <TheoryStanceBar claimId={claim.id} />
+      {isStanceClaimKind(claim.claim_kind) ? (
+        <IntuitionStanceBar targetKind="claim" targetId={claim.id} />
       ) : null}
     </article>
   );
 }
 
+function SourceFilterBar({
+  sources,
+  counts,
+  active,
+  onChange,
+}: {
+  sources: string[];
+  counts: Map<string, number>;
+  active: string | null;
+  onChange: (source: string | null) => void;
+}) {
+  const { t } = useI18n();
+  if (sources.length === 0) return null;
+
+  const total = [...counts.values()].reduce((a, b) => a + b, 0);
+
+  return (
+    <div
+      className="flex flex-wrap gap-1.5"
+      role="toolbar"
+      aria-label={t.agoraSourceFilter}
+    >
+      <button
+        type="button"
+        onClick={() => onChange(null)}
+        className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+          active == null
+            ? "bg-white/15 text-(--color-text-primary) ring-1 ring-white/25"
+            : "bg-black/20 text-(--color-text-muted) hover:bg-white/10 hover:text-(--color-text-secondary)"
+        }`}
+      >
+        {t.showAll}
+        <span className="ml-1 tabular-nums opacity-70">{total}</span>
+      </button>
+      {sources.map((source) => (
+        <button
+          type="button"
+          key={source}
+          onClick={() => onChange(active === source ? null : source)}
+          className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+            active === source
+              ? `${sourceKindBadgeClass(source)} ring-1 ring-white/30`
+              : "bg-black/20 text-(--color-text-muted) hover:bg-white/10 hover:text-(--color-text-secondary)"
+          }`}
+        >
+          {sourceSystemLabel(source, t.sourceFallback)}
+          <span className="ml-1 tabular-nums opacity-70">{counts.get(source) ?? 0}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function BibliographyList({ items }: { items: BibliographyItem[] }) {
   const { t } = useI18n();
-  if (items.length === 0) return null;
-
-  const bySource = new Map<string, BibliographyItem[]>();
-  for (const item of items) {
-    const key = item.source_kind ?? "other";
-    const list = bySource.get(key) ?? [];
-    list.push(item);
-    bySource.set(key, list);
+  if (items.length === 0) {
+    return <p className="text-sm text-(--color-text-muted)">{t.agoraFilterEmpty}</p>;
   }
 
   return (
-    <div className="space-y-3">
-      {[...bySource.entries()]
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([sourceKind, docs]) => (
-          <div key={sourceKind}>
-            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-(--color-text-muted)">
-              {sourceSystemLabel(sourceKind, t.sourceFallback)}
-            </p>
-            <ul className="space-y-1.5">
-              {docs.map((doc) => (
-                <li
-                  key={doc.id}
-                  className="rounded-md border border-(--color-border-subtle)/60 bg-black/10 px-2.5 py-2"
-                >
-                  <p className="text-sm leading-snug text-(--color-text-primary)">{doc.title}</p>
-                  <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-(--color-text-muted)">
-                    {doc.document_type ? <span>{doc.document_type.replace(/_/g, " ")}</span> : null}
-                    {doc.language ? <span>{doc.language}</span> : null}
-                    {doc.link?.score != null ? (
-                      <span>{t.matchScore(Math.round(doc.link.score * 100))}</span>
-                    ) : null}
-                  </div>
-                  {doc.canonical_url ? (
-                    <a
-                      href={doc.canonical_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-1 inline-block text-[11px] text-(--color-accent-strong) hover:underline"
-                    >
-                      {t.openDocument}
-                    </a>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
+    <ul className="space-y-1.5">
+      {items.map((doc) => (
+        <li
+          key={doc.id}
+          className="rounded-md border border-(--color-border-subtle)/60 bg-black/10 px-2.5 py-2"
+        >
+          <div className="mb-1 flex flex-wrap items-center gap-1.5">
+            <span
+              className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${sourceKindBadgeClass(doc.source_kind)}`}
+            >
+              {sourceSystemLabel(doc.source_kind, t.sourceFallback)}
+            </span>
+            {doc.document_type ? (
+              <span className="text-[10px] text-(--color-text-muted)">
+                {doc.document_type.replace(/_/g, " ")}
+              </span>
+            ) : null}
           </div>
-        ))}
+          <p className="text-sm leading-snug text-(--color-text-primary)">{doc.title}</p>
+          <div className="mt-1 flex flex-wrap gap-2 text-[10px] text-(--color-text-muted)">
+            {doc.language ? <span>{doc.language}</span> : null}
+            {doc.link?.score != null ? (
+              <span>{t.matchScore(Math.round(doc.link.score * 100))}</span>
+            ) : null}
+          </div>
+          {doc.canonical_url ? (
+            <a
+              href={doc.canonical_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 inline-block text-[11px] text-(--color-accent-strong) hover:underline"
+            >
+              {t.openDocument}
+            </a>
+          ) : null}
+          <IntuitionStanceBar
+            targetKind="source"
+            targetId={doc.id}
+            compact
+          />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ClaimList({
+  claims,
+  onOpenEvent,
+  emptyLabel,
+}: {
+  claims: EntityClaim[];
+  onOpenEvent?: (eventId: string) => void;
+  emptyLabel: string;
+}) {
+  const { t, locale } = useI18n();
+  if (claims.length === 0) {
+    return <p className="text-sm text-(--color-text-muted)">{emptyLabel}</p>;
+  }
+
+  const grouped = groupClaimsByDebateType(claims, locale, t.otherDebates);
+  return (
+    <div className="space-y-4">
+      {grouped.map((group) => (
+        <div key={group.key}>
+          {grouped.length > 1 ? (
+            <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-(--color-text-muted)">
+              {group.label} ({group.claims.length})
+            </p>
+          ) : null}
+          <div className="space-y-2">
+            {group.claims.map((claim) => (
+              <ClaimCard key={claim.id} claim={claim} onOpenEvent={onOpenEvent} />
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
+}
+
+function sourceCountsForClaims(claims: EntityClaim[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const claim of claims) {
+    const seen = new Set(claimSources(claim));
+    if (seen.size === 0) {
+      counts.set("other", (counts.get("other") ?? 0) + 1);
+      continue;
+    }
+    for (const source of seen) {
+      counts.set(source, (counts.get(source) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
+function sourceCountsForBibliography(items: BibliographyItem[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    const key = (item.source_kind ?? "other").trim().toLowerCase() || "other";
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function sortedSources(counts: Map<string, number>): string[] {
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([key]) => key);
 }
 
 export function AgoraPanel({
@@ -249,14 +318,39 @@ export function AgoraPanel({
   onOpenEvent,
   claimsOnly = false,
 }: AgoraPanelProps) {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
+  const [tab, setTab] = useState<AgoraTab>("theories");
+  const [sourceFilter, setSourceFilter] = useState<string | null>(null);
+
+  const theories = useMemo(
+    () => claims.filter((c) => c.claim_kind.trim().toLowerCase() === "theory"),
+    [claims],
+  );
+  const debates = useMemo(
+    () => claims.filter((c) => c.claim_kind.trim().toLowerCase() !== "theory"),
+    [claims],
+  );
+
+  useEffect(() => {
+    setSourceFilter(null);
+  }, [tab]);
+
+  useEffect(() => {
+    if (claimsOnly) return;
+    if (tab === "theories" && theories.length === 0 && debates.length > 0) {
+      setTab("debates");
+    } else if (tab === "theories" && theories.length === 0 && bibliography.length > 0) {
+      setTab("bibliography");
+    } else if (tab === "debates" && debates.length === 0 && theories.length > 0) {
+      setTab("theories");
+    }
+  }, [claimsOnly, tab, theories.length, debates.length, bibliography.length]);
+
   if (isLoading && claims.length === 0 && (claimsOnly || bibliography.length === 0)) {
     return <p className="p-4 text-center text-sm text-(--color-text-muted)">{t.loadingAgora}</p>;
   }
 
-  const grouped = groupClaimsByDebateType(claims, locale, t.otherDebates);
   const empty = claims.length === 0 && bibliography.length === 0;
-
   if (empty && !isLoading && !bibliographyLoading) {
     return (
       <div className="space-y-3 p-4 text-center text-sm text-(--color-text-muted)">
@@ -265,55 +359,100 @@ export function AgoraPanel({
     );
   }
 
+  const activeClaims = tab === "theories" ? theories : debates;
+  const claimCounts = sourceCountsForClaims(activeClaims);
+  const biblioCounts = sourceCountsForBibliography(bibliography);
+  const filterSources =
+    tab === "bibliography" ? sortedSources(biblioCounts) : sortedSources(claimCounts);
+  const filterCounts = tab === "bibliography" ? biblioCounts : claimCounts;
+
+  const filteredClaims = activeClaims.filter((c) => claimMatchesSource(c, sourceFilter));
+  const filteredBiblio =
+    sourceFilter == null
+      ? bibliography
+      : bibliography.filter(
+          (item) => (item.source_kind ?? "other").trim().toLowerCase() === sourceFilter,
+        );
+
+  const tabs: Array<{ id: AgoraTab; label: string; count: number; hidden?: boolean }> = [
+    { id: "theories", label: t.agoraTabTheories, count: theories.length },
+    { id: "debates", label: t.agoraTabDebates, count: debates.length },
+    {
+      id: "bibliography",
+      label: t.agoraTabBibliography,
+      count: bibliography.length,
+      hidden: claimsOnly,
+    },
+  ];
+
   return (
-    <div className="space-y-4 overflow-y-auto p-3">
+    <div className="space-y-3 overflow-y-auto p-3">
       {!claimsOnly ? (
         <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-100/90">
           <strong className="font-semibold">{t.laneAgoraTitle}</strong> — {t.laneAgoraHint}
         </div>
       ) : null}
 
-      {claims.length > 0 ? (
-        <section>
-          {!claimsOnly ? (
-            <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-(--color-text-secondary)">
-              {t.laneAgoraTitle}
-            </h3>
-          ) : null}
-          <div className="space-y-4">
-            {grouped.map((group) => (
-              <div key={group.key}>
-                {grouped.length > 1 ? (
-                  <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-(--color-text-muted)">
-                    {group.label} ({group.claims.length})
-                  </p>
-                ) : null}
-                <div className="space-y-2">
-                  {group.claims.map((claim) => (
-                    <ClaimCard key={claim.id} claim={claim} onOpenEvent={onOpenEvent} />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+      <div
+        className="flex flex-wrap gap-1 border-b border-(--color-border-subtle)/80 pb-2"
+        role="tablist"
+        aria-label={t.agora}
+      >
+        {tabs
+          .filter((entry) => !entry.hidden)
+          .map((entry) => {
+            const selected = tab === entry.id;
+            return (
+              <button
+                key={entry.id}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                onClick={() => setTab(entry.id)}
+                className={`rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors ${
+                  selected
+                    ? "bg-white/12 text-(--color-text-primary) ring-1 ring-white/20"
+                    : "text-(--color-text-muted) hover:bg-white/5 hover:text-(--color-text-secondary)"
+                }`}
+              >
+                {entry.label}
+                <span className="ml-1.5 tabular-nums text-[10px] opacity-65">{entry.count}</span>
+              </button>
+            );
+          })}
+      </div>
+
+      {tab === "theories" ? (
+        <p className="text-[10px] leading-relaxed text-(--color-text-muted)">
+          {t.intuitionTheoriesHint}
+        </p>
+      ) : null}
+      {tab === "bibliography" ? (
+        <p className="text-[10px] leading-relaxed text-(--color-text-muted)">{t.bibliographyHint}</p>
       ) : null}
 
-      {!claimsOnly && (bibliographyLoading || bibliography.length > 0) ? (
-        <section className="border-t border-(--color-border-subtle) pt-3">
-          <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-(--color-text-secondary)">
-            {t.bibliographyTitle}
-          </h3>
-          <p className="mb-2 text-[10px] leading-relaxed text-(--color-text-muted)">
-            {t.bibliographyHint}
-          </p>
-          {bibliographyLoading && bibliography.length === 0 ? (
-            <p className="text-xs text-(--color-text-muted)">{t.loadingSources}</p>
-          ) : (
-            <BibliographyList items={bibliography} />
-          )}
-        </section>
-      ) : null}
+      <SourceFilterBar
+        sources={filterSources}
+        counts={filterCounts}
+        active={sourceFilter}
+        onChange={setSourceFilter}
+      />
+
+      {tab === "bibliography" ? (
+        bibliographyLoading && bibliography.length === 0 ? (
+          <p className="text-xs text-(--color-text-muted)">{t.loadingSources}</p>
+        ) : (
+          <BibliographyList items={filteredBiblio} />
+        )
+      ) : isLoading && filteredClaims.length === 0 ? (
+        <p className="text-xs text-(--color-text-muted)">{t.loadingAgora}</p>
+      ) : (
+        <ClaimList
+          claims={filteredClaims}
+          onOpenEvent={onOpenEvent}
+          emptyLabel={t.agoraFilterEmpty}
+        />
+      )}
     </div>
   );
 }

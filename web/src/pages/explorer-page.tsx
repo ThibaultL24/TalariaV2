@@ -24,6 +24,7 @@ import {
 } from "@/lib/api";
 import {
   attachLegendKeys,
+  eventMatchesLegendFilter,
   legendKeyForEventType,
   type LegendKey,
 } from "@/lib/event-legend";
@@ -39,7 +40,6 @@ import { useI18n } from "@/lib/i18n";
 import type { TalariaFeatureCollection } from "@/lib/schemas/geojson";
 import { useExplorerStore } from "@/stores/explorer-store";
 
-const POLL_MS = 5000;
 const INGEST_POLL_MS = 1500;
 const LIVE_LIMIT = 2000;
 
@@ -79,8 +79,18 @@ export function ExplorerPage() {
     sourcesPending,
   } = usePersonPicker({ onCountsChanged: handleCountsChanged });
 
-  const { entityId, entityLabel, personFilter, selectedEventId, setSelectedEventId, closeDetail, setEntity } =
-    useExplorerStore();
+  const {
+    entityId,
+    entityLabel,
+    personFilter,
+    selectedEventId,
+    setSelectedEventId,
+    closeDetail,
+    setEntity,
+    filters,
+    toggleLegendFilter,
+    setFilters,
+  } = useExplorerStore();
   const [searchParams] = useSearchParams();
   const entityFromUrl = searchParams.get("entity");
 
@@ -137,7 +147,8 @@ export function ExplorerPage() {
       try {
         const [timeline, mapData] = await Promise.all([
           fetchTimeline(query),
-          fetchGeoJson(query),
+          // Map geometry does not need LLM overlays; skip lang to avoid parallel OpenAI bursts.
+          fetchGeoJson({ ...query, lang: undefined }),
         ]);
         if (cancelled) return;
         setAllEvents(timeline.events);
@@ -163,12 +174,15 @@ export function ExplorerPage() {
 
     // Initial load
     load();
-    
-    // Periodic refresh: faster during ingest, slower otherwise
-    // dataVersion changes also trigger this effect for immediate refresh when counts change
-    const pollInterval = ingestBusy ? INGEST_POLL_MS : POLL_MS;
-    const tick = window.setInterval(load, pollInterval);
-    
+
+    // Poll only while ingest is writing — idle refresh wastes bandwidth on 300KB payloads.
+    if (!ingestBusy) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    const tick = window.setInterval(load, INGEST_POLL_MS);
+
     return () => {
       cancelled = true;
       window.clearInterval(tick);
@@ -183,15 +197,29 @@ export function ExplorerPage() {
   const dataBounds = useMemo(() => buildYearBounds(allEvents), [allEvents]);
   const playhead = untilYear ?? dataBounds.max;
 
-  const visibleEvents = useMemo(
-    () => filterTimelineUntilYear(allEvents, playhead),
-    [allEvents, playhead],
-  );
+  const selectedLegendKeys = filters.legendKeys as LegendKey[];
+
+  const visibleEvents = useMemo(() => {
+    const byYear = filterTimelineUntilYear(allEvents, playhead);
+    return byYear.filter((event) =>
+      eventMatchesLegendFilter(event.event_type, selectedLegendKeys),
+    );
+  }, [allEvents, playhead, selectedLegendKeys]);
 
   const visibleGeoJson = useMemo(() => {
     if (!geojson) return { type: "FeatureCollection" as const, features: [] };
-    return filterGeoJsonUntilYear(geojson, playhead);
-  }, [geojson, playhead]);
+    const byYear = filterGeoJsonUntilYear(geojson, playhead);
+    if (selectedLegendKeys.length === 0) return byYear;
+    return {
+      type: "FeatureCollection" as const,
+      features: byYear.features.filter((feature) =>
+        eventMatchesLegendFilter(
+          String(feature.properties?.event_type ?? ""),
+          selectedLegendKeys,
+        ),
+      ),
+    };
+  }, [geojson, playhead, selectedLegendKeys]);
 
   const histogram = useMemo(
     () =>
@@ -357,7 +385,12 @@ export function ExplorerPage() {
         ) : null}
 
         {hasEntity && allEvents.length > 0 ? (
-          <MapLegend presentKeys={presentKeys} />
+          <MapLegend
+            presentKeys={presentKeys}
+            selectedKeys={selectedLegendKeys}
+            onToggleKey={toggleLegendFilter}
+            onClear={() => setFilters({ legendKeys: [] })}
+          />
         ) : null}
 
         {hasEntity && allEvents.length > 0 ? (

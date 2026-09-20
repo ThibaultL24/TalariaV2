@@ -4,6 +4,8 @@ Historical intelligence pipeline in **Rust**: resolve a person → collect multi
 
 Cultural biography facts (places, dates, anecdotes, evidence) stay in Talaria (`canonical_events`). Opinions / debates / theories belong in the Intuition lane (`claims` / Agora) — not on the map.
 
+Product doctrine (FR): [`docs/TALARIA_WHITE_PAPER.md`](./docs/TALARIA_WHITE_PAPER.md) — UI: `/whitepaper`.
+
 > **Live product contract:** explorer search, timeline, and geojson are driven only by `pipeline='person'`. The Wikipedia dump → COSMOS → judge chain is an **offline** tooling path (`pipeline='legacy'`). It does **not** populate the explorer until you ingest via the person pipeline.
 
 For Cloud/agent gotchas, see [`AGENTS.md`](./AGENTS.md). Architecture tour: [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md). Precision backlog / gap analysis: [`docs/SEARCH_MAP_QUALITY_GAPS.md`](./docs/SEARCH_MAP_QUALITY_GAPS.md) (when merged).

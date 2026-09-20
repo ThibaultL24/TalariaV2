@@ -3,12 +3,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AgoraPanel } from "@/components/explorer/agora-panel";
 import { LaneIngestBar } from "@/components/explorer/lane-ingest-bar";
+import { IntuitionStanceBar } from "@/components/intuition/intuition-stance-bar";
 import { Navbar } from "@/components/layout/navbar";
 import { EntitySearchBox } from "@/components/search/entity-search-box";
 import { usePersonPicker } from "@/hooks/use-person-picker";
 import {
   fetchEntityBibliography,
   fetchEntityClaims,
+  searchEntities,
   startAgoraIngest,
   type BibliographyItem,
   type EntityClaim,
@@ -33,6 +35,33 @@ export function AgoraPage() {
   const [error, setError] = useState<string | null>(null);
   const subject = entityLabel ?? personFilter;
 
+  // If search only set the label (e.g. "Napoléon" vs "Napoleon"), resolve a local entity_id
+  // so the claims panel can render without waiting for corpus ingest.
+  useEffect(() => {
+    if (entityId || !subject) return;
+    let cancelled = false;
+    void searchEntities(subject, locale)
+      .then((items) => {
+        if (cancelled) return;
+        const local =
+          items.find(
+            (item) =>
+              item.known_locally &&
+              item.entity_id &&
+              (entityQid ? item.qid === entityQid : true),
+          ) ?? items.find((item) => item.known_locally && item.entity_id);
+        if (local?.entity_id) {
+          setEntity(local.entity_id, local.label ?? subject, local.qid ?? entityQid);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [entityId, entityQid, locale, setEntity, subject]);
+
+  // Load claims independently of Agora ingest. Tying this to `busy` cancelled
+  // in-flight fetches for minutes while corpus ingest ran → empty "Loading agora…".
   useEffect(() => {
     if (!entityId) {
       setClaims([]);
@@ -41,28 +70,28 @@ export function AgoraPage() {
     }
     let cancelled = false;
     setLoading(true);
-    Promise.all([
-      fetchEntityClaims(entityId, { debatesOnly: false, limit: 80, lang: locale }),
-      fetchEntityBibliography(entityId),
-    ])
-      .then(([nextClaims, biblio]) => {
+    void (async () => {
+      try {
+        const [nextClaims, biblio] = await Promise.all([
+          fetchEntityClaims(entityId, { debatesOnly: true, limit: 100 }),
+          fetchEntityBibliography(entityId),
+        ]);
         if (cancelled) return;
         setClaims(nextClaims);
         setBibliography(biblio.items);
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) {
           setClaims([]);
           setBibliography([]);
         }
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
-  }, [entityId, busy, locale]);
+  }, [entityId]);
 
   const runAgora = useCallback(async () => {
     if (!subject) return;
@@ -84,9 +113,12 @@ export function AgoraPage() {
       setError(err instanceof Error ? err.message : t.loading);
     } finally {
       setBusy(false);
+      agoraLock.current = null;
     }
   }, [entityQid, setEntity, subject, t.loading]);
 
+  // Background enrichment + entity bind when search only set a label/qid.
+  // Does not clear claims; claims load separately once entityId is known.
   useEffect(() => {
     if (!subject) return;
     void runAgora();
@@ -110,6 +142,11 @@ export function AgoraPage() {
             <p className="hero__eyebrow">{entityLabel ?? t.agora}</p>
             <h1 className="hero__title hero__title--agora text-4xl">{t.agora}</h1>
             <p className="hero__subtitle">{t.agoraHint}</p>
+            {entityId ? (
+              <div className="mt-4 max-w-md rounded-lg border border-(--color-border-subtle) bg-(--color-bg-elevated)/70 px-3 py-2">
+                <IntuitionStanceBar targetKind="person" targetId={entityId} eager />
+              </div>
+            ) : null}
             {busy ? (
               <p className="mt-3 text-sm text-(--color-text-secondary)">{t.searchInProgress}</p>
             ) : null}

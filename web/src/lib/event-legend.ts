@@ -87,6 +87,22 @@ export function legendKeyForEventType(eventType: string): LegendKey {
   return TYPE_TO_LEGEND[eventType] ?? "anecdote";
 }
 
+/** Empty `selected` = all keys visible. */
+export function legendKeyIsActive(
+  key: LegendKey,
+  selected: readonly LegendKey[],
+): boolean {
+  return selected.length === 0 || selected.includes(key);
+}
+
+export function eventMatchesLegendFilter(
+  eventType: string,
+  selected: readonly LegendKey[],
+): boolean {
+  if (selected.length === 0) return true;
+  return selected.includes(legendKeyForEventType(eventType));
+}
+
 export function legendLabel(key: LegendKey, locale: AppLocale): string {
   return LEGEND_LABELS[locale][key];
 }

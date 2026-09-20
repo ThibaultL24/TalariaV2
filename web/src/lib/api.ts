@@ -457,33 +457,97 @@ export interface TheoryStanceResponse {
   actionable: boolean;
   claim_id?: string;
   claim_kind?: string;
+  target_kind?: string;
+  target_id?: string;
   publication_status?: string | null;
   triple_term_id?: string | null;
+  vote_triple_id?: string | null;
+  category?: string | null;
   stance?: string;
   vault?: string;
   reason?: string;
   calldata?: null;
+  intuition_network?: string;
+  intuition_live_allowed?: boolean;
+  preview?: {
+    status?: string;
+    vaultTermId?: string;
+    previewShares?: string;
+    minShares?: string;
+    assets?: string;
+    txHash?: string;
+    message?: string;
+  };
+}
+
+export type IntuitionStanceResponse = TheoryStanceResponse;
+export type IntuitionTargetKind = "person" | "event" | "claim" | "source";
+
+export interface DemoRosterItem {
+  qid: string;
+  entity_id?: string | null;
+  label?: string | null;
+  event_count: number;
+  map_pin_count: number;
+  claim_count: number;
+  intuition_count: number;
+  known_locally: boolean;
+}
+
+export interface DemoRosterResponse {
+  items: DemoRosterItem[];
+  count: number;
+  intuition?: { network?: string; live_allowed?: boolean };
+}
+
+export async function fetchDemoRoster(): Promise<DemoRosterResponse> {
+  const response = await fetch("/api/v1/demo/roster");
+  if (!response.ok) throw new Error("demo roster fetch failed");
+  return response.json();
 }
 
 export async function fetchTheorySignals(claimId: string): Promise<TheoryStanceResponse> {
-  const response = await fetch(`/api/v1/agora/theories/${claimId}/signals`);
-  const data = (await response.json()) as TheoryStanceResponse;
-  if (!response.ok && response.status !== 503) {
-    throw new Error(data.reason ?? data.code ?? "signals fetch failed");
-  }
-  return data;
+  return fetchIntuitionSignals("claim", claimId);
 }
 
 export async function simulateTheoryStance(
   claimId: string,
   stance: "believe" | "dispute",
 ): Promise<TheoryStanceResponse> {
-  const response = await fetch(`/api/v1/agora/theories/${claimId}/simulation`, {
+  return simulateIntuitionStance("claim", claimId, stance);
+}
+
+export async function fetchIntuitionSignals(
+  kind: IntuitionTargetKind,
+  targetId: string,
+): Promise<IntuitionStanceResponse> {
+  const path =
+    kind === "claim"
+      ? `/api/v1/agora/theories/${encodeURIComponent(targetId)}/signals`
+      : `/api/v1/intuition/targets/${kind}/${encodeURIComponent(targetId)}/signals`;
+  const response = await fetch(path);
+  const data = (await response.json()) as IntuitionStanceResponse;
+  if (!response.ok && response.status !== 503) {
+    throw new Error(data.reason ?? data.code ?? "signals fetch failed");
+  }
+  return data;
+}
+
+export async function simulateIntuitionStance(
+  kind: IntuitionTargetKind,
+  targetId: string,
+  stance: "believe" | "dispute",
+): Promise<IntuitionStanceResponse> {
+  const path =
+    kind === "claim"
+      ? `/api/v1/agora/theories/${encodeURIComponent(targetId)}/simulation`
+      : `/api/v1/intuition/targets/${kind}/${encodeURIComponent(targetId)}/simulation`;
+  const response = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ stance, min_shares: "1" }),
   });
-  const data = (await response.json()) as TheoryStanceResponse;
+  const data = (await response.json()) as IntuitionStanceResponse;
   if (!response.ok && response.status !== 503) {
     throw new Error(data.reason ?? data.code ?? "simulation failed");
   }
