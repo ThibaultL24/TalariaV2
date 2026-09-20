@@ -177,12 +177,16 @@ pub async fn find_entity_by_wikipedia_title(
             e.qid,
             e.wikipedia_title,
             e.canonical_name,
-            COUNT(ce.id)::bigint AS event_count
+            (
+              SELECT COUNT(*)::bigint
+              FROM canonical_events ce
+              WHERE ce.entity_id = e.id
+                AND ce.is_active
+                AND ce.pipeline = 'person'
+            ) AS event_count
         FROM entities e
-        LEFT JOIN canonical_events ce ON ce.entity_id = e.id
         WHERE e.wiki_lang = $1
           AND e.wikipedia_title = $2
-        GROUP BY e.id
         LIMIT 1
         "#,
     )

@@ -18,12 +18,21 @@ pub async fn demo_roster(State(state): State<AppState>) -> Json<Value> {
             e.qid,
             e.id AS entity_id,
             COALESCE(e.canonical_name, e.wikipedia_title) AS label,
-            COUNT(ce.id) FILTER (
-                WHERE ce.pipeline = 'person' AND ce.is_active
-            )::bigint AS event_count,
-            COUNT(ce.id) FILTER (
-                WHERE ce.pipeline = 'person' AND ce.is_active AND ce.map_eligible
-            )::bigint AS map_pin_count,
+            (
+                SELECT COUNT(*)::bigint
+                FROM canonical_events ce
+                WHERE ce.entity_id = e.id
+                  AND ce.pipeline = 'person'
+                  AND ce.is_active
+            ) AS event_count,
+            (
+                SELECT COUNT(*)::bigint
+                FROM canonical_events ce
+                WHERE ce.entity_id = e.id
+                  AND ce.pipeline = 'person'
+                  AND ce.is_active
+                  AND ce.map_eligible
+            ) AS map_pin_count,
             (
                 SELECT COUNT(*)::bigint FROM soft_claims sc WHERE sc.entity_id = e.id
             ) AS claim_count,
@@ -33,9 +42,7 @@ pub async fn demo_roster(State(state): State<AppState>) -> Json<Value> {
                 WHERE ip.subject_entity_id = e.id
             ) AS intuition_count
         FROM entities e
-        LEFT JOIN canonical_events ce ON ce.entity_id = e.id
         WHERE e.qid = ANY($1)
-        GROUP BY e.id
         "#,
     )
     .bind(DEMO_QIDS)
