@@ -128,6 +128,31 @@ Napoleon offline fixture (dump path only):
 
 COSMOS setup: [`sidecar/README.md`](./sidecar/README.md).
 
+## Deploy (Render + Docker)
+
+Demo stack: **Docker image** (API + `web/dist`) + **Postgres with PostGIS**.
+
+**Local full stack**
+
+```bash
+docker compose --profile demo up -d --build
+# → http://localhost:8080/health
+# Restore roster data (dumps are gitignored — use your local latest.dump):
+CONFIRM_RESTORE=1 ./scripts/restore_demo_snapshot.sh
+```
+
+**Render Blueprint**
+
+1. Push `main`, then Render → **New → Blueprint** → this repo (`render.yaml`).
+2. Set optional secrets in the Dashboard (`OPENAI_API_KEY` or `OPENROUTER_API_KEY`, …).
+3. After green deploy, load demo data once (Render Shell or laptop with `DATABASE_URL` from the dashboard):
+   ```bash
+   CONFIRM_RESTORE=1 ./scripts/restore_demo_snapshot.sh /path/to/talaria-demo-latest.dump
+   ```
+4. Open the Render URL — Axum serves `/` from `web/dist` and `/api/v1/*`.
+
+Notes: migration `001` runs `CREATE EXTENSION postgis` (supported on Render Postgres). Web plan **starter** stays warm for person ingest; free web sleep will break long jobs. Snapshot `.dump` files stay out of git — store them on R2/B2 (`scripts/sync_object_storage.sh`) if needed.
+
 ## HTTP surface (v1)
 
 | Method | Path | Role |

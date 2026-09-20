@@ -31,7 +31,7 @@ pub struct PerseeConnector {
 }
 
 #[derive(Debug, Clone)]
-struct PortalHit {
+pub(crate) struct PortalHit {
     slug: String,
     title: String,
 }

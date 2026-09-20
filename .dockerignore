@@ -1,0 +1,27 @@
+# Build context exclusions for Talaria API image
+.git
+.github
+.target
+target
+**/*.rs.bk
+.env
+.env.*
+!.env.example
+*.log
+.talaria-serve.pid
+.vite-dev.pid
+.worktrees
+data
+dumps
+parquet
+backups
+demo/snapshots/*.dump
+demo/snapshots/*.dump.tmp
+web/node_modules
+web/dist
+sidecar/cosmos
+sidecar/.venv
+sidecar/intuition/node_modules
+docs
+**/.cursor
+**/agent-transcripts

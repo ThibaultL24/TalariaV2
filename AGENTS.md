@@ -60,6 +60,7 @@ Purges canonical scope, merges QID duplicates, verifies invariants. **No `TRUNCA
 - CLI (offline): `quality-napoleon-demo`, `quality-report`, `quality-fixture`, `ingest-quality`, `density-report`, `resolve-places`, `source-status` — fixtures and batch jobs only.
 - Unit tests: `cargo test -p talaria-quality`. End-to-end person ingest needs Postgres + optional `OPENAI_API_KEY` (or `OPENROUTER_API_KEY`).
 - Public demo (optional free tier): `./scripts/demo_tunnel.sh` (cloudflared), object storage via `S3_*` + `./scripts/sync_object_storage.sh`, Intuition pin via `PINATA_JWT`, LLM via OpenRouter when OpenAI unset — see `.env.example`.
+- **Render demo:** `Dockerfile` + `render.yaml` (API Docker + managed Postgres/PostGIS). Local parity: `docker compose --profile demo up -d --build`. See README § Deploy.
 
 ### Multi-source density
 - Crate `talaria-sources`: `SourceConnector`, `SourceRegistry`, `PlanSources`, fixture/Wikidata/Wikipedia plus **live catalog** connectors (HAL, Persée, Gallica, theses.fr, OpenAlex, Open Library, Internet Archive, BnF; Europeana when `EUROPEANA_API_KEY` is set). Wikisource/Commons are extraction_ready with `--live`. Remaining (VIAF/ISNI/IdRef) are still stubs.

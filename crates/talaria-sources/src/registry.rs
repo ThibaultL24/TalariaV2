@@ -185,7 +185,7 @@ pub fn stub_capabilities(kind: SourceKind) -> SourceCapabilities {
             identifiers: vec!["europeana_id".into()],
             document_types: vec![DocumentType::BibliographicNotice, DocumentType::MediaCaption],
         },
-        _ => SourceCapabilities {
+        SourceKind::ThesesFr => SourceCapabilities {
             access_mode: SourceAccessMode::Api,
             authority_tier: AuthorityTier::Institutional,
             provides_text: true,

@@ -1,5 +1,8 @@
-# PostgreSQL + PostGIS for talaria-engine (local dev).
+# PostgreSQL + PostGIS for talaria-engine (local / demo compose).
 # Dumps live on external disk via TALARIA_DATA_ROOT — not in this volume.
+#
+# Dev DB only:     docker compose up -d db
+# Full local demo: docker compose --profile demo up -d --build
 services:
   db:
     image: postgis/postgis:16-3.4
@@ -11,6 +14,35 @@ services:
       - "5433:5432"
     volumes:
       - talaria_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d talaria_engine_development"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    profiles: ["demo"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/talaria_engine_development
+      TALARIA_DATA_ROOT: /data
+      TALARIA_OFFLINE_ONLY: "false"
+      WIKI_LANG: en
+      RUST_LOG: talaria_api=info,tower_http=info
+      PORT: "8080"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openrouter/free}
+    volumes:
+      - talaria_api_data:/data
+    depends_on:
+      db:
+        condition: service_healthy
 
 volumes:
   talaria_pg_data:
+  talaria_api_data:

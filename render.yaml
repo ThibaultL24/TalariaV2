@@ -1,0 +1,55 @@
+# render.yaml — Blueprint for Talaria demo (Docker API + managed Postgres with PostGIS).
+# Deploy: Dashboard → New → Blueprint → select this repo.
+# After first boot: enable PostGIS is automatic via migration 001 (CREATE EXTENSION).
+# Load demo data: from a shell with DATABASE_URL, run
+#   CONFIRM_RESTORE=1 ./scripts/restore_demo_snapshot.sh
+# (upload the .dump via R2 or scp — dumps are not in git).
+#
+# Plans: starter web stays warm for ingest; basic-256mb Postgres is the smallest
+# PostGIS-capable tier (free Postgres on Render is limited / often unavailable).
+
+databases:
+  - name: talaria-db
+    plan: basic-256mb
+    postgresMajorVersion: "16"
+    databaseName: talaria
+    user: talaria
+
+services:
+  - type: web
+    name: talaria
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    disk:
+      name: talaria-data
+      mountPath: /data
+      sizeGB: 10
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: talaria-db
+          property: connectionString
+      - key: TALARIA_DATA_ROOT
+        value: /data
+      - key: TALARIA_OFFLINE_ONLY
+        value: "false"
+      - key: WIKI_LANG
+        value: en
+      - key: RUST_LOG
+        value: talaria_api=info,tower_http=info
+      # Optional LLM (prefer one of these in the Dashboard):
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        value: openrouter/free
+      - key: OPENALEX_API_KEY
+        sync: false
+      - key: EUROPEANA_API_KEY
+        sync: false
+      - key: PINATA_JWT
+        sync: false
