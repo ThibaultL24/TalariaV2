@@ -41,7 +41,7 @@ export function ExplorerFactsPanel({
 
   return (
     <aside
-      className="surface-nav pointer-events-auto absolute z-20 flex flex-col overflow-hidden top-3 right-3 bottom-28 w-[min(100%-1.5rem,20rem)] max-md:inset-x-3 max-md:top-auto max-md:bottom-24 max-md:h-[38vh] max-md:w-auto"
+      className="explorer-facts surface-nav flex h-full min-h-0 flex-col overflow-hidden"
       aria-label={t.factsTitle}
     >
       <header className="shrink-0 border-b border-(--color-border-subtle) px-3 py-2">

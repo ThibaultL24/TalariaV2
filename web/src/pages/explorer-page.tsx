@@ -42,9 +42,26 @@ import { useExplorerStore } from "@/stores/explorer-store";
 
 const INGEST_POLL_MS = 1500;
 const LIVE_LIMIT = 2000;
+const NARROW_LANDSCAPE_MQ = "(max-width: 899px) and (orientation: landscape)";
 
 function toMapCollection(data: GeoJsonFeatureCollection): TalariaFeatureCollection {
   return spreadStackedMapPoints(data) as TalariaFeatureCollection;
+}
+
+function useNarrowLandscape(): boolean {
+  const [matches, setMatches] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia(NARROW_LANDSCAPE_MQ).matches : false,
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia(NARROW_LANDSCAPE_MQ);
+    const sync = () => setMatches(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  return matches;
 }
 
 export function ExplorerPage() {
@@ -56,6 +73,10 @@ export function ExplorerPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [untilYear, setUntilYear] = useState<number | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
+  const [mapFocus, setMapFocus] = useState(false);
+  const [forceFacts, setForceFacts] = useState(false);
+  const isLandscape = useNarrowLandscape();
+  const mapHostRef = useRef<HTMLDivElement | null>(null);
 
   const handleCountsChanged = useCallback((_timeline: number, _mapPins: number) => {
     setDataVersion((v) => v + 1);
@@ -115,6 +136,12 @@ export function ExplorerPage() {
   }, [entityFromUrl, entityId, setEntity]);
 
   const hasEntity = Boolean(entityId || personFilter);
+  const hideFacts = mapFocus || (isLandscape && !forceFacts);
+  const showChrome = hasEntity && allEvents.length > 0;
+
+  useEffect(() => {
+    if (!isLandscape) setForceFacts(false);
+  }, [isLandscape]);
 
   useEffect(() => {
     fetchStatus().catch(() => undefined);
@@ -191,8 +218,23 @@ export function ExplorerPage() {
 
   useEffect(() => {
     if (!map) return;
-    map.setPadding({ top: 12, bottom: 96, left: 8, right: 88 });
+    map.setPadding({ top: 12, bottom: 24, left: 12, right: 12 });
   }, [map]);
+
+  useEffect(() => {
+    if (!map) return;
+    const host = mapHostRef.current;
+    if (!host || typeof ResizeObserver === "undefined") {
+      map.resize();
+      return;
+    }
+    const ro = new ResizeObserver(() => {
+      map.resize();
+    });
+    ro.observe(host);
+    map.resize();
+    return () => ro.disconnect();
+  }, [map, hideFacts, showChrome]);
 
   const dataBounds = useMemo(() => buildYearBounds(allEvents), [allEvents]);
   const playhead = untilYear ?? dataBounds.max;
@@ -276,7 +318,7 @@ export function ExplorerPage() {
           center: [event.coordinates.lon, event.coordinates.lat],
           zoom: 8,
           essential: true,
-          padding: { top: 12, bottom: 160, left: 8, right: 8 },
+          padding: { top: 12, bottom: 48, left: 12, right: 12 },
         });
       }
     },
@@ -323,14 +365,27 @@ export function ExplorerPage() {
     initialFitDone.current = true;
     
     map.fitBounds(box, {
-      padding: { top: 56, bottom: 120, left: 24, right: 96 },
+      padding: { top: 40, bottom: 40, left: 28, right: 28 },
       maxZoom: 6,
       duration: 700,
     });
   }, [entityId, ingestBusy, map, mapData, personFilter]);
 
+  const layoutClass = [
+    "explorer-layout",
+    "app-shell",
+    "map-shell",
+    "flex",
+    "h-screen",
+    "flex-col",
+    hideFacts ? "explorer-layout--map-focus" : "",
+    isLandscape ? "explorer-layout--landscape" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <div className="app-shell map-shell flex h-screen flex-col">
+    <div className={layoutClass}>
       <Navbar
         center={
           <EntitySearchBox
@@ -342,99 +397,123 @@ export function ExplorerPage() {
         }
       />
 
-      <main className="relative min-h-0 flex-1">
-        <div className="absolute inset-0">
-          <MapCanvas onReady={setMap} />
-        </div>
-        <MapSourceManager map={map} data={mapData} />
-        <MapLayers map={map} data={mapData} selectedEventId={selectedEventId} />
-        <MapInteractions map={map} onSelectEvent={handleSelectEvent} />
-
-        {entityLabel ? (
-          <div className="pointer-events-none absolute top-3 left-3 z-10 rounded-lg border border-(--map-panel-border) bg-(--color-bg-elevated)/80 px-3 py-1.5 text-sm font-medium backdrop-blur-sm">
-            {entityLabel}
-          </div>
-        ) : null}
-
-        {(ingestBusy || loading) && (
-          <IngestProgressBadge
-            phase={ingestPhase}
-            currentPage={currentPage}
-            timelineEvents={timelineEvents}
-            mapPins={mapPins}
-            preciseDates={preciseDates}
-            preciseCoords={preciseCoords}
-            evidenceCount={evidenceCount}
-            wikiPages={wikiPages}
-            sourcesPending={sourcesPending}
-            isRunning={ingestBusy}
-            error={error}
-          />
-        )}
-
-        {!ingestBusy && banner ? (
-          <p className="absolute top-14 left-1/2 z-10 -translate-x-1/2 rounded-lg bg-red-950/80 px-3 py-1.5 text-sm text-red-200">
-            {banner}
-          </p>
-        ) : null}
-
-        {!hasEntity && !ingestBusy ? (
-          <div className="pointer-events-none absolute top-1/3 left-1/2 z-10 w-[min(100%-2rem,24rem)] -translate-x-1/2 text-center text-sm text-(--color-text-secondary)">
-            {t.emptySearch}
-          </div>
-        ) : null}
-
-        {hasEntity && allEvents.length > 0 ? (
-          <MapLegend
-            presentKeys={presentKeys}
-            selectedKeys={selectedLegendKeys}
-            onToggleKey={toggleLegendFilter}
-            onClear={() => setFilters({ legendKeys: [] })}
-          />
-        ) : null}
-
-        {hasEntity && allEvents.length > 0 ? (
-          <ExplorerFactsPanel
-            events={visibleEvents}
-            mapPinCount={visibleEvents.filter((event) => event.map_eligible).length}
-            isLoading={loading}
-            onSelectEvent={handleSelectEvent}
-          />
-        ) : null}
-
-        {hasEntity && allEvents.length > 0 ? (
-          <ExplorerMapTimelineBar
-            bounds={dataBounds}
-            untilYear={playhead}
-            onUntilYearChange={setUntilYear}
-            visibleCount={visibleEvents.length}
-            totalCount={allEvents.length}
-            yearHistogram={histogram}
-          />
-        ) : null}
-
-        {selectedEventId && selectedEvent ? (
-          <div
-            className="fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center sm:p-6"
-            role="presentation"
-          >
-            <button
-              type="button"
-              className="absolute inset-0 bg-black/45 backdrop-blur-sm"
-              aria-label={t.closeDetail}
-              onClick={closeDetail}
-            />
-            <div
-              className="nebula-event-detail relative flex max-h-[min(88vh,760px)] w-full max-w-lg flex-col overflow-hidden rounded-xl"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="event-detail-card-title"
-            >
-              <EventDetailCard event={selectedEvent} onClose={closeDetail} offlineOnly={false} />
+      <main className="explorer-layout__main">
+        <section className="explorer-layout__map-column" aria-label={t.explorer}>
+          <div ref={mapHostRef} className="explorer-layout__map">
+            <div className="absolute inset-0">
+              <MapCanvas onReady={setMap} />
             </div>
+            <MapSourceManager map={map} data={mapData} />
+            <MapLayers map={map} data={mapData} selectedEventId={selectedEventId} />
+            <MapInteractions map={map} onSelectEvent={handleSelectEvent} />
+
+            {entityLabel ? (
+              <div className="pointer-events-none absolute top-3 left-3 z-10 max-w-[min(100%-5rem,16rem)] truncate rounded-lg border border-(--map-panel-border) bg-(--color-bg-elevated)/80 px-3 py-1.5 text-sm font-medium backdrop-blur-sm">
+                {entityLabel}
+              </div>
+            ) : null}
+
+            {(ingestBusy || loading) && (
+              <IngestProgressBadge
+                phase={ingestPhase}
+                currentPage={currentPage}
+                timelineEvents={timelineEvents}
+                mapPins={mapPins}
+                preciseDates={preciseDates}
+                preciseCoords={preciseCoords}
+                evidenceCount={evidenceCount}
+                wikiPages={wikiPages}
+                sourcesPending={sourcesPending}
+                isRunning={ingestBusy}
+                error={error}
+              />
+            )}
+
+            {!ingestBusy && banner ? (
+              <p className="absolute top-14 left-1/2 z-10 max-w-[min(100%-2rem,24rem)] -translate-x-1/2 rounded-lg bg-red-950/80 px-3 py-1.5 text-center text-sm text-red-200">
+                {banner}
+              </p>
+            ) : null}
+
+            {!hasEntity && !ingestBusy ? (
+              <div className="pointer-events-none absolute top-1/3 left-1/2 z-10 w-[min(100%-2rem,24rem)] -translate-x-1/2 text-center text-sm text-(--color-text-secondary)">
+                {t.emptySearch}
+              </div>
+            ) : null}
+
+            {hasEntity ? (
+              <button
+                type="button"
+                className="explorer-layout__map-focus-btn"
+                onClick={() => {
+                  if (hideFacts) {
+                    setMapFocus(false);
+                    setForceFacts(true);
+                  } else {
+                    setMapFocus(true);
+                    setForceFacts(false);
+                  }
+                }}
+                aria-pressed={hideFacts}
+              >
+                {hideFacts ? t.mapFocusOff : t.mapFocusOn}
+              </button>
+            ) : null}
+          </div>
+
+          {showChrome ? (
+            <div className="explorer-layout__chrome">
+              <MapLegend
+                presentKeys={presentKeys}
+                selectedKeys={selectedLegendKeys}
+                onToggleKey={toggleLegendFilter}
+                onClear={() => setFilters({ legendKeys: [] })}
+              />
+              <ExplorerMapTimelineBar
+                bounds={dataBounds}
+                untilYear={playhead}
+                onUntilYearChange={setUntilYear}
+                visibleCount={visibleEvents.length}
+                totalCount={allEvents.length}
+                yearHistogram={histogram}
+              />
+            </div>
+          ) : null}
+        </section>
+
+        {showChrome && !hideFacts ? (
+          <div className="explorer-layout__facts">
+            <ExplorerFactsPanel
+              events={visibleEvents}
+              mapPinCount={visibleEvents.filter((event) => event.map_eligible).length}
+              isLoading={loading}
+              onSelectEvent={handleSelectEvent}
+            />
           </div>
         ) : null}
       </main>
+
+      {selectedEventId && selectedEvent ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center sm:p-6"
+          role="presentation"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/45 backdrop-blur-sm"
+            aria-label={t.closeDetail}
+            onClick={closeDetail}
+          />
+          <div
+            className="nebula-event-detail relative flex max-h-[min(88vh,760px)] w-full max-w-lg flex-col overflow-hidden rounded-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="event-detail-card-title"
+          >
+            <EventDetailCard event={selectedEvent} onClose={closeDetail} offlineOnly={false} />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

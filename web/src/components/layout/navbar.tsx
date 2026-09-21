@@ -25,21 +25,23 @@ export function Navbar({ center }: NavbarProps) {
           <div className="navbar__subtitle">{t.productSubtitle}</div>
         </div>
       </Link>
-      {center ? <div className="mx-3 min-w-0 max-w-xl flex-1">{center}</div> : null}
+      {center ? <div className="navbar__center">{center}</div> : null}
       <div className="navbar__actions">
-        <NavLink to="/" end className={linkClass}>
-          {t.home}
-        </NavLink>
-        <NavLink to="/explorer" className={linkClass}>
-          {t.explorer}
-        </NavLink>
-        <NavLink to="/agora" className={linkClass}>
-          {t.agora}
-        </NavLink>
-        <NavLink to="/about" className={linkClass}>
-          {t.whitepaperNav}
-        </NavLink>
-        <div className="flex overflow-hidden rounded-full border border-(--color-border-subtle) text-[11px] font-semibold">
+        <nav className="navbar__links" aria-label="Main">
+          <NavLink to="/" end className={linkClass}>
+            {t.home}
+          </NavLink>
+          <NavLink to="/explorer" className={linkClass}>
+            {t.explorer}
+          </NavLink>
+          <NavLink to="/agora" className={linkClass}>
+            {t.agora}
+          </NavLink>
+          <NavLink to="/about" className={linkClass}>
+            {t.whitepaperNav}
+          </NavLink>
+        </nav>
+        <div className="flex shrink-0 overflow-hidden rounded-full border border-(--color-border-subtle) text-[11px] font-semibold">
           <button
             type="button"
             className={`px-2.5 py-1 ${locale === "fr" ? "bg-(--color-bg-surface) text-(--color-text-primary)" : "text-(--color-text-muted)"}`}

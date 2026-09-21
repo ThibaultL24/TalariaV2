@@ -87,6 +87,9 @@ export interface AppMessages {
   filterAllVisible: string;
   filterTitle: string;
   showAll: string;
+  mapFocusOn: string;
+  mapFocusOff: string;
+  showFactsPanel: string;
   otherDebates: string;
   sourceFallback: string;
   noEvidenceLocator: string;
@@ -213,6 +216,9 @@ const EN: AppMessages = {
   filterAllVisible: "All visible",
   filterTitle: "Filters",
   showAll: "Show all",
+  mapFocusOn: "Map view",
+  mapFocusOff: "Show panels",
+  showFactsPanel: "Show facts",
   otherDebates: "Other debates",
   sourceFallback: "Source",
   noEvidenceLocator: "No evidence locator.",
@@ -344,6 +350,9 @@ const FR: AppMessages = {
   filterAllVisible: "Tout visible",
   filterTitle: "Filtres",
   showAll: "Tout afficher",
+  mapFocusOn: "Vue carte",
+  mapFocusOff: "Afficher les panneaux",
+  showFactsPanel: "Afficher les faits",
   otherDebates: "Autres débats",
   sourceFallback: "Source",
   noEvidenceLocator: "Aucun locateur de preuve.",

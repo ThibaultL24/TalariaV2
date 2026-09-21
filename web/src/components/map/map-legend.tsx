@@ -29,7 +29,7 @@ export function MapLegend({
 
   return (
     <aside
-      className="surface-nav pointer-events-auto absolute left-3 bottom-3 z-20 w-[min(100%,13rem)] rounded-xl px-3 py-2"
+      className="explorer-legend surface-nav shrink-0 rounded-xl px-3 py-2"
       aria-label={t.legendTitle}
     >
       <div className="mb-2 flex items-center justify-between gap-2">
