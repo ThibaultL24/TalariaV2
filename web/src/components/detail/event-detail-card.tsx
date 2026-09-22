@@ -13,6 +13,7 @@ import { HowItHappened } from "@/components/detail/how-it-happened";
 import { IntuitionStanceBar } from "@/components/intuition/intuition-stance-bar";
 import { resolveEventImage, type ResolvedEventImage } from "@/lib/resolve-event-image";
 import { useI18n } from "@/lib/i18n";
+import { localizedEventTitle, localizedPlaceLabel } from "@/lib/localize-event-copy";
 
 interface EventDetailCardProps {
   event: TimelineEvent;
@@ -90,9 +91,11 @@ export function EventDetailCard({ event, onClose, offlineOnly = false }: EventDe
     detail?.narrative?.event_summary?.trim() ||
     resolved.summary?.trim() ||
     null;
+  const displayTitle = localizedEventTitle(resolved, locale);
+  const mappedPlace = localizedPlaceLabel(resolved.place_label, locale);
   const placeLabel =
-    resolved.place_label && !/^Q\d+$/i.test(resolved.place_label.trim())
-      ? resolved.place_label
+    mappedPlace && !/^Q\d+$/i.test(mappedPlace)
+      ? mappedPlace
       : null;
   const sourceRefs = collectSourceRefs(detail);
   const wikiLang =
@@ -121,7 +124,7 @@ export function EventDetailCard({ event, onClose, offlineOnly = false }: EventDe
       <div className="flex items-start justify-between gap-3 border-b border-(--color-border-subtle) p-4">
         <div className="min-w-0">
           <h2 id="event-detail-card-title" className="text-lg font-semibold leading-snug">
-            {resolved.title}
+            {displayTitle}
           </h2>
           {datePlace ? (
             <p className="mt-1 text-sm text-(--color-text-secondary)">{datePlace}</p>

@@ -60,7 +60,7 @@ pub use cosmos_judgments::{
 pub use dump_runs::{finish_dump_run, start_dump_run};
 pub use entities::{
     find_entity_by_qid, find_entity_by_wikipedia_title, fold_latin_accents, get_entity,
-    normalize_qid, search_local_entities, update_entity_authority_ids, update_entity_qid,
+    entity_alias_map, normalize_qid, search_local_entities, update_entity_authority_ids, update_entity_qid,
     upsert_entity_from_wikidata, upsert_entity_surface, upsert_person_by_qid, EntityRow,
 };
 pub use intuition::{

@@ -96,12 +96,8 @@ pub async fn timeline(
     let mut payload: Vec<Value> = events.iter().map(|e| event_to_json_list(e)).collect();
     let display_lang = crate::display_i18n::normalize_ui_lang(query.lang.as_deref());
     if let Some(lang) = display_lang {
-        // Deterministic overlays only — never LLM on the list path (was 10s+ for FR).
-        crate::display_i18n::localize_json_string_fields_fast(
-            &mut payload,
-            lang,
-            &["title", "place_label"],
-        );
+        // Instant FR↔EN titles from event_type + year + place — never LLM on the list path.
+        crate::display_i18n::localize_event_list_items(&mut payload, lang);
     }
 
     Json(json!({
@@ -142,11 +138,7 @@ pub async fn geojson(
             .iter()
             .filter_map(|f| f.get("properties").cloned())
             .collect();
-        crate::display_i18n::localize_json_string_fields_fast(
-            &mut props,
-            lang,
-            &["title", "place_label"],
-        );
+        crate::display_i18n::localize_event_list_items(&mut props, lang);
         for (feature, localized) in features.iter_mut().zip(props) {
             if let Some(obj) = feature.as_object_mut() {
                 obj.insert("properties".into(), localized);

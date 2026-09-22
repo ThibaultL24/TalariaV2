@@ -28,6 +28,7 @@ import {
   legendKeyForEventType,
   type LegendKey,
 } from "@/lib/event-legend";
+import { localizeFeatureCollection, localizedEventTitle, localizedPlaceLabel, localizedPersonLabel } from "@/lib/localize-event-copy";
 import {
   boundsOfMapFeatures,
   buildYearBounds,
@@ -174,12 +175,17 @@ export function ExplorerPage() {
       try {
         const [timeline, mapData] = await Promise.all([
           fetchTimeline(query),
-          // Map geometry does not need LLM overlays; skip lang to avoid parallel OpenAI bursts.
-          fetchGeoJson({ ...query, lang: undefined }),
+          fetchGeoJson(query),
         ]);
         if (cancelled) return;
-        setAllEvents(timeline.events);
-        setGeojson(attachLegendKeys(mapData));
+        setAllEvents(
+          timeline.events.map((event) => ({
+            ...event,
+            title: localizedEventTitle(event, locale),
+            place_label: localizedPlaceLabel(event.place_label, locale) ?? event.place_label,
+          })),
+        );
+        setGeojson(attachLegendKeys(localizeFeatureCollection(mapData, locale)));
         const bounds = buildYearBounds(timeline.events);
         setUntilYear((prev) => {
           if (prev == null || first) return bounds.max;
@@ -296,7 +302,7 @@ export function ExplorerPage() {
       person: String(props.person ?? entityLabel ?? ""),
       event_type: String(props.event_type ?? "unknown"),
       epistemic_status: String(props.epistemic_status ?? "attested"),
-      title: String(props.title ?? "Event"),
+      title: String(props.title ?? (locale === "fr" ? "Événement" : "Event")),
       summary: (props.summary as string | null | undefined) ?? null,
       start_time: (props.start_time as string | null | undefined) ?? null,
       place_label: (props.place_label as string | null | undefined) ?? null,
@@ -307,7 +313,7 @@ export function ExplorerPage() {
           ? { lon: Number(coords[0]), lat: Number(coords[1]) }
           : null,
     };
-  }, [allEvents, selectedEventId, geojson, entityId, entityLabel]);
+  }, [allEvents, selectedEventId, geojson, entityId, entityLabel, locale]);
 
   const handleSelectEvent = useCallback(
     (eventId: string) => {
@@ -409,7 +415,7 @@ export function ExplorerPage() {
 
             {entityLabel ? (
               <div className="pointer-events-none absolute top-3 left-3 z-10 max-w-[min(100%-5rem,16rem)] truncate rounded-lg border border-(--map-panel-border) bg-(--color-bg-elevated)/80 px-3 py-1.5 text-sm font-medium backdrop-blur-sm">
-                {entityLabel}
+                {localizedPersonLabel(entityLabel, locale)}
               </div>
             ) : null}
 

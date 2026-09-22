@@ -1,4 +1,5 @@
 // web/src/features/events/mappers/timeline.ts
+import { localizedEventTitle, localizedPlaceLabel, localizedDateSurface } from "@/lib/localize-event-copy";
 import { formatDateLabel } from "@/lib/geo";
 import { eventTypeLabel, epistemicStatusLabel } from "@/lib/event-taxonomy";
 import type { TimelineEvent } from "@/lib/api";
@@ -29,8 +30,8 @@ function timelineEventYear(event: TimelineEvent): number | null {
   return Number.isFinite(year) ? year : null;
 }
 
-function timelineEventDateLabel(event: TimelineEvent): string {
-  if (event.time?.surface) return event.time.surface;
+function timelineEventDateLabel(event: TimelineEvent, locale: AppLocale): string {
+  if (event.time?.surface) return localizedDateSurface(event.time.surface, locale);
   return formatDateLabel(event.time?.start ?? event.start_time);
 }
 
@@ -40,13 +41,13 @@ export function mapTimelineEventToItem(
 ): TimelineItem {
   return {
     id: event.id,
-    title: event.title,
-    dateLabel: timelineEventDateLabel(event),
+    title: localizedEventTitle(event, locale),
+    dateLabel: timelineEventDateLabel(event, locale),
     eventType: eventTypeLabel(event.event_type, locale),
     eventTypeKey: event.event_type,
     epistemicStatus: epistemicStatusLabel(event.epistemic_status, locale),
     epistemicStatusKey: event.epistemic_status,
-    place: event.place_label ?? undefined,
+    place: localizedPlaceLabel(event.place_label, locale),
     year: timelineEventYear(event),
     isVisibleOnMap: event.map_eligible,
   };

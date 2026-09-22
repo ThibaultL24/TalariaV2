@@ -39,22 +39,35 @@ pub async fn search(
         return Json(json!({ "items": [] }));
     }
 
+    let lang = crate::display_i18n::normalize_ui_lang(Some(&query.lang)).unwrap_or("en");
+
     let local = talaria_store::search_local_entities(&state.pool, trimmed, query.limit)
+        .await
+        .unwrap_or_default();
+    let local_ids: Vec<Uuid> = local.iter().map(|entity| entity.id).collect();
+    let aliases = talaria_store::entity_alias_map(&state.pool, &local_ids, lang)
         .await
         .unwrap_or_default();
 
     let mut items: Vec<Value> = local
         .into_iter()
         .map(|entity| {
-            let label = entity
+            let fallback = entity
                 .canonical_name
                 .clone()
                 .unwrap_or_else(|| entity.wikipedia_title.clone());
+            let label = aliases
+                .get(&entity.id)
+                .cloned()
+                .unwrap_or_else(|| crate::display_i18n::localize_person_label(&fallback, lang));
             json!({
                 "entity_id": entity.id,
                 "qid": entity.qid,
                 "label": label,
-                "description": entity.wikipedia_title,
+                "description": crate::display_i18n::localize_person_label(
+                    &entity.wikipedia_title,
+                    lang,
+                ),
                 "known_locally": true,
                 "event_count": entity.event_count,
                 "wikipedia_title": entity.wikipedia_title,
@@ -87,7 +100,7 @@ pub async fn search(
     if !state.offline_only && !has_dense_local && items.len() < query.limit as usize {
         if let Ok(client) = WikidataClient::new() {
             if let Ok(hits) = client
-                .search_entities(trimmed, &query.lang, query.limit.max(10) as u32)
+                .search_entities(trimmed, lang, query.limit.max(10) as u32)
                 .await
             {
                 let known: Vec<String> = local_qids.iter().cloned().collect();
@@ -102,10 +115,15 @@ pub async fn search(
                     if let Ok(Some(entity)) =
                         talaria_store::find_entity_by_qid(&state.pool, &hit.qid).await
                     {
-                        let label = entity
+                        let fallback = entity
                             .canonical_name
                             .clone()
                             .unwrap_or_else(|| entity.wikipedia_title.clone());
+                        let label = if !hit.label.trim().is_empty() {
+                            hit.label.clone()
+                        } else {
+                            crate::display_i18n::localize_person_label(&fallback, lang)
+                        };
                         items.push(json!({
                             "entity_id": entity.id,
                             "qid": entity.qid,

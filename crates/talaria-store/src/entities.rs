@@ -1,4 +1,6 @@
 // crates/talaria-store/src/entities.rs
+use std::collections::HashMap;
+
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -209,6 +211,30 @@ pub fn normalize_qid(qid: &str) -> Option<String> {
         return None;
     }
     Some(upper)
+}
+
+/// Best alias surface for each entity in `language` (longest first).
+pub async fn entity_alias_map(
+    pool: &PgPool,
+    entity_ids: &[Uuid],
+    language: &str,
+) -> anyhow::Result<HashMap<Uuid, String>> {
+    if entity_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let rows: Vec<(Uuid, String)> = sqlx::query_as(
+        r#"
+        SELECT DISTINCT ON (entity_id) entity_id, surface
+        FROM entity_aliases
+        WHERE entity_id = ANY($1) AND language = $2
+        ORDER BY entity_id, char_length(surface) DESC
+        "#,
+    )
+    .bind(entity_ids)
+    .bind(language)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().collect())
 }
 
 async fn insert_entity_alias(

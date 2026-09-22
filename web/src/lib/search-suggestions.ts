@@ -24,7 +24,7 @@ function namesOverlap(query: string, label: string): boolean {
   return l.includes(q) || q.includes(l);
 }
 
-/** One row: the typed name, backed by the densest matching entity when we have one. */
+/** One row: locale-aware label, backed by the densest matching entity when we have one. */
 export function collapseToSinglePersonSuggestion(
   query: string,
   items: SearchSuggestion[],
@@ -41,13 +41,7 @@ export function collapseToSinglePersonSuggestion(
     localMatches.find((item) => namesOverlap(label, item.label)) ?? localMatches[0];
 
   if (bestLocal) {
-    return [
-      {
-        ...bestLocal,
-        label,
-        description: bestLocal.description ?? bestLocal.label,
-      },
-    ];
+    return [bestLocal];
   }
 
   const remote =
@@ -55,7 +49,7 @@ export function collapseToSinglePersonSuggestion(
     usable.find((item) => !item.known_locally);
 
   if (remote) {
-    return [{ ...remote, label, description: remote.description ?? remote.label }];
+    return [remote];
   }
 
   return [
