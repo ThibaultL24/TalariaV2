@@ -1,125 +1,84 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { TimelineEvent } from "@/lib/api";
-import { useThemeStore } from "@/stores/theme-store";
-const LANES = ["Life", "Works", "Public life", "Places"];
-function lane(type: string): number {
-  if (["publication", "work"].includes(type)) return 1;
-  if (["office", "diplomatic", "treaty", "battle", "siege"].includes(type))
-    return 2;
-  if (["arrival", "departure", "travel", "residence", "exile"].includes(type))
-    return 3;
-  return 0;
-}
+import { eventDate } from "@/lib/entity-views";
+import { LEGEND_COLORS, legendKeyForEventType } from "@/lib/event-legend";
+
 function year(value?: string | null): number | null {
-  const match = value?.match(/^(-?\d{4})/);
+  const match = value?.match(/^(-?\d{4,})(?:-|$)/);
   return match ? Number(match[1]) : null;
 }
-export function TimelineCanvas({
-  events,
-  from,
-  to,
-  onSelect,
-  onZoom,
-}: {
-  events: TimelineEvent[];
-  from: number;
-  to: number;
-  onSelect: (id: string) => void;
-  onZoom: (from: number, to: number) => void;
+
+// Keep the horizontal date exact; stack neighbours vertically so every target is reachable.
+export function layoutDots(events: TimelineEvent[], from: number, to: number, width: number) {
+  const rows: number[][] = [];
+  return events.flatMap((event) => {
+    const start = event.time?.kind === "unknown" ? null : year(event.time?.start);
+    const end = year(event.time?.end) ?? start;
+    if (start === null || start > to || (end ?? start) < from) return [];
+    const x = 22 + (Math.max(from, start) - from) / Math.max(1, to - from) * Math.max(1, width - 44);
+    let row = rows.findIndex((xs) => xs.every((other) => Math.abs(other - x) >= 24));
+    if (row < 0) { row = rows.length; rows.push([]); }
+    rows[row].push(x);
+    return [{ event, x, row }];
+  });
+}
+
+export function TimelineCanvas({ events, from, to, onSelect, onZoom }: {
+  events: TimelineEvent[]; from: number; to: number;
+  onSelect: (id: string) => void; onZoom: (from: number, to: number) => void;
 }) {
-  const canvas = useRef<HTMLCanvasElement>(null);
-  const hits = useRef<Array<{ x: number; y: number; id: string }>>([]);
-  const theme = useThemeStore((s) => s.theme);
+  const host = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(800);
+  const [hovered, setHovered] = useState<TimelineEvent>();
   useEffect(() => {
-    const node = canvas.current;
+    const node = host.current;
     if (!node) return;
-    const draw = () => {
-      const width = node.clientWidth,
-        height = 300,
-        ratio = window.devicePixelRatio || 1;
-      node.width = width * ratio;
-      node.height = height * ratio;
-      const ctx = node.getContext("2d");
-      if (!ctx) return;
-      ctx.scale(ratio, ratio);
-      ctx.clearRect(0, 0, width, height);
-      const span = Math.max(1, to - from),
-        x = (y: number) => 110 + ((y - from) / span) * (width - 135);
-      ctx.fillStyle = theme === "dark" ? "#bbb6ac" : "#6D685F";
-      ctx.font = "12px sans-serif";
-      for (let i = 0; i <= 5; i++) {
-        const y = from + (span * i) / 5;
-        ctx.fillText(String(Math.round(y)), x(y) - 15, 24);
-      }
-      hits.current = [];
-      LANES.forEach((label, index) => {
-        const y = 65 + index * 60;
-        ctx.fillText(label, 4, y + 4);
-        ctx.strokeStyle = theme === "dark" ? "#444" : "#d8d2c7";
-        ctx.beginPath();
-        ctx.moveTo(110, y);
-        ctx.lineTo(width - 20, y);
-        ctx.stroke();
-      });
-      for (const event of events) {
-        if (event.time?.kind === "unknown") continue;
-        const start = year(event.time?.start);
-        if (start === null || start > to) continue;
-        const end = year(event.time?.end) ?? start;
-        if (end < from) continue;
-        const y = 65 + lane(event.event_type) * 60,
-          left = x(Math.max(start, from)),
-          right = x(Math.min(end, to));
-        ctx.strokeStyle = "#A97645";
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(left, y);
-        ctx.lineTo(right, y);
-        ctx.stroke();
-        ctx.fillStyle = event.time?.kind === "approx" ? "#A97645" : "#4f6fb0";
-        ctx.beginPath();
-        ctx.arc(left, y, 5, 0, Math.PI * 2);
-        ctx.fill();
-        hits.current.push({ x: left, y, id: event.id });
-      }
-    };
-    const observer = new ResizeObserver(draw);
+    const observer = new ResizeObserver(() => setWidth(node.clientWidth));
     observer.observe(node);
-    draw();
+    setWidth(node.clientWidth);
     return () => observer.disconnect();
-  }, [events, from, to, theme]);
+  }, []);
+  const dots = useMemo(() => layoutDots(events, from, to, width), [events, from, to, width]);
+  const height = dots.reduce((height, dot) => Math.max(height, 80 + dot.row * 24), 320);
+  const preview = hovered && events.find(event => event.id === hovered.id);
+  const undated = events.filter((event) => event.time?.kind === "unknown" || year(event.time?.start) === null);
   const zoom = (factor: number) => {
-    const mid = (from + to) / 2,
-      half = Math.max(1, ((to - from) * factor) / 2);
+    const mid = (from + to) / 2, half = Math.max(1, (to - from) * factor / 2);
     onZoom(Math.floor(mid - half), Math.ceil(mid + half));
   };
-  return (
-    <section aria-label="Timeline overview">
-      <div className="v3-filters">
-        <button onClick={() => zoom(0.5)}>Zoom in</button>
-        <button onClick={() => zoom(2)}>Zoom out</button>
-        <span>
-          {from} – {to}
-        </span>
+  const shift = (direction: number) => {
+    const step = Math.max(1, Math.round((to - from) / 4)) * direction;
+    onZoom(from + step, to + step);
+  };
+  return <section className="v3-constellation" aria-label="Interactive timeline">
+    <div className="v3-timeline-toolbar">
+      <div><span className="v3-eyebrow">A LIFE IN MOMENTS</span><h2>{from} — {to}</h2></div>
+      <div className="v3-timeline-controls">
+        <button onClick={() => shift(-1)} aria-label="Earlier period">←</button>
+        <button onClick={() => zoom(2)} aria-label="Zoom out">−</button>
+        <button onClick={() => zoom(.5)} aria-label="Zoom in">+</button>
+        <button onClick={() => shift(1)} aria-label="Later period">→</button>
       </div>
-      <canvas
-        ref={canvas}
-        style={{ width: "100%", height: 300 }}
-        aria-label="Events by life, works, public life and places; choose an event in the accessible list below"
-        onClick={(e) => {
-          const rect = e.currentTarget.getBoundingClientRect(),
-            x = e.clientX - rect.left,
-            y = e.clientY - rect.top;
-          const hit = hits.current.find(
-            (p) => Math.hypot(p.x - x, p.y - y) < 12,
-          );
-          if (hit) onSelect(hit.id);
-        }}
-      />
-      <p className="v3-note">
-        Each dot represents a sourced event. Lines show date ranges; bronze dots
-        mark approximate dates. Events without a date remain in the list.
-      </p>
-    </section>
-  );
+    </div>
+    <p className="v3-note">{dots.length} moments · Hover to discover, click to read the evidence. Use Tab and Enter to explore by keyboard.</p>
+    <div className="v3-dot-scroll">
+      <div ref={host} className="v3-dot-field" style={{ height }}>
+        {Array.from({ length: 6 }, (_, i) => <div className="v3-year-guide" key={i} style={{ left: `${3 + i * 18.8}%` }}>
+          <span>{Math.round(from + (to - from) * i / 5)}</span>
+        </div>)}
+        {dots.map(({ event, x, row }, index) => <button key={event.id}
+          className={`v3-dot ${event.time?.kind === "approx" ? "v3-dot--approx" : ""}`}
+          style={{ left: x, top: height - 48 - row * 24, "--dot-color": LEGEND_COLORS[legendKeyForEventType(event.event_type)], "--dot-delay": `${Math.min(index * 8, 650)}ms` } as CSSProperties}
+          aria-label={`${eventDate(event)} · ${event.title}`} title={`${eventDate(event)} · ${event.title}`}
+          onMouseEnter={() => setHovered(event)} onFocus={() => setHovered(event)}
+          onClick={() => onSelect(event.id)}><span /></button>)}
+      </div>
+    </div>
+    <div className="v3-dot-preview" aria-live="polite">
+      {preview ? <><span>{eventDate(preview)}</span><button onClick={() => onSelect(preview.id)}>{preview.title} ↗</button></> : <span>Select a point to explore its story.</span>}
+    </div>
+    {!dots.length && <p>No dated events in this period.</p>}
+    {!!undated.length && <div className="v3-undated"><span>Date not established</span>{undated.map((event) => <button key={event.id} onClick={() => onSelect(event.id)} aria-label={event.title} title={event.title}>●</button>)}</div>}
+    <p className="v3-note">One point per sourced occurrence. Hollow points indicate approximate dates; full date ranges and source precision appear in the event details.</p>
+  </section>;
 }

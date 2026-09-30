@@ -18,7 +18,7 @@
   /* Accent UI — bleu mer / lagoon */
   --color-accent: rgb(var(--rgb-sea-accent));
   --color-accent-soft: rgba(var(--rgb-sea-accent), 0.14);
-  --color-accent-strong: #2f8f9f;
+  --color-accent-strong: #3f5c7a;
 
   /* Signal sémantique — monochrome */
   --color-success: #4B5563;
@@ -97,11 +97,11 @@
   --color-malachite: var(--color-success);
 
   /* Navbar & footer — bleu mer méditerranée (clair), comme défini à l’origine */
-  --navbar-chrome-bg: #5b77be;
-  --navbar-chrome-border: #97aecb;
-  --navbar-chrome-text: #ffffff;
-  --navbar-chrome-muted: rgba(255, 255, 255, 0.82);
-  --navbar-chrome-hover-bg: rgba(255, 255, 255, 0.1);
+  --navbar-chrome-bg: #ffffff;
+  --navbar-chrome-border: #dedbd5;
+  --navbar-chrome-text: #283b50;
+  --navbar-chrome-muted: #536477;
+  --navbar-chrome-hover-bg: #edf0f3;
   --navbar-btn-outline-border: rgba(255, 255, 255, 0.4);
   --navbar-btn-outline-bg: rgba(255, 255, 255, 0.08);
   --navbar-btn-outline-hover-border: rgba(255, 255, 255, 0.55);

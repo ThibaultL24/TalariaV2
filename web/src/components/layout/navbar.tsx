@@ -14,7 +14,7 @@ export function Navbar({ center }: NavbarProps) {
     `rounded-full px-2.5 py-1 text-[11px] font-semibold ${
       isActive
         ? "bg-(--color-bg-surface) text-(--color-text-primary)"
-        : "text-(--color-text-muted) hover:text-(--color-text-primary)"
+        : "text-(--navbar-chrome-muted) hover:text-(--navbar-chrome-text)"
     }`;
 
   return (
@@ -44,7 +44,7 @@ export function Navbar({ center }: NavbarProps) {
         <div className="flex shrink-0 overflow-hidden rounded-full border border-(--color-border-subtle) text-[11px] font-semibold">
           <button
             type="button"
-            className={`px-2.5 py-1 ${locale === "fr" ? "bg-(--color-bg-surface) text-(--color-text-primary)" : "text-(--color-text-muted)"}`}
+            className={`px-2.5 py-1 ${locale === "fr" ? "bg-(--color-bg-surface) text-(--color-text-primary)" : "text-(--navbar-chrome-muted)"}`}
             onClick={() => setLocale("fr")}
             aria-pressed={locale === "fr"}
           >
@@ -52,7 +52,7 @@ export function Navbar({ center }: NavbarProps) {
           </button>
           <button
             type="button"
-            className={`px-2.5 py-1 ${locale === "en" ? "bg-(--color-bg-surface) text-(--color-text-primary)" : "text-(--color-text-muted)"}`}
+            className={`px-2.5 py-1 ${locale === "en" ? "bg-(--color-bg-surface) text-(--color-text-primary)" : "text-(--navbar-chrome-muted)"}`}
             onClick={() => setLocale("en")}
             aria-pressed={locale === "en"}
           >

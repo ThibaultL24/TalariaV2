@@ -10,7 +10,6 @@ import {
 import { SourceRefsList } from "@/components/detail/source-refs-list";
 import { EventImageHero } from "@/components/detail/event-image-hero";
 import { HowItHappened } from "@/components/detail/how-it-happened";
-import { IntuitionStanceBar } from "@/components/intuition/intuition-stance-bar";
 import { resolveEventImage, type ResolvedEventImage } from "@/lib/resolve-event-image";
 import { useI18n } from "@/lib/i18n";
 import { localizedEventTitle, localizedPlaceLabel } from "@/lib/localize-event-copy";
@@ -19,10 +18,9 @@ interface EventDetailCardProps {
   event: TimelineEvent;
   onClose: () => void;
   offlineOnly?: boolean;
-  showIntuition?: boolean;
 }
 
-export function EventDetailCard({ event, onClose, offlineOnly = false, showIntuition = false }: EventDetailCardProps) {
+export function EventDetailCard({ event, onClose, offlineOnly = false }: EventDetailCardProps) {
   const { t, locale } = useI18n();
   const [detail, setDetail] = useState<EventDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -147,7 +145,7 @@ export function EventDetailCard({ event, onClose, offlineOnly = false, showIntui
         {recap ? <HowItHappened text={recap} onCiteClick={focusCitation} /> : null}
 
         <section className="rounded-lg border border-(--color-border-subtle) px-3 py-2">
-          {showIntuition && <IntuitionStanceBar targetKind="event" targetId={resolved.id} eager />}
+
         </section>
 
         <section ref={sourcesRef}>

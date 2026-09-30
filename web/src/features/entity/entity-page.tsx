@@ -23,6 +23,8 @@ export function EntityPage() {
   const [params, setParams] = useSearchParams();
   const [overview, setOverview] = useState<EntityOverview>();
   const [events, setEvents] = useState<TimelineEvent[]>([]);
+  const provider = params.get("provider") ?? "";
+  const [providers, setProviders] = useState<{name: string; count: number}[]>([]);
   const [sources, setSources] = useState<BibliographyItem[]>([]);
   const [next, setNext] = useState<string | null>(null);
   const [selected, setSelected] = useState<TimelineEvent>();
@@ -37,15 +39,15 @@ export function EntityPage() {
   }
   const filterString = filters.toString();
   const activeRequest = useRef("");
-  activeRequest.current = `${entityId}/${view}?${filterString}`;
+  activeRequest.current = `${entityId}/${view}?${filterString}&provider=${provider}`;
   const eventId = params.get("event");
   const from = Number(params.get("from") ?? overview?.time_bounds.from ?? 0);
   const to = Number(params.get("to") ?? overview?.time_bounds.to ?? from + 1);
-  const resolution =
-    to - from > 40 ? "overview" : to - from > 10 ? "period" : "detail";
+  const resolution = "detail";
   useEffect(() => {
     const controller = new AbortController();
     setOverview(undefined);
+    setProviders([]);
     setError("");
     getEntityView<EntityOverview>(
       entityId,
@@ -70,9 +72,11 @@ export function EntityPage() {
       if (view === "sources") {
         const result = await fetchEntityBibliography(entityId, {
           limit: 100,
+          providers: provider,
           signal: controller.signal,
         });
         if (!controller.signal.aborted) {
+          setProviders(result.providers ?? []);
           setSources(result.items);
           setNext(result.next_cursor ?? null);
         }
@@ -80,16 +84,16 @@ export function EntityPage() {
         const query = new URLSearchParams(filterString);
         query.set("limit", "200");
         query.set("resolution", view === "overview" ? "overview" : resolution);
-        const result = await getEntityView<Page>(
-          entityId,
-          "timeline",
-          query,
-          controller.signal,
-        );
-        if (!controller.signal.aborted) {
-          setEvents(result.events);
+        const collected: TimelineEvent[] = [];
+        do {
+          const result = await getEntityView<Page>(entityId, "timeline", query, controller.signal);
+          if (controller.signal.aborted) break;
+          collected.push(...result.events);
+          setEvents([...collected]);
           setNext(result.pagination.next_cursor);
-        }
+          if (view !== "timeline" || !result.pagination.next_cursor) break;
+          query.set("cursor", result.pagination.next_cursor);
+        } while (!controller.signal.aborted);
       }
     };
     void request()
@@ -100,7 +104,7 @@ export function EntityPage() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [entityId, view, filterString, resolution]);
+  }, [entityId, view, filterString, resolution, provider]);
   useEffect(() => {
     let cancelled = false;
     setSelected(undefined);
@@ -141,6 +145,7 @@ export function EntityPage() {
       if (view === "sources") {
         const result = await fetchEntityBibliography(entityId, {
           limit: 100,
+          providers: provider,
           cursor: next,
         });
         if (requestKey === activeRequest.current) {
@@ -242,7 +247,7 @@ export function EntityPage() {
             onSelect={select}
           />
         )}
-        {view === "timeline" && overview?.time_bounds.from != null && (
+        {view === "timeline" && overview && (
           <TimelineCanvas
             events={events}
             from={from}
@@ -256,17 +261,17 @@ export function EntityPage() {
             }}
           />
         )}
-        {(view === "overview" || view === "timeline") && (
+        {view === "overview" && (
           <section>
             <h2>
-              {view === "overview" ? "Chronological preview" : "Timeline"}
+              Chronological preview
             </h2>
             <p className="v3-note">
               Dates retain the precision and uncertainty recorded in the
               sources.
             </p>
             <ol className="v3-events">
-              {(view === "overview" ? events.slice(0, 8) : events).map(
+              {events.slice(0, 8).map(
                 (event) => (
                   <li key={event.id}>
                     <span>{eventDate(event)}</span>
@@ -284,13 +289,9 @@ export function EntityPage() {
             {!events.length && !loading && (
               <p>No events match this selection.</p>
             )}
-            {view === "timeline" && next && (
-              <button disabled={loading} onClick={() => void loadMore()}>
-                Load more
-              </button>
-            )}
           </section>
         )}
+        {view === "timeline" && next && <button disabled={loading} onClick={() => void loadMore()}>Load more moments</button>}
         {view === "sources" && (
           <section>
             <h2>Source documents</h2>
@@ -298,16 +299,20 @@ export function EntityPage() {
               Catalog matches are not proof of an event. Open an event to
               inspect its supporting evidence.
             </p>
+            <div className="v3-provider-tabs" role="group" aria-label="Filter by database">
+              {[{name: "", count: providers.reduce((sum, item) => sum + item.count, 0)}, ...providers].map((item) =>
+                <button key={item.name} aria-pressed={provider === item.name} onClick={() => update("provider", item.name)}>
+                  {item.name ? providerLabel(item.name) : "All databases"} <span>{item.count}</span>
+                </button>)}
+            </div>
             <div className="v3-sources">
               {sources.map((source) => (
                 <article key={source.id}>
                   <span>
-                    {source.source_kind} · {source.document_type}
+                    {providerLabel(source.source_kind)} · {source.document_type.replaceAll("_", " ")}
                   </span>
                   <h3>{source.title}</h3>
-                  <p>
-                    {source.academic_status} · {source.epistemic}
-                  </p>
+                  <p>{source.language?.toUpperCase() ?? ""} {source.academic_status.replaceAll("_", " ")}</p>
                   {source.canonical_url && (
                     <a
                       href={source.canonical_url}
@@ -346,7 +351,6 @@ export function EntityPage() {
             <EventDetailCard
               event={selected}
               onClose={() => select()}
-              showIntuition={false}
             />
           </aside>
         )}
@@ -354,4 +358,9 @@ export function EntityPage() {
       </main>
     </div>
   );
+}
+
+function providerLabel(name: string): string {
+  const labels: Record<string, string> = { wikipedia: "Wikipedia", wikidata: "Wikidata", hal: "HAL", bnf: "BnF", gallica: "Gallica", persee: "Persée", openalex: "OpenAlex", openlibrary: "Open Library", open_library: "Open Library", internet_archive: "Internet Archive", theses_fr: "theses.fr", europeana: "Europeana", commons: "Wikimedia Commons", wikisource: "Wikisource" };
+  return labels[name] ?? name.replaceAll("_", " ");
 }

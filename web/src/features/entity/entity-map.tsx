@@ -1,5 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Map } from "maplibre-gl";
+import { MapLegend } from "@/components/map/map-legend";
+import { attachLegendKeys, eventMatchesLegendFilter, legendKeyForEventType, type LegendKey } from "@/lib/event-legend";
+import { spreadStackedMapPoints } from "@/lib/geo";
 import { MapCanvas } from "@/components/map/map-canvas";
 import { MapSourceManager } from "@/components/map/map-source-manager";
 import { MapLayers } from "@/components/map/map-layers";
@@ -19,6 +22,9 @@ export function EntityMap({
 }) {
   const [map, setMap] = useState<Map | null>(null);
   const [data, setData] = useState<TalariaFeatureCollection>();
+  const [keys, setKeys] = useState<LegendKey[]>([]);
+  const presentKeys = useMemo(() => [...new Set((data?.features ?? []).map(f => legendKeyForEventType(String(f.properties.event_type))))], [data]);
+  const visible = useMemo(() => data ? { ...data, features: data.features.filter(f => eventMatchesLegendFilter(String(f.properties.event_type), keys)) } : undefined, [data, keys]);
   const [error, setError] = useState("");
   useEffect(() => {
     if (!map) return;
@@ -30,13 +36,14 @@ export function EntityMap({
       const signal = controller.signal;
       const b = map.getBounds();
       const params = new URLSearchParams(filters);
-      // Clamp world copies to a valid geographic box.
+      // A viewport crossing the antimeridian uses the complete longitude range.
+      const crossesWorld = b.getWest() < -180 || b.getEast() > 180;
       params.set(
         "bbox",
         [
-          Math.max(-180, b.getWest()),
+          crossesWorld ? -180 : b.getWest(),
           Math.max(-90, b.getSouth()),
-          Math.min(180, b.getEast()),
+          crossesWorld ? 180 : b.getEast(),
           Math.min(90, b.getNorth()),
         ].join(","),
       );
@@ -55,10 +62,10 @@ export function EntityMap({
           );
           features.push(...page.features);
           if (!signal.aborted)
-            setData({
+            setData(spreadStackedMapPoints(attachLegendKeys({
               type: "FeatureCollection",
-              features,
-            } as TalariaFeatureCollection);
+              features: [...features],
+            })) as TalariaFeatureCollection);
           if (!page.pagination.next_cursor) break;
           params.set("cursor", page.pagination.next_cursor);
         } while (!signal.aborted);
@@ -81,9 +88,10 @@ export function EntityMap({
   return (
     <div className="v3-map">
       <MapCanvas onReady={setMap} />
-      <MapSourceManager map={map} data={data} />
-      <MapLayers map={map} data={data} selectedEventId={selected} />
+      <MapSourceManager map={map} data={visible} />
+      <MapLayers map={map} data={visible} selectedEventId={selected} />
       <MapInteractions map={map} onSelectEvent={onSelect} />
+      <div className="v3-map-legend"><MapLegend presentKeys={presentKeys} selectedKeys={keys} onToggleKey={(key) => setKeys(old => old.includes(key) ? old.filter(k => k !== key) : [...old, key])} onClear={() => setKeys([])} /></div>
       {error && (
         <p role="alert" className="v3-map-error">
           {error}

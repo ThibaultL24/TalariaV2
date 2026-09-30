@@ -6,7 +6,6 @@ import { EventDetailCard } from "@/components/detail/event-detail-card";
 import { ExplorerFactsPanel } from "@/components/explorer/explorer-facts-panel";
 import { IngestProgressBadge } from "@/components/explorer/ingest-progress-badge";
 import { Navbar } from "@/components/layout/navbar";
-import { ExplorerMapTimelineBar } from "@/components/map/explorer-map-timeline-bar";
 import { MapCanvas } from "@/components/map/map-canvas";
 import { MapInteractions } from "@/components/map/map-interactions";
 import { MapLayers } from "@/components/map/map-layers";
@@ -17,7 +16,6 @@ import { usePersonPicker } from "@/hooks/use-person-picker";
 import {
   fetchEntity,
   fetchGeoJson,
-  fetchStatus,
   fetchTimeline,
   type GeoJsonFeatureCollection,
   type TimelineEvent,
@@ -31,10 +29,6 @@ import {
 import { localizeFeatureCollection, localizedEventTitle, localizedPlaceLabel, localizedPersonLabel } from "@/lib/localize-event-copy";
 import {
   boundsOfMapFeatures,
-  buildYearBounds,
-  buildYearHistogram,
-  filterGeoJsonUntilYear,
-  filterTimelineUntilYear,
   spreadStackedMapPoints,
 } from "@/lib/geo";
 import { useI18n } from "@/lib/i18n";
@@ -72,7 +66,6 @@ export function ExplorerPage() {
   const [geojson, setGeojson] = useState<GeoJsonFeatureCollection | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [untilYear, setUntilYear] = useState<number | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
   const [mapFocus, setMapFocus] = useState(false);
   const [forceFacts, setForceFacts] = useState(false);
@@ -145,14 +138,9 @@ export function ExplorerPage() {
   }, [isLandscape]);
 
   useEffect(() => {
-    fetchStatus().catch(() => undefined);
-  }, []);
-
-  useEffect(() => {
     if (!hasEntity) {
       setAllEvents([]);
       setGeojson(null);
-      setUntilYear(null);
       return;
     }
 
@@ -186,11 +174,6 @@ export function ExplorerPage() {
           })),
         );
         setGeojson(attachLegendKeys(localizeFeatureCollection(mapData, locale)));
-        const bounds = buildYearBounds(timeline.events);
-        setUntilYear((prev) => {
-          if (prev == null || first) return bounds.max;
-          return Math.min(Math.max(prev, bounds.min), bounds.max);
-        });
         setLoadError(null);
       } catch (err) {
         if (!cancelled && first) {
@@ -242,21 +225,17 @@ export function ExplorerPage() {
     return () => ro.disconnect();
   }, [map, hideFacts, showChrome]);
 
-  const dataBounds = useMemo(() => buildYearBounds(allEvents), [allEvents]);
-  const playhead = untilYear ?? dataBounds.max;
-
   const selectedLegendKeys = filters.legendKeys as LegendKey[];
 
   const visibleEvents = useMemo(() => {
-    const byYear = filterTimelineUntilYear(allEvents, playhead);
-    return byYear.filter((event) =>
+    return allEvents.filter((event) =>
       eventMatchesLegendFilter(event.event_type, selectedLegendKeys),
     );
-  }, [allEvents, playhead, selectedLegendKeys]);
+  }, [allEvents, selectedLegendKeys]);
 
   const visibleGeoJson = useMemo(() => {
     if (!geojson) return { type: "FeatureCollection" as const, features: [] };
-    const byYear = filterGeoJsonUntilYear(geojson, playhead);
+    const byYear = geojson;
     if (selectedLegendKeys.length === 0) return byYear;
     return {
       type: "FeatureCollection" as const,
@@ -267,15 +246,7 @@ export function ExplorerPage() {
         ),
       ),
     };
-  }, [geojson, playhead, selectedLegendKeys]);
-
-  const histogram = useMemo(
-    () =>
-      buildYearHistogram(allEvents).filter(
-        (row) => row.year >= dataBounds.min && row.year <= dataBounds.max,
-      ),
-    [allEvents, dataBounds],
-  );
+  }, [geojson, selectedLegendKeys]);
 
   const presentKeys = useMemo(() => {
     const keys = new Set<LegendKey>();
@@ -476,14 +447,7 @@ export function ExplorerPage() {
                 onToggleKey={toggleLegendFilter}
                 onClear={() => setFilters({ legendKeys: [] })}
               />
-              <ExplorerMapTimelineBar
-                bounds={dataBounds}
-                untilYear={playhead}
-                onUntilYearChange={setUntilYear}
-                visibleCount={visibleEvents.length}
-                totalCount={allEvents.length}
-                yearHistogram={histogram}
-              />
+
             </div>
           ) : null}
         </section>

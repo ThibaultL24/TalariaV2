@@ -25,6 +25,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo test -p talaria-ai
+      - run: cargo test -p talaria-api routes::documents
       - run: cargo test -p talaria-api routes::entity_views
       - run: cargo test -p talaria-api routes::entities
       - run: cargo test -p talaria-quality

@@ -285,6 +285,7 @@ export interface BibliographyItem {
 }
 
 export interface BibliographyResponse {
+  providers?: { name: string; count: number }[];
   entity_id: string;
   relation: string;
   epistemic: string;
@@ -295,12 +296,13 @@ export interface BibliographyResponse {
 
 export async function fetchEntityBibliography(
   entityId: string,
-  opts: { limit?: number; relation?: string; cursor?: string; signal?: AbortSignal } = {},
+  opts: { limit?: number; relation?: string; providers?: string; cursor?: string; signal?: AbortSignal } = {},
 ): Promise<BibliographyResponse> {
   const params = new URLSearchParams({
     limit: String(opts.limit ?? 40),
     relation: opts.relation ?? "about",
   });
+  if (opts.providers) params.set("providers", opts.providers);
   if (opts.cursor) params.set("cursor", opts.cursor);
   const response = await fetch(`/api/v1/entities/${entityId}/bibliography?${params}`, { signal: opts.signal });
   if (!response.ok) throw new Error("bibliography fetch failed");

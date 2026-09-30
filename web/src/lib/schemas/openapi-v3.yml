@@ -114,6 +114,43 @@ paths:
         '400': {$ref: '#/components/responses/Error'}
         '404': {$ref: '#/components/responses/Error'}
         '500': {$ref: '#/components/responses/Error'}
+  /api/v1/entities/{entity_id}/bibliography:
+    parameters:
+      - $ref: '#/components/parameters/Entity'
+      - in: query
+        name: providers
+        schema: {type: string}
+        description: Comma-separated database identifiers; applied before cursor pagination.
+      - in: query
+        name: relation
+        schema: {type: string, enum: [about, by, mentioned_in], default: about}
+      - in: query
+        name: cursor
+        schema: {type: string}
+      - in: query
+        name: limit
+        schema: {type: integer, minimum: 1, maximum: 200, default: 50}
+    get:
+      responses:
+        '200':
+          description: Bibliographic resources, page cursor and complete provider facets for the selected relation.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: {type: array, items: {type: object}}
+                  next_cursor: {type: [string, 'null']}
+                  providers:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, count]
+                      properties:
+                        name: {type: string}
+                        count: {type: integer}
+        '500': {$ref: '#/components/responses/Error'}
+
 components:
   parameters:
     Entity:

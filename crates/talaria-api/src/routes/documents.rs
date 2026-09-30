@@ -39,6 +39,8 @@ pub struct EntityDocumentsQuery {
 
 #[derive(Debug, Deserialize)]
 pub struct BibliographyQuery {
+    #[serde(default)]
+    pub providers: Option<String>,
     #[serde(default = "default_relation_about")]
     pub relation: String,
     #[serde(default)]
@@ -172,7 +174,7 @@ pub async fn list_entity_bibliography(
         &talaria_store::EntityDocumentsFilter {
             relation: Some(relation),
             document_types: &[],
-            providers: &[],
+            providers: &parse_csv(q.providers.as_ref()),
             academic_status: None,
             access: None,
             language: None,
@@ -191,6 +193,22 @@ pub async fn list_entity_bibliography(
     } else {
         None
     };
+
+    // Facets cover the complete entity bibliography, independently of the active tab/page.
+    let providers = sqlx::query_as::<_, (String, i64)>(
+        r#"SELECT d.source_kind, COUNT(DISTINCT d.id)::bigint
+        FROM entity_document_links l JOIN corpus_documents d ON d.id = l.corpus_document_id
+        WHERE l.entity_id IN (
+          SELECT e2.id FROM entities e1 JOIN entities e2 ON e2.id = e1.id
+          OR (e1.qid IS NOT NULL AND e2.qid = e1.qid) WHERE e1.id = $1
+        ) AND l.relation = $2
+        GROUP BY d.source_kind ORDER BY d.source_kind"#,
+    )
+    .bind(entity_id)
+    .bind(relation)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let doc_ids: Vec<_> = page.iter().map(|r| r.id).collect();
     let ident_rows = talaria_store::list_document_identifiers_for_docs(&state.pool, &doc_ids)
@@ -255,6 +273,7 @@ pub async fn list_entity_bibliography(
     Ok(Json(json!({
         "entity_id": entity_id,
         "relation": relation,
+        "providers": providers.iter().map(|(name, count)| json!({"name": name, "count": count})).collect::<Vec<_>>(),
         "epistemic": EPISTEMIC,
         "epistemic_note": EPISTEMIC_NOTE,
         "items": items,
@@ -333,4 +352,55 @@ pub async fn list_document_fragments(
         "epistemic": EPISTEMIC,
         "note": "corpus fragments land in PR2; sentence/clause quality fragments unchanged",
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn v3_db_bibliography_provider_filter_and_global_facets(pool: sqlx::PgPool) {
+        let entity: Uuid = sqlx::query_scalar("INSERT INTO entities(wikipedia_title,canonical_name) VALUES('Sources fixture','Sources fixture') RETURNING id").fetch_one(&pool).await.unwrap();
+        for (index, provider) in ["hal", "hal", "gallica"].iter().enumerate() {
+            let doc: Uuid = sqlx::query_scalar("INSERT INTO corpus_documents(source_kind,external_id,document_type,title) VALUES($1,$2,'article','Fixture') RETURNING id")
+                .bind(provider).bind(index.to_string()).fetch_one(&pool).await.unwrap();
+            sqlx::query("INSERT INTO entity_document_links(entity_id,corpus_document_id,relation,match_version,score) VALUES($1,$2,'about','test',0.9)")
+                .bind(entity).bind(doc).execute(&pool).await.unwrap();
+        }
+        let state = AppState {
+            pool,
+            offline_only: true,
+            config: talaria_core::AppConfig::from_env().unwrap(),
+            ingest_jobs: std::sync::Arc::new(tokio::sync::Mutex::new(
+                std::collections::HashMap::new(),
+            )),
+        };
+        let query = |cursor| BibliographyQuery {
+            providers: Some("hal".into()),
+            relation: "about".into(),
+            limit: 1,
+            cursor,
+        };
+        let first =
+            list_entity_bibliography(State(state.clone()), Path(entity), Query(query(None)))
+                .await
+                .unwrap()
+                .0;
+        assert_eq!(first["items"].as_array().unwrap().len(), 1);
+        assert_eq!(first["items"][0]["source_kind"], "hal");
+        assert_eq!(
+            first["providers"],
+            json!([{"name":"gallica","count":1},{"name":"hal","count":2}])
+        );
+        let cursor = first["next_cursor"].as_str().unwrap().to_string();
+        let second =
+            list_entity_bibliography(State(state), Path(entity), Query(query(Some(cursor))))
+                .await
+                .unwrap()
+                .0;
+        assert_eq!(second["items"][0]["source_kind"], "hal");
+        assert_ne!(first["items"][0]["id"], second["items"][0]["id"]);
+        assert!(second["next_cursor"].is_null());
+        assert_eq!(first["providers"], second["providers"]);
+    }
 }
