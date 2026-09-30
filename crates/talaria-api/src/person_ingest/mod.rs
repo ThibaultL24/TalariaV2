@@ -543,7 +543,7 @@ async fn ingest_wiki_text(
     // Rules used to return here and skip the LLM, so biographies stayed thin.
     for chunk in extract::split_chunks(text, 3500).into_iter().take(16) {
         let extracted = if llm::is_configured() {
-            match extract::extract_prose_chunk(subject, title, &chunk).await {
+            match extract::extract_prose_chunk(pool, raw_id, subject, title, &chunk).await {
                 Ok(items) => items,
                 Err(err) => {
                     tracing::warn!(title, error = %err, "llm extract failed for chunk");

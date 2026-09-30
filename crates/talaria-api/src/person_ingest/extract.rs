@@ -7,9 +7,9 @@ use talaria_quality::{parse_typed_time, typed_time_year, RawExtractItem};
 use talaria_sources::extractors::{
     default_extractor_stack, keep_extracted_raw, ExtractorInput, RawCandidate,
 };
+use talaria_sources::first_year_in_window;
 use talaria_sources::place_hint_from_title;
 use talaria_sources::wdqs::WdqsEvent;
-use talaria_sources::first_year_in_window;
 
 use super::collect::subject_mentioned;
 use crate::llm::{self, LlmExtractItem};
@@ -42,7 +42,9 @@ fn year_from_raw(raw: &RawCandidate) -> Option<i32> {
         .and_then(|t| typed_time_year(&t))
         .or_else(|| {
             first_year_in_window(
-                raw.time_surface.as_deref().unwrap_or(raw.clause_text.as_str()),
+                raw.time_surface
+                    .as_deref()
+                    .unwrap_or(raw.clause_text.as_str()),
                 1000,
                 2099,
             )?
@@ -116,11 +118,30 @@ pub fn extract_wiki_rules(
 }
 
 pub async fn extract_prose_chunk(
+    pool: &sqlx::PgPool,
+    raw_document_id: uuid::Uuid,
     subject: &str,
     title: &str,
     chunk: &str,
 ) -> anyhow::Result<Vec<RawExtractItem>> {
+    let model = llm::extraction_model();
+    let provider = llm::provider_label();
+    let hash = talaria_ai::cache_key(&provider, &model, subject, title, chunk);
+    if let Some(value) = sqlx::query_scalar::<_, serde_json::Value>(
+        "SELECT output_json FROM ai_runs WHERE purpose='person_extraction' AND provider=$1 AND model=$2 AND prompt_version=$3 AND input_hash=$4"
+    ).bind(&provider).bind(&model).bind(talaria_ai::EXTRACTION_VERSION).bind(&hash)
+        .fetch_optional(pool).await? {
+        talaria_ai::validate_extraction(&value, chunk)?;
+        let items: Vec<LlmExtractItem> = serde_json::from_value(value["items"].clone())?;
+        return Ok(items.into_iter().map(LlmExtractItem::into_raw).collect());
+    }
+    let started = std::time::Instant::now();
     let items = llm::extract_chunk(subject, title, chunk).await?;
+    let value = serde_json::json!({"items": items});
+    sqlx::query("INSERT INTO ai_runs (purpose, provider, model, prompt_version, input_hash, raw_document_id, output_json, latency_ms) VALUES ('person_extraction',$1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING")
+        .bind(&provider).bind(&model).bind(talaria_ai::EXTRACTION_VERSION).bind(&hash)
+        .bind(raw_document_id).bind(value).bind(started.elapsed().as_millis() as i64)
+        .execute(pool).await?;
     Ok(items.into_iter().map(LlmExtractItem::into_raw).collect())
 }
 
@@ -223,7 +244,9 @@ fn event_type_from_title(title: &str) -> String {
 }
 
 fn year_from_text(text: &str) -> Option<i32> {
-    talaria_sources::first_year_in_window(text, 1000, 2099)?.parse().ok()
+    talaria_sources::first_year_in_window(text, 1000, 2099)?
+        .parse()
+        .ok()
 }
 
 fn title_is_military_action(title: &str) -> bool {
@@ -258,7 +281,11 @@ pub fn mention_sentence<'a>(extract: &'a str, subject: &str) -> Option<&'a str> 
         if !is_end && !last {
             continue;
         }
-        let end = if is_end { i + ch.len_utf8() } else { extract.len() };
+        let end = if is_end {
+            i + ch.len_utf8()
+        } else {
+            extract.len()
+        };
         let sent = extract.get(start..end).unwrap_or("");
         if subject_mentioned(sent, subject) {
             return Some(sent.trim());
@@ -334,7 +361,9 @@ mod tests {
         );
         assert!(
             items.iter().any(|i| i.year == Some(1654)
-                && i.place_surface.as_deref().is_some_and(|p| p.contains("Reims"))),
+                && i.place_surface
+                    .as_deref()
+                    .is_some_and(|p| p.contains("Reims"))),
             "missing Reims: {items:?}"
         );
         assert!(
@@ -358,7 +387,9 @@ mod tests {
         assert!(
             items.iter().any(|i| i.event_type == "siege"
                 && i.year == Some(1429)
-                && i.place_surface.as_deref().is_some_and(|p| p.contains("Paris"))),
+                && i.place_surface
+                    .as_deref()
+                    .is_some_and(|p| p.contains("Paris"))),
             "Joan Paris siege: {items:?}"
         );
     }
@@ -380,7 +411,8 @@ mod tests {
             "café Quartier latin: {items:?}"
         );
         assert!(
-            !items.iter().any(|i| i.place_surface
+            !items.iter().any(|i| i
+                .place_surface
                 .as_deref()
                 .is_some_and(|p| p.to_lowercase().contains("1845"))),
             "must not geocode Salon of 1845: {items:?}"
@@ -433,22 +465,19 @@ mod tests {
             !got[0].quoted_text.contains('|'),
             "follow quote must be page text, not a synthetic pipe line"
         );
-        assert!(extract.contains(&got[0].quoted_text) || {
-            talaria_quality::quote_is_grounded(extract, &got[0].quoted_text)
-        });
+        assert!(
+            extract.contains(&got[0].quoted_text) || {
+                talaria_quality::quote_is_grounded(extract, &got[0].quoted_text)
+            }
+        );
     }
 
     #[test]
     fn follow_page_quote_is_verbatim_extract_span() {
         let extract = "The Battle of Waterloo was fought on Sunday 18 June 1815 near Waterloo. Napoleon's French army was defeated by the Duke of Wellington.";
-        let (_, item, _) = follow_page_to_extract(
-            "Napoleon",
-            "Battle of Waterloo",
-            extract,
-            None,
-            true,
-        )
-        .expect("pin");
+        let (_, item, _) =
+            follow_page_to_extract("Napoleon", "Battle of Waterloo", extract, None, true)
+                .expect("pin");
         assert!(!item.quoted_text.contains("Napoleon | battle |"));
         assert!(extract.contains(item.quoted_text.trim()) || extract.contains(&item.quoted_text));
     }

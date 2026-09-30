@@ -2163,6 +2163,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "talaria-ai"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "talaria-api"
 version = "0.1.0"
 dependencies = [
@@ -2177,6 +2188,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "sqlx",
+ "talaria-ai",
  "talaria-core",
  "talaria-cosmos",
  "talaria-dump",

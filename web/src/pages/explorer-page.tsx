@@ -1,6 +1,6 @@
 // web/src/pages/explorer-page.tsx
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import type { Map } from "maplibre-gl";
 import { EventDetailCard } from "@/components/detail/event-detail-card";
 import { ExplorerFactsPanel } from "@/components/explorer/explorer-facts-panel";
@@ -413,6 +413,7 @@ export function ExplorerPage() {
             <MapLayers map={map} data={mapData} selectedEventId={selectedEventId} />
             <MapInteractions map={map} onSelectEvent={handleSelectEvent} />
 
+            {entityId && <Link className="absolute bottom-5 left-5 z-10 rounded-lg bg-(--color-bg-surface) px-4 py-3" to={`/entities/${entityId}/overview`}>Open V3 · Overview / Timeline / Map / Sources</Link>}
             {entityLabel ? (
               <div className="pointer-events-none absolute top-3 left-3 z-10 max-w-[min(100%-5rem,16rem)] truncate rounded-lg border border-(--map-panel-border) bg-(--color-bg-elevated)/80 px-3 py-1.5 text-sm font-medium backdrop-blur-sm">
                 {localizedPersonLabel(entityLabel, locale)}

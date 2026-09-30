@@ -295,13 +295,14 @@ export interface BibliographyResponse {
 
 export async function fetchEntityBibliography(
   entityId: string,
-  opts: { limit?: number; relation?: string } = {},
+  opts: { limit?: number; relation?: string; cursor?: string; signal?: AbortSignal } = {},
 ): Promise<BibliographyResponse> {
   const params = new URLSearchParams({
     limit: String(opts.limit ?? 40),
     relation: opts.relation ?? "about",
   });
-  const response = await fetch(`/api/v1/entities/${entityId}/bibliography?${params}`);
+  if (opts.cursor) params.set("cursor", opts.cursor);
+  const response = await fetch(`/api/v1/entities/${entityId}/bibliography?${params}`, { signal: opts.signal });
   if (!response.ok) throw new Error("bibliography fetch failed");
   return response.json();
 }

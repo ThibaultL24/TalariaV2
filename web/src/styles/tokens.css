@@ -1,14 +1,14 @@
 /* src/styles/tokens.css */
-/* Design system Intuition-compatible — sobre, analytique, premium */
+/* Design system Talaria — sobre, analytique, premium */
 
 :root {
   /* Accent méditerranée — même famille en clair et sombre (lueurs calculées via RGB) */
-  --rgb-sea-accent: 42, 154, 168;
+  --rgb-sea-accent: 63, 92, 122;
 
   /* Fond — parchemin chaud jaune-orangé */
-  --color-bg-primary: #e8dfc8;
-  --color-bg-surface: #efe8d6;
-  --color-bg-elevated: #f6efd9;
+  --color-bg-primary: #F7F5F0;
+  --color-bg-surface: #FFFFFF;
+  --color-bg-elevated: #F0EBE2;
 
   /* Texte — encre chaude */
   --color-text-primary: #2a2622;

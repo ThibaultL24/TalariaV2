@@ -27,13 +27,14 @@ fn default_lang() -> String {
 }
 
 fn default_search_limit() -> i64 {
-    1
+    10
 }
 
 pub async fn search(
     State(state): State<AppState>,
     Query(query): Query<EntitySearchQuery>,
 ) -> Json<Value> {
+    let limit = query.limit.clamp(1, 50);
     let trimmed = query.q.trim();
     if trimmed.len() < 2 {
         return Json(json!({ "items": [] }));
@@ -41,7 +42,7 @@ pub async fn search(
 
     let lang = crate::display_i18n::normalize_ui_lang(Some(&query.lang)).unwrap_or("en");
 
-    let local = talaria_store::search_local_entities(&state.pool, trimmed, query.limit)
+    let local = talaria_store::search_local_entities(&state.pool, trimmed, limit)
         .await
         .unwrap_or_default();
     let local_ids: Vec<Uuid> = local.iter().map(|entity| entity.id).collect();
@@ -97,16 +98,16 @@ pub async fn search(
                 > 0
     });
 
-    if !state.offline_only && !has_dense_local && items.len() < query.limit as usize {
+    if !state.offline_only && !has_dense_local && items.len() < limit as usize {
         if let Ok(client) = WikidataClient::new() {
             if let Ok(hits) = client
-                .search_entities(trimmed, lang, query.limit.max(10) as u32)
+                .search_entities(trimmed, lang, limit.max(10) as u32)
                 .await
             {
                 let known: Vec<String> = local_qids.iter().cloned().collect();
                 let hits = sort_person_search_hits(hits, &known);
                 for hit in hits {
-                    if items.len() >= query.limit as usize {
+                    if items.len() >= limit as usize {
                         break;
                     }
                     if local_qids.contains(&hit.qid) {
@@ -150,8 +151,14 @@ pub async fn search(
     }
 
     items.sort_by(|a, b| {
-        let a_local = a.get("known_locally").and_then(|v| v.as_bool()).unwrap_or(false);
-        let b_local = b.get("known_locally").and_then(|v| v.as_bool()).unwrap_or(false);
+        let a_local = a
+            .get("known_locally")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let b_local = b
+            .get("known_locally")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         b_local.cmp(&a_local).then_with(|| {
             let a_s = person_search_score(
                 a.get("label").and_then(|v| v.as_str()).unwrap_or(""),
@@ -165,7 +172,7 @@ pub async fn search(
         })
     });
     items = collapse_person_search(trimmed, items);
-    items.truncate(1);
+    items.truncate(limit as usize);
 
     Json(json!({ "items": items }))
 }
@@ -216,34 +223,12 @@ fn collapse_person_search(query: &str, items: Vec<Value>) -> Vec<Value> {
         .collect();
 
     usable.sort_by(|a, b| {
-        let a_count = a
-            .get("event_count")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0);
-        let b_count = b
-            .get("event_count")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0);
+        let a_count = a.get("event_count").and_then(|v| v.as_i64()).unwrap_or(0);
+        let b_count = b.get("event_count").and_then(|v| v.as_i64()).unwrap_or(0);
         b_count.cmp(&a_count)
     });
 
-    let pick = usable.into_iter().next();
-    match pick {
-        Some(mut best) => {
-            if let Some(obj) = best.as_object_mut() {
-                obj.insert("label".into(), json!(label));
-            }
-            vec![best]
-        }
-        None => vec![json!({
-            "entity_id": Value::Null,
-            "qid": Value::Null,
-            "label": label,
-            "description": Value::Null,
-            "known_locally": false,
-            "event_count": 0,
-        })],
-    }
+    usable
 }
 
 pub async fn get_entity(
@@ -403,10 +388,21 @@ mod search_collapse_tests {
     }
 
     #[test]
-    fn unknown_person_yields_single_new_row() {
+    fn distinct_candidates_keep_their_real_labels() {
+        let out = collapse_person_search(
+            "Victor Hugo",
+            vec![
+                json!({"label":"Victor Hugo", "event_count":5}),
+                json!({"label":"Victor Hugo Green", "event_count":2}),
+            ],
+        );
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[1]["label"], "Victor Hugo Green");
+    }
+
+    #[test]
+    fn unknown_person_does_not_invent_a_result() {
         let out = collapse_person_search("Ada Lovelace", vec![]);
-        assert_eq!(out.len(), 1);
-        assert_eq!(out[0]["label"], "Ada Lovelace");
-        assert_eq!(out[0]["known_locally"], false);
+        assert!(out.is_empty());
     }
 }

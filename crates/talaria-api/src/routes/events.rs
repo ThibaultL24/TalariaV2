@@ -460,7 +460,7 @@ fn event_to_json(event: &CanonicalEventRow) -> Value {
 }
 
 /// Timeline list: omit summary (loaded via event detail) to shrink payload.
-fn event_to_json_list(event: &CanonicalEventRow) -> Value {
+pub(super) fn event_to_json_list(event: &CanonicalEventRow) -> Value {
     json!({
         "id": event.id,
         "entity_id": event.entity_id,

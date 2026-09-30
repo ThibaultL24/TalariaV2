@@ -10,6 +10,7 @@ name = "talaria"
 path = "src/main.rs"
 
 [dependencies]
+talaria-ai = { path = "../talaria-ai" }
 anyhow = { workspace = true }
 axum = { workspace = true }
 clap = { workspace = true }

@@ -3,6 +3,7 @@ mod agora;
 mod demo;
 mod documents;
 mod entities;
+mod entity_views;
 mod events;
 mod facets;
 pub mod ingest;
@@ -57,6 +58,9 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/v1/llm/ping", get(llm_ping))
         .route("/api/v1/entities/search", get(search_entities))
         .route("/api/v1/entities/{entity_id}", get(get_entity))
+        .route("/api/v1/entities/{entity_id}/overview", get(entity_views::overview))
+        .route("/api/v1/entities/{entity_id}/timeline", get(entity_views::timeline))
+        .route("/api/v1/entities/{entity_id}/events", get(entity_views::map))
         .route("/api/v1/entities/{entity_id}/claims", get(list_claims))
         .route("/api/v1/agora/theories/{claim_id}/signals", get(theory_signals))
         .route(

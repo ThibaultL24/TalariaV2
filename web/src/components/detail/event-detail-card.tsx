@@ -19,9 +19,10 @@ interface EventDetailCardProps {
   event: TimelineEvent;
   onClose: () => void;
   offlineOnly?: boolean;
+  showIntuition?: boolean;
 }
 
-export function EventDetailCard({ event, onClose, offlineOnly = false }: EventDetailCardProps) {
+export function EventDetailCard({ event, onClose, offlineOnly = false, showIntuition = false }: EventDetailCardProps) {
   const { t, locale } = useI18n();
   const [detail, setDetail] = useState<EventDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -146,7 +147,7 @@ export function EventDetailCard({ event, onClose, offlineOnly = false }: EventDe
         {recap ? <HowItHappened text={recap} onCiteClick={focusCitation} /> : null}
 
         <section className="rounded-lg border border-(--color-border-subtle) px-3 py-2">
-          <IntuitionStanceBar targetKind="event" targetId={resolved.id} eager />
+          {showIntuition && <IntuitionStanceBar targetKind="event" targetId={resolved.id} eager />}
         </section>
 
         <section ref={sourcesRef}>

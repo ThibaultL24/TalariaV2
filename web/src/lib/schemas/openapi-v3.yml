@@ -1,0 +1,191 @@
+openapi: 3.1.0
+info:
+  title: Talaria V3 entity projections
+  version: 1.0.0
+paths:
+  /api/v1/entities/{entity_id}/overview:
+    parameters:
+      - $ref: '#/components/parameters/Entity'
+    get:
+      responses:
+        '200':
+          description: Stored identity and canonical occurrence statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entity, stats, time_bounds]
+                properties:
+                  entity:
+                    type: object
+                    required: [id, label, qid]
+                    properties:
+                      id: {type: string, format: uuid}
+                      label: {type: string}
+                      qid: {type: [string, 'null']}
+                  stats:
+                    type: object
+                    required: [timeline_events, mapped_events, places]
+                    properties:
+                      timeline_events: {type: integer}
+                      mapped_events: {type: integer}
+                      places: {type: integer, description: Distinct stored location labels}
+                  time_bounds:
+                    type: object
+                    required: [from, to]
+                    properties:
+                      from: {type: [integer, 'null']}
+                      to: {type: [integer, 'null']}
+        '404': {$ref: '#/components/responses/Error'}
+        '500': {$ref: '#/components/responses/Error'}
+  /api/v1/entities/{entity_id}/timeline:
+    parameters:
+      - $ref: '#/components/parameters/Entity'
+      - $ref: '#/components/parameters/From'
+      - $ref: '#/components/parameters/To'
+      - $ref: '#/components/parameters/Types'
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Language'
+      - name: resolution
+        in: query
+        schema: {type: string, enum: [overview, period, detail], default: detail}
+    get:
+      responses:
+        '200':
+          description: Chronological page; approximate/range/unknown semantics retained
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events, count, pagination]
+                properties:
+                  events:
+                    type: array
+                    items: {$ref: '#/components/schemas/Event'}
+                  count: {type: integer}
+                  pagination: {$ref: '#/components/schemas/Pagination'}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '500': {$ref: '#/components/responses/Error'}
+  /api/v1/entities/{entity_id}/events:
+    parameters:
+      - $ref: '#/components/parameters/Entity'
+      - $ref: '#/components/parameters/From'
+      - $ref: '#/components/parameters/To'
+      - $ref: '#/components/parameters/Types'
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Language'
+      - name: bbox
+        in: query
+        description: west,south,east,north in EPSG4326; antimeridian crossing unsupported
+        schema: {type: string, example: '-5,42,9,51'}
+    get:
+      responses:
+        '200':
+          description: GeoJSON page of eligible sourced points
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [type, features, pagination]
+                properties:
+                  type: {type: string, const: FeatureCollection}
+                  features:
+                    type: array
+                    items:
+                      type: object
+                      required: [type, id, geometry, properties]
+                      properties:
+                        type: {type: string, const: Feature}
+                        id: {type: string, format: uuid}
+                        geometry:
+                          type: object
+                          properties:
+                            type: {type: string, const: Point}
+                            coordinates:
+                              type: array
+                              minItems: 2
+                              maxItems: 2
+                              items: {type: number}
+                        properties: {$ref: '#/components/schemas/Event'}
+                  pagination: {$ref: '#/components/schemas/Pagination'}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '500': {$ref: '#/components/responses/Error'}
+components:
+  parameters:
+    Entity:
+      name: entity_id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    From:
+      name: from
+      in: query
+      schema: {type: integer, minimum: -9999, maximum: 9999}
+    To:
+      name: to
+      in: query
+      schema: {type: integer, minimum: -9999, maximum: 9999}
+    Types:
+      name: types
+      in: query
+      description: Comma-separated stored event types, at most 32
+      schema: {type: string}
+    Cursor:
+      name: cursor
+      in: query
+      description: Opaque cursor bound to entity, filters, view and resolution
+      schema: {type: string, maxLength: 8192}
+    Limit:
+      name: limit
+      in: query
+      schema: {type: integer, minimum: 1, maximum: 500, default: 200}
+    Language:
+      name: lang
+      in: query
+      schema: {type: string, enum: [en, fr]}
+  responses:
+    Error:
+      description: Explicit validation, not-found or storage error
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              error: {type: string}
+  schemas:
+    Pagination:
+      type: object
+      required: [next_cursor]
+      properties:
+        next_cursor: {type: [string, 'null']}
+    Event:
+      type: object
+      required: [id, entity_id, person, event_type, epistemic_status, title, time, map_eligible]
+      properties:
+        id: {type: string, format: uuid}
+        entity_id: {type: string, format: uuid}
+        person: {type: string}
+        event_type: {type: string}
+        epistemic_status: {type: string}
+        title: {type: string}
+        start_time: {type: [string, 'null'], format: date-time}
+        place_label: {type: [string, 'null']}
+        map_eligible: {type: boolean}
+        coordinates:
+          type: [object, 'null']
+          properties:
+            lat: {type: number}
+            lon: {type: number}
+        time:
+          type: object
+          properties:
+            kind: {type: string, enum: [exact, range, approx, unknown]}
+            precision: {type: string, enum: [day, month, year]}
+            start: {type: [string, 'null']}
+            end: {type: [string, 'null']}
+            surface: {type: [string, 'null']}

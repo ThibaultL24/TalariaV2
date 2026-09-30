@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/talaria-ai",
     "crates/talaria-core",
     "crates/talaria-store",
     "crates/talaria-dump",
