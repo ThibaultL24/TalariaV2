@@ -18,7 +18,7 @@ export function HomePage() {
   const { t, locale } = useI18n();
   const navigate = useNavigate();
   const { setEntity, setPersonFilter } = useExplorerStore();
-  const { suggestions, setSearchQuery, searchLoading, selectPerson } = usePersonPicker();
+  const { suggestions, setSearchQuery, searchLoading, selectPerson } = usePersonPicker({ startLifeIngest: false });
   const [roster, setRoster] = useState<RosterCard[]>(() =>
     DEMO_ROSTER.map((entry) => ({ ...entry })),
   );

@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, NavLink, useParams, useSearchParams } from "react-router-dom";
+import { Link, NavLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { EntitySearchBox } from "@/components/search/entity-search-box";
+import { usePersonPicker } from "@/hooks/use-person-picker";
+import { useExplorerStore } from "@/stores/explorer-store";
 import { Navbar } from "@/components/layout/navbar";
 import { EventDetailCard } from "@/components/detail/event-detail-card";
 import {
@@ -19,8 +22,31 @@ import { TimelineCanvas } from "./timeline-canvas";
 import { EntityMap } from "./entity-map";
 
 export function EntityPage() {
-  const { entityId = "", view = "overview" } = useParams();
+  const { entityId: routeEntityId, view = "overview" } = useParams();
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
+  const storedId = useExplorerStore(s => s.entityId);
+  const pendingPerson = useExplorerStore(s => s.personFilter);
+  const entityId = routeEntityId ?? params.get("entity") ?? storedId ?? "";
+  const [revision, setRevision] = useState(0);
+  const picker = usePersonPicker({ onCountsChanged: () => setRevision(value => value + 1) });
+  const pendingSelection = useRef(false);
+  const launchedPerson = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!routeEntityId && !entityId && pendingPerson && !pendingSelection.current && launchedPerson.current !== pendingPerson) {
+      launchedPerson.current = pendingPerson;
+      pendingSelection.current = true;
+      picker.selectPerson({ label: pendingPerson, qid: useExplorerStore.getState().entityQid, known_locally: false });
+    }
+  }, [routeEntityId, entityId, pendingPerson, picker.selectPerson]);
+  useEffect(() => {
+    if (storedId && pendingSelection.current) {
+      pendingSelection.current = false;
+      navigate(`/entities/${storedId}/overview`);
+    } else if (!routeEntityId && entityId) {
+      navigate(`/entities/${entityId}/overview`, { replace: true });
+    }
+  }, [storedId, entityId, routeEntityId, navigate]);
   const [overview, setOverview] = useState<EntityOverview>();
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const provider = params.get("provider") ?? "";
@@ -35,7 +61,7 @@ export function EntityPage() {
   const filters = new URLSearchParams();
   for (const key of ["from", "to", "types"]) {
     const value = params.get(key);
-    if (value) filters.set(key, value);
+    if (value && !(view === "timeline" && (key === "from" || key === "to"))) filters.set(key, value);
   }
   const filterString = filters.toString();
   const activeRequest = useRef("");
@@ -44,11 +70,11 @@ export function EntityPage() {
   const from = Number(params.get("from") ?? overview?.time_bounds.from ?? 0);
   const to = Number(params.get("to") ?? overview?.time_bounds.to ?? from + 1);
   const resolution = "detail";
+  useEffect(() => { setOverview(undefined); setProviders([]); }, [entityId]);
   useEffect(() => {
     const controller = new AbortController();
-    setOverview(undefined);
-    setProviders([]);
     setError("");
+    if (!entityId) return;
     getEntityView<EntityOverview>(
       entityId,
       "overview",
@@ -60,14 +86,15 @@ export function EntityPage() {
         if (!controller.signal.aborted) setError(String(e));
       });
     return () => controller.abort();
-  }, [entityId]);
+  }, [entityId, revision]);
   useEffect(() => {
     const controller = new AbortController();
     setEvents([]);
     setSources([]);
     setNext(null);
-    setLoading(true);
+    setLoading(Boolean(entityId));
     setError("");
+    if (!entityId) return;
     const request = async () => {
       if (view === "sources") {
         const result = await fetchEntityBibliography(entityId, {
@@ -104,7 +131,7 @@ export function EntityPage() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [entityId, view, filterString, resolution, provider]);
+  }, [entityId, view, filterString, resolution, provider, revision]);
   useEffect(() => {
     let cancelled = false;
     setSelected(undefined);
@@ -172,7 +199,7 @@ export function EntityPage() {
         <div className="v3-heading">
           <div>
             <p className="v3-eyebrow">TALARIA · EXPLORER</p>
-            <h1>{overview?.entity.label ?? "Loading…"}</h1>
+            <h1>{overview?.entity.label ?? (entityId ? "Loading…" : "Overview")}</h1>
             <p>Explore a life through time, places and evidence.</p>
           </div>
           <label>
@@ -189,7 +216,19 @@ export function EntityPage() {
             </select>
           </label>
         </div>
-        <nav className="v3-tabs" aria-label="Entity views">
+        <section className="v3-search" aria-label="Search a person">
+          <EntitySearchBox suggestions={picker.suggestions} onSubmitQuery={picker.setSearchQuery}
+            isLoading={picker.searchLoading} onSelect={(item) => {
+              pendingSelection.current = true;
+              picker.selectPerson(item);
+              const selectedId = useExplorerStore.getState().entityId;
+              if (selectedId) { pendingSelection.current = false; navigate(`/entities/${selectedId}/overview`); }
+            }} />
+          {picker.ingestBusy && <p role="status">Collecting sources · {picker.timelineEvents} events · {picker.mapPins} map points</p>}
+          {picker.error && <p role="alert">{picker.error}</p>}
+          {!entityId && !picker.ingestBusy && <p className="v3-note">Search for a person to explore their life, places and sources.</p>}
+        </section>
+        {entityId && <nav className="v3-tabs" aria-label="Entity views">
           {["overview", "timeline", "map", "sources"].map((tab) => (
             <NavLink
               key={tab}
@@ -199,7 +238,7 @@ export function EntityPage() {
               {tab}
             </NavLink>
           ))}
-        </nav>
+        </nav>}
         {error && <p role="alert">{error}</p>}
         {(view === "timeline" || view === "map") && (
           <form className="v3-filters" onSubmit={(e) => e.preventDefault()}>
@@ -249,7 +288,9 @@ export function EntityPage() {
         )}
         {view === "timeline" && overview && (
           <TimelineCanvas
+            key={entityId}
             events={events}
+            bounds={[overview.time_bounds.from ?? from, overview.time_bounds.to ?? to]}
             from={from}
             to={to}
             onSelect={select}
@@ -257,7 +298,7 @@ export function EntityPage() {
               const copy = new URLSearchParams(params);
               copy.set("from", String(a));
               copy.set("to", String(b));
-              setParams(copy);
+              setParams(copy, { replace: true });
             }}
           />
         )}
@@ -300,7 +341,7 @@ export function EntityPage() {
               inspect its supporting evidence.
             </p>
             <div className="v3-provider-tabs" role="group" aria-label="Filter by database">
-              {[{name: "", count: providers.reduce((sum, item) => sum + item.count, 0)}, ...providers].map((item) =>
+              {[{name: "", count: providers.reduce((sum, item) => sum + item.count, 0)}, ...databaseTabs(providers)].map((item) =>
                 <button key={item.name} aria-pressed={provider === item.name} onClick={() => update("provider", item.name)}>
                   {item.name ? providerLabel(item.name) : "All databases"} <span>{item.count}</span>
                 </button>)}
@@ -326,7 +367,7 @@ export function EntityPage() {
               ))}
             </div>
             {!sources.length && !loading && (
-              <p>No source documents available.</p>
+              <p>No bibliographic documents indexed for this database and person yet. Event evidence remains available in each event’s details.</p>
             )}
             {next && (
               <button disabled={loading} onClick={() => void loadMore()}>
@@ -354,13 +395,18 @@ export function EntityPage() {
             />
           </aside>
         )}
-        <Link to={`/explorer?entity=${entityId}`}>Open original explorer</Link>
+
       </main>
     </div>
   );
 }
 
 function providerLabel(name: string): string {
-  const labels: Record<string, string> = { wikipedia: "Wikipedia", wikidata: "Wikidata", hal: "HAL", bnf: "BnF", gallica: "Gallica", persee: "Persée", openalex: "OpenAlex", openlibrary: "Open Library", open_library: "Open Library", internet_archive: "Internet Archive", theses_fr: "theses.fr", europeana: "Europeana", commons: "Wikimedia Commons", wikisource: "Wikisource" };
-  return labels[name] ?? name.replaceAll("_", " ");
+  const labels: Record<string, string> = { wikipedia: "Wikipedia", wikidata: "Wikidata", hal: "HAL", bnf: "BnF", gallica: "Gallica", persee: "Persée", openalex: "OpenAlex", open_alex: "OpenAlex", openlibrary: "Open Library", open_library: "Open Library", internet_archive: "Internet Archive", theses_fr: "theses.fr", europeana: "Europeana", commons: "Wikimedia Commons", wikimedia_commons: "Wikimedia Commons", wikisource: "Wikisource" };
+  return labels[name] ?? name.replaceAll("_", " ").replace(/\b\w/g, letter => letter.toUpperCase());
+}
+
+export function databaseTabs(providers: {name: string; count: number}[]) {
+  const names = ["wikipedia", "wikidata", "open_alex", "persee", "hal", "gallica", "bnf", "theses_fr", "open_library", "internet_archive", "europeana", "wikisource", "wikimedia_commons", "crossref", "open_edition", "sudoc", "france_archives", "deutsche_biographie", "pop_merimee"];
+  return [...new Set([...names, ...providers.map(p => p.name)])].map(name => ({ name, count: providers.find(p => p.name === name)?.count ?? 0 }));
 }

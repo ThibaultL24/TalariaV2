@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { EntityPage } from "./entity-page";
+import { useExplorerStore } from "@/stores/explorer-store";
+import { EntityPage, databaseTabs } from "./entity-page";
 
 vi.mock("./entity-map", () => ({ EntityMap: () => <div>Map surface</div> }));
 vi.mock("./timeline-canvas", () => ({
@@ -19,6 +20,7 @@ const event = {
   map_eligible: true,
 };
 beforeEach(() => {
+  useExplorerStore.getState().clearEntity();
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: string) => {
@@ -44,6 +46,7 @@ function open(url: string) {
     <MemoryRouter initialEntries={[url]}>
       <Routes>
         <Route path="/entities/:entityId/:view" element={<EntityPage />} />
+        <Route path="/explorer" element={<EntityPage />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -58,23 +61,24 @@ test("event deep link opens evidence detail with Intuition disabled", async () =
   expect(screen.queryByRole("list")).toBeNull();
   expect(vi.mocked(fetch).mock.calls.every(([url]) => !String(url).includes("intuition"))).toBe(true);
 });
-test("time filter is sent to the entity-scoped API", async () => {
+test("timeline camera changes keep the complete corpus loaded", async () => {
   open("/entities/person-1/timeline");
   await screen.findByRole("heading", { name: "Victor Hugo" });
-  fireEvent.change(screen.getByLabelText("From"), {
-    target: { value: "1851" },
-  });
-  await vi.waitFor(() =>
-    expect(
-      vi
-        .mocked(fetch)
-        .mock.calls.some(
-          ([url]) =>
-            String(url).includes("timeline?") &&
-            String(url).includes("from=1851"),
-        ),
-    ).toBe(true),
-  );
+  fireEvent.change(screen.getByLabelText("From"), { target: { value: "1851" } });
+  expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes("timeline?")).every(([url]) => !String(url).includes("from="))).toBe(true);
+});
+test("Explorer opens an overview search without requesting an empty entity", async () => {
+  open("/explorer");
+  expect(screen.getByRole("heading", { name: "Overview" })).toBeTruthy();
+  expect(screen.getByRole("searchbox")).toBeTruthy();
+  expect(screen.queryByText("Map surface")).toBeNull();
+  expect(vi.mocked(fetch).mock.calls).toHaveLength(0);
+});
+test("database tabs include empty databases and use the canonical OpenAlex key", () => {
+  const tabs = databaseTabs([{name: "open_alex", count: 25}]);
+  expect(tabs.find(p => p.name === "open_alex")?.count).toBe(25);
+  expect(tabs.find(p => p.name === "wikipedia")?.count).toBe(0);
+  expect(tabs.filter(p => p.name === "open_alex")).toHaveLength(1);
 });
 
 test("database tabs filter through the API and keep complete provider counts", async () => {

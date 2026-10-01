@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Map } from "maplibre-gl";
 import { MapLegend } from "@/components/map/map-legend";
-import { attachLegendKeys, eventMatchesLegendFilter, legendKeyForEventType, type LegendKey } from "@/lib/event-legend";
+import { attachLegendKeys, eventMatchesLegendFilter, legendKeyForEventType, LEGEND_ORDER, type LegendKey } from "@/lib/event-legend";
 import { spreadStackedMapPoints } from "@/lib/geo";
 import { MapCanvas } from "@/components/map/map-canvas";
 import { MapSourceManager } from "@/components/map/map-source-manager";
@@ -26,6 +26,7 @@ export function EntityMap({
   const presentKeys = useMemo(() => [...new Set((data?.features ?? []).map(f => legendKeyForEventType(String(f.properties.event_type))))], [data]);
   const visible = useMemo(() => data ? { ...data, features: data.features.filter(f => eventMatchesLegendFilter(String(f.properties.event_type), keys)) } : undefined, [data, keys]);
   const [error, setError] = useState("");
+  useEffect(() => { setData(undefined); setKeys([]); }, [id]);
   useEffect(() => {
     if (!map) return;
     let controller: AbortController | undefined;
@@ -50,7 +51,7 @@ export function EntityMap({
       params.set("limit", "500");
       params.delete("cursor");
       setError("");
-      setData(undefined);
+
       void (async () => {
         const features: MapPage["features"] = [];
         do {
@@ -86,17 +87,20 @@ export function EntityMap({
     };
   }, [id, filters, map]);
   return (
-    <div className="v3-map">
+    <div className="v3-map-layout">
+      <div className="v3-map">
       <MapCanvas onReady={setMap} />
       <MapSourceManager map={map} data={visible} />
       <MapLayers map={map} data={visible} selectedEventId={selected} />
       <MapInteractions map={map} onSelectEvent={onSelect} />
-      <div className="v3-map-legend"><MapLegend presentKeys={presentKeys} selectedKeys={keys} onToggleKey={(key) => setKeys(old => old.includes(key) ? old.filter(k => k !== key) : [...old, key])} onClear={() => setKeys([])} /></div>
+
       {error && (
         <p role="alert" className="v3-map-error">
           {error}
         </p>
       )}
+      </div>
+      <div className="v3-map-legend"><MapLegend presentKeys={presentKeys.length ? presentKeys : LEGEND_ORDER} selectedKeys={keys} onToggleKey={(key) => setKeys(old => old.includes(key) ? old.filter(k => k !== key) : [...old, key])} onClear={() => setKeys([])} /></div>
     </div>
   );
 }

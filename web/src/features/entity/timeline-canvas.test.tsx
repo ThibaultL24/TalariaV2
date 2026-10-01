@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { TimelineCanvas, layoutDots } from "./timeline-canvas";
+import { TimelineCanvas, layoutDots, zoomWindow, clampWindow } from "./timeline-canvas";
 import type { TimelineEvent } from "@/lib/api";
 const event = (id: string, start: string, kind = "exact") => ({ id, title: `Moment ${id}`, event_type: "travel", time: { kind, start, precision: "year" } }) as TimelineEvent;
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -24,4 +24,11 @@ test("points open their event, show typed precision and support zoom", () => {
   fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
   expect(zoom).toHaveBeenCalledWith(1825, 1875);
   expect(screen.queryByRole("list")).toBeNull();
+});
+
+test("pointer-centred zoom preserves the anchor and pan stays within the life bounds", () => {
+  expect(zoomWindow([1800, 1900], .5, .25, [1800, 1900])).toEqual([1812.5, 1862.5]);
+  expect(clampWindow([1780, 1830], [1800, 1900])).toEqual([1800, 1850]);
+  expect(clampWindow([1880, 1930], [1800, 1900])).toEqual([1850, 1900]);
+  expect(zoomWindow([1820, 1830], 100, .5, [1800, 1900])).toEqual([1800, 1900]);
 });

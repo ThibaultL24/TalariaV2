@@ -35,6 +35,8 @@ export function MapCanvas({ onReady }: MapCanvasProps) {
     });
 
     map.addControl(new maplibregl.NavigationControl(), "top-right");
+    const observer = new ResizeObserver(() => map.resize());
+    observer.observe(containerRef.current);
     mapRef.current = map;
     prevThemeRef.current = useThemeStore.getState().theme;
 
@@ -43,6 +45,7 @@ export function MapCanvas({ onReady }: MapCanvasProps) {
     });
 
     return () => {
+      observer.disconnect();
       map.remove();
       mapRef.current = null;
       prevThemeRef.current = null;
