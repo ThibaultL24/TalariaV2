@@ -1,0 +1,17 @@
+---
+description: Factual data integrity and person-pipeline contracts
+globs: crates/talaria-quality/**/*.rs,crates/talaria-api/src/person_ingest/**/*.rs,crates/talaria-store/**/*.rs,migrations/**
+alwaysApply: false
+---
+
+# Historical data integrity
+
+Never silently invent dates, places, sources, relationships, or events. Preserve provenance; distinguish evidence, inference, and AI interpretation.
+
+## Person pipeline (explorer)
+
+- Single live explorer pipeline: `pipeline='person'`. Retired `quality` / parallel lanes must not return via API or ingest.
+- `event_candidates` = quarantine; only **Accept** creates `canonical_events`. Rejects never appear on timeline/geojson.
+- Evidence: idempotent `event_evidence` (`ON CONFLICT DO NOTHING`); do not bump `source_count` on canonical rows.
+- **Typed time**: `time_json` uses `kind` + `precision`; `start_time` is ordering projection only. Use shared `TypedTime` / `time_to_json`.
+- Occurrence identity: `occurrence_key`, not display title. Extra sources reinforce via evidence, not duplicate map points.

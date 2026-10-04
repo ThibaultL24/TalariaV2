@@ -1,0 +1,24 @@
+---
+description: Rust workspace conventions and validation
+globs: crates/**/*.rs
+alwaysApply: false
+---
+
+# Rust (Talaria workspace)
+
+## Layout
+
+- `talaria-api`: HTTP, person ingest (`person_ingest/`), routes.
+- `talaria-store`: SQLx, migrations (embedded — rebuild after new `migrations/*.sql`).
+- `talaria-quality`: gates, occurrence keys, grounding.
+- `talaria-sources`: connectors and extractors.
+- Offline dump chain (`talaria-dump`, `talaria-cosmos`) writes `pipeline='legacy'`; explorer uses `pipeline='person'` only.
+
+## Changes
+
+- Prefer explicit errors and existing domain types; small functions; avoid new deps unless necessary.
+- After edits: `cargo check -p <crate>`; for substantive work `cargo test -p talaria-quality` and/or `cargo test -p talaria-sources` (fixtures, no network).
+
+## SQL
+
+No `TRUNCATE` in migrations. Destructive person-pipeline rebuild is CLI-only (`talaria admin rebuild-person-pipeline --confirm-destruction`).

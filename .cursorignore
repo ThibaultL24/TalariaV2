@@ -1,0 +1,25 @@
+# Build artifacts
+target/
+web/node_modules/
+web/dist/
+.worktrees/
+
+# Python sidecar
+sidecar/.venv/
+sidecar/cosmos/
+
+# Caches
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.cache/
+
+# Generated / heavy local data (outside repo root but listed if present)
+data/
+parquet/
+dumps/
+backups/
+demo/snapshots/
+
+# Large lockfiles in optional sidecars (source is enough for context)
+sidecar/intuition/node_modules/

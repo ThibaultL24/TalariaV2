@@ -1,0 +1,21 @@
+---
+description: How to validate changes in this repo
+globs: **/tests/**/*.rs,**/*_test.rs,**/*.test.ts
+alwaysApply: false
+---
+
+# Testing & validation
+
+## Rust
+
+- Domain gates: `cargo test -p talaria-quality`
+- Sources (fixtures): `cargo test -p talaria-sources`
+- Broader: `cargo test` / `cargo clippy --all-targets --all-features` (pre-existing warnings OK)
+
+## Web
+
+- `cd web && npm run build` — no separate test script configured.
+
+## Reporting
+
+Separate **errors** from **warnings**. For multi-file tasks: implement → targeted tests → build → report leftovers.

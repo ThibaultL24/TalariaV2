@@ -1,0 +1,13 @@
+---
+description: React/Vite explorer UI conventions
+globs: web/src/**/*
+alwaysApply: false
+---
+
+# Frontend (web/)
+
+- React + TypeScript + Vite; API proxied at dev via `/api` → `localhost:8080`.
+- After changes: `cd web && npm run build` (includes `tsc` typecheck).
+- Timeline/map queries default `pipeline=person`; render dates from `time` (`kind`, `precision`, `surface`, `start`, `end`), not raw `start_time` alone.
+- Preserve existing UI behavior unless the task requests a redesign.
+- Do not replace components with generic abstractions without clear duplication.

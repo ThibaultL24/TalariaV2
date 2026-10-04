@@ -1,5 +1,69 @@
 # AGENTS.md
 
+## Talaria V2 — Agent instructions (all environments)
+
+### Mission
+
+Talaria is a historical exploration platform.
+
+- **Explorer**: factual data — events, people, places, sources, evidence.
+- **Agora**: claims, interpretations, debates, historiography.
+
+Never blur factual data and interpretative claims.
+
+### Architecture
+
+| Layer | Stack |
+|-------|--------|
+| Backend | Rust workspace, Axum (`talaria-api`), SQLx, PostgreSQL + PostGIS |
+| Frontend | React, TypeScript, Vite (`web/`) |
+| NLP / export sidecars | Python / Node under `sidecar/` (optional for dev) |
+
+### Working rules
+
+Before modifying code:
+
+1. Inspect the relevant implementation and nearby tests.
+2. Understand existing architecture before proposing new abstractions.
+3. Prefer extending existing patterns over new layers.
+4. Do not large-refactor unless explicitly requested.
+5. Do not remove ingestion logic without verifying its pipeline role (explorer `person` vs offline `legacy` dump chain).
+
+For large or multi-file work: analyze and plan first; implement only after the plan is agreed.
+
+### Rust
+
+After changes: `cargo check` (or `-p <crate>`). For significant backend work: `cargo test` (especially `talaria-quality`, `talaria-sources`).
+
+### Frontend
+
+After changes: `cd web && npm run build`. Use TypeScript strictly; preserve UI behavior unless redesign is requested.
+
+### Data integrity
+
+Never silently invent missing dates, locations, sources, relationships, or events. Preserve provenance. Distinguish source evidence, inferred fields, and AI-generated interpretation.
+
+Blocking contracts (person pipeline, candidates vs canonical, evidence idempotency, typed time) are detailed in **Cursor Cloud specific instructions** below — agents must follow them.
+
+### Git & local data
+
+Without explicit permission, do not: `git reset --hard`, discard uncommitted changes, overwrite `.env`, or delete local/wiki dump data.
+
+### Validation checklist (multi-file tasks)
+
+1. Implement minimal diff  
+2. Run targeted tests  
+3. Run build / typecheck  
+4. Report warnings separately from errors  
+
+### Cursor setup (local)
+
+- Index repo from WSL path `/home/thiba/Projects/TalariaV2` (not a Windows copy).
+- `.cursorignore` excludes `target/`, `node_modules`, caches, and heavy snapshots.
+- File-scoped rules live in `.cursor/rules/`; this file remains the full pipeline reference.
+
+---
+
 ## Cursor Cloud specific instructions
 
 Talaria Engine is a Rust workspace (Wikipedia dump → sentences → phrase-candidates → canonical events → HTTP API) plus a React/Vite web explorer. See `README.md` for the product overview and the full CLI/pipeline reference; only Cloud-specific, non-obvious notes live here.

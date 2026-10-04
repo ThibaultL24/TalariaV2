@@ -1,0 +1,29 @@
+---
+description: Mission, product boundaries, and agent discipline for Talaria
+alwaysApply: true
+---
+
+# Talaria — core agent rules
+
+## Product
+
+- **Explorer**: factual history — events, people, places, evidence, sources (`canonical_events`, timeline/map APIs).
+- **Agora**: claims, interpretations, debates (`claims` / historiography). Never store cultural corpus as opinions.
+
+Do not blur facts and interpretative claims.
+
+## Before coding
+
+1. Read the relevant implementation and nearby tests.
+2. Extend existing patterns; no large refactors unless explicitly requested.
+3. For multi-file or pipeline work: analyze first (Plan mode), then implement.
+
+Deep pipeline contracts (person lane, evidence idempotency, typed time) live in `AGENTS.md` — follow them.
+
+## Git & env
+
+Never `git reset --hard`, discard uncommitted work, overwrite `.env`, or delete local data without explicit permission.
+
+## Context
+
+Prefer `@crates/...`, `@web/src/...`, `@migrations/...` over vague “fix the timeline” prompts.
