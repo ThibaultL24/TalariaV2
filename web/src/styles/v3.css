@@ -177,10 +177,21 @@
 .v3-timeline-controls { display: flex; gap: 8px; }
 .v3-timeline-controls button { width: 36px; height: 36px; border: 1px solid var(--color-border-subtle); border-radius: 50%; background: var(--color-bg-primary); }
 .v3-dot-scroll { max-height: 65vh; overflow-y: auto; margin-top: 24px; }
-.v3-dot-field { position: relative; min-width: 220px; background: linear-gradient(0deg, var(--color-bg-elevated), transparent 80%); }
+.v3-dot-field { position: relative; min-width: 220px; background: var(--color-bg-elevated); }
+.v3-life-grid { display: grid; grid-template-columns: minmax(180px, 240px) 1fr; gap: 16px; }
+.v3-life-list { max-height: 65vh; overflow-y: auto; border-right: 1px solid var(--color-border-subtle); }
+.v3-life-list button { display: flex; flex-direction: column; align-items: flex-start; width: 100%; text-align: left; padding: 8px 10px; border: 0; background: transparent; }
+.v3-life-list button span { color: var(--color-text-muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+.v3-brush { position: relative; height: 48px; margin-top: 8px; border-top: 1px solid var(--color-border-subtle); }
+.v3-brush-dot { position: absolute; bottom: 8px; width: 3px; height: 3px; margin-left: -1px; border-radius: 50%; background: var(--color-text-muted); pointer-events: none; }
+.v3-brush-window { position: absolute; top: 4px; bottom: 4px; background: color-mix(in srgb, var(--color-accent) 18%, transparent); border-left: 2px solid var(--color-accent-strong); border-right: 2px solid var(--color-accent-strong); cursor: grab; touch-action: none; }
+.v3-brush-handle { position: absolute; top: 0; bottom: 0; width: 14px; border: 0; background: transparent; cursor: ew-resize; }
+.v3-brush-handle--start { left: -7px; }
+.v3-brush-handle--end { right: -7px; }
 .v3-year-guide { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--color-border-subtle); pointer-events: none; }
 .v3-year-guide span { position: absolute; top: 8px; left: 5px; font-size: 11px; color: var(--color-text-secondary); }
-.v3-dot { position: absolute; width: 24px; height: 24px; margin: -12px; display: grid; place-items: center; border-radius: 50%; cursor: pointer; animation: v3-dot-arrive .8s both; animation-delay: var(--dot-delay); transition: left .6s, top .6s; }
+.v3-dot-fall { position: absolute; inset: 0; }
+.v3-dot { position: absolute; width: 24px; height: 24px; margin: -12px; display: grid; place-items: center; border-radius: 50%; cursor: pointer; animation: v3-dot-arrive .75s both; animation-delay: var(--dot-delay); transition: left .6s, top .6s; }
 .v3-dot span { width: 9px; height: 9px; border-radius: 50%; background: var(--dot-color); border: 1px solid #0005; box-shadow: 0 0 14px color-mix(in srgb, var(--dot-color) 25%, transparent); transition: transform .2s; }
 .v3-dot--approx span { background: var(--color-bg-surface); border: 2px solid var(--dot-color); }
 .v3-dot:hover span, .v3-dot:focus-visible span { transform: scale(1.65); }
@@ -201,9 +212,9 @@
 .v3-sources h3 { font: 22px/1.35 Georgia, serif; }
 .v3-sources p { font-size: 12px; color: var(--color-text-secondary); }
 .v3-sources a { margin-top: auto; padding-top: 16px; color: var(--color-accent-strong); }
-@keyframes v3-dot-arrive { from { opacity: 0; transform: translateY(65px) scale(.2); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes v3-dot-arrive { from { opacity: 0; transform: translateY(-64px) scale(.35); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @media (prefers-reduced-motion: reduce) { .v3-dot { animation: none; transition: none; } .v3-dot span, .v3-sources article { transition: none; } }
-@media (max-width: 700px) { .v3-constellation { padding: 14px; } .v3-dot-preview { flex-direction: column; gap: 4px; } }
+@media (max-width: 700px) { .v3-constellation { padding: 14px; } .v3-dot-preview { flex-direction: column; gap: 4px; } .v3-life-grid { grid-template-columns: 1fr; } .v3-life-list { max-height: 28vh; border-right: 0; border-bottom: 1px solid var(--color-border-subtle); } }
 
 .v3-dot span { animation: v3-dot-breathe 5s ease-in-out infinite; animation-delay: var(--dot-delay); }
 .v3-dot:hover span, .v3-dot:focus-visible span { animation: none; }

@@ -91,6 +91,24 @@ export function useProgressiveIngest(opts: UseProgressiveIngestOptions = {}) {
     }
   }, [opts, stopPolling]);
 
+  const resumeIngest = useCallback(
+    (jobId: string) => {
+      stopPolling();
+      setState({
+        jobId,
+        status: null,
+        isRunning: true,
+        error: null,
+      });
+      deadlineRef.current = Date.now() + INGEST_TIMEOUT_MS;
+      pollingRef.current = window.setInterval(() => {
+        void pollStatus(jobId);
+      }, STATUS_POLL_MS);
+      void pollStatus(jobId);
+    },
+    [pollStatus, stopPolling],
+  );
+
   const startIngest = useCallback(
     async (input: {
       subject: string;
@@ -161,6 +179,7 @@ export function useProgressiveIngest(opts: UseProgressiveIngestOptions = {}) {
   return {
     ...state,
     startIngest,
+    resumeIngest,
     cancel,
     phase: state.status?.phase ?? null,
     currentPage: state.status?.current_page ?? null,

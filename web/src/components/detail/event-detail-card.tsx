@@ -1,5 +1,5 @@
 // web/src/components/detail/event-detail-card.tsx
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { formatDateLabel } from "@/lib/geo";
 import {
   fetchEventDetail,
@@ -7,10 +7,9 @@ import {
   type EventSourceRef,
   type TimelineEvent,
 } from "@/lib/api";
-import { SourceRefsList } from "@/components/detail/source-refs-list";
-import { EventImageHero } from "@/components/detail/event-image-hero";
-import { HowItHappened } from "@/components/detail/how-it-happened";
-import { resolveEventImage, type ResolvedEventImage } from "@/lib/resolve-event-image";
+import { resolveSourceParagraphHref } from "@/components/detail/source-ref-url";
+import { shortLifeRecap } from "@/components/detail/how-it-happened";
+import { eventDate } from "@/lib/entity-views";
 import { useI18n } from "@/lib/i18n";
 import { localizedEventTitle, localizedPlaceLabel } from "@/lib/localize-event-copy";
 
@@ -20,21 +19,14 @@ interface EventDetailCardProps {
   offlineOnly?: boolean;
 }
 
-export function EventDetailCard({ event, onClose, offlineOnly = false }: EventDetailCardProps) {
+export function EventDetailCard({ event, onClose, offlineOnly: _offlineOnly = false }: EventDetailCardProps) {
   const { t, locale } = useI18n();
   const [detail, setDetail] = useState<EventDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeCite, setActiveCite] = useState<number | null>(null);
-  const [image, setImage] = useState<ResolvedEventImage | null>(null);
-  const [imageLoading, setImageLoading] = useState(false);
-  const [sourcesOpen, setSourcesOpen] = useState(true);
-  const sourcesRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    setActiveCite(null);
-    setSourcesOpen(true);
     fetchEventDetail(event.id, locale)
       .then((payload) => {
         if (!cancelled) setDetail(payload);
@@ -50,73 +42,21 @@ export function EventDetailCard({ event, onClose, offlineOnly = false }: EventDe
     };
   }, [event.id, locale]);
 
-  useEffect(() => {
-    if (!detail?.event || offlineOnly) {
-      setImage(null);
-      setImageLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setImageLoading(true);
-    const wikiLang =
-      detail.source_refs?.find((ref) => ref.language)?.language ??
-      detail.evidence?.find((item) => item.wiki_lang)?.wiki_lang ??
-      "en";
-    resolveEventImage({
-      eventType: detail.event.event_type,
-      personLabel: detail.event.person,
-      placeLabel: detail.event.place_label,
-      sourcePageTitles: detail.source_page_titles,
-      sourceRefs: detail.source_refs,
-      wikipediaUrl: detail.links?.wikipedia_url,
-      defaultLang: wikiLang,
-    })
-      .then((resolved) => {
-        if (!cancelled) setImage(resolved);
-      })
-      .catch(() => {
-        if (!cancelled) setImage(null);
-      })
-      .finally(() => {
-        if (!cancelled) setImageLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [detail, offlineOnly]);
-
   const resolved = detail?.event ?? event;
-  const recap =
-    detail?.narrative?.event_summary?.trim() ||
-    resolved.summary?.trim() ||
-    null;
+  const recap = shortLifeRecap(detail?.narrative?.event_summary ?? resolved.summary);
   const displayTitle = localizedEventTitle(resolved, locale);
   const mappedPlace = localizedPlaceLabel(resolved.place_label, locale);
-  const placeLabel =
-    mappedPlace && !/^Q\d+$/i.test(mappedPlace)
-      ? mappedPlace
-      : null;
+  const placeLabel = mappedPlace && !/^Q\d+$/i.test(mappedPlace) ? mappedPlace : null;
   const sourceRefs = collectSourceRefs(detail);
   const wikiLang =
     sourceRefs.find((ref) => ref.language)?.language ??
     detail?.evidence?.find((item) => item.wiki_lang)?.wiki_lang ??
     "en";
-
-  function focusCitation(index: number) {
-    setActiveCite(index);
-    setSourcesOpen(true);
-    window.setTimeout(() => {
-      document.getElementById(`source-ref-${index}`)?.scrollIntoView({
-        behavior: "smooth",
-        block: "nearest",
-      });
-      sourcesRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }, 50);
-  }
-
-  const datePlace = [formatDateLabel(resolved.start_time), placeLabel]
-    .filter(Boolean)
-    .join(" · ");
+  const passage = sourceRefs
+    .map((ref) => resolveSourceParagraphHref(ref, wikiLang))
+    .find((href): href is string => Boolean(href));
+  const dateLabel = resolved.time ? eventDate(resolved) : formatDateLabel(resolved.start_time);
+  const datePlace = [dateLabel, placeLabel].filter(Boolean).join(" · ");
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-(--color-bg-elevated)">
@@ -141,36 +81,17 @@ export function EventDetailCard({ event, onClose, offlineOnly = false }: EventDe
 
       <div className="flex-1 space-y-4 p-4">
         {loading ? <p className="text-sm text-(--color-text-muted)">{t.loading}</p> : null}
-        <EventImageHero image={image} loading={imageLoading} />
-        {recap ? <HowItHappened text={recap} onCiteClick={focusCitation} /> : null}
-
-        <section className="rounded-lg border border-(--color-border-subtle) px-3 py-2">
-
-        </section>
-
-        <section ref={sourcesRef}>
-          <button
-            type="button"
-            className="flex w-full items-center justify-between rounded-lg border border-(--color-border-subtle) px-3 py-2 text-left text-sm font-semibold"
-            onClick={() => setSourcesOpen((open) => !open)}
-            aria-expanded={sourcesOpen}
+        {recap ? <p className="text-sm leading-relaxed text-(--color-text-primary)">{recap}</p> : null}
+        {passage ? (
+          <a
+            href={passage}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block text-sm font-medium text-(--color-accent-strong) hover:underline"
           >
-            <span>
-              {t.sources}
-              {sourceRefs.length > 0 ? ` (${sourceRefs.length})` : ""}
-            </span>
-            <span className="text-(--color-text-muted)">{sourcesOpen ? "−" : "+"}</span>
-          </button>
-          {sourcesOpen ? (
-            <div className="mt-2">
-              <SourceRefsList
-                refs={sourceRefs}
-                wikiLang={wikiLang ?? undefined}
-                activeCitationIndex={activeCite}
-              />
-            </div>
-          ) : null}
-        </section>
+            {t.readPassage}
+          </a>
+        ) : null}
       </div>
     </div>
   );

@@ -154,6 +154,10 @@ async fn view(state: AppState, entity: Uuid, query: ViewQuery, map: bool) -> Res
     }
     let mut sql = QueryBuilder::<Postgres>::new("SELECT ce.id, ce.entity_id, COALESCE(e.canonical_name,e.wikipedia_title) AS person_name, ce.event_type, ce.epistemic_status, ce.title, ce.summary, ce.start_time, ce.time_json, ce.place_label, ce.confidence, ce.map_eligible, ST_Y(ce.geom::geometry) AS lat, ST_X(ce.geom::geometry) AS lon FROM person_timeline_projection ce JOIN entities e ON e.id=ce.entity_id WHERE ce.entity_id=");
     sql.push_bind(entity);
+    // Life of the person. Memorials and later honors stay out of this view.
+    sql.push(
+        " AND ce.event_type NOT IN ('statue','museum','memorial','street_naming')",
+    );
     if !map {
         let threshold = match resolution {
             "overview" => 0.8f64,

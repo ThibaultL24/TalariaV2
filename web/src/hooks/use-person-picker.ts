@@ -81,26 +81,31 @@ export function usePersonPicker(opts: UsePersonPickerOptions = {}) {
   }, [searchQuery, locale]);
 
   const selectPerson = useCallback(
-    (item: SearchSuggestion) => {
+    (item: SearchSuggestion): string | null => {
       const chosen = preferDenseLocalAlias(item, suggestions);
-      
-      if (chosen.known_locally && chosen.entity_id) {
-        setEntity(chosen.entity_id, chosen.label, chosen.qid);
+      const localId =
+        chosen.known_locally && chosen.entity_id ? chosen.entity_id : null;
+
+      if (localId) {
+        setEntity(localId, chosen.label, chosen.qid);
       } else {
         setPersonFilter(chosen.label, chosen.label, chosen.qid);
       }
 
-      if (!startLifeIngest) return;
-
-      progressiveIngest.startIngest({
-        subject: chosen.label,
-        qid: chosen.qid,
-        wikiLang: locale,
-      }).then((job) => {
-        if (job?.entity_id) {
-          setEntity(job.entity_id, chosen.label, chosen.qid);
-        }
-      });
+      if (startLifeIngest) {
+        void progressiveIngest
+          .startIngest({
+            subject: chosen.label,
+            qid: chosen.qid,
+            wikiLang: locale,
+          })
+          .then((job) => {
+            if (job?.entity_id) {
+              setEntity(job.entity_id, chosen.label, chosen.qid);
+            }
+          });
+      }
+      return localId;
     },
     [locale, setEntity, setPersonFilter, startLifeIngest, suggestions, progressiveIngest],
   );
@@ -111,6 +116,7 @@ export function usePersonPicker(opts: UsePersonPickerOptions = {}) {
     suggestions,
     searchLoading,
     selectPerson,
+    jobId: progressiveIngest.jobId,
     ingestBusy: progressiveIngest.isRunning,
     error: progressiveIngest.error,
     // Progressive ingest state

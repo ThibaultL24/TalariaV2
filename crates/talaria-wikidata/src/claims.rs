@@ -54,6 +54,23 @@ pub fn parse_entity_claims(entity: &Value) -> Vec<ParsedStatement> {
     parsed
 }
 
+/// Active identity item (P19 place of birth, P20 place of death): preferred beats normal.
+pub fn identity_item_qid(parsed: &[ParsedStatement], property: &str) -> Option<String> {
+    let pick = |rank: &str| {
+        parsed.iter().find_map(|stmt| {
+            if stmt.insert.property != property || stmt.insert.rank != rank {
+                return None;
+            }
+            stmt.insert
+                .value_json
+                .get("id")
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        })
+    };
+    pick("preferred").or_else(|| pick("normal"))
+}
+
 /// Active identity year (P569/P570): preferred beats normal; deprecated is excluded.
 pub fn identity_year(parsed: &[ParsedStatement], property: &str) -> Option<i32> {
     parsed.iter().find_map(|stmt| {

@@ -169,7 +169,12 @@ async fn run_person_ingest_inner(
 
     if let Some(meta) = wd_meta.as_ref() {
         if !meta.statements_text.is_empty() {
-            let (doc, raw) = extract::statements_to_raw_items(subject, &meta.statements_text);
+            let (doc, mut raw) = extract::statements_to_raw_items(subject, &meta.statements_text);
+            extract::apply_wikidata_identity_places(
+                &mut raw,
+                meta.birth_place_label.as_deref(),
+                meta.death_place_label.as_deref(),
+            );
             let wd_uri = format!("https://www.wikidata.org/wiki/{resolved_qid}");
             let wd_id = upsert_raw_wikidata_document(&pool, &wd_uri, subject, &doc).await?;
             let locator = grounding::wikidata_locator(&resolved_qid);
@@ -258,7 +263,12 @@ async fn run_person_ingest_inner(
 
     if let Some(meta) = wd_meta.as_ref() {
         if !meta.statements_text.is_empty() {
-            let (doc, raw) = extract::statements_to_raw_items(subject, &meta.statements_text);
+            let (doc, mut raw) = extract::statements_to_raw_items(subject, &meta.statements_text);
+            extract::apply_wikidata_identity_places(
+                &mut raw,
+                meta.birth_place_label.as_deref(),
+                meta.death_place_label.as_deref(),
+            );
             let wd_uri = format!("https://www.wikidata.org/wiki/{resolved_qid}");
             let wd_id = upsert_raw_wikidata_document(&pool, &wd_uri, subject, &doc).await?;
             let locator = grounding::wikidata_locator(&resolved_qid);

@@ -1383,6 +1383,8 @@ async fn process_one(
 pub(crate) struct WikidataSubjectMeta {
     pub(crate) birth_year: Option<i32>,
     pub(crate) death_year: Option<i32>,
+    pub(crate) birth_place_label: Option<String>,
+    pub(crate) death_place_label: Option<String>,
     pub(crate) occupations: Vec<String>,
     pub(crate) wiki_title: Option<String>,
     pub(crate) related_titles: Vec<String>,
@@ -1822,10 +1824,18 @@ pub(crate) async fn fetch_wikidata_subject_meta(
         persist_parsed_wikibase_statements(pool, &parsed).await?;
     }
     let statements_text = talaria_wikidata::promoted_statement_lines(&parsed);
+    let birth_place_label = talaria_wikidata::identity_item_qid(&parsed, "P19")
+        .and_then(|id| labels.get(&id).cloned())
+        .filter(|label| is_plausible_place_label(label));
+    let death_place_label = talaria_wikidata::identity_item_qid(&parsed, "P20")
+        .and_then(|id| labels.get(&id).cloned())
+        .filter(|label| is_plausible_place_label(label));
 
     Ok(WikidataSubjectMeta {
         birth_year,
         death_year,
+        birth_place_label,
+        death_place_label,
         occupations,
         wiki_title,
         related_titles,

@@ -154,9 +154,15 @@ fn first_sentence(text: &str, max_chars: usize) -> String {
 }
 
 pub fn explorer_summary<'a>(quote: Option<&'a str>, summary: Option<&'a str>) -> Option<String> {
-    for text in [quote, summary].into_iter().flatten() {
+    const MAX_SUMMARY_CHARS: usize = 160;
+    if let Some(text) = summary.map(str::trim).filter(|t| !t.is_empty()) {
+        if !is_statement_blob(text) {
+            return Some(first_sentence(text, MAX_SUMMARY_CHARS));
+        }
+    }
+    if let Some(text) = quote.map(str::trim).filter(|t| !t.is_empty()) {
         if is_occurrence_prose(text) {
-            return Some(text.trim().to_string());
+            return Some(first_sentence(text, MAX_SUMMARY_CHARS));
         }
     }
     None
@@ -175,11 +181,17 @@ pub fn explorer_headline(
     }
     if event_type == "birth" {
         if let Some(year) = year {
+            if let Some(place) = place.filter(|p| is_human_place_label(p)) {
+                return format!("Born in {place} ({year})");
+            }
             return format!("Born in {year}");
         }
     }
     if event_type == "death" {
         if let Some(year) = year {
+            if let Some(place) = place.filter(|p| is_human_place_label(p)) {
+                return format!("Died in {place} ({year})");
+            }
             return format!("Died in {year}");
         }
     }
@@ -290,6 +302,28 @@ mod tests {
                 Some("In 1977, Trump married Ivana Zelníčková"),
             ),
             "In 1977, Trump married Ivana Zelníčková"
+        );
+        assert_eq!(
+            explorer_headline(
+                "Ada Lovelace",
+                "birth",
+                Some(1815),
+                Some("London"),
+                Some("Very long quoted paragraph that should not become the card title because a short summary exists."),
+                Some("Born in London"),
+            ),
+            "Born in London"
+        );
+        assert_eq!(
+            explorer_headline(
+                "Ada Lovelace",
+                "birth",
+                Some(1815),
+                Some("London"),
+                None,
+                None,
+            ),
+            "Born in London (1815)"
         );
         assert_eq!(
             explorer_headline(

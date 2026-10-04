@@ -7,12 +7,17 @@ use serde_json::Value;
 use talaria_sources::is_followable_map_title;
 use talaria_sources::wdqs::WdqsEvent;
 
+/// Wikipedia languages to fetch for the subject article.
+/// Uses the requested locale only, plus English fallback when the primary is not English
+/// (avoids mixing FR extracts into an EN ingest).
 pub fn wiki_langs(requested: &str) -> Vec<String> {
-    let mut langs = vec![requested.trim().to_ascii_lowercase()];
-    for extra in ["en", "fr"] {
-        if !langs.iter().any(|l| l == extra) {
-            langs.push(extra.to_string());
-        }
+    let primary = requested.trim().to_ascii_lowercase();
+    if primary.is_empty() {
+        return vec!["en".to_string()];
+    }
+    let mut langs = vec![primary.clone()];
+    if primary != "en" {
+        langs.push("en".to_string());
     }
     langs
 }
@@ -265,6 +270,12 @@ mod tests {
         ));
         assert!(!should_pin_follow_title("Napoleonic Wars"));
         assert!(!should_pin_follow_title("Military career of Napoleon"));
+    }
+
+    #[test]
+    fn wiki_langs_respects_primary_without_forced_french() {
+        assert_eq!(wiki_langs("en"), vec!["en".to_string()]);
+        assert_eq!(wiki_langs("fr"), vec!["fr".to_string(), "en".to_string()]);
     }
 
     #[test]

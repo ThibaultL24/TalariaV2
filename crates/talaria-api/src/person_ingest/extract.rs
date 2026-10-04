@@ -14,6 +14,39 @@ use talaria_sources::wdqs::WdqsEvent;
 use super::collect::subject_mentioned;
 use crate::llm::{self, LlmExtractItem};
 
+fn short_clause_summary(_event_type: &str, quote: &str) -> String {
+    let trimmed = quote.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let cut = trimmed
+        .find(". ")
+        .or_else(|| trimmed.find('。'))
+        .unwrap_or(trimmed.len());
+    let sentence = trimmed[..cut].trim();
+    let max = 120usize;
+    if sentence.chars().count() <= max {
+        return sentence.to_string();
+    }
+    let short = sentence.chars().take(max).collect::<String>();
+    format!("{}…", short.trim_end())
+}
+
+pub fn apply_wikidata_identity_places(
+    items: &mut [talaria_quality::RawExtractItem],
+    birth_place: Option<&str>,
+    death_place: Option<&str>,
+) {
+    for item in items {
+        if item.event_type == "birth" && item.place_surface.is_none() {
+            item.place_surface = birth_place.map(str::to_string);
+        }
+        if item.event_type == "death" && item.place_surface.is_none() {
+            item.place_surface = death_place.map(str::to_string);
+        }
+    }
+}
+
 pub fn split_chunks(text: &str, max: usize) -> Vec<String> {
     if text.len() <= max {
         return vec![text.to_string()];
@@ -98,6 +131,7 @@ pub fn extract_wiki_rules(
             if !seen.insert(key) {
                 continue;
             }
+            let summary = short_clause_summary(&raw.event_type, quote);
             out.push(RawExtractItem {
                 lane: "fact".into(),
                 event_type: raw.event_type,
@@ -108,7 +142,7 @@ pub fn extract_wiki_rules(
                 },
                 year,
                 place_surface: place,
-                summary: quote.chars().take(160).collect(),
+                summary,
                 quoted_text: quote.to_string(),
                 confidence: 0.82,
             });

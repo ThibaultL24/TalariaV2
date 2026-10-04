@@ -35,6 +35,15 @@ export function parseDossierProse(raw: string): ParsedDossier {
   return { lead, body };
 }
 
+export function shortLifeRecap(raw: string | null | undefined): string | null {
+  const { lead, body } = parseDossierProse(raw ?? "");
+  const text = [lead, ...body].filter(Boolean).join(" ").trim();
+  if (text.length < 12) return null;
+  const sentences =
+    text.match(/[^.!?]+[.!?]+/g)?.map((sentence) => sentence.trim()).filter(Boolean) ?? [text];
+  return sentences.slice(0, 3).join(" ");
+}
+
 export function HowItHappened({ text, onCiteClick }: HowItHappenedProps) {
   const { t } = useI18n();
   const { lead, body } = parseDossierProse(text);
