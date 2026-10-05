@@ -200,13 +200,58 @@ html:not([data-theme="dark"]) .historical-timeline {
   background: var(--color-primary-soft);
 }
 
-.historical-timeline .v3-histo-density > span {
-  background: var(--ht-brush-bar);
+.v3-histo-brush {
+  position: relative;
+  height: 52px;
+  cursor: crosshair;
 }
 
-.historical-timeline .v3-histo-window {
-  border-color: var(--ht-brush-window);
+.v3-histo-density {
+  position: absolute;
+  inset: 8px 0 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.v3-histo-density > span {
+  flex: 1;
+  background: var(--ht-brush-bar);
+  border-radius: 2px 2px 0 0;
+  opacity: 0.45;
+}
+
+.v3-histo-window {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border: 2px solid var(--ht-brush-window);
   background: color-mix(in srgb, var(--ht-brush-window) 12%, transparent);
+  border-radius: 4px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.v3-histo-window:active {
+  cursor: grabbing;
+}
+
+.v3-histo-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  border: 0;
+  background: transparent;
+  cursor: ew-resize;
+}
+
+.v3-histo-handle--start {
+  left: -6px;
+}
+
+.v3-histo-handle--end {
+  right: -6px;
 }
 
 .historical-timeline__tooltip strong {

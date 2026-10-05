@@ -27,6 +27,7 @@ mod intuition;
 mod judge;
 mod llm;
 mod lot_e;
+mod lot_e_reports;
 mod narrative_dossier;
 mod person_ingest;
 mod place_conflict;
