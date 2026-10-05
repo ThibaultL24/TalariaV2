@@ -20,7 +20,7 @@ export const ANTIQUE_MAP_STYLE = {
       id: "paper-background",
       type: "background",
       paint: {
-        "background-color": "#F8EFD9",
+        "background-color": "#F7F3EA",
       },
     },
     {

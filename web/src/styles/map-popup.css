@@ -29,12 +29,17 @@
 }
 
 .popup-apercu {
-  background: var(--map-panel-bg);
-  border: 1px solid var(--map-panel-border);
+  background: color-mix(in srgb, var(--color-bg-surface) 96%, transparent);
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-lg);
   padding: var(--space-16);
   box-shadow: var(--shadow-md);
   color: var(--color-text-primary);
+}
+
+[data-theme="dark"] .popup-apercu {
+  background: color-mix(in srgb, var(--color-bg-surface) 94%, transparent);
+  border-color: var(--color-border-strong);
 }
 
 .popup-apercu__close:hover {

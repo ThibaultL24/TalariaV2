@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./styles/tokens.css";
+@import "./styles/ambient.css";
 @import "./styles/v3.css";
 @import "./styles/nebula.css";
 @import "./styles/agora.css";

@@ -7,25 +7,37 @@
 
 body {
   margin: 0;
-  background: var(--color-bg-primary);
+  background: transparent;
   color: var(--color-text-primary);
   font-family: var(--font-body);
 }
 
-/* Mode clair — fond un peu plus sombre / chaud + grain léger (aspect papier pierre) */
-html:not([data-theme="dark"]) body {
-  background-color: var(--color-bg-primary);
-  background-image:
-    radial-gradient(ellipse 100% 65% at 50% -8%, rgba(95, 82, 62, 0.06), transparent 58%),
-    radial-gradient(ellipse 55% 40% at 100% 100%, rgba(70, 88, 105, 0.045), transparent 50%),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.22'/%3E%3C/svg%3E");
-  background-size: auto, auto, 200px 200px;
-  background-blend-mode: normal, normal, multiply;
+html:not([data-theme="dark"]) body,
+[data-theme="dark"] body {
+  background: transparent;
 }
 
 html:not([data-theme="dark"]) .app-shell,
 html:not([data-theme="dark"]) .map-shell {
   background: transparent;
+}
+
+.talaria-glass {
+  background: var(--surface-glass);
+  border: 1px solid var(--surface-glass-border);
+  backdrop-filter: blur(18px) saturate(135%);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .talaria-glass {
+    background: var(--surface-glass-strong);
+  }
+}
+
+[data-theme="dark"] .talaria-glass {
+  backdrop-filter: blur(20px) saturate(130%);
+  -webkit-backdrop-filter: blur(20px) saturate(130%);
 }
 
 a {
@@ -37,7 +49,7 @@ a {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: var(--color-bg-primary);
+  background: transparent;
 }
 
 .app-shell--home {
@@ -53,9 +65,23 @@ a {
   padding: 6px clamp(12px, 3vw, 24px);
   border-bottom: 1px solid var(--navbar-chrome-border);
   background: var(--navbar-chrome-bg);
+  backdrop-filter: blur(18px) saturate(135%);
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+  box-shadow: var(--navbar-chrome-shadow);
   position: sticky;
   top: 0;
   z-index: 10;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .navbar {
+    background: var(--surface-glass-strong);
+  }
+}
+
+[data-theme="dark"] .navbar {
+  backdrop-filter: blur(20px) saturate(130%);
+  -webkit-backdrop-filter: blur(20px) saturate(130%);
 }
 
 .navbar__brand {
@@ -119,23 +145,47 @@ a {
 }
 
 .theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 36px;
+  padding: 3px;
+  border: 1px solid var(--navbar-chrome-border);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--surface-glass) 85%, transparent);
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) ease,
+    background-color var(--motion-fast) ease;
+}
+
+.theme-toggle__segment {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  border: 1px solid var(--navbar-chrome-border);
-  border-radius: 8px;
+  width: 30px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--navbar-chrome-muted);
-  cursor: pointer;
-  transition: color 0.2s, background 0.2s, border-color 0.2s;
+  font-size: 14px;
+  line-height: 1;
+  pointer-events: none;
+  transition:
+    background-color var(--motion-fast) ease,
+    color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease;
+}
+
+.theme-toggle__segment.is-active {
+  background: var(--color-bg-surface);
+  color: var(--color-primary);
+  box-shadow: var(--shadow-sm);
 }
 
 .theme-toggle:hover {
-  color: var(--navbar-chrome-text);
-  background: var(--navbar-chrome-hover-bg);
+  border-color: var(--color-border-strong);
 }
 
 .theme-toggle:focus-visible {
@@ -318,7 +368,7 @@ a {
 }
 
 .button--primary {
-  background: var(--color-accent);
+  background: var(--color-primary);
   color: var(--color-on-accent);
   box-shadow: var(--shadow-sm);
 }
@@ -346,6 +396,40 @@ a {
   border-bottom: 1px solid var(--home-hero-border-bottom);
 }
 
+.hero--home:not(.hero--has-earth)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.45;
+}
+
+.hero--home.talaria-cartography-pattern::before {
+  opacity: 0.45;
+}
+
+.hero--home .hero__grid {
+  position: relative;
+  z-index: 1;
+}
+
+.hero--home .hero__feature,
+.hero--home .hero__stat-card {
+  background: color-mix(in srgb, var(--color-bg-surface) 96%, transparent);
+  border: 1px solid var(--color-border-subtle);
+  box-shadow: var(--shadow-sm);
+  transition:
+    transform var(--motion-base) cubic-bezier(0.22, 1, 0.36, 1),
+    border-color var(--motion-base) ease,
+    box-shadow var(--motion-base) ease;
+}
+
+.hero--home .hero__feature:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-border-subtle));
+  box-shadow: var(--shadow-md);
+}
+
 .hero--home.hero--has-earth {
   background: var(--color-bg-primary);
 }
@@ -358,7 +442,7 @@ a {
   pointer-events: none;
 }
 
-.hero--landing.hero--home::before,
+.hero--landing.hero--home:not(.talaria-cartography-pattern)::before,
 .hero--landing.hero--home::after {
   content: none;
 }
@@ -463,7 +547,7 @@ a {
 }
 
 .hero--home .hero__cta-primary {
-  background: var(--color-accent);
+  background: var(--color-primary);
   color: var(--color-on-accent);
   border-color: rgba(var(--rgb-sea-accent), 0.55);
   box-shadow: 0 4px 24px rgba(var(--rgb-sea-accent), 0.24);
@@ -538,7 +622,7 @@ a {
   align-self: stretch;
   min-height: 2.75rem;
   border-radius: 4px;
-  background: linear-gradient(180deg, var(--color-accent) 0%, var(--color-accent-strong) 100%);
+  background: linear-gradient(180deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
 }
 
 .hero__feature-mark--soft {
@@ -1232,7 +1316,7 @@ a {
 
 .home-cta-band__btn {
   flex-shrink: 0;
-  background: var(--color-accent);
+  background: var(--color-primary);
   color: var(--color-on-accent);
   border-color: rgba(var(--rgb-sea-accent), 0.55);
   box-shadow: 0 4px 24px rgba(var(--rgb-sea-accent), 0.22);
@@ -1827,7 +1911,7 @@ a {
   font-weight: 600;
   cursor: pointer;
   border: none;
-  background: var(--color-accent);
+  background: var(--color-primary);
   color: var(--color-on-accent);
   transition: opacity 0.2s;
 }

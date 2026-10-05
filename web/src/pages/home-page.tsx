@@ -71,7 +71,10 @@ export function HomePage() {
     <div className="app-shell app-shell--home">
       <Navbar />
       <main className="home-main">
-        <section className="hero hero--landing hero--home" aria-labelledby="home-hero-title">
+        <section
+          className="hero hero--landing hero--home talaria-cartography-pattern"
+          aria-labelledby="home-hero-title"
+        >
           <div className="hero__grid">
             <div className="hero__copy">
               <p className="hero__eyebrow">{t.heroEyebrow}</p>

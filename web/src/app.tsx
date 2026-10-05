@@ -8,7 +8,12 @@ import { WhitepaperPage } from "@/pages/whitepaper-page";
 
 export function App() {
   return (
-    <BrowserRouter>
+    <>
+      <div className="talaria-ambient" aria-hidden="true">
+        <div className="talaria-ambient__layer talaria-ambient__sea" />
+        <div className="talaria-ambient__layer talaria-ambient__grain" />
+      </div>
+      <BrowserRouter>
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/entities/:entityId" element={<EntityPage />} />
@@ -20,5 +25,6 @@ export function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
+    </>
   );
 }

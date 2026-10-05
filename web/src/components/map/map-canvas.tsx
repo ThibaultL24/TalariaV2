@@ -3,18 +3,15 @@
 import { useEffect, useRef } from "react";
 import maplibregl, { type Map } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { ANTIQUE_MAP_STYLE } from "@/styles/map-style-antique";
+import { pickMapStyle } from "@/map/map-theme";
 import { useThemeStore } from "@/stores/theme-store";
 
 interface MapCanvasProps {
   onReady?: (map: Map) => void;
 }
 
-const OPENFREEMAP_DARK = "https://tiles.openfreemap.org/styles/dark";
-
-function pickStyle(isDark: boolean): string | maplibregl.StyleSpecification {
-  if (isDark) return OPENFREEMAP_DARK;
-  return ANTIQUE_MAP_STYLE as maplibregl.StyleSpecification;
+function pickStyle(isDark: boolean) {
+  return pickMapStyle(isDark);
 }
 
 export function MapCanvas({ onReady }: MapCanvasProps) {

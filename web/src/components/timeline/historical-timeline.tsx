@@ -26,6 +26,7 @@ import {
   yearWindowToDomain,
   xToYear,
 } from "./timeline-utils";
+import { aegeanPixiColors } from "@/lib/aegean-palette";
 import "./historical-timeline.css";
 
 type RenderedPoint = {
@@ -256,14 +257,14 @@ export function HistoricalTimeline({
         const alpha = point.event.map_eligible ? 0.95 : 0.62;
         dots.circle(point.x, point.y, point.radius).fill({ color: point.color, alpha });
         if (spotlightId && point.event.id === spotlightId) {
-          const dark = themeRef.current === "dark";
-          const ring = dark ? 0xffffff : 0x2a2622;
+          const palette = aegeanPixiColors(themeRef.current === "dark" ? "dark" : "light");
+          const ring = palette.selectedRing;
           dots
             .circle(point.x, point.y, point.radius + 7)
-            .stroke({ width: 2, color: ring, alpha: dark ? 0.95 : 0.8 });
+            .stroke({ width: 2, color: ring, alpha: 0.92 });
           dots
             .circle(point.x, point.y, point.radius + 12)
-            .stroke({ width: 1, color: ring, alpha: dark ? 0.35 : 0.28 });
+            .stroke({ width: 1, color: ring, alpha: 0.38 });
         }
       }
       drawCursor();
@@ -273,15 +274,15 @@ export function HistoricalTimeline({
       cursor.clear();
       highlight.clear();
       if (!currentHovered) return;
-      const dark = themeRef.current === "dark";
-      const guide = dark ? 0xffffff : 0x2a2622;
+      const palette = aegeanPixiColors(themeRef.current === "dark" ? "dark" : "light");
+      const guide = palette.primary;
       cursor
         .moveTo(currentHovered.x, 0)
         .lineTo(currentHovered.x, app.screen.height)
-        .stroke({ width: 1, color: guide, alpha: dark ? 0.16 : 0.12 });
+        .stroke({ width: 1, color: guide, alpha: 0.18 });
       highlight
         .circle(currentHovered.x, currentHovered.y, currentHovered.radius + 5)
-        .stroke({ width: 1, color: guide, alpha: dark ? 0.9 : 0.75 });
+        .stroke({ width: 1, color: guide, alpha: 0.85 });
       highlight
         .circle(currentHovered.x, currentHovered.y, currentHovered.radius + 1.5)
         .fill({ color: guide, alpha: 1 });
@@ -413,7 +414,8 @@ export function HistoricalTimeline({
       }
     };
 
-    const pixiBackground = () => (themeRef.current === "dark" ? 0x090909 : 0xf2efe8);
+    const pixiBackground = () =>
+      aegeanPixiColors(themeRef.current === "dark" ? "dark" : "light").background;
 
     const init = async () => {
       await app.init({
@@ -483,7 +485,7 @@ export function HistoricalTimeline({
   useEffect(() => {
     const app = pixiAppRef.current;
     if (!app?.renderer) return;
-    app.renderer.background.color = theme === "dark" ? 0x090909 : 0xf2efe8;
+    app.renderer.background.color = aegeanPixiColors(theme === "dark" ? "dark" : "light").background;
     recalcSceneRef.current();
   }, [theme]);
 

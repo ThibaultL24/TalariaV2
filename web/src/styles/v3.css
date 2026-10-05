@@ -1,6 +1,6 @@
 .v3-shell {
   min-height: 100%;
-  background: var(--color-bg-primary);
+  background: transparent;
   color: var(--color-text-primary);
 }
 .v3-main {
@@ -15,7 +15,7 @@
   gap: 20px;
 }
 .v3-heading h1 {
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-size: clamp(2rem, 4vw, 3.5rem);
   margin: 8px 0;
 }
@@ -57,7 +57,7 @@
 .v3-stats strong {
   display: block;
   font:
-    36px Georgia,
+    36px var(--font-display),
     serif;
 }
 .v3-stats span {
@@ -138,7 +138,7 @@
 }
 .v3-immersive-title {
   margin: 0;
-  font-family: Georgia, serif;
+  font-family: var(--font-display);
   font-size: clamp(1.1rem, 2.5vw, 1.45rem);
   font-weight: 600;
   line-height: 1.2;
@@ -216,23 +216,38 @@
 }
 .visit-lens-toggle {
   display: inline-flex;
-  border-radius: 999px;
-  border: 1px solid var(--color-border-subtle);
-  overflow: hidden;
-  background: var(--color-bg-surface);
+  padding: 3px;
+  gap: 2px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--surface-glass-border);
+  background: var(--surface-glass);
+  backdrop-filter: blur(14px) saturate(130%);
+  -webkit-backdrop-filter: blur(14px) saturate(130%);
+  box-shadow: var(--shadow-sm);
 }
 .visit-lens-toggle button {
   border: 0;
-  padding: 6px 14px;
+  padding: 7px 16px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--color-text-muted);
+  transition:
+    background-color var(--motion-fast) ease,
+    color var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease;
 }
 .visit-lens-toggle button.is-active {
-  background: var(--color-accent-soft);
-  color: var(--color-text-primary);
+  background: var(--color-bg-surface);
+  color: var(--color-primary);
+  box-shadow: var(--shadow-sm);
+  outline: 1px solid color-mix(in srgb, var(--color-primary) 28%, transparent);
+}
+.visit-lens-toggle button:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
 }
 .visit-heritage-list {
   list-style: none;
@@ -400,7 +415,7 @@
 }
 .v3-main h2 {
   font:
-    26px Georgia,
+    26px var(--font-display),
     serif;
   margin: 20px 0 10px;
 }
@@ -458,7 +473,7 @@
 .v3-dot:focus-visible { outline: 2px solid var(--color-accent-strong); outline-offset: 1px; }
 .v3-dot-preview { min-height: 72px; padding: 16px 0; display: flex; gap: 20px; align-items: baseline; border-top: 1px solid var(--color-border-subtle); }
 .v3-dot-preview span { color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
-.v3-dot-preview button { text-align: left; font-family: Georgia, serif; font-size: 20px; }
+.v3-dot-preview button { text-align: left; font-family: var(--font-display); font-size: 20px; }
 .v3-undated { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .v3-undated button { padding: 8px; }
 .v3-map-legend { position: absolute; z-index: 2; left: 16px; bottom: 16px; max-height: 60%; overflow: auto; }
@@ -469,7 +484,7 @@
 .v3-sources article { display: flex; flex-direction: column; gap: 12px; transition: border-color .2s, transform .2s; }
 .v3-sources article:hover { border-color: var(--color-accent); transform: translateY(-2px); }
 .v3-sources article > span { font-size: 11px; letter-spacing: .04em; color: var(--color-accent-strong); }
-.v3-sources h3 { font: 22px/1.35 Georgia, serif; }
+.v3-sources h3 { font: 22px/1.35 var(--font-display); }
 .v3-sources p { font-size: 12px; color: var(--color-text-secondary); }
 .v3-sources a { margin-top: auto; padding-top: 16px; color: var(--color-accent-strong); }
 @keyframes v3-dot-arrive { from { opacity: 0; transform: translateY(-64px) scale(.35); } to { opacity: 1; transform: translateY(0) scale(1); } }
@@ -541,7 +556,7 @@
 }
 .v3-histo-range {
   margin: 6px 0 0;
-  font: 32px/1.1 "Georgia", serif;
+  font: 32px/1.1 var(--font-display);
   font-variant-numeric: tabular-nums;
 }
 .v3-histo-zoom button {
@@ -629,7 +644,7 @@
   opacity: var(--dot-depth);
   transform: scale(calc(0.65 + var(--dot-depth) * 0.5));
   box-shadow: 0 0 16px color-mix(in srgb, var(--dot-color) 55%, transparent);
-  animation: v3-histo-pulse 4.5s ease-in-out infinite;
+  animation: none;
   animation-delay: var(--dot-delay);
 }
 .v3-histography .v3-dot--approx span {

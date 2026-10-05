@@ -19,14 +19,14 @@
 }
 
 .nebula-timeline-card:hover {
-  border-color: color-mix(in srgb, var(--color-accent) 35%, var(--color-border-subtle));
+  border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-border-subtle));
   box-shadow: var(--shadow-md);
 }
 
 .agora-lane-banner {
-  border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--color-accent) 28%, var(--color-border-subtle));
-  background: var(--color-accent-soft);
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 28%, var(--color-border-subtle));
+  background: var(--color-primary-soft);
   color: var(--color-text-secondary);
   font-size: 11px;
   line-height: 1.45;

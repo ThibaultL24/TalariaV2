@@ -29,11 +29,18 @@ export function ThemeToggle() {
       aria-label={label}
       title={label}
     >
-      {theme === "dark" ? (
-        <span aria-hidden="true">☀</span>
-      ) : (
-        <span aria-hidden="true">☾</span>
-      )}
+      <span
+        className={`theme-toggle__segment ${theme === "light" ? "is-active" : ""}`}
+        aria-hidden="true"
+      >
+        ☀
+      </span>
+      <span
+        className={`theme-toggle__segment ${theme === "dark" ? "is-active" : ""}`}
+        aria-hidden="true"
+      >
+        ☾
+      </span>
     </button>
   );
 }
