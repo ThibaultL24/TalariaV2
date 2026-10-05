@@ -4,6 +4,7 @@ import { EntitySearchBox } from "@/components/search/entity-search-box";
 import { usePersonPicker } from "@/hooks/use-person-picker";
 import { useExplorerStore } from "@/stores/explorer-store";
 import { Navbar } from "@/components/layout/navbar";
+import { TalariaSandalMark } from "@/components/brand/talaria-sandal-mark";
 import { EventDetailCard } from "@/components/detail/event-detail-card";
 import {
   fetchEntityBibliography,
@@ -281,7 +282,12 @@ export function EntityPage() {
             <div className="v3-heading">
               <div>
                 <p className="v3-eyebrow">TALARIA · EXPLORER</p>
-                <h1>{overview?.entity.label ?? (entityId ? "Loading…" : "Overview")}</h1>
+                <h1>
+                  <span className="talaria-heading-with-mark">
+                    <TalariaSandalMark />
+                    {overview?.entity.label ?? (entityId ? "Loading…" : "Overview")}
+                  </span>
+                </h1>
                 <p>Explore a life through time, places and evidence.</p>
               </div>
             </div>

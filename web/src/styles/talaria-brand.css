@@ -1,4 +1,4 @@
-/* web/src/styles/talaria-brand.css — sandal mark + live type */
+/* web/src/styles/talaria-brand.css — sandal + winged-T wordmark */
 
 .talaria-brand-lockup {
   display: inline-flex;
@@ -10,82 +10,56 @@
 }
 
 .talaria-brand-lockup--hero {
-  gap: clamp(12px, 2.4vw, 18px);
+  gap: clamp(12px, 2.2vw, 16px);
 }
 
-.talaria-brand-lockup__mark {
-  flex-shrink: 0;
-  overflow: hidden;
-  height: 2.25rem;
-  width: 3.6rem;
-}
-
-.talaria-brand-lockup--hero .talaria-brand-lockup__mark {
-  height: clamp(3.5rem, 8vw, 5.4rem);
-  width: clamp(5.6rem, 13vw, 8.6rem);
-}
-
-.talaria-brand-lockup__sandal {
+.talaria-brand-lockup__logo {
   display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center;
-  transform: scale(2.55);
-  transform-origin: center center;
+  height: 2.15rem;
+  width: auto;
+  max-width: min(52vw, 260px);
+  object-fit: contain;
 }
 
-[data-theme="light"] .talaria-brand-lockup__sandal {
-  filter: grayscale(1) invert(1);
-  mix-blend-mode: multiply;
+.talaria-brand-lockup--hero .talaria-brand-lockup__logo {
+  height: clamp(3.1rem, 7.5vw, 4.8rem);
+  max-width: min(70vw, 420px);
 }
 
-[data-theme="dark"] .talaria-brand-lockup__sandal {
-  filter: grayscale(1);
-  mix-blend-mode: lighten;
+[data-theme="light"] .talaria-brand-lockup__logo {
+  filter: none;
 }
 
-.talaria-brand-lockup__type {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
+[data-theme="dark"] .talaria-brand-lockup__logo {
+  filter: brightness(0) invert(1) sepia(0.22) saturate(0.35);
 }
 
-.talaria-brand-lockup__name {
-  font-family: var(--font-display);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  line-height: 1;
-  color: #16324a;
+.navbar__link-with-mark,
+.talaria-heading-with-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
 }
 
-.talaria-brand-lockup--navbar .talaria-brand-lockup__name {
-  font-size: 1.28rem;
+.talaria-sandal-mark {
+  display: block;
+  height: 1.05em;
+  width: auto;
+  object-fit: contain;
 }
 
-.talaria-brand-lockup--hero .talaria-brand-lockup__name {
-  font-size: clamp(2.1rem, 6.2vw, 3.4rem);
+.talaria-heading-with-mark .talaria-sandal-mark {
+  height: 0.85em;
 }
 
-.talaria-brand-lockup__tagline {
-  font-size: 0.62rem;
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: #2a4a63;
-  line-height: 1.2;
+.talaria-heading-with-mark--tab .talaria-sandal-mark {
+  height: 0.95em;
 }
 
-.talaria-brand-lockup--hero .talaria-brand-lockup__tagline {
-  font-size: clamp(0.62rem, 1.5vw, 0.78rem);
-  letter-spacing: 0.22em;
+[data-theme="light"] .talaria-sandal-mark {
+  filter: none;
 }
 
-[data-theme="dark"] .talaria-brand-lockup__name {
-  color: #f7f3ea;
-}
-
-[data-theme="dark"] .talaria-brand-lockup__tagline {
-  color: rgba(247, 243, 234, 0.82);
+[data-theme="dark"] .talaria-sandal-mark {
+  filter: brightness(1.45) contrast(1.08) saturate(0.9);
 }

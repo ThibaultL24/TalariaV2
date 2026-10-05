@@ -5,6 +5,7 @@ import { AgoraPanel } from "@/components/explorer/agora-panel";
 import { LaneIngestBar } from "@/components/explorer/lane-ingest-bar";
 import { IntuitionStanceBar } from "@/components/intuition/intuition-stance-bar";
 import { Navbar } from "@/components/layout/navbar";
+import { TalariaSandalMark } from "@/components/brand/talaria-sandal-mark";
 import { WalletConnectButton } from "@/components/wallet/wallet-connect-button";
 import { EntitySearchBox } from "@/components/search/entity-search-box";
 import { usePersonPicker } from "@/hooks/use-person-picker";
@@ -142,7 +143,12 @@ export function AgoraPage() {
         <section className="hero hero--landing hero--home hero--agora hero--agora-photo px-4 py-8">
           <div className="mx-auto max-w-3xl">
             <p className="hero__eyebrow">{localizedPersonLabel(entityLabel, locale) || t.agora}</p>
-            <h1 className="hero__title hero__title--agora text-4xl">{t.agora}</h1>
+            <h1 className="hero__title hero__title--agora text-4xl">
+              <span className="talaria-heading-with-mark">
+                <TalariaSandalMark />
+                {t.agora}
+              </span>
+            </h1>
             <p className="hero__subtitle">{t.agoraHint}</p>
             {entityId ? (
               <div className="mt-4 max-w-lg intuition-panel">

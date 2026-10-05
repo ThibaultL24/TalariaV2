@@ -78,7 +78,6 @@ export function HomePage() {
         >
           <div className="hero__grid">
             <div className="hero__copy">
-              <p className="hero__eyebrow">{t.heroEyebrow}</p>
               <h1 id="home-hero-title" className="hero__title hero__title--wordmark">
                 <TalariaHeroWordmark />
               </h1>
