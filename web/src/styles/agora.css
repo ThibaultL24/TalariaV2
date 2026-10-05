@@ -185,3 +185,62 @@
 [data-theme="dark"] .agora-evidence-row {
   background: rgba(0, 0, 0, 0.2);
 }
+
+.hero--agora-photo {
+  position: relative;
+  overflow: hidden;
+  background-size: cover;
+  background-position: center 42%;
+  background-repeat: no-repeat;
+}
+
+[data-theme="light"] .hero--agora-photo {
+  background-image: url("/brand/hero-agora-day.jpg");
+}
+
+[data-theme="dark"] .hero--agora-photo {
+  background-image: url("/brand/hero-agora-night.jpg");
+}
+
+.hero--agora-photo::before,
+.hero--agora-photo::after {
+  content: "";
+  pointer-events: none;
+  z-index: 0;
+}
+
+.hero--agora-photo::before {
+  position: absolute;
+  inset: 0;
+  opacity: 1;
+}
+
+[data-theme="light"] .hero--agora-photo::before {
+  background: linear-gradient(
+    180deg,
+    rgba(247, 243, 234, 0.22) 0%,
+    rgba(247, 243, 234, 0.08) 48%,
+    color-mix(in srgb, var(--color-bg-primary) 82%, transparent) 100%
+  );
+}
+
+[data-theme="dark"] .hero--agora-photo::before {
+  background: linear-gradient(
+    180deg,
+    rgba(8, 21, 28, 0.32) 0%,
+    rgba(8, 21, 28, 0.14) 48%,
+    color-mix(in srgb, var(--color-bg-primary) 82%, transparent) 100%
+  );
+}
+
+.hero--agora-photo::after {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 88px;
+  background: linear-gradient(to bottom, transparent, var(--color-bg-primary));
+}
+
+.hero--agora-photo > * {
+  position: relative;
+  z-index: 1;
+}

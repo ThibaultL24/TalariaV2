@@ -277,39 +277,39 @@ export function EntityPage() {
       <Navbar />
       <main className={`v3-main${immersive ? " v3-main--immersive" : ""}`}>
         {!immersive && (
-          <div className="v3-heading">
-            <div>
-              <p className="v3-eyebrow">TALARIA · EXPLORER</p>
-              <h1>{overview?.entity.label ?? (entityId ? "Loading…" : "Overview")}</h1>
-              <p>Explore a life through time, places and evidence.</p>
+          <section className={view === "overview" ? "v3-overview-hero" : undefined}>
+            <div className="v3-heading">
+              <div>
+                <p className="v3-eyebrow">TALARIA · EXPLORER</p>
+                <h1>{overview?.entity.label ?? (entityId ? "Loading…" : "Overview")}</h1>
+                <p>Explore a life through time, places and evidence.</p>
+              </div>
             </div>
-          </div>
-        )}
-        {!immersive && (
-          <section className="v3-search" aria-label="Search a person">
-            <EntitySearchBox
-              suggestions={picker.suggestions}
-              onSubmitQuery={picker.setSearchQuery}
-              isLoading={picker.searchLoading}
-              onSelect={(item) => {
-                pendingSelection.current = true;
-                picker.selectPerson(item);
-                const selectedId = useExplorerStore.getState().entityId;
-                if (selectedId) {
-                  pendingSelection.current = false;
-                  navigate(`/entities/${selectedId}/map`);
-                }
-              }}
-            />
-            {picker.ingestBusy && (
-              <p role="status">
-                Collecting sources · {picker.timelineEvents} events · {picker.mapPins} map points
-              </p>
-            )}
-            {picker.error && <p role="alert">{picker.error}</p>}
-            {!entityId && !picker.ingestBusy && (
-              <p className="v3-note">Search for a person to explore their life, places and sources.</p>
-            )}
+            <section className="v3-search" aria-label="Search a person">
+              <EntitySearchBox
+                suggestions={picker.suggestions}
+                onSubmitQuery={picker.setSearchQuery}
+                isLoading={picker.searchLoading}
+                onSelect={(item) => {
+                  pendingSelection.current = true;
+                  picker.selectPerson(item);
+                  const selectedId = useExplorerStore.getState().entityId;
+                  if (selectedId) {
+                    pendingSelection.current = false;
+                    navigate(`/entities/${selectedId}/map`);
+                  }
+                }}
+              />
+              {picker.ingestBusy && (
+                <p role="status">
+                  Collecting sources · {picker.timelineEvents} events · {picker.mapPins} map points
+                </p>
+              )}
+              {picker.error && <p role="alert">{picker.error}</p>}
+              {!entityId && !picker.ingestBusy && (
+                <p className="v3-note">Search for a person to explore their life, places and sources.</p>
+              )}
+            </section>
           </section>
         )}
         {immersive && entityId && (

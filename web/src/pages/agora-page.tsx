@@ -139,7 +139,7 @@ export function AgoraPage() {
         }
       />
       <main className="agora-canvas min-h-0 flex-1 overflow-y-auto">
-        <section className="hero hero--landing hero--home hero--agora px-4 py-8">
+        <section className="hero hero--landing hero--home hero--agora hero--agora-photo px-4 py-8">
           <div className="mx-auto max-w-3xl">
             <p className="hero__eyebrow">{localizedPersonLabel(entityLabel, locale) || t.agora}</p>
             <h1 className="hero__title hero__title--agora text-4xl">{t.agora}</h1>

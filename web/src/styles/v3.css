@@ -500,3 +500,52 @@
 .v3-events--landmarks li span:first-child { font-weight: 600; color: var(--color-text-primary); }
 .v3-chron-preview { margin-top: 2rem; }
 
+.v3-overview-hero {
+  position: relative;
+  overflow: hidden;
+  margin: -36px -32px 28px;
+  padding: 48px 32px 36px;
+  background-size: cover;
+  background-position: center 40%;
+  background-repeat: no-repeat;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+[data-theme="light"] .v3-overview-hero {
+  background-image: url("/brand/hero-overview-day.jpg");
+}
+
+[data-theme="dark"] .v3-overview-hero {
+  background-image: url("/brand/hero-overview-night.jpg");
+}
+
+.v3-overview-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+[data-theme="light"] .v3-overview-hero::before {
+  background: linear-gradient(
+    180deg,
+    rgba(247, 243, 234, 0.28) 0%,
+    rgba(247, 243, 234, 0.1) 50%,
+    color-mix(in srgb, var(--color-bg-primary) 72%, transparent) 100%
+  );
+}
+
+[data-theme="dark"] .v3-overview-hero::before {
+  background: linear-gradient(
+    180deg,
+    rgba(8, 21, 28, 0.38) 0%,
+    rgba(8, 21, 28, 0.16) 50%,
+    color-mix(in srgb, var(--color-bg-primary) 78%, transparent) 100%
+  );
+}
+
+.v3-overview-hero > * {
+  position: relative;
+  z-index: 1;
+}
+

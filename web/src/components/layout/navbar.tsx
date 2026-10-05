@@ -2,6 +2,7 @@
 import type { ReactNode } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
+import { TalariaNavbarBrand } from "@/components/brand/talaria-navbar-brand";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { WalletConnectButton } from "@/components/wallet/wallet-connect-button";
 
@@ -21,11 +22,8 @@ export function Navbar({ center }: NavbarProps) {
 
   return (
     <header className="navbar">
-      <Link to="/" className="navbar__brand">
-        <div>
-          <div className="navbar__title">{t.productName}</div>
-          <div className="navbar__subtitle">{t.productSubtitle}</div>
-        </div>
+      <Link to="/" className="navbar__brand" aria-label={t.productName}>
+        <TalariaNavbarBrand />
       </Link>
       {center ? <div className="navbar__center">{center}</div> : null}
       <div className="navbar__actions">

@@ -452,9 +452,60 @@ a {
   pointer-events: none;
 }
 
-.hero--landing.hero--home:not(.talaria-cartography-pattern)::before,
-.hero--landing.hero--home::after {
+.hero--landing.hero--home:not(.hero--aegean-photo):not(.hero--agora-photo)::before,
+.hero--landing.hero--home:not(.hero--aegean-photo):not(.hero--agora-photo)::after {
   content: none;
+}
+
+.hero--home.hero--aegean-photo {
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+}
+
+[data-theme="light"] .hero--home.hero--aegean-photo {
+  background-image: url("/brand/hero-aegean-day.jpg");
+}
+
+[data-theme="dark"] .hero--home.hero--aegean-photo {
+  background-image: url("/brand/hero-aegean-night.jpg");
+}
+
+.hero--home.hero--aegean-photo::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 1;
+}
+
+[data-theme="light"] .hero--home.hero--aegean-photo::before {
+  background: linear-gradient(
+    180deg,
+    rgba(247, 243, 234, 0.18) 0%,
+    rgba(247, 243, 234, 0.08) 48%,
+    color-mix(in srgb, var(--color-bg-primary) 78%, transparent) 100%
+  );
+}
+
+[data-theme="dark"] .hero--home.hero--aegean-photo::before {
+  background: linear-gradient(
+    180deg,
+    rgba(8, 21, 28, 0.28) 0%,
+    rgba(8, 21, 28, 0.12) 48%,
+    color-mix(in srgb, var(--color-bg-primary) 78%, transparent) 100%
+  );
+}
+
+.hero--home.hero--aegean-photo::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 100px;
+  background: linear-gradient(to bottom, transparent, var(--color-bg-primary));
+  pointer-events: none;
+  z-index: 0;
 }
 
 .hero--home .hero__grid {
@@ -496,6 +547,11 @@ a {
   font-size: 11px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+}
+
+.hero--home .hero__title--wordmark {
+  margin: 0;
+  line-height: 1;
 }
 
 .hero--home .hero__title {

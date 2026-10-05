@@ -33,7 +33,7 @@
 .navbar__brand {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   text-decoration: none;
   color: var(--navbar-chrome-text);
 }
