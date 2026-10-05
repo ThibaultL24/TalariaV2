@@ -283,10 +283,20 @@ a {
   flex-direction: column;
   gap: 12px;
   padding: 22px 20px;
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--color-border-subtle);
   background: var(--color-bg-surface);
   box-shadow: var(--shadow-sm);
+  transition:
+    transform var(--motion-base) cubic-bezier(0.22, 1, 0.36, 1),
+    border-color var(--motion-base) ease,
+    box-shadow var(--motion-base) ease;
+}
+
+.home-visions__card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-border-subtle));
+  box-shadow: var(--shadow-md);
 }
 
 .home-visions__card-top {
@@ -762,8 +772,9 @@ a {
 }
 
 .demo-roster__card:hover {
-  border-color: rgba(var(--rgb-sea-accent), 0.35);
-  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-border-subtle));
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
 }
 
 .demo-roster__card-top {
@@ -1203,8 +1214,8 @@ a {
 
 .home-partners {
   padding: 52px 32px 56px;
-  background: #000000;
-  border-top: none;
+  background: var(--color-bg-primary);
+  border-top: 1px solid var(--color-border-subtle);
 }
 
 .home-partners__inner {
@@ -1217,7 +1228,7 @@ a {
   font-family: var(--font-display);
   font-size: clamp(24px, 3.5vw, 32px);
   margin: 0 0 12px;
-  color: #f8f7f3;
+  color: var(--color-text-primary);
 }
 
 .home-partners__subtitle {
@@ -1225,7 +1236,7 @@ a {
   max-width: 640px;
   font-size: 15px;
   line-height: 1.55;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--color-text-secondary);
 }
 
 .home-partners__grid {
@@ -1238,8 +1249,8 @@ a {
 }
 
 .home-partners__card {
-  background: #111317;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-subtle);
   border-radius: 16px;
   padding: 24px 16px;
   display: flex;
@@ -1256,16 +1267,16 @@ a {
 
 .home-partners__card:hover {
   transform: translateY(-2px);
-  border-color: rgba(255, 176, 32, 0.58);
-  background: #111317;
+  border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-border-subtle));
+  background: var(--color-bg-surface);
 }
 
 .home-partners__logo-slot {
   width: 72px;
   height: 48px;
   border-radius: 8px;
-  background: #10141a;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-subtle);
 }
 
 .home-partners__name {

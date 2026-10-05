@@ -59,7 +59,7 @@ export function EventDetailCard({ event, onClose, offlineOnly: _offlineOnly = fa
   const datePlace = [dateLabel, placeLabel].filter(Boolean).join(" · ");
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-(--color-bg-elevated)">
+    <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-(--color-bg-surface)">
       <div className="flex items-start justify-between gap-3 border-b border-(--color-border-subtle) p-4">
         <div className="min-w-0">
           <h2 id="event-detail-card-title" className="text-lg font-semibold leading-snug">

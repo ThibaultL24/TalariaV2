@@ -3,7 +3,8 @@
 html {
   transition:
     background-color var(--motion-theme, 550ms) cubic-bezier(0.22, 1, 0.36, 1),
-    color var(--motion-theme, 550ms) cubic-bezier(0.22, 1, 0.36, 1);
+    color var(--motion-theme, 550ms) cubic-bezier(0.22, 1, 0.36, 1),
+    border-color var(--motion-theme, 550ms) cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @media (prefers-reduced-motion: reduce) {

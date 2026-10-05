@@ -82,7 +82,8 @@
   --shadow-sm: 0 1px 3px rgba(45, 38, 28, 0.07);
   --shadow-md: 0 6px 20px rgba(45, 38, 28, 0.1);
   --shadow-default: 0 2px 8px rgba(45, 38, 28, 0.09);
-  --shadow-elevated-interactive: 0 12px 28px rgba(45, 38, 28, 0.14);
+  --shadow-elevated: 0 12px 28px rgba(32, 49, 58, 0.12);
+  --shadow-elevated-interactive: var(--shadow-elevated);
   /* Néon très léger sous cartes sombres (hero / marketing) */
   --shadow-neon-under:
     0 8px 26px rgba(45, 38, 28, 0.09),
@@ -299,7 +300,8 @@
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
   --shadow-md: 0 4px 24px rgba(0, 0, 0, 0.35);
-  --shadow-elevated-interactive: 0 10px 26px rgba(0, 0, 0, 0.42);
+  --shadow-elevated: 0 10px 26px rgba(8, 21, 28, 0.45);
+  --shadow-elevated-interactive: var(--shadow-elevated);
   --shadow-neon-under:
     0 12px 40px rgba(0, 0, 0, 0.5),
     0 0 36px -12px rgba(var(--rgb-sea-accent), 0.28);
@@ -341,17 +343,17 @@
   --home-hero-badge-fg: rgba(255, 255, 255, 0.78);
   --home-hero-title: #fafafa;
   --home-hero-subtitle: rgba(255, 255, 255, 0.68);
-  --home-hero-stat-bg: #111317;
+  --home-hero-stat-bg: var(--color-bg-surface);
   --home-hero-stat-border: rgba(255, 255, 255, 0.16);
   --home-hero-stat-value: #f5f5f5;
   --home-hero-stat-label: rgba(255, 255, 255, 0.68);
-  --home-hero-feature-bg: #111317;
+  --home-hero-feature-bg: var(--color-bg-surface);
   --home-hero-feature-border: rgba(255, 255, 255, 0.1);
   --home-hero-feature-title: rgba(255, 255, 255, 0.95);
   --home-hero-feature-text: rgba(255, 255, 255, 0.62);
-  --home-hero-secondary-btn-bg: #111317;
+  --home-hero-secondary-btn-bg: var(--color-bg-elevated);
   --home-hero-secondary-btn-fg: rgba(255, 255, 255, 0.92);
-  --home-hero-secondary-hover-bg: #111317;
+  --home-hero-secondary-hover-bg: var(--color-bg-elevated);
   --home-hero-secondary-hover-fg: #ffffff;
   --home-hero-feature-hover-shadow:
     0 14px 44px rgba(0, 0, 0, 0.55),
@@ -361,7 +363,7 @@
     radial-gradient(ellipse 90% 55% at 50% -15%, rgba(var(--rgb-sea-accent), 0.09), transparent 55%),
     var(--color-bg-primary);
   --home-about-border-top: rgba(255, 255, 255, 0.06);
-  --home-about-title: #f8f7f3;
+  --home-about-title: var(--color-text-primary);
   --home-about-body: rgba(255, 255, 255, 0.74);
   --home-about-intro-lead: rgba(255, 255, 255, 0.86);
   --home-about-panel-bg:
@@ -382,31 +384,31 @@
   --home-about-quote-text: rgba(248, 247, 243, 0.96);
   --home-about-closing: rgba(255, 255, 255, 0.82);
   --home-about-closing-border: rgba(255, 255, 255, 0.08);
-  --home-about-pillar-bg: #111317;
+  --home-about-pillar-bg: var(--color-bg-surface);
   --home-about-pillar-border: rgba(255, 255, 255, 0.14);
   --home-about-pillar-label: #f6e9cb;
   --home-about-pillar-text: rgba(255, 255, 255, 0.7);
 
   --home-cta-outer-bg: var(--color-bg-primary);
-  --home-cta-inner-bg: #111317;
+  --home-cta-inner-bg: var(--color-bg-surface);
   --home-cta-inner-border: rgba(255, 255, 255, 0.16);
   --home-cta-inner-shadow: 0 16px 40px -24px rgba(0, 0, 0, 0.7);
-  --home-cta-title: #f8f7f3;
+  --home-cta-title: var(--color-text-primary);
   --home-cta-subtitle: rgba(255, 255, 255, 0.72);
   --home-cta-secondary-fg: rgba(255, 255, 255, 0.9);
   --home-cta-secondary-bg: rgba(255, 255, 255, 0.03);
   --home-cta-secondary-hover-bg: rgba(255, 255, 255, 0.08);
 
   --home-login-bg: var(--color-bg-primary);
-  --home-login-panel-bg: #111317;
+  --home-login-panel-bg: var(--color-bg-surface);
   --home-login-panel-border: rgba(255, 255, 255, 0.14);
   --home-login-panel-shadow: 0 16px 40px -24px rgba(0, 0, 0, 0.68);
-  --home-login-heading: #f8f7f3;
+  --home-login-heading: var(--color-text-primary);
   --home-login-subtitle: rgba(255, 255, 255, 0.72);
   --home-login-field-label: rgba(255, 255, 255, 0.7);
   --home-login-input-bg: rgba(0, 0, 0, 0.25);
   --home-login-input-border: rgba(255, 255, 255, 0.18);
-  --home-login-input-fg: #f8f7f3;
+  --home-login-input-fg: var(--color-text-primary);
 
   --agora-intuition-accent: var(--color-accent-strong);
   --agora-intuition-border: rgba(var(--rgb-sea-accent), 0.28);
@@ -418,7 +420,7 @@
   --agora-intuition-shadow: var(--shadow-elevated-interactive);
   --agora-intuition-gold: var(--agora-intuition-accent);
 
-  --home-earth-bg: #000000;
+  --home-earth-bg: var(--color-bg-primary);
   --home-earth-canvas-filter: grayscale(1) contrast(1.08) brightness(0.55);
   --home-earth-canvas-vignette: rgba(0, 0, 0, 0.55);
   --home-earth-dot: rgba(255, 255, 255, 0.18);

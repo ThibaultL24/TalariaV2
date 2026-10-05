@@ -83,7 +83,7 @@ export function EntitySearchBox({
 
       {showPanel ? (
         <div
-          className="absolute top-full right-0 left-0 z-30 mt-1.5 overflow-hidden rounded-xl border border-(--color-border-subtle) bg-(--color-bg-elevated) shadow-lg"
+          className="absolute top-full right-0 left-0 z-30 mt-1.5 overflow-hidden rounded-xl border border-(--color-border-strong) bg-(--color-bg-surface) shadow-lg"
           role="listbox"
         >
           <div className="border-b border-(--color-border-subtle) px-3 py-2 text-[11px] text-(--color-text-muted)">
@@ -108,7 +108,7 @@ export function EntitySearchBox({
                     onSubmitQuery("");
                     setIsFocused(false);
                   }}
-                  className="block w-full px-3 py-2 text-left hover:bg-(--color-bg-primary)"
+                  className="block w-full px-3 py-2 text-left hover:bg-(--color-primary-soft)"
                   role="option"
                 >
                   <div className="flex items-start justify-between gap-2">
