@@ -1,0 +1,555 @@
+// crates/talaria-api/src/cli_dispatch.rs
+//! CLI command dispatch. `main` only loads env, tracing, and config.
+//!
+//! Command behavior stays here so the composition root does not grow with each subcommand.
+//! Offline dump commands and the live person ingest are both dispatched, but they remain
+//! separate pipelines (`legacy` vs `person`).
+
+use std::path::PathBuf;
+
+use talaria_core::AppConfig;
+
+use crate::cli::{AdminAction, Cli, Commands, DumpAction};
+use crate::{
+    claim_extract, cli, cli_helpers, corpus_ingest, cosmos, dump_cosmos, dump_events, dump_ingest,
+    dump_mine, geocode, historiography, ingest, intuition, judge, lot_e, person_ingest, quality,
+    rebuild, routes, visit_audit, visit_enrich, wikidata_ingest,
+};
+
+pub async fn dispatch(cli: Cli, config: AppConfig) -> anyhow::Result<()> {
+    match cli.command {
+        Commands::Migrate => cli::run_migrate(&config).await?,
+        Commands::Serve => routes::serve(config).await?,
+        Commands::DumpIndex { index, limit } => cli::run_dump_index(&config, &index, limit).await?,
+        Commands::Dump { action } => match action {
+            DumpAction::Plan {
+                file,
+                subject,
+                language,
+                source_kind,
+                limit,
+            } => {
+                let report = dump_ingest::run_dump_plan(&dump_ingest::DumpIngestOpts {
+                    file,
+                    source_kind,
+                    subject,
+                    language,
+                    dry_run: true,
+                    skip_existing: false,
+                    limit,
+                    resume_run: None,
+                })
+                .await?;
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            }
+            DumpAction::Ingest {
+                file,
+                dry_run,
+                subject,
+                language,
+                skip_existing,
+                source_kind,
+                limit,
+                run,
+            } => {
+                let resume_run = match run {
+                    Some(id) => Some(id.parse::<uuid::Uuid>()?),
+                    None => None,
+                };
+                let opts = dump_ingest::DumpIngestOpts {
+                    file,
+                    source_kind,
+                    subject,
+                    language,
+                    dry_run,
+                    skip_existing,
+                    limit,
+                    resume_run,
+                };
+                let report = if dry_run {
+                    dump_ingest::run_dump_plan(&opts).await?
+                } else {
+                    dump_ingest::run_dump_ingest(&config, &opts).await?
+                };
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            }
+            DumpAction::Resume { run, skip_existing } => {
+                let run_id: uuid::Uuid = run.parse()?;
+                let report = dump_ingest::run_dump_resume(&config, run_id, skip_existing).await?;
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            }
+            DumpAction::Status { run } => {
+                let run_id = match run {
+                    Some(id) => Some(id.parse::<uuid::Uuid>()?),
+                    None => None,
+                };
+                let status = dump_ingest::run_dump_status(&config, run_id).await?;
+                println!("{}", serde_json::to_string_pretty(&status)?);
+            }
+            DumpAction::ExtractCandidates {
+                run,
+                source_kind,
+                min_score,
+                cosmos,
+                skip_existing,
+                limit,
+                version,
+            } => {
+                let live = match cosmos.as_str() {
+                    "heuristic" => false,
+                    "live" => true,
+                    other => anyhow::bail!("unknown --cosmos {other} (heuristic|live)"),
+                };
+                let run_id = match run {
+                    Some(id) => Some(id.parse::<uuid::Uuid>()?),
+                    None => None,
+                };
+                let report = dump_cosmos::run_dump_extract_candidates(
+                    &config,
+                    &dump_cosmos::DumpExtractOpts {
+                        run_id,
+                        source_kind,
+                        min_score,
+                        live,
+                        skip_existing,
+                        limit,
+                        version,
+                    },
+                )
+                .await?;
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            }
+            DumpAction::ExtractEvents {
+                run,
+                source_kind,
+                subject,
+                extractors,
+                analyzer_id,
+                version,
+                limit,
+            } => {
+                let run_id = match run {
+                    Some(id) => Some(id.parse::<uuid::Uuid>()?),
+                    None => None,
+                };
+                let report = dump_events::run_dump_extract_events(
+                    &config,
+                    &dump_events::DumpEventsOpts {
+                        run_id,
+                        source_kind,
+                        subject,
+                        extractors,
+                        analyzer_id,
+                        version,
+                        limit,
+                        assemble: false,
+                    },
+                )
+                .await?;
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            }
+            DumpAction::Canonicalize {
+                run,
+                source_kind,
+                subject,
+                extractors,
+                analyzer_id,
+                version,
+                limit,
+            } => {
+                let run_id = match run {
+                    Some(id) => Some(id.parse::<uuid::Uuid>()?),
+                    None => None,
+                };
+                let report = dump_events::run_dump_canonicalize(
+                    &config,
+                    &dump_events::DumpEventsOpts {
+                        run_id,
+                        source_kind,
+                        subject,
+                        extractors,
+                        analyzer_id,
+                        version,
+                        limit,
+                        assemble: true,
+                    },
+                )
+                .await?;
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            }
+        },
+        Commands::ExtractPages {
+            dump,
+            index,
+            limit,
+            main_namespace,
+            skip_existing,
+        } => {
+            cli::run_extract_pages(&config, dump, index, limit, main_namespace, skip_existing)
+                .await?
+        }
+        Commands::DataInit => {
+            talaria_dump::ensure_data_dirs(&config)?;
+            tracing::info!(root = %config.data_root.display(), "data directories ready");
+        }
+        Commands::SplitSentences {
+            limit,
+            skip_existing,
+        } => cli::run_split_sentences(&config, limit, skip_existing).await?,
+        Commands::CosmosExtract {
+            batch_size,
+            limit,
+            skip_existing,
+            mock,
+        } => cosmos::run_cosmos_extract(&config, batch_size, limit, skip_existing, mock).await?,
+        Commands::JudgeCandidates { limit } => judge::run_judge_candidates(&config, limit).await?,
+        Commands::GeocodePlaces { limit } => geocode::run_geocode_places(&config, limit).await?,
+        Commands::QualityFixture {
+            title,
+            file,
+            assemble,
+        } => {
+            let text = std::fs::read_to_string(&file)?;
+            let stats = quality::run_quality_fixture(&config, &title, &text, assemble).await?;
+            tracing::info!(?stats, "quality fixture complete");
+        }
+        Commands::QualityNapoleonDemo => {
+            let report = quality::run_quality_napoleon_demo(&config).await?;
+            println!("---\n{report}");
+        }
+        Commands::QualityReport => {
+            quality::run_quality_report(&config).await?;
+        }
+        Commands::QualitySupersedeDeath {
+            subject,
+            year,
+            place,
+        } => {
+            let id = quality::run_quality_supersede_death(&config, &subject, year, &place).await?;
+            tracing::info!(%id, "supersession done");
+        }
+        Commands::SourceRegistry { live } => ingest::run_source_registry(live).await?,
+        Commands::PlanSources { subject, qid } => {
+            ingest::run_plan_sources(&subject, qid.as_deref()).await?
+        }
+        Commands::ExplorerIngest {
+            subject,
+            qid,
+            wiki_lang,
+            seed_list,
+            max_documents,
+        } => {
+            let seeds = match seed_list {
+                Some(path) => crate::cli_helpers::resolve_repo_path(path),
+                None => crate::routes::ingest::resolve_seed_list(&subject)
+                    .map_err(|e| anyhow::anyhow!("{e}"))?,
+            };
+            let report = person_ingest::run_person_ingest(
+                &config,
+                &subject,
+                qid.as_deref(),
+                &wiki_lang,
+                max_documents,
+                Some(seeds.as_path()),
+            )
+            .await?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
+        Commands::IngestQuality {
+            subject,
+            qid,
+            sources,
+            fixture,
+            live,
+            seed_list,
+            target_timeline_events,
+            target_map_events,
+            max_documents,
+            max_depth,
+            max_documents_per_source,
+            max_titles,
+            wiki_lang,
+            resume: _,
+            no_llm_judge,
+        } => {
+            if no_llm_judge {
+                std::env::set_var("TALARIA_LLM_JUDGE", "0");
+            }
+            if live {
+                let corpus_sources = crate::corpus_ingest::live_corpus_providers();
+                let run_lot_e = ingest::live_run_lot_e(sources.as_deref());
+                let corpus_sources_requested: Option<Vec<String>> = sources.as_ref().map(|s| {
+                    s.iter()
+                        .filter(|k| corpus_sources.iter().any(|live| live == *k))
+                        .cloned()
+                        .collect()
+                });
+                let run_corpus = corpus_sources_requested
+                    .as_ref()
+                    .map(|v| !v.is_empty())
+                    .unwrap_or(true);
+
+                if run_lot_e {
+                    println!("\n📡 Phase 1/3 — Wikipedia / Wikidata (dense extraction)…");
+                    let seeds = match seed_list.clone() {
+                        Some(path) => path,
+                        None => lot_e::write_minimal_seed_list(&subject)?,
+                    };
+                    let targets = talaria_sources::DensityTargets {
+                        target_timeline_events,
+                        target_map_events,
+                        max_documents,
+                        max_linked_entities: 5_000,
+                        max_depth,
+                        max_documents_per_source,
+                    };
+                    let lot_e_report = lot_e::run_lot_e_density_ingest(
+                        &config,
+                        &subject,
+                        qid.as_deref(),
+                        &seeds,
+                        targets,
+                        &wiki_lang,
+                        max_titles.filter(|n| *n > 0),
+                    )
+                    .await?;
+                    println!("{lot_e_report}");
+                    ingest::print_density_snapshot(&config, &subject).await;
+                }
+
+                let corpus_filter = if sources.is_some() {
+                    corpus_sources_requested.clone().unwrap_or_default()
+                } else {
+                    corpus_sources.clone()
+                };
+                if run_corpus {
+                    println!("\n📚 Phase 2/3 — Corpus bibliography (HAL, Persée, Gallica…)…");
+                    match corpus_ingest::run_corpus_ingest(
+                        &config,
+                        &subject,
+                        qid.as_deref(),
+                        &corpus_filter,
+                        corpus_ingest::CorpusIngestLimits::legacy(20),
+                        fixture,
+                        None,
+                        live,
+                    )
+                    .await
+                    {
+                        Ok(report) => println!("{report}"),
+                        Err(error) => tracing::warn!(error = %error, "corpus bibliography ingest failed"),
+                    }
+                }
+
+                let quality_sources =
+                    ingest::live_quality_sources(sources.as_deref(), &corpus_filter);
+                if !quality_sources.is_empty() {
+                    println!("\n🔎 Phase 3/3 — Catalog quality extract (no Wikipedia re-crawl)…");
+                    let report = ingest::run_ingest_quality(
+                        &config,
+                        &subject,
+                        qid.as_deref(),
+                        Some(quality_sources),
+                        fixture,
+                        live,
+                    )
+                    .await?;
+                    println!("{report}");
+                    ingest::print_density_snapshot(&config, &subject).await;
+                }
+            } else {
+                let report = ingest::run_ingest_quality(
+                    &config,
+                    &subject,
+                    qid.as_deref(),
+                    sources,
+                    fixture,
+                    live,
+                )
+                .await?;
+                println!("---\n{report}");
+            }
+        }
+        Commands::ResolvePlaces {
+            subject,
+            all_unresolved,
+            live: _,
+            qid_only,
+        } => {
+            let report = lot_e::run_resolve_places(&config, &subject, all_unresolved, qid_only).await?;
+            println!("{report}");
+        }
+        Commands::DensityReport {
+            subject,
+            show_bottlenecks,
+            show_source_coverage,
+            show_unresolved_places,
+        } => {
+            let report = lot_e::run_density_report(
+                &config,
+                subject.as_deref(),
+                show_bottlenecks,
+                show_source_coverage,
+                show_unresolved_places,
+            )
+            .await?;
+            println!("{report}");
+        }
+        Commands::SourceStatus | Commands::ConnectorReport { subject: _ } => {
+            println!("{}", lot_e::connector_status_json());
+        }
+        Commands::ExplorationReport { subject } => {
+            let report = lot_e::run_exploration_report(&config, &subject).await?;
+            println!("{report}");
+        }
+        Commands::VisitEnrich {
+            entity,
+            subject,
+            qid,
+            wiki_lang,
+            fixture,
+            live,
+            web_search,
+            fixture_file,
+            europeana_fixture_dir,
+            max_items,
+        } => {
+            let pool = talaria_store::connect(&config).await?;
+            talaria_store::run_migrations(&pool).await?;
+            let fixture_path = cli_helpers::resolve_repo_path(
+                fixture_file.unwrap_or_else(|| {
+                    PathBuf::from("fixtures/visit/opportunities_sample.json")
+                }),
+            );
+            let europeana_fixture_dir =
+                cli_helpers::resolve_repo_path(europeana_fixture_dir);
+            let use_fixture = fixture || (!live && !fixture);
+            let count = visit_enrich::run_visit_enrich(
+                &pool,
+                &visit_enrich::VisitEnrichOptions {
+                    entity_id: entity,
+                    subject,
+                    qid,
+                    wiki_lang,
+                    fixture: use_fixture,
+                    live,
+                    web_search,
+                    fixture_path,
+                    europeana_fixture_dir,
+                    max_items,
+                },
+            )
+            .await?;
+            println!("visit-enrich: upserted {count} visit rows (heritage + opportunities)");
+        }
+        Commands::VisitAudit {
+            entity,
+            subject,
+            qid,
+            apply_dedupe,
+        } => {
+            let pool = talaria_store::connect(&config).await?;
+            talaria_store::run_migrations(&pool).await?;
+            let qid_for_demo = qid.clone();
+            let (entity_id, label, entity_qid) = visit_enrich::resolve_entity(
+                &pool,
+                &visit_enrich::VisitEnrichOptions {
+                    entity_id: entity,
+                    subject,
+                    qid,
+                    wiki_lang: "en".into(),
+                    fixture: false,
+                    live: false,
+                    web_search: false,
+                    fixture_path: PathBuf::from("fixtures/visit/opportunities_sample.json"),
+                    europeana_fixture_dir: PathBuf::from("fixtures/europeana"),
+                    max_items: 0,
+                },
+            )
+            .await?;
+            let report = visit_audit::run_visit_audit(
+                &pool,
+                entity_id,
+                label,
+                entity_qid.or(qid_for_demo),
+                apply_dedupe,
+            )
+            .await?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
+        Commands::WikidataIngest { dump, limit } => {
+            wikidata_ingest::run_wikidata_ingest(&config, dump, limit).await?
+        }
+        Commands::ClaimsExtract { limit } => {
+            claim_extract::run_claims_extract(&config, limit).await?
+        }
+        Commands::DumpMine { limit } => dump_mine::run_dump_mine(&config, limit).await?,
+        Commands::HistoriographyExtract { subject, qid, file } => {
+            let report = historiography::run_historiography_extract(
+                &config,
+                &subject,
+                file.as_deref(),
+                qid.as_deref(),
+            )
+            .await?;
+            println!("{report}");
+        }
+        Commands::CorpusIngest {
+            subject,
+            qid,
+            providers,
+            limit,
+            fixture,
+            fixture_dir,
+            live,
+        } => {
+            let _ = corpus_ingest::run_corpus_ingest(
+                &config,
+                &subject,
+                qid.as_deref(),
+                &providers,
+                corpus_ingest::CorpusIngestLimits::legacy(limit),
+                fixture && !live,
+                fixture_dir,
+                live,
+            )
+            .await?;
+        }
+        Commands::IntuitionPlan { subject } => {
+            intuition::run_intuition_plan(&config, &subject).await?
+        }
+        Commands::IntuitionExport { subject } => {
+            intuition::run_intuition_export(&config, &subject).await?
+        }
+        Commands::IntuitionPublish { subject, live } => {
+            intuition::run_intuition_publish(&config, &subject, live).await?
+        }
+        Commands::Admin { action } => match action {
+            AdminAction::RebuildPersonPipeline {
+                confirm_destruction,
+                backup_manifest,
+            } => {
+                rebuild::rebuild_person_pipeline(&config, confirm_destruction, &backup_manifest)
+                    .await?
+            }
+            AdminAction::RepairMigrationChecksums { version } => {
+                let pool = talaria_store::connect(&config).await?;
+                let repaired = talaria_store::repair_migration_checksums(&pool, version).await?;
+                if repaired.is_empty() {
+                    println!("repair-migration-checksums: nothing to update");
+                } else {
+                    println!(
+                        "repair-migration-checksums: updated versions {}",
+                        repaired
+                            .iter()
+                            .map(|v| v.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    );
+                }
+            }
+        },
+    }
+
+    Ok(())
+}

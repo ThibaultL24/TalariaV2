@@ -162,4 +162,4 @@ Event families include battle, diplomatic, meeting, residence, marriage/divorce,
 
 ### Lint / test / build
 - Rust: `cargo build`, `cargo test`, `cargo clippy --all-targets --all-features` (passes with pre-existing warnings). `cargo fmt --check` may report pre-existing import-ordering diffs under newer rustfmt.
-- Web: `npm run build` (`tsc -b && vite build`; this is also the typecheck). No web lint or test scripts are configured.
+- Web: `cd web && npm test` (Vitest) and `npm run build` (`tsc -b && vite build`, also the typecheck). No dedicated ESLint script yet.

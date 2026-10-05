@@ -17,3 +17,6 @@
 !/demo/snapshots/*.manifest.json
 !/demo/snapshots/README.md
 
+
+*.pid
+*.tsbuildinfo

@@ -2,11 +2,14 @@
 
 ## Overview
 
-Talaria Engine is a Rust pipeline for extracting historical events from Wikipedia and related sources:
+The live Explorer product path is person ingest, not the offline Wikipedia dump chain:
 
 ```
-Wikipedia dump → sentences → phrase-candidates → canonical events → HTTP API → Explorer UI
+resolve person → collect sources → extract candidates → ground → gate
+→ persist evidence + canonical projection → HTTP API → Explorer UI
 ```
+
+The dump chain (`extract-pages` → sentences → COSMOS → judge) writes `pipeline='legacy'` and stays an offline tool. It does not drive search-bar ingest or default timeline/map queries.
 
 Onboarding / product path: see root [README.md](../README.md).
 
