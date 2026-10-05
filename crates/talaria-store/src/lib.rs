@@ -15,6 +15,7 @@ pub mod multi_source;
 pub mod phrase_candidates;
 pub mod person_events;
 pub mod places;
+pub mod migrate_repair;
 pub mod pool;
 pub mod profiles;
 pub mod quality;
@@ -22,6 +23,8 @@ pub mod sentences;
 pub mod wikibase;
 pub mod wiki_pages;
 pub mod wiki_sections;
+pub mod visit;
+pub mod visit_opportunities;
 
 pub use canonical_events::{
     find_existing_event, get_canonical_event, insert_canonical_event, insert_event_evidence,
@@ -98,6 +101,7 @@ pub use person_events::{
     upsert_raw_wikidata_document, upsert_raw_wikipedia_document,
     ExtendedDensityCounts, PersonCandidateInsert, PersonEvent, PersonEventInsert,
 };
+pub use migrate_repair::repair_migration_checksums;
 pub use pool::{connect, run_migrations, DbPool};
 pub use profiles::{
     get_period_by_slug, link_entity_period, link_entity_to_centuries, list_entity_profiles,
@@ -123,6 +127,14 @@ pub use sentences::{
 pub use wikibase::{upsert_wikibase_statement, WikibaseStatementInsert};
 pub use wiki_pages::{
     list_pages_for_sentence_split, store_extracted_page, WikiPageRecord, WikiPageRow,
+};
+pub use visit::{
+    count_visit_heritage, deactivate_canonical_event, eligibility_for_event_type,
+    find_nearby_visit_heritage, list_visit_heritage, list_visit_heritage_for_audit,
+    visit_heritage_source_counts, VisitHeritageAuditRow, VISIT_COMMEMORATIVE_TYPES,
+};
+pub use visit_opportunities::{
+    list_visit_now, upsert_visit_opportunity, VisitOpportunityInsert, VisitOpportunityRow,
 };
 pub use wiki_sections::{
     list_pages_for_section_split, list_sections_for_title, list_sections_matching_page,

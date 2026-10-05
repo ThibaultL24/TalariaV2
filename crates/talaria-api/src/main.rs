@@ -32,8 +32,13 @@ mod place_conflict;
 mod quality;
 mod rebuild;
 mod routes;
+mod visit_audit;
+mod visit_enrich;
+mod visit_live;
 mod wiki_persist;
 mod wikidata_ingest;
+
+use std::path::PathBuf;
 
 use clap::Parser;
 use cli::{AdminAction, Cli, Commands, DumpAction};
@@ -265,6 +270,29 @@ async fn main() -> anyhow::Result<()> {
         Commands::PlanSources { subject, qid } => {
             ingest::run_plan_sources(&subject, qid.as_deref()).await?
         }
+        Commands::ExplorerIngest {
+            subject,
+            qid,
+            wiki_lang,
+            seed_list,
+            max_documents,
+        } => {
+            let seeds = match seed_list {
+                Some(path) => crate::cli_helpers::resolve_repo_path(path),
+                None => crate::routes::ingest::resolve_seed_list(&subject)
+                    .map_err(|e| anyhow::anyhow!("{e}"))?,
+            };
+            let report = person_ingest::run_person_ingest(
+                &config,
+                &subject,
+                qid.as_deref(),
+                &wiki_lang,
+                max_documents,
+                Some(seeds.as_path()),
+            )
+            .await?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
         Commands::IngestQuality {
             subject,
             qid,
@@ -412,6 +440,81 @@ async fn main() -> anyhow::Result<()> {
             let report = lot_e::run_exploration_report(&config, &subject).await?;
             println!("{report}");
         }
+        Commands::VisitEnrich {
+            entity,
+            subject,
+            qid,
+            wiki_lang,
+            fixture,
+            live,
+            web_search,
+            fixture_file,
+            europeana_fixture_dir,
+            max_items,
+        } => {
+            let pool = talaria_store::connect(&config).await?;
+            talaria_store::run_migrations(&pool).await?;
+            let fixture_path = cli_helpers::resolve_repo_path(
+                fixture_file.unwrap_or_else(|| {
+                    PathBuf::from("fixtures/visit/opportunities_sample.json")
+                }),
+            );
+            let europeana_fixture_dir =
+                cli_helpers::resolve_repo_path(europeana_fixture_dir);
+            let use_fixture = fixture || (!live && !fixture);
+            let count = visit_enrich::run_visit_enrich(
+                &pool,
+                &visit_enrich::VisitEnrichOptions {
+                    entity_id: entity,
+                    subject,
+                    qid,
+                    wiki_lang,
+                    fixture: use_fixture,
+                    live,
+                    web_search,
+                    fixture_path,
+                    europeana_fixture_dir,
+                    max_items,
+                },
+            )
+            .await?;
+            println!("visit-enrich: upserted {count} visit rows (heritage + opportunities)");
+        }
+        Commands::VisitAudit {
+            entity,
+            subject,
+            qid,
+            apply_dedupe,
+        } => {
+            let pool = talaria_store::connect(&config).await?;
+            talaria_store::run_migrations(&pool).await?;
+            let qid_for_demo = qid.clone();
+            let (entity_id, label, entity_qid) = visit_enrich::resolve_entity(
+                &pool,
+                &visit_enrich::VisitEnrichOptions {
+                    entity_id: entity,
+                    subject,
+                    qid,
+                    wiki_lang: "en".into(),
+                    fixture: false,
+                    live: false,
+                    web_search: false,
+                    fixture_path: PathBuf::from("fixtures/visit/opportunities_sample.json"),
+                    europeana_fixture_dir: PathBuf::from("fixtures/europeana"),
+                    max_items: 0,
+                },
+            )
+            .await?;
+            let report = visit_audit::run_visit_audit(
+                &pool,
+                entity_id,
+                label,
+                entity_qid.or(qid_for_demo),
+                apply_dedupe,
+            )
+            .await?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+        }
         Commands::WikidataIngest { dump, limit } => {
             wikidata_ingest::run_wikidata_ingest(&config, dump, limit).await?
         }
@@ -466,6 +569,22 @@ async fn main() -> anyhow::Result<()> {
             } => {
                 rebuild::rebuild_person_pipeline(&config, confirm_destruction, &backup_manifest)
                     .await?
+            }
+            AdminAction::RepairMigrationChecksums { version } => {
+                let pool = talaria_store::connect(&config).await?;
+                let repaired = talaria_store::repair_migration_checksums(&pool, version).await?;
+                if repaired.is_empty() {
+                    println!("repair-migration-checksums: nothing to update");
+                } else {
+                    println!(
+                        "repair-migration-checksums: updated versions {}",
+                        repaired
+                            .iter()
+                            .map(|v| v.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    );
+                }
             }
         },
     }

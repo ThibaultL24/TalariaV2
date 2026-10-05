@@ -7,6 +7,7 @@ import {
   type IntuitionTargetKind,
 } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { useWalletStore } from "@/stores/wallet-store";
 
 interface IntuitionStanceBarProps {
   targetKind: IntuitionTargetKind;
@@ -27,6 +28,7 @@ export function IntuitionStanceBar({
   eager = false,
 }: IntuitionStanceBarProps) {
   const { t } = useI18n();
+  const walletAddress = useWalletStore((s) => s.address);
   const [activated, setActivated] = useState(eager);
   const [signals, setSignals] = useState<IntuitionStanceResponse | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -49,6 +51,10 @@ export function IntuitionStanceBar({
   }, [activated, targetKind, targetId]);
 
   async function onStance(stance: "believe" | "dispute") {
+    if (!walletAddress) {
+      setMessage(t.walletConnectForStance);
+      return;
+    }
     setActivated(true);
     setBusy(true);
     setMessage(null);
@@ -109,7 +115,7 @@ export function IntuitionStanceBar({
           type="button"
           disabled={busy}
           onClick={() => void onStance("believe")}
-          className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-medium text-emerald-100 disabled:opacity-40"
+          className="intuition-stance-btn intuition-stance-btn--believe"
         >
           {t.believe}
         </button>
@@ -117,7 +123,7 @@ export function IntuitionStanceBar({
           type="button"
           disabled={busy}
           onClick={() => void onStance("dispute")}
-          className="rounded-md border border-rose-500/40 bg-rose-500/10 px-2.5 py-1 text-[11px] font-medium text-rose-100 disabled:opacity-40"
+          className="intuition-stance-btn intuition-stance-btn--dispute"
         >
           {t.dispute}
         </button>

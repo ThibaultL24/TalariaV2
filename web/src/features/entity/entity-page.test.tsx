@@ -5,8 +5,8 @@ import { useExplorerStore } from "@/stores/explorer-store";
 import { EntityPage, databaseTabs } from "./entity-page";
 
 vi.mock("./entity-map", () => ({ EntityMap: () => <div>Map surface</div> }));
-vi.mock("./timeline-canvas", () => ({
-  TimelineCanvas: () => <div>Canvas surface</div>,
+vi.mock("@/components/timeline/historical-timeline", () => ({
+  HistoricalTimeline: () => <div>Canvas surface</div>,
 }));
 vi.mock("@/components/detail/event-detail-card", () => ({
   EventDetailCard: ({ event }: { event: { title: string } }) => <div>{event.title}</div>,
@@ -61,10 +61,11 @@ test("event deep link opens evidence detail with Intuition disabled", async () =
   expect(screen.queryByRole("list")).toBeNull();
   expect(vi.mocked(fetch).mock.calls.every(([url]) => !String(url).includes("intuition"))).toBe(true);
 });
-test("timeline camera changes keep the complete corpus loaded", async () => {
+test("timeline view uses the histography canvas without numeric filter fields", async () => {
   open("/entities/person-1/timeline");
   await screen.findByRole("heading", { name: "Victor Hugo" });
-  fireEvent.change(screen.getByLabelText("From"), { target: { value: "1851" } });
+  expect(await screen.findByText("Canvas surface")).toBeTruthy();
+  expect(screen.queryByLabelText("From")).toBeNull();
   expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes("timeline?")).every(([url]) => !String(url).includes("from="))).toBe(true);
 });
 test("Explorer opens an overview search without requesting an empty entity", async () => {

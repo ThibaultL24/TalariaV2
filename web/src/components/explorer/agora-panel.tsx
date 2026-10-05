@@ -77,9 +77,7 @@ function ClaimCard({
           {epistemicStatusLabel(claim.epistemic_status, locale)}
         </span>
         {layer ? (
-          <span className="inline-flex rounded-full bg-white/10 px-2 py-0.5 text-[10px] text-(--color-text-muted)">
-            {layer}
-          </span>
+          <span className="agora-layer-badge">{layer}</span>
         ) : null}
       </div>
       <p className="mt-2 text-sm leading-snug text-(--color-text-primary)">{claim.text}</p>
@@ -91,7 +89,7 @@ function ClaimCard({
             return (
               <li
                 key={row.id}
-                className="rounded-md border border-(--color-border-subtle)/60 bg-black/10 px-2 py-1.5"
+                className="agora-evidence-row"
               >
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span
@@ -164,11 +162,7 @@ function SourceFilterBar({
       <button
         type="button"
         onClick={() => onChange(null)}
-        className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
-          active == null
-            ? "bg-white/15 text-(--color-text-primary) ring-1 ring-white/25"
-            : "bg-black/20 text-(--color-text-muted) hover:bg-white/10 hover:text-(--color-text-secondary)"
-        }`}
+        className={`agora-chip${active == null ? " is-active" : ""}`}
       >
         {t.showAll}
         <span className="ml-1 tabular-nums opacity-70">{total}</span>
@@ -178,11 +172,7 @@ function SourceFilterBar({
           type="button"
           key={source}
           onClick={() => onChange(active === source ? null : source)}
-          className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
-            active === source
-              ? `${sourceKindBadgeClass(source)} ring-1 ring-white/30`
-              : "bg-black/20 text-(--color-text-muted) hover:bg-white/10 hover:text-(--color-text-secondary)"
-          }`}
+          className={`agora-chip${active === source ? ` is-active ${sourceKindBadgeClass(source)}` : ""}`}
         >
           {sourceSystemLabel(source, t.sourceFallback)}
           <span className="ml-1 tabular-nums opacity-70">{counts.get(source) ?? 0}</span>
@@ -388,16 +378,12 @@ export function AgoraPanel({
   return (
     <div className="space-y-3 overflow-y-auto p-3">
       {!claimsOnly ? (
-        <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-100/90">
-          <strong className="font-semibold">{t.laneAgoraTitle}</strong> — {t.laneAgoraHint}
+        <div className="agora-lane-banner">
+          <strong>{t.laneAgoraTitle}</strong> — {t.laneAgoraHint}
         </div>
       ) : null}
 
-      <div
-        className="flex flex-wrap gap-1 border-b border-(--color-border-subtle)/80 pb-2"
-        role="tablist"
-        aria-label={t.agora}
-      >
+      <div className="agora-tablist" role="tablist" aria-label={t.agora}>
         {tabs
           .filter((entry) => !entry.hidden)
           .map((entry) => {
@@ -409,14 +395,10 @@ export function AgoraPanel({
                 role="tab"
                 aria-selected={selected}
                 onClick={() => setTab(entry.id)}
-                className={`rounded-md px-3 py-1.5 text-[12px] font-medium transition-colors ${
-                  selected
-                    ? "bg-white/12 text-(--color-text-primary) ring-1 ring-white/20"
-                    : "text-(--color-text-muted) hover:bg-white/5 hover:text-(--color-text-secondary)"
-                }`}
+                className={`agora-tab${selected ? " is-active" : ""}`}
               >
                 {entry.label}
-                <span className="ml-1.5 tabular-nums text-[10px] opacity-65">{entry.count}</span>
+                <span className="agora-tab__count">{entry.count}</span>
               </button>
             );
           })}

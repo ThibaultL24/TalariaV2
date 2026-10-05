@@ -63,6 +63,8 @@ export interface AppMessages {
   whitepaperToc: string;
   agoraEmpty: string;
   emptyTimeline: string;
+  chronPreviewTitle: string;
+  chronPreviewHint: string;
   loadingTimeline: string;
   loadingAgora: string;
   loadingSources: string;
@@ -122,6 +124,35 @@ export interface AppMessages {
   demoIntuitionLive: string;
   demoIntuitionModeled: string;
   stanceTestnetReady: string;
+  homeVisionsTitle: string;
+  homeVisionsHint: string;
+  visionScholarTitle: string;
+  visionScholarDesc: string;
+  visionScholarCta: string;
+  visionVisitTitle: string;
+  visionVisitDesc: string;
+  visionVisitBadge: string;
+  visionAgoraTitle: string;
+  visionAgoraDesc: string;
+  visionAgoraCta: string;
+  walletConnect: string;
+  walletDisconnect: string;
+  walletConnecting: string;
+  walletNoProvider: string;
+  walletConnectFailed: string;
+  walletConnectHint: string;
+  walletConnectForStance: string;
+  intuitionTestnetPanel: string;
+  lensToggleLabel: string;
+  lensScholar: string;
+  lensVisit: string;
+  visitHeritageTab: string;
+  visitHeritageEmpty: string;
+  visitNowTab: string;
+  visitNowEmpty: string;
+  visitNowEnds: string;
+  visitNowOpenSource: string;
+  visionVisitCta: string;
 }
 
 const EN: AppMessages = {
@@ -177,9 +208,9 @@ const EN: AppMessages = {
   homeAboutDoctrine: "About",
   homeAboutDoctrineBody:
     "Explore a life. Examine the evidence. Form your own judgment.",
-  homeAboutSeparates: "Two spaces",
+  homeAboutSeparates: "Three spaces",
   homeAboutSeparatesBody:
-    "Explorer for situated facts. Agora for readings and controversies.",
+    "Scholar for the sourced life, Visit for memory sites and exhibitions, Agora for debate.",
   homeAboutFreedom: "Freedom of opinion",
   homeAboutFreedomBody:
     "Believe or dispute on Intuition — person, event, theory, interpretation or source. Expression is the rule; Talaria does not crown a single historical truth.",
@@ -188,6 +219,9 @@ const EN: AppMessages = {
   whitepaperToc: "Contents",
   agoraEmpty: "Search a historical figure to load works, theories and controversies.",
   emptyTimeline: "No dated facts yet. Collect the life trace to fill the map and timeline.",
+  chronPreviewTitle: "Landmark moments",
+  chronPreviewHint:
+    "Birth, death, and the major turning points — not every dated mention in the sources.",
   loadingTimeline: "Loading timeline…",
   loadingAgora: "Loading agora…",
   loadingSources: "Loading sources…",
@@ -257,6 +291,39 @@ const EN: AppMessages = {
     "Theories are modeled (MetaSudo). Operators enable testnet with INTUITION_ALLOW_LIVE=1.",
   stanceTestnetReady:
     "Modeled — ready for Intuition testnet publish (operator: intuition-publish --live).",
+  homeVisionsTitle: "Three ways to explore",
+  homeVisionsHint:
+    "Scholar for the sourced life, Visit for museums and exhibitions, Agora for theories and debate on Intuition.",
+  visionScholarTitle: "Scholar",
+  visionScholarDesc:
+    "Timeline, map and sources — the documented life, with evidence and precision on dates.",
+  visionScholarCta: "Open Explorer",
+  visionVisitTitle: "Visit",
+  visionVisitDesc:
+    "Museums, memorials and exhibitions linked to a person — what to see and what’s on now.",
+  visionVisitBadge: "Preview soon",
+  visionAgoraTitle: "Agora",
+  visionAgoraDesc: "Theories, controversies and scholarship — believe or dispute on Intuition testnet.",
+  visionAgoraCta: "Open Agora",
+  walletConnect: "Connect wallet",
+  walletDisconnect: "Disconnect",
+  walletConnecting: "Connecting…",
+  walletNoProvider: "Install a Web3 wallet (e.g. MetaMask) for testnet.",
+  walletConnectFailed: "Could not connect wallet.",
+  walletConnectHint: "Testnet — on-chain triples come later; connection prepares your identity.",
+  walletConnectForStance: "Connect your wallet to record a stance (simulation on testnet).",
+  intuitionTestnetPanel: "Intuition · testnet",
+  lensToggleLabel: "Explorer mode",
+  lensScholar: "Scholar",
+  lensVisit: "Visit",
+  visitHeritageTab: "Places",
+  visitHeritageEmpty: "No visit places indexed for this person yet — museums and memorials appear here after ingest.",
+  visitNowTab: "Now",
+  visitNowEmpty:
+    "No exhibitions or events near this person’s places in the current window — run visit-enrich or widen dates.",
+  visitNowEnds: "Ends",
+  visitNowOpenSource: "Source",
+  visionVisitCta: "Browse lives",
 };
 
 const FR: AppMessages = {
@@ -312,9 +379,9 @@ const FR: AppMessages = {
   homeAboutDoctrine: "À propos",
   homeAboutDoctrineBody:
     "Explorer une vie. Examiner les preuves. Former son propre jugement.",
-  homeAboutSeparates: "Deux espaces",
+  homeAboutSeparates: "Trois espaces",
   homeAboutSeparatesBody:
-    "Explorer pour les faits situés. Agora pour les lectures et controverses.",
+    "Scholar pour la vie sourcée, Visit pour lieux de mémoire et expositions, Agora pour le débat.",
   homeAboutFreedom: "Liberté d’opinion",
   homeAboutFreedomBody:
     "Croire ou contester sur Intuition — personne, événement, théorie, interprétation ou source. L’expression est la règle ; Talaria ne couronne aucune vérité historique unique.",
@@ -323,6 +390,9 @@ const FR: AppMessages = {
   whitepaperToc: "Sommaire",
   agoraEmpty: "Recherchez une personnalité pour charger travaux, théories et controverses.",
   emptyTimeline: "Pas encore de faits datés. Lancez l’ingest pour remplir la carte et la frise.",
+  chronPreviewTitle: "Dates majeures",
+  chronPreviewHint:
+    "Naissance, mort et grands tournants — pas chaque mention datée dans les sources.",
   loadingTimeline: "Chargement de la frise…",
   loadingAgora: "Chargement de l’agora…",
   loadingSources: "Chargement des sources…",
@@ -393,6 +463,43 @@ const FR: AppMessages = {
     "Théories modélisées (MetaSudo). Activer le testnet avec INTUITION_ALLOW_LIVE=1.",
   stanceTestnetReady:
     "Modélisée — prête pour publication testnet (opérateur : intuition-publish --live).",
+  homeVisionsTitle: "Trois façons d’explorer",
+  homeVisionsHint:
+    "Scholar pour la vie sourcée, Visit pour musées et expositions, Agora pour théories et débat sur Intuition.",
+  visionScholarTitle: "Scholar",
+  visionScholarDesc:
+    "Frise, carte et sources — la vie documentée, avec preuves et précision des dates.",
+  visionScholarCta: "Ouvrir l’Explorer",
+  visionVisitTitle: "Visit",
+  visionVisitDesc:
+    "Musées, mémoriaux et expositions liés à une personne — quoi voir et quoi faire maintenant.",
+  visionVisitBadge: "Bientôt",
+  visionAgoraTitle: "Agora",
+  visionAgoraDesc:
+    "Théories, controverses et érudition — croire ou contester sur Intuition testnet.",
+  visionAgoraCta: "Ouvrir l’Agora",
+  walletConnect: "Connecter le wallet",
+  walletDisconnect: "Déconnecter",
+  walletConnecting: "Connexion…",
+  walletNoProvider: "Installez un wallet Web3 (ex. MetaMask) pour le testnet.",
+  walletConnectFailed: "Connexion au wallet impossible.",
+  walletConnectHint:
+    "Testnet — l’écriture des triples viendra ensuite ; la connexion prépare votre identité.",
+  walletConnectForStance:
+    "Connectez votre wallet pour enregistrer une position (simulation testnet).",
+  intuitionTestnetPanel: "Intuition · testnet",
+  lensToggleLabel: "Mode d’exploration",
+  lensScholar: "Scholar",
+  lensVisit: "Visit",
+  visitHeritageTab: "Lieux",
+  visitHeritageEmpty:
+    "Aucun lieu visitable indexé pour cette personne — musées et mémoriaux apparaissent ici après ingest.",
+  visitNowTab: "En ce moment",
+  visitNowEmpty:
+    "Aucune expo ou événement près des lieux de cette personne sur la période — lancez visit-enrich ou élargissez les dates.",
+  visitNowEnds: "Fin",
+  visitNowOpenSource: "Source",
+  visionVisitCta: "Parcourir les vies",
 };
 
 export const messages: Record<AppLocale, AppMessages> = { en: EN, fr: FR };

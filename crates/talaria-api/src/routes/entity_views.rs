@@ -156,7 +156,7 @@ async fn view(state: AppState, entity: Uuid, query: ViewQuery, map: bool) -> Res
     sql.push_bind(entity);
     // Life of the person. Memorials and later honors stay out of this view.
     sql.push(
-        " AND ce.event_type NOT IN ('statue','museum','memorial','street_naming')",
+        " AND ce.event_type NOT IN ('statue','museum','memorial','street_naming','commemoration')",
     );
     if !map {
         let threshold = match resolution {

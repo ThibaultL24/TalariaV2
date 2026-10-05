@@ -3,6 +3,7 @@
 
 use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
+use crate::visit::eligibility_for_event_type;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -108,21 +109,22 @@ pub async fn find_active_person_event_by_fingerprint(
 }
 
 pub async fn insert_person_event(pool: &PgPool, event: &PersonEventInsert) -> anyhow::Result<Uuid> {
+    let (timeline_eligible, visit_eligible) = eligibility_for_event_type(&event.event_type);
     let id: Uuid = if event.map_eligible && event.lat.is_some() && event.lon.is_some() {
         sqlx::query_scalar(
             r#"
             INSERT INTO canonical_events (
                 entity_id, event_type, epistemic_status, title, summary, start_time, time_json,
                 place_label, geom, confidence, map_eligible,
-                historically_valid, timeline_eligible, source_count, evidence_count,
+                historically_valid, timeline_eligible, visit_eligible, source_count, evidence_count,
                 fingerprint, occurrence_key, occurrence_stem, is_active, predicate,
                 assembler_version, pipeline, place_identity_qid
             )
             VALUES (
                 $1,$2,$3,$4,$5,$6,$7,$8,
                 ST_SetSRID(ST_MakePoint($9,$10),4326)::geography,
-                $11,$12,true,true,1,1,
-                $13,$14,$15,true,$16,'person_ingest:v1','person',$17
+                $11,$12,true,$13,$14,1,1,
+                $15,$16,$17,true,$18,'person_ingest:v1','person',$19
             )
             RETURNING id
             "#,
@@ -139,6 +141,8 @@ pub async fn insert_person_event(pool: &PgPool, event: &PersonEventInsert) -> an
         .bind(event.lat)
         .bind(event.confidence)
         .bind(event.map_eligible)
+        .bind(timeline_eligible)
+        .bind(visit_eligible)
         .bind(&event.fingerprint)
         .bind(&event.occurrence_key)
         .bind(&event.occurrence_stem)
@@ -152,14 +156,14 @@ pub async fn insert_person_event(pool: &PgPool, event: &PersonEventInsert) -> an
             INSERT INTO canonical_events (
                 entity_id, event_type, epistemic_status, title, summary, start_time, time_json,
                 place_label, confidence, map_eligible,
-                historically_valid, timeline_eligible, source_count, evidence_count,
+                historically_valid, timeline_eligible, visit_eligible, source_count, evidence_count,
                 fingerprint, occurrence_key, occurrence_stem, is_active, predicate,
                 assembler_version, pipeline, place_identity_qid
             )
             VALUES (
                 $1,$2,$3,$4,$5,$6,$7,$8,$9,false,
-                true,true,1,1,
-                $10,$11,$12,true,$13,'person_ingest:v1','person',$14
+                true,$10,$11,1,1,
+                $12,$13,$14,true,$15,'person_ingest:v1','person',$16
             )
             RETURNING id
             "#,
@@ -173,6 +177,8 @@ pub async fn insert_person_event(pool: &PgPool, event: &PersonEventInsert) -> an
         .bind(&event.time_json)
         .bind(&event.place_label)
         .bind(event.confidence)
+        .bind(timeline_eligible)
+        .bind(visit_eligible)
         .bind(&event.fingerprint)
         .bind(&event.occurrence_key)
         .bind(&event.occurrence_stem)

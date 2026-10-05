@@ -158,7 +158,13 @@ fn implausible_age(event_type: &str, age: i32, evidence: &str) -> bool {
 /// About-subject types (publications, commemorations, awards) do not.
 pub fn event_implies_subject_presence(event_type: &str, predicate: &str) -> bool {
     match event_type {
-        "publication" | "commemoration" | "award" => false,
+        "publication"
+        | "commemoration"
+        | "award"
+        | "museum"
+        | "memorial"
+        | "statue"
+        | "street_naming" => false,
         _ => match predicate {
             "commemorated_at" | "published" | "awarded" => false,
             _ => true,

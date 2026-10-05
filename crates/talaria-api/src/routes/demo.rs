@@ -34,6 +34,14 @@ pub async fn demo_roster(State(state): State<AppState>) -> Json<Value> {
                   AND ce.map_eligible
             ) AS map_pin_count,
             (
+                SELECT COUNT(*)::bigint
+                FROM canonical_events ce
+                WHERE ce.entity_id = e.id
+                  AND ce.pipeline = 'person'
+                  AND ce.is_active
+                  AND ce.visit_eligible
+            ) AS visit_heritage_count,
+            (
                 SELECT COUNT(*)::bigint FROM soft_claims sc WHERE sc.entity_id = e.id
             ) AS claim_count,
             (
@@ -62,6 +70,7 @@ pub async fn demo_roster(State(state): State<AppState>) -> Json<Value> {
                     "label": row.try_get::<String, _>("label").ok(),
                     "event_count": row.try_get::<i64, _>("event_count").unwrap_or(0),
                     "map_pin_count": row.try_get::<i64, _>("map_pin_count").unwrap_or(0),
+                    "visit_heritage_count": row.try_get::<i64, _>("visit_heritage_count").unwrap_or(0),
                     "claim_count": row.try_get::<i64, _>("claim_count").unwrap_or(0),
                     "intuition_count": row.try_get::<i64, _>("intuition_count").unwrap_or(0),
                     "known_locally": true,

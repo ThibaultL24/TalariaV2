@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, NavLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { EntitySearchBox } from "@/components/search/entity-search-box";
 import { usePersonPicker } from "@/hooks/use-person-picker";
@@ -12,13 +12,23 @@ import {
   type TimelineEvent,
 } from "@/lib/api";
 import {
+  fetchVisitHeritage,
+  fetchVisitNow,
   getEntityView,
   eventDate,
   type EntityOverview,
   type Page,
+  type VisitOpportunity,
 } from "@/lib/entity-views";
-import { useThemeStore } from "@/stores/theme-store";
-import { TimelineCanvas } from "./timeline-canvas";
+import { EventMomentSearch } from "@/components/search/event-moment-search";
+import { HistoricalTimeline } from "@/components/timeline/historical-timeline";
+import { EntityVisitMap } from "@/features/visit/entity-visit-map";
+import { VisitHeritageList } from "@/features/visit/visit-heritage-list";
+import { VisitNowList } from "@/features/visit/visit-now-list";
+import { VisitLensToggle, useExplorerLens } from "@/features/visit/visit-lens-toggle";
+import { selectChronologicalPreview } from "@/lib/chronological-preview";
+import { eventTypeLabel } from "@/lib/event-taxonomy";
+import { useI18n } from "@/lib/i18n";
 import { EntityMap } from "./entity-map";
 
 export function EntityPage() {
@@ -42,9 +52,9 @@ export function EntityPage() {
   useEffect(() => {
     if (storedId && pendingSelection.current) {
       pendingSelection.current = false;
-      navigate(`/entities/${storedId}/overview`);
+      navigate(`/entities/${storedId}/map`);
     } else if (!routeEntityId && entityId) {
-      navigate(`/entities/${entityId}/overview`, { replace: true });
+      navigate(`/entities/${entityId}/map`, { replace: true });
     }
   }, [storedId, entityId, routeEntityId, navigate]);
   const [overview, setOverview] = useState<EntityOverview>();
@@ -56,9 +66,22 @@ export function EntityPage() {
   const [selected, setSelected] = useState<TimelineEvent>();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const preference = useThemeStore((s) => s.preference);
-  const setTheme = useThemeStore((s) => s.setTheme);
+  const [mapFocus, setMapFocus] = useState<
+    { eventId: string; lat: number; lon: number } | undefined
+  >();
+  const [timelineZoomToken, setTimelineZoomToken] = useState(0);
+  const [timelineZoomEventId, setTimelineZoomEventId] = useState<string | undefined>();
+  const lens = useExplorerLens();
+  const { locale, t } = useI18n();
+  const scholarTabs = ["overview", "timeline", "map", "sources"] as const;
+  const visitTabs = ["map", "heritage", "now"] as const;
+  const [visitNow, setVisitNow] = useState<VisitOpportunity[]>([]);
+  const tabs = lens === "visit" ? visitTabs : scholarTabs;
   const filters = new URLSearchParams();
+  const immersive =
+    lens === "visit"
+      ? view === "map" || view === "heritage" || view === "now"
+      : view === "timeline" || view === "map";
   for (const key of ["from", "to", "types"]) {
     const value = params.get(key);
     if (value && !(view === "timeline" && (key === "from" || key === "to"))) filters.set(key, value);
@@ -71,6 +94,12 @@ export function EntityPage() {
   const to = Number(params.get("to") ?? overview?.time_bounds.to ?? from + 1);
   const resolution = "detail";
   useEffect(() => { setOverview(undefined); setProviders([]); }, [entityId]);
+  useEffect(() => {
+    if (!entityId || lens !== "visit") return;
+    if (!visitTabs.includes(view as (typeof visitTabs)[number])) {
+      navigate(`/entities/${entityId}/map?${params.toString()}`, { replace: true });
+    }
+  }, [entityId, lens, view, navigate, params]);
   useEffect(() => {
     const controller = new AbortController();
     setError("");
@@ -107,18 +136,34 @@ export function EntityPage() {
           setSources(result.items);
           setNext(result.next_cursor ?? null);
         }
-      } else if (view !== "map") {
+      } else if (lens === "visit" && view === "now") {
+        const result = await fetchVisitNow(entityId, { signal: controller.signal });
+        if (!controller.signal.aborted) {
+          setVisitNow(result.opportunities);
+          setEvents([]);
+        }
+      } else if (lens === "visit") {
+        const result = await fetchVisitHeritage(entityId, { signal: controller.signal });
+        if (!controller.signal.aborted) {
+          setEvents(result.events);
+          setVisitNow([]);
+        }
+      } else {
         const query = new URLSearchParams(filterString);
-        query.set("limit", "200");
-        query.set("resolution", view === "overview" ? "overview" : resolution);
+        query.set("limit", view === "overview" ? "400" : "200");
+        query.set(
+          "resolution",
+          view === "overview" ? "period" : resolution,
+        );
         const collected: TimelineEvent[] = [];
+        const paginateAll = view === "timeline" || view === "map";
         do {
           const result = await getEntityView<Page>(entityId, "timeline", query, controller.signal);
           if (controller.signal.aborted) break;
           collected.push(...result.events);
           setEvents([...collected]);
           setNext(result.pagination.next_cursor);
-          if (view !== "timeline" || !result.pagination.next_cursor) break;
+          if (view === "overview" || !paginateAll || !result.pagination.next_cursor) break;
           query.set("cursor", result.pagination.next_cursor);
         } while (!controller.signal.aborted);
       }
@@ -131,7 +176,7 @@ export function EntityPage() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [entityId, view, filterString, resolution, provider, revision]);
+  }, [entityId, view, filterString, resolution, provider, revision, lens]);
   useEffect(() => {
     let cancelled = false;
     setSelected(undefined);
@@ -153,6 +198,34 @@ export function EntityPage() {
     if (id) copy.set("event", id);
     else copy.delete("event");
     setParams(copy);
+  };
+  const focusMoment = (event: TimelineEvent) => {
+    select(event.id);
+    if (lens === "visit") {
+      const coords = event.coordinates;
+      if (coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lon)) {
+        setMapFocus({ eventId: event.id, lat: coords.lat, lon: coords.lon });
+      }
+      if (view === "heritage") {
+        const copy = new URLSearchParams(params);
+        copy.set("event", event.id);
+        navigate(`/entities/${entityId}/map?${copy.toString()}`);
+      }
+      return;
+    }
+    if (view === "map") {
+      const coords = event.coordinates;
+      if (coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lon)) {
+        setMapFocus({ eventId: event.id, lat: coords.lat, lon: coords.lon });
+      } else {
+        setMapFocus(undefined);
+      }
+      return;
+    }
+    if (view === "timeline") {
+      setTimelineZoomEventId(event.id);
+      setTimelineZoomToken((token) => token + 1);
+    }
   };
   const update = (key: string, value: string) => {
     const copy = new URLSearchParams(params);
@@ -192,83 +265,85 @@ export function EntityPage() {
       if (requestKey === activeRequest.current) setLoading(false);
     }
   };
+  const chronPreviewEvents = useMemo(
+    () =>
+      lens === "scholar" && view === "overview"
+        ? selectChronologicalPreview(events, 12)
+        : [],
+    [events, lens, view],
+  );
   return (
-    <div className="v3-shell">
+    <div className={`v3-shell${immersive ? " v3-shell--immersive" : ""}`}>
       <Navbar />
-      <main className="v3-main">
-        <div className="v3-heading">
-          <div>
-            <p className="v3-eyebrow">TALARIA · EXPLORER</p>
-            <h1>{overview?.entity.label ?? (entityId ? "Loading…" : "Overview")}</h1>
-            <p>Explore a life through time, places and evidence.</p>
+      <main className={`v3-main${immersive ? " v3-main--immersive" : ""}`}>
+        {!immersive && (
+          <div className="v3-heading">
+            <div>
+              <p className="v3-eyebrow">TALARIA · EXPLORER</p>
+              <h1>{overview?.entity.label ?? (entityId ? "Loading…" : "Overview")}</h1>
+              <p>Explore a life through time, places and evidence.</p>
+            </div>
           </div>
-          <label>
-            Appearance{" "}
-            <select
-              value={preference}
-              onChange={(e) =>
-                setTheme(e.target.value as "light" | "dark" | "system")
-              }
-            >
-              <option value="light">Light</option>
-              <option value="dark">Dark</option>
-              <option value="system">System</option>
-            </select>
-          </label>
-        </div>
-        <section className="v3-search" aria-label="Search a person">
-          <EntitySearchBox suggestions={picker.suggestions} onSubmitQuery={picker.setSearchQuery}
-            isLoading={picker.searchLoading} onSelect={(item) => {
-              pendingSelection.current = true;
-              picker.selectPerson(item);
-              const selectedId = useExplorerStore.getState().entityId;
-              if (selectedId) { pendingSelection.current = false; navigate(`/entities/${selectedId}/overview`); }
-            }} />
-          {picker.ingestBusy && <p role="status">Collecting sources · {picker.timelineEvents} events · {picker.mapPins} map points</p>}
-          {picker.error && <p role="alert">{picker.error}</p>}
-          {!entityId && !picker.ingestBusy && <p className="v3-note">Search for a person to explore their life, places and sources.</p>}
-        </section>
-        {entityId && <nav className="v3-tabs" aria-label="Entity views">
-          {["overview", "timeline", "map", "sources"].map((tab) => (
-            <NavLink
-              key={tab}
-              to={`/entities/${entityId}/${tab}?${params}`}
-              className={({ isActive }) => (isActive ? "active" : "")}
-            >
-              {tab}
-            </NavLink>
-          ))}
-        </nav>}
-        {error && <p role="alert">{error}</p>}
-        {(view === "timeline" || view === "map") && (
-          <form className="v3-filters" onSubmit={(e) => e.preventDefault()}>
-            <label>
-              From{" "}
-              <input
-                type="number"
-                value={params.get("from") ?? ""}
-                onChange={(e) => update("from", e.target.value)}
-              />
-            </label>
-            <label>
-              To{" "}
-              <input
-                type="number"
-                value={params.get("to") ?? ""}
-                onChange={(e) => update("to", e.target.value)}
-              />
-            </label>
-            <label>
-              Event types{" "}
-              <input
-                placeholder="residence,travel"
-                value={params.get("types") ?? ""}
-                onChange={(e) => update("types", e.target.value)}
-              />
-            </label>
-          </form>
         )}
-        {view === "overview" && overview && (
+        {!immersive && (
+          <section className="v3-search" aria-label="Search a person">
+            <EntitySearchBox
+              suggestions={picker.suggestions}
+              onSubmitQuery={picker.setSearchQuery}
+              isLoading={picker.searchLoading}
+              onSelect={(item) => {
+                pendingSelection.current = true;
+                picker.selectPerson(item);
+                const selectedId = useExplorerStore.getState().entityId;
+                if (selectedId) {
+                  pendingSelection.current = false;
+                  navigate(`/entities/${selectedId}/map`);
+                }
+              }}
+            />
+            {picker.ingestBusy && (
+              <p role="status">
+                Collecting sources · {picker.timelineEvents} events · {picker.mapPins} map points
+              </p>
+            )}
+            {picker.error && <p role="alert">{picker.error}</p>}
+            {!entityId && !picker.ingestBusy && (
+              <p className="v3-note">Search for a person to explore their life, places and sources.</p>
+            )}
+          </section>
+        )}
+        {immersive && entityId && (
+          <div className="v3-immersive-bar">
+            <h1 className="v3-immersive-title">
+              {overview?.entity.label ?? "Loading…"}
+            </h1>
+            <VisitLensToggle entityId={entityId} view={view} />
+          </div>
+        )}
+        {entityId && !immersive && (
+          <div className="v3-lens-row">
+            <VisitLensToggle entityId={entityId} view={view} />
+          </div>
+        )}
+        {entityId && (
+          <nav className="v3-tabs" aria-label="Entity views">
+            {tabs.map((tab) => (
+              <NavLink
+                key={tab}
+                to={`/entities/${entityId}/${tab}?${params}`}
+                className={({ isActive }) => (isActive ? "active" : "")}
+              >
+                {tab === "heritage"
+                  ? t.visitHeritageTab
+                  : tab === "now"
+                    ? t.visitNowTab
+                    : tab}
+              </NavLink>
+            ))}
+          </nav>
+        )}
+        {error && <p className="v3-inline-alert" role="alert">{error}</p>}
+        {lens === "scholar" && view === "overview" && overview && (
           <section className="v3-stats">
             {Object.entries(overview.stats).map(([key, value]) => (
               <article key={key}>
@@ -278,62 +353,150 @@ export function EntityPage() {
             ))}
           </section>
         )}
-        {view === "map" && (
-          <EntityMap
-            id={entityId}
-            filters={filterString}
-            selected={eventId ?? undefined}
-            onSelect={select}
-          />
-        )}
-        {view === "timeline" && overview && (
-          <TimelineCanvas
-            key={entityId}
-            events={events}
-            bounds={[overview.time_bounds.from ?? from, overview.time_bounds.to ?? to]}
-            from={from}
-            to={to}
-            onSelect={select}
-            onZoom={(a, b) => {
-              const copy = new URLSearchParams(params);
-              copy.set("from", String(a));
-              copy.set("to", String(b));
-              setParams(copy, { replace: true });
-            }}
-          />
-        )}
-        {view === "overview" && (
-          <section>
-            <h2>
-              Chronological preview
-            </h2>
-            <p className="v3-note">
-              Dates retain the precision and uncertainty recorded in the
-              sources.
-            </p>
-            <ol className="v3-events">
-              {events.slice(0, 8).map(
-                (event) => (
-                  <li key={event.id}>
-                    <span>{eventDate(event)}</span>
-                    <button onClick={() => select(event.id)}>
-                      {event.title}
-                    </button>
-                    <small>
-                      {event.event_type.replaceAll("_", " ")} ·{" "}
-                      {event.place_label ?? "Place not established"}
-                    </small>
-                  </li>
-                ),
+        <div
+          className={
+            immersive &&
+            ((lens === "scholar" && (view === "map" || view === "timeline")) ||
+              (lens === "visit" && (view === "map" || view === "heritage" || view === "now")))
+              ? "v3-explorer-stage"
+              : undefined
+          }
+        >
+          {entityId &&
+            ((lens === "scholar" && (view === "map" || view === "timeline")) ||
+              (lens === "visit" && (view === "map" || view === "heritage" || view === "now"))) && (
+            <div className="v3-moment-search-row">
+              <EventMomentSearch
+                events={events}
+                loading={loading}
+                onPick={focusMoment}
+              />
+              {view === "map" && lens === "scholar" && (
+                <form className="v3-filters v3-filters--compact" onSubmit={(e) => e.preventDefault()}>
+                  <label>
+                    From{" "}
+                    <input
+                      type="number"
+                      value={params.get("from") ?? ""}
+                      onChange={(e) => update("from", e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    To{" "}
+                    <input
+                      type="number"
+                      value={params.get("to") ?? ""}
+                      onChange={(e) => update("to", e.target.value)}
+                    />
+                  </label>
+                </form>
               )}
+            </div>
+          )}
+          {view === "map" && lens === "scholar" && (
+            <EntityMap
+              id={entityId}
+              filters={filterString}
+              selected={eventId ?? undefined}
+              focus={mapFocus}
+              onSelect={select}
+            />
+          )}
+          {view === "map" && lens === "visit" && (
+            <EntityVisitMap
+              id={entityId}
+              selected={eventId ?? undefined}
+              focus={mapFocus}
+              onSelect={select}
+            />
+          )}
+          {view === "heritage" && lens === "visit" && (
+            <VisitHeritageList
+              events={events}
+              loading={loading}
+              emptyLabel={t.visitHeritageEmpty}
+              onSelect={(id) => {
+                const event = events.find((row) => row.id === id);
+                if (event) focusMoment(event);
+                else select(id);
+              }}
+            />
+          )}
+          {view === "now" && lens === "visit" && (
+            <VisitNowList
+              items={visitNow}
+              loading={loading}
+              emptyLabel={t.visitNowEmpty}
+              onSelect={(id) => {
+                const item = visitNow.find((row) => row.id === id);
+                if (item?.coordinates) {
+                  setMapFocus({
+                    eventId: item.id,
+                    lat: item.coordinates.lat,
+                    lon: item.coordinates.lon,
+                  });
+                }
+                select(id);
+                const copy = new URLSearchParams(params);
+                copy.set("event", id);
+                navigate(`/entities/${entityId}/map?${copy.toString()}`);
+              }}
+            />
+          )}
+          {view === "timeline" && lens === "scholar" && overview && (
+            <HistoricalTimeline
+              key={entityId}
+              events={events}
+              bounds={[overview.time_bounds.from ?? from, overview.time_bounds.to ?? to]}
+              from={from}
+              to={to}
+              spotlightEventId={eventId ?? undefined}
+              zoomToEventId={timelineZoomEventId}
+              zoomToEventToken={timelineZoomToken}
+              onSelect={select}
+              onZoom={(a, b) => {
+                const copy = new URLSearchParams(params);
+                copy.set("from", String(a));
+                copy.set("to", String(b));
+                setParams(copy, { replace: true });
+              }}
+            />
+          )}
+          {view === "timeline" && next && (
+            <button
+              className="v3-load-more"
+              type="button"
+              disabled={loading}
+              onClick={() => void loadMore()}
+            >
+              Load more moments
+            </button>
+          )}
+        </div>
+        {lens === "scholar" && view === "overview" && (
+          <section className="v3-chron-preview">
+            <h2>{t.chronPreviewTitle}</h2>
+            <p className="v3-note">{t.chronPreviewHint}</p>
+            <ol className="v3-events v3-events--landmarks">
+              {chronPreviewEvents.map((event) => (
+                <li key={event.id}>
+                  <span>{eventDate(event)}</span>
+                  <button type="button" onClick={() => select(event.id)}>
+                    {event.title}
+                  </button>
+                  <small>
+                    {eventTypeLabel(event.event_type, locale)} ·{" "}
+                    {event.place_label ?? "Place not established"}
+                  </small>
+                </li>
+              ))}
             </ol>
-            {!events.length && !loading && (
-              <p>No events match this selection.</p>
+            {!chronPreviewEvents.length && !loading && (
+              <p>{t.emptyTimeline}</p>
             )}
           </section>
         )}
-        {view === "timeline" && next && <button disabled={loading} onClick={() => void loadMore()}>Load more moments</button>}
-        {view === "sources" && (
+        {lens === "scholar" && view === "sources" && (
           <section>
             <h2>Source documents</h2>
             <p className="v3-note">

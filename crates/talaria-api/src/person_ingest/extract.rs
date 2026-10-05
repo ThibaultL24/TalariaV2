@@ -105,7 +105,7 @@ pub fn extract_wiki_rules(
     let mut out = Vec::new();
     for extractor in default_extractor_stack() {
         for raw in extractor.extract(&input) {
-            if raw.is_posthumous || !keep_extracted_raw(&raw, title, subject) {
+            if !keep_extracted_raw(&raw, title, subject) {
                 continue;
             }
             let year = year_from_raw(&raw);

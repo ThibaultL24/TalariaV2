@@ -4,6 +4,7 @@ mod demo;
 mod documents;
 mod entities;
 mod entity_views;
+mod visit;
 mod events;
 mod facets;
 pub mod ingest;
@@ -61,6 +62,26 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/v1/entities/{entity_id}/overview", get(entity_views::overview))
         .route("/api/v1/entities/{entity_id}/timeline", get(entity_views::timeline))
         .route("/api/v1/entities/{entity_id}/events", get(entity_views::map))
+        .route(
+            "/api/v1/entities/{entity_id}/visit/heritage",
+            get(visit::heritage),
+        )
+        .route(
+            "/api/v1/entities/{entity_id}/visit/heritage/geojson",
+            get(visit::heritage_geojson),
+        )
+        .route(
+            "/api/v1/entities/{entity_id}/visit/anchors",
+            get(visit::anchors),
+        )
+        .route(
+            "/api/v1/entities/{entity_id}/visit/now",
+            get(visit::now),
+        )
+        .route(
+            "/api/v1/entities/{entity_id}/visit/now/geojson",
+            get(visit::now_geojson),
+        )
         .route("/api/v1/entities/{entity_id}/claims", get(list_claims))
         .route("/api/v1/agora/theories/{claim_id}/signals", get(theory_signals))
         .route(

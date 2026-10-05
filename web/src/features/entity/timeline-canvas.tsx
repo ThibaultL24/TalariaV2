@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { TimelineEvent } from "@/lib/api";
 import { eventDate } from "@/lib/entity-views";
-import { LEGEND_COLORS, legendKeyForEventType } from "@/lib/event-legend";
+import {
+  LEGEND_COLORS,
+  type LegendKey,
+  legendKeyForEventType,
+  legendLabel,
+} from "@/lib/event-legend";
+import { useI18n } from "@/lib/i18n";
+import { HistographyBrush, lifePhasePresets } from "./timeline-histography-brush";
 
 type WindowYears = [number, number];
 function year(value?: string | null): number | null {
@@ -48,6 +55,8 @@ export function TimelineCanvas({ events, from, to, bounds, onSelect, onZoom }: {
   const cameraRef = useRef(camera);
   const targetRef = useRef(target);
   const [hovered, setHovered] = useState<TimelineEvent>();
+  const [activeLegend, setActiveLegend] = useState<Set<LegendKey> | null>(null);
+  const { locale } = useI18n();
   const [dragging, setDragging] = useState(false);
   const gesture = useRef<{ x: number; window: WindowYears; moved: boolean } | undefined>(undefined);
   const suppressClick = useRef(false);
@@ -103,31 +112,112 @@ export function TimelineCanvas({ events, from, to, bounds, onSelect, onZoom }: {
     node.addEventListener("wheel", wheel, { passive: false });
     return () => { observer.disconnect(); node.removeEventListener("wheel", wheel); clearTimeout(commitTimer.current); };
   }, [domain[0], domain[1]]);
-  const dots = useMemo(() => layoutDots(events, fullBounds[0], fullBounds[1], width), [events, fullBounds[0], fullBounds[1], width]);
-  const height = dots.reduce((max, dot) => Math.max(max, 200 + dot.row * 24), 380);
+  const visibleEvents = useMemo(() => {
+    if (!activeLegend?.size) return events;
+    return events.filter((event) => activeLegend.has(legendKeyForEventType(event.event_type)));
+  }, [events, activeLegend]);
+  const dots = useMemo(
+    () => layoutDots(visibleEvents, fullBounds[0], fullBounds[1], width),
+    [visibleEvents, fullBounds[0], fullBounds[1], width],
+  );
+  const height = Math.max(420, dots.reduce((max, dot) => Math.max(max, 220 + dot.row * 18), 420));
   const span = Math.max(1, camera[1] - camera[0]);
-  const preview = hovered && events.find(event => event.id === hovered.id);
-  const undated = events.filter(event => event.time?.kind === "unknown" || year(event.time?.start) === null);
+  const preview = hovered && visibleEvents.find((event) => event.id === hovered.id);
+  const undated = visibleEvents.filter(
+    (event) => event.time?.kind === "unknown" || year(event.time?.start) === null,
+  );
   const histogram = useMemo(() => {
     const bins = Array<number>(64).fill(0);
-    for (const dot of dots) bins[Math.min(63, Math.max(0, Math.floor((dot.year - fullBounds[0]) / (fullBounds[1] - fullBounds[0]) * 64)))]++;
+    for (const dot of dots) {
+      bins[
+        Math.min(
+          63,
+          Math.max(
+            0,
+            Math.floor(((dot.year - fullBounds[0]) / (fullBounds[1] - fullBounds[0])) * 64),
+          ),
+        )
+      ]++;
+    }
     return bins;
   }, [dots, fullBounds[0], fullBounds[1]]);
-  const navigate = (next: WindowYears) => { move(next, false); commit(clampWindow(next, fullBounds)); };
-  return <section className="v3-constellation v3-time-space" aria-label="Interactive timeline">
-    <div className="v3-timeline-toolbar">
-      <div><span className="v3-eyebrow">A LIFE IN MOMENTS</span><h2>{Math.round(target[0])} — {Math.round(target[1])}</h2></div>
-      <div className="v3-timeline-controls">
-        <button onClick={() => navigate([target[0] - span / 4, target[1] - span / 4])} aria-label="Earlier period">←</button>
-        <button onClick={() => navigate(zoomWindow(target, 2, .5, fullBounds))} aria-label="Zoom out">−</button>
-        <button onClick={() => navigate(zoomWindow(target, .5, .5, fullBounds))} aria-label="Zoom in">+</button>
-        <button onClick={() => navigate([target[0] + span / 4, target[1] + span / 4])} aria-label="Later period">→</button>
-        <button onClick={() => navigate(fullBounds)} aria-label="Reset period">↺</button>
-      </div>
-    </div>
-    <p className="v3-note">Drag to travel through time · Scroll to zoom · Click a point to read its story</p>
-    <div className="v3-dot-scroll">
-      <div ref={host} className={`v3-dot-field ${dragging ? "is-dragging" : ""}`} style={{ height }}
+  const legendCounts = useMemo(() => {
+    const counts = new Map<LegendKey, number>();
+    for (const event of events) {
+      const key = legendKeyForEventType(event.event_type);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }, [events]);
+  const phases = useMemo(() => lifePhasePresets(fullBounds), [fullBounds[0], fullBounds[1]]);
+  const navigate = (next: WindowYears) => {
+    move(next, false);
+    commit(clampWindow(next, fullBounds));
+  };
+  function toggleLegend(key: LegendKey) {
+    setActiveLegend((current) => {
+      if (!current) return new Set([key]);
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next.size ? next : null;
+    });
+  }
+  return (
+    <section
+      className="v3-constellation v3-time-space v3-histography"
+      aria-label="Interactive timeline"
+    >
+      <header className="v3-histo-header">
+        <div>
+          <span className="v3-histo-kicker">Histography-style life map</span>
+          <h2 className="v3-histo-range">
+            {Math.round(camera[0])}
+            <span aria-hidden="true"> — </span>
+            {Math.round(camera[1])}
+          </h2>
+        </div>
+        <div className="v3-timeline-controls v3-histo-zoom">
+          <button type="button" onClick={() => navigate(zoomWindow(target, 2, 0.5, fullBounds))} aria-label="Zoom out">
+            −
+          </button>
+          <button type="button" onClick={() => navigate(zoomWindow(target, 0.5, 0.5, fullBounds))} aria-label="Zoom in">
+            +
+          </button>
+          <button type="button" onClick={() => navigate(fullBounds)} aria-label="Reset period">
+            ↺
+          </button>
+        </div>
+      </header>
+      <div className="v3-histo-body">
+        <aside className="v3-histo-categories" aria-label="Event categories">
+          <button
+            type="button"
+            className={activeLegend === null ? "is-active" : ""}
+            onClick={() => setActiveLegend(null)}
+          >
+            All moments <span>{events.length}</span>
+          </button>
+          {Array.from(legendCounts.entries())
+            .sort((a, b) => b[1] - a[1])
+            .map(([key, count]) => (
+              <button
+                key={key}
+                type="button"
+                className={activeLegend?.has(key) ? "is-active" : ""}
+                onClick={() => toggleLegend(key)}
+              >
+                <span className="v3-histo-swatch" style={{ background: LEGEND_COLORS[key] }} />
+                {legendLabel(key, locale)} <span>{count}</span>
+              </button>
+            ))}
+        </aside>
+        <div className="v3-dot-scroll v3-histo-canvas-wrap">
+          <div className="v3-histo-axis" aria-hidden="true" />
+          <div
+            ref={host}
+            className={`v3-dot-field v3-histo-field ${dragging ? "is-dragging" : ""}`}
+            style={{ height }}
         onPointerDown={e => { if (e.button !== 0) return; suppressClick.current = false; gesture.current = { x: e.clientX, window: targetRef.current, moved: false }; }}
         onPointerMove={e => {
           const g = gesture.current;
@@ -147,29 +237,81 @@ export function TimelineCanvas({ events, from, to, bounds, onSelect, onZoom }: {
           const end = year(event.time?.end) ?? date;
           if (date > camera[1] || end < camera[0]) return null;
           const x = 22 + (Math.max(date, camera[0]) - camera[0]) / span * (width - 44);
-          const depth = Math.max(.3, 1 - Math.abs(x - width / 2) / (width / 2) * .6);
+          const depth = Math.max(0.45, 1 - (Math.abs(x - width / 2) / (width / 2)) * 0.35);
           const side = row % 2 ? 1 : -1;
-          const y = height / 2 + side * Math.ceil(row / 2) * 24 + Math.sin(x / width * Math.PI * 2) * 45;
-          return <button key={event.id} className={`v3-dot ${event.time?.kind === "approx" ? "v3-dot--approx" : ""}`}
+          const y = height * 0.5 + side * Math.ceil(row / 2) * 14;
+          return (
+            <button
+              key={event.id}
+              className={`v3-dot ${event.time?.kind === "approx" ? "v3-dot--approx" : ""}`}
             style={{ left: x, top: y, "--dot-depth": depth, "--dot-color": LEGEND_COLORS[legendKeyForEventType(event.event_type)], "--dot-delay": `${index % 17 * -230}ms` } as CSSProperties}
             aria-label={`${eventDate(event)} · ${event.title}`} title={`${eventDate(event)} · ${event.title}`}
-            onMouseEnter={() => !dragging && setHovered(event)} onFocus={() => setHovered(event)} onClick={() => onSelect(event.id)}><span /></button>;
+              onMouseEnter={() => !dragging && setHovered(event)}
+              onFocus={() => setHovered(event)}
+              onClick={() => onSelect(event.id)}
+            >
+              <span />
+            </button>
+          );
         })}
+          </div>
+        </div>
       </div>
-    </div>
-    <div className="v3-dot-preview" aria-live="polite">{preview ? <><span>{eventDate(preview)}</span><button onClick={() => onSelect(preview.id)}>{preview.title} ↗</button></> : <span>{dots.length} sourced moments · Tab and Enter also open each point.</span>}</div>
-    <div className="v3-period-navigator">
-      <div className="v3-density" aria-hidden="true">{histogram.map((count, index) => <span key={index} style={{ height: `${Math.max(3, count / Math.max(1, ...histogram) * 100)}%` }} />)}
-        <div className="v3-period-window" style={{ left: `${(target[0] - fullBounds[0]) / (fullBounds[1] - fullBounds[0]) * 100}%`, width: `${(target[1] - target[0]) / (fullBounds[1] - fullBounds[0]) * 100}%` }} />
-      </div>
-      <div className="v3-period-handles">
-        <label>Period start <input type="range" min={fullBounds[0]} max={fullBounds[1] - 1} value={target[0]} onChange={e => move([Math.min(Number(e.target.value), target[1] - 1), target[1]])} /></label>
-        <label>Period end <input type="range" min={fullBounds[0] + 1} max={fullBounds[1]} value={target[1]} onChange={e => move([target[0], Math.max(Number(e.target.value), target[0] + 1)])} /></label>
-      </div>
-      <div className="v3-period-extents"><span>{fullBounds[0]}</span><span>Explore the whole life</span><span>{fullBounds[1]}</span></div>
-    </div>
-    {!dots.length && <p>No dated events available.</p>}
-    {!!undated.length && <div className="v3-undated"><span>Date not established</span>{undated.map(event => <button key={event.id} onClick={() => onSelect(event.id)} aria-label={event.title} title={event.title}>●</button>)}</div>}
-    <p className="v3-note">One point per sourced event. Hollow points indicate approximate dates. Full date ranges and evidence appear in the event details.</p>
-  </section>;
+      <footer className="v3-histo-footer">
+        <div className="v3-dot-preview v3-histo-preview" aria-live="polite">
+          {preview ? (
+            <>
+              <span>{eventDate(preview)}</span>
+              <button type="button" onClick={() => onSelect(preview.id)}>
+                {preview.title} ↗
+              </button>
+            </>
+          ) : (
+            <span>
+              {dots.length} moments in view · drag the field, scroll to zoom, use the timeline below
+            </span>
+          )}
+        </div>
+        <div className="v3-histo-phases" role="group" aria-label="Life phases">
+          {phases.map((phase) => (
+            <button
+              key={phase.id}
+              type="button"
+              onClick={() => navigate(phase.window as WindowYears)}
+            >
+              {phase.label}
+            </button>
+          ))}
+        </div>
+        <HistographyBrush
+          bounds={fullBounds}
+          window={target}
+          histogram={histogram}
+          onChange={(next) => move(next, false)}
+          onCommit={() => commit(targetRef.current)}
+        />
+        <div className="v3-histo-extents">
+          <span>{fullBounds[0]}</span>
+          <span>{fullBounds[1]}</span>
+        </div>
+      </footer>
+      {!dots.length && <p className="v3-histo-empty">No dated events in this selection.</p>}
+      {!!undated.length && (
+        <div className="v3-undated v3-histo-undated">
+          <span>Date not established</span>
+          {undated.map((event) => (
+            <button
+              key={event.id}
+              type="button"
+              onClick={() => onSelect(event.id)}
+              aria-label={event.title}
+              title={event.title}
+            >
+              ●
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }

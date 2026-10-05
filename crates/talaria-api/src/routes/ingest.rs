@@ -195,7 +195,7 @@ fn seed_slug(subject: &str) -> String {
         .to_string()
 }
 
-fn resolve_seed_list(subject: &str) -> anyhow::Result<PathBuf> {
+pub fn resolve_seed_list(subject: &str) -> anyhow::Result<PathBuf> {
     let slug = seed_slug(subject);
     let curated = PathBuf::from(format!("fixtures/seeds/{slug}_wiki_titles.txt"));
     if curated.is_file() {

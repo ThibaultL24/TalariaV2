@@ -49,12 +49,22 @@ export function HomePage() {
 
   function openFigure(entry: RosterCard, lane: "explorer" | "agora") {
     const label = locale === "fr" ? entry.labelFr : entry.labelEn;
+    if (lane === "agora") {
+      if (entry.stats?.entity_id) {
+        setEntity(entry.stats.entity_id, label, entry.qid);
+      } else {
+        setPersonFilter(label, label, entry.qid);
+      }
+      navigate("/agora");
+      return;
+    }
     if (entry.stats?.entity_id) {
       setEntity(entry.stats.entity_id, label, entry.qid);
-    } else {
-      setPersonFilter(label, label, entry.qid);
+      navigate(`/entities/${entry.stats.entity_id}/map`);
+      return;
     }
-    navigate(lane === "agora" ? "/agora" : "/explorer");
+    setPersonFilter(label, label, entry.qid);
+    navigate("/explorer");
   }
 
   return (
@@ -86,24 +96,35 @@ export function HomePage() {
                 </Link>
               </div>
             </div>
-            <aside className="hero__aside" aria-label={t.productSubtitle}>
-              <div className="hero__features">
-                <article className="hero__feature">
-                  <span className="hero__feature-mark" aria-hidden />
-                  <div className="hero__feature-body">
-                    <h3 className="hero__feature-title">{t.livingMap}</h3>
-                    <p className="hero__feature-text">{t.livingMapDesc}</p>
-                  </div>
-                </article>
-                <article className="hero__feature">
-                  <span className="hero__feature-mark hero__feature-mark--soft" aria-hidden />
-                  <div className="hero__feature-body">
-                    <h3 className="hero__feature-title">{t.agora}</h3>
-                    <p className="hero__feature-text">{t.agoraHint}</p>
-                  </div>
-                </article>
-              </div>
-            </aside>
+          </div>
+        </section>
+
+        <section className="home-visions" aria-labelledby="home-visions-title">
+          <div className="home-visions__inner">
+            <header className="home-visions__header">
+              <h2 id="home-visions-title" className="home-visions__title">{t.homeVisionsTitle}</h2>
+              <p className="home-visions__hint">{t.homeVisionsHint}</p>
+            </header>
+            <ul className="home-visions__grid">
+              <li className="home-visions__card home-visions__card--scholar">
+                <h3 className="home-visions__card-title">{t.visionScholarTitle}</h3>
+                <p className="home-visions__card-text">{t.visionScholarDesc}</p>
+                <Link className="button button--primary" to="/explorer">{t.visionScholarCta}</Link>
+              </li>
+              <li className="home-visions__card home-visions__card--visit">
+                <div className="home-visions__card-top">
+                  <h3 className="home-visions__card-title">{t.visionVisitTitle}</h3>
+                  <span className="home-visions__badge">{t.visionVisitBadge}</span>
+                </div>
+                <p className="home-visions__card-text">{t.visionVisitDesc}</p>
+                <Link className="button button--ghost" to="/explorer">{t.visionVisitCta}</Link>
+              </li>
+              <li className="home-visions__card home-visions__card--agora">
+                <h3 className="home-visions__card-title">{t.visionAgoraTitle}</h3>
+                <p className="home-visions__card-text">{t.visionAgoraDesc}</p>
+                <Link className="button button--ghost" to="/agora">{t.visionAgoraCta}</Link>
+              </li>
+            </ul>
           </div>
         </section>
 

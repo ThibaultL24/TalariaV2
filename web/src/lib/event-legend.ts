@@ -69,8 +69,10 @@ const TYPE_TO_LEGEND: Record<string, LegendKey> = {
   life_event: "anecdote",
   statue: "legacy",
   museum: "legacy",
+  visit_opportunity: "work",
   street_naming: "legacy",
   memorial: "legacy",
+  commemoration: "legacy",
 };
 
 export const LEGEND_ORDER: LegendKey[] = [

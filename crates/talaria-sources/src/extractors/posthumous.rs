@@ -41,8 +41,9 @@ impl CandidateExtractor for PosthumousEventExtractor {
             if year <= death {
                 continue;
             }
+            let event_type = classify_commemorative_type(&lower);
             out.push(RawCandidate {
-                event_type: "commemoration".into(),
+                event_type,
                 predicate: "commemorated_at".into(),
                 subject_surface: subject.clone(),
                 time_surface: Some(year_s),
@@ -61,6 +62,31 @@ impl CandidateExtractor for PosthumousEventExtractor {
             });
         }
         out
+    }
+}
+
+fn classify_commemorative_type(lower: &str) -> String {
+    if lower.contains("museum") || lower.contains("musée") {
+        "museum".into()
+    } else if lower.contains("statue") || lower.contains("monument") || lower.contains("column") {
+        "statue".into()
+    } else if lower.contains("memorial") || lower.contains("plaque") || lower.contains("tomb") {
+        "memorial".into()
+    } else if lower.contains("street") || lower.contains("avenue") || lower.contains("square") {
+        "street_naming".into()
+    } else {
+        "memorial".into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classifies_museum_and_statue_keywords() {
+        assert_eq!(classify_commemorative_type("a new museum opened"), "museum");
+        assert_eq!(classify_commemorative_type("statue unveiled"), "statue");
     }
 }
 

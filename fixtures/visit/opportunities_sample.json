@@ -1,0 +1,30 @@
+[
+  {
+    "qid": "Q517",
+    "kind": "exhibition",
+    "title": "Napoleon and Europe",
+    "summary": "Temporary exhibition on imperial diplomacy and warfare (fixture).",
+    "venue_label": "Musée de l'Armée, Paris",
+    "lat": 48.8566,
+    "lon": 2.3122,
+    "starts_at": "2026-01-15T00:00:00Z",
+    "ends_at": "2026-09-30T23:59:59Z",
+    "canonical_url": "https://example.org/visit/napoleon-europe-2026",
+    "source_kind": "fixture",
+    "source_record_id": "fixture-napoleon-army-museum-2026"
+  },
+  {
+    "qid": "Q517",
+    "kind": "guided_tour",
+    "title": "Waterloo battlefield walk",
+    "summary": "Guided tour of the memorial site (fixture).",
+    "venue_label": "Waterloo, Belgium",
+    "lat": 50.6806,
+    "lon": 4.4125,
+    "starts_at": "2026-04-01T08:00:00Z",
+    "ends_at": "2026-10-31T18:00:00Z",
+    "canonical_url": "https://example.org/visit/waterloo-walk",
+    "source_kind": "fixture",
+    "source_record_id": "fixture-waterloo-walk-2026"
+  }
+]

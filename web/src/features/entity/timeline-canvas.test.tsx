@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { TimelineCanvas, layoutDots, zoomWindow, clampWindow } from "./timeline-canvas";
+import { layoutDots, zoomWindow, clampWindow } from "@/components/timeline/timeline-utils";
+import { TimelineCanvas } from "./timeline-canvas";
 import type { TimelineEvent } from "@/lib/api";
 const event = (id: string, start: string, kind = "exact") => ({ id, title: `Moment ${id}`, event_type: "travel", time: { kind, start, precision: "year" } }) as TimelineEvent;
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });

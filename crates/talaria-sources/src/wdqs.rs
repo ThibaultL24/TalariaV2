@@ -116,6 +116,90 @@ pub fn events_from_fixture_dir(dir: &Path) -> anyhow::Result<Vec<WdqsEvent>> {
     ))
 }
 
+/// Cultural happenings documented on Wikidata with this person as main subject (P921).
+#[derive(Debug, Clone, PartialEq)]
+pub struct WdqsCultureItem {
+    pub item_qid: String,
+    pub label: String,
+    pub start: Option<String>,
+    pub end: Option<String>,
+    pub place_label: Option<String>,
+    pub lat: Option<f64>,
+    pub lon: Option<f64>,
+}
+
+pub fn culture_about_person_query(qid: &str, limit: u32) -> String {
+    let lim = limit.clamp(1, 200);
+    format!(
+        r#"PREFIX wd: <http://www.wikidata.org/entity/>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+PREFIX wikibase: <http://wikiba.se/ontology#>
+PREFIX bd: <http://www.bigdata.com/rdf#>
+SELECT DISTINCT ?item ?itemLabel ?start ?end ?place ?placeLabel ?geo ?pgeo WHERE {{
+  {{
+    ?item wdt:P921 wd:{qid} .
+  }} UNION {{
+    ?item wdt:P180 wd:{qid} .
+  }}
+  OPTIONAL {{ ?item wdt:P580 ?start . }}
+  OPTIONAL {{ ?item wdt:P582 ?end . }}
+  OPTIONAL {{ ?item wdt:P585 ?start . }}
+  OPTIONAL {{ ?item wdt:P276 ?place . }}
+  OPTIONAL {{ ?item wdt:P625 ?geo . }}
+  OPTIONAL {{ ?place wdt:P625 ?pgeo . }}
+  SERVICE wikibase:label {{ bd:serviceParam wikibase:language "fr,en". }}
+}}
+LIMIT {lim}
+"#,
+        qid = qid,
+        lim = lim
+    )
+}
+
+pub fn parse_culture_bindings(payload: &Value) -> Vec<WdqsCultureItem> {
+    let Some(bindings) = payload.pointer("/results/bindings").and_then(|v| v.as_array()) else {
+        return vec![];
+    };
+    let mut out = Vec::new();
+    for row in bindings {
+        let Some(item_qid) = binding_str(row, "item")
+            .as_deref()
+            .and_then(qid_from_uri)
+        else {
+            continue;
+        };
+        let label = binding_str(row, "itemLabel").unwrap_or_else(|| item_qid.clone());
+        let start = binding_str(row, "start").and_then(|d| normalize_date(&d));
+        let end = binding_str(row, "end").and_then(|d| normalize_date(&d));
+        let place_label = binding_str(row, "placeLabel").filter(|s| !s.is_empty());
+        let (lat, lon) = parse_geo(row);
+        out.push(WdqsCultureItem {
+            item_qid,
+            label,
+            start,
+            end,
+            place_label,
+            lat,
+            lon,
+        });
+    }
+    out
+}
+
+pub async fn fetch_culture_about_person(qid: &str) -> anyhow::Result<Vec<WdqsCultureItem>> {
+    let qid = qid.trim().to_uppercase();
+    anyhow::ensure!(
+        qid.starts_with('Q') && qid[1..].chars().all(|c| c.is_ascii_digit()),
+        "invalid qid {qid}"
+    );
+    let client = reqwest::Client::builder()
+        .user_agent(UA)
+        .timeout(Duration::from_secs(90))
+        .build()?;
+    let payload = sparql_json(&client, &culture_about_person_query(&qid, 120)).await?;
+    Ok(parse_culture_bindings(&payload))
+}
+
 pub async fn fetch_events_for_person(qid: &str) -> anyhow::Result<Vec<WdqsEvent>> {
     let qid = qid.trim().to_uppercase();
     anyhow::ensure!(

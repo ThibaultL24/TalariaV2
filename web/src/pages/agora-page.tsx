@@ -5,6 +5,7 @@ import { AgoraPanel } from "@/components/explorer/agora-panel";
 import { LaneIngestBar } from "@/components/explorer/lane-ingest-bar";
 import { IntuitionStanceBar } from "@/components/intuition/intuition-stance-bar";
 import { Navbar } from "@/components/layout/navbar";
+import { WalletConnectButton } from "@/components/wallet/wallet-connect-button";
 import { EntitySearchBox } from "@/components/search/entity-search-box";
 import { usePersonPicker } from "@/hooks/use-person-picker";
 import {
@@ -144,14 +145,18 @@ export function AgoraPage() {
             <h1 className="hero__title hero__title--agora text-4xl">{t.agora}</h1>
             <p className="hero__subtitle">{t.agoraHint}</p>
             {entityId ? (
-              <div className="mt-4 max-w-md rounded-lg border border-(--color-border-subtle) bg-(--color-bg-elevated)/70 px-3 py-2">
-                <IntuitionStanceBar targetKind="person" targetId={entityId} eager />
+              <div className="mt-4 max-w-lg intuition-panel">
+                <p className="intuition-panel__title">{t.intuitionTestnetPanel}</p>
+                <WalletConnectButton />
+                <div className="mt-3">
+                  <IntuitionStanceBar targetKind="person" targetId={entityId} eager />
+                </div>
               </div>
             ) : null}
             {busy ? (
               <p className="mt-3 text-sm text-(--color-text-secondary)">{t.searchInProgress}</p>
             ) : null}
-            {error ? <p className="mt-3 text-sm text-red-300">{error}</p> : null}
+            {error ? <p className="mt-3 text-sm text-(--color-trust-low)">{error}</p> : null}
           </div>
         </section>
         <div className="mx-auto max-w-3xl px-4 pb-12">

@@ -1,0 +1,187 @@
+/* web/src/styles/agora.css — Agora & Intuition UI (light + dark) */
+
+.agora-canvas {
+  background:
+    radial-gradient(ellipse 70% 45% at 50% -5%, rgba(var(--rgb-sea-accent), 0.06), transparent 55%),
+    var(--color-bg-primary);
+}
+
+.nebula-timeline-card {
+  position: relative;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+.nebula-timeline-card:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 35%, var(--color-border-subtle));
+  box-shadow: var(--shadow-md);
+}
+
+.agora-lane-banner {
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 28%, var(--color-border-subtle));
+  background: var(--color-accent-soft);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+  padding: 8px 12px;
+}
+
+.agora-lane-banner strong {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.agora-tablist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  padding-bottom: 8px;
+}
+
+.agora-tab {
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.agora-tab:hover {
+  background: var(--color-bg-elevated);
+  color: var(--color-text-secondary);
+}
+
+.agora-tab.is-active {
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.agora-tab__count {
+  margin-left: 6px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.72;
+}
+
+.agora-chip {
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.agora-chip:hover {
+  color: var(--color-text-secondary);
+  border-color: var(--color-border-strong);
+}
+
+.agora-chip.is-active {
+  background: var(--color-accent-soft);
+  color: var(--color-text-primary);
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border-subtle));
+}
+
+.agora-evidence-row {
+  border-radius: 8px;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-elevated);
+  padding: 6px 8px;
+}
+
+.agora-layer-badge {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  color: var(--color-text-muted);
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border-subtle);
+}
+
+.intuition-panel {
+  border-radius: 12px;
+  border: 1px solid var(--agora-intuition-border);
+  background: var(--agora-intuition-surface);
+  box-shadow: var(--agora-intuition-shadow);
+  padding: 12px 14px;
+}
+
+.intuition-panel__title {
+  margin: 0 0 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--agora-intuition-dim);
+}
+
+.intuition-stance-btn {
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.intuition-stance-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.intuition-stance-btn--believe {
+  border-color: color-mix(in srgb, var(--color-trust-high) 55%, var(--color-border-subtle));
+  background: color-mix(in srgb, var(--color-trust-high) 12%, var(--color-bg-surface));
+  color: color-mix(in srgb, var(--color-trust-high) 85%, var(--color-text-primary));
+}
+
+.intuition-stance-btn--dispute {
+  border-color: color-mix(in srgb, var(--color-trust-low) 50%, var(--color-border-subtle));
+  background: color-mix(in srgb, var(--color-trust-low) 10%, var(--color-bg-surface));
+  color: color-mix(in srgb, var(--color-trust-low) 80%, var(--color-text-primary));
+}
+
+[data-theme="dark"] .nebula-timeline-card {
+  background: rgba(17, 19, 23, 0.6);
+  border-color: var(--color-border-subtle);
+  box-shadow: none;
+}
+
+[data-theme="dark"] .agora-chip {
+  background: rgba(17, 19, 23, 0.55);
+}
+
+[data-theme="dark"] .agora-tab.is-active {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+[data-theme="dark"] .agora-evidence-row {
+  background: rgba(0, 0, 0, 0.2);
+}

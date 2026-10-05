@@ -2,6 +2,8 @@
 import type { ReactNode } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { WalletConnectButton } from "@/components/wallet/wallet-connect-button";
 
 interface NavbarProps {
   center?: ReactNode;
@@ -41,6 +43,8 @@ export function Navbar({ center }: NavbarProps) {
             {t.whitepaperNav}
           </NavLink>
         </nav>
+        <WalletConnectButton compact />
+        <ThemeToggle />
         <div className="flex shrink-0 overflow-hidden rounded-full border border-(--color-border-subtle) text-[11px] font-semibold">
           <button
             type="button"

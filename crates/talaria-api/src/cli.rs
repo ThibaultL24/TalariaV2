@@ -121,6 +121,22 @@ pub enum Commands {
         #[arg(long)]
         qid: Option<String>,
     },
+    /// Explorer person pipeline (Wikipedia crawl + extract → pipeline=person)
+    ExplorerIngest {
+        #[arg(long)]
+        subject: String,
+        #[arg(long)]
+        qid: Option<String>,
+        #[arg(long, default_value = "en")]
+        wiki_lang: String,
+        #[arg(
+            long,
+            help = "Seed title list (default: fixtures/seeds/<slug>_wiki_titles.txt or minimal)"
+        )]
+        seed_list: Option<PathBuf>,
+        #[arg(long, default_value_t = 10_000)]
+        max_documents: u32,
+    },
     /// Multi-source quality ingest (fixture by default; --live for Wikimedia APIs)
     IngestQuality {
         #[arg(long)]
@@ -209,6 +225,51 @@ pub enum Commands {
     ConnectorReport {
         #[arg(long)]
         subject: Option<String>,
+    },
+    /// Upsert visit_opportunities for exhibitions/events (fixture and/or Europeana)
+    VisitEnrich {
+        #[arg(long, help = "Entity UUID (alternative to --subject)")]
+        entity: Option<uuid::Uuid>,
+        #[arg(long, help = "Subject label / Wikipedia title")]
+        subject: Option<String>,
+        #[arg(long, help = "Wikidata QID for resolve")]
+        qid: Option<String>,
+        #[arg(long, default_value = "en")]
+        wiki_lang: String,
+        #[arg(long, help = "Load fixtures/visit/opportunities_sample.json (or --fixture-file)")]
+        fixture: bool,
+        #[arg(
+            long,
+            help = "Live: Europeana, Wikidata P921, Serper (SERPER_API_KEY), OpenAgenda (OPENAGENDA_API_KEY)"
+        )]
+        live: bool,
+        #[arg(
+            long,
+            default_value_t = true,
+            action = clap::ArgAction::Set,
+            help = "With --live, run web search (Serper) for expos/concerts/conférences"
+        )]
+        web_search: bool,
+        #[arg(
+            long,
+            help = "JSON array of opportunities (default: fixtures/visit/opportunities_sample.json)"
+        )]
+        fixture_file: Option<PathBuf>,
+        #[arg(long, default_value = "fixtures/europeana")]
+        europeana_fixture_dir: PathBuf,
+        #[arg(long, default_value_t = 50)]
+        max_items: u32,
+    },
+    /// Compare Visit patrimoine vs démo + list proximity duplicates (optional --apply-dedupe)
+    VisitAudit {
+        #[arg(long)]
+        entity: Option<uuid::Uuid>,
+        #[arg(long)]
+        subject: Option<String>,
+        #[arg(long)]
+        qid: Option<String>,
+        #[arg(long, help = "Deactivate redundant visit heritage pins within ~80m (same type)")]
+        apply_dedupe: bool,
     },
     /// Ingest Wikidata JSON dump → entity QIDs + occupation/position profiles
     WikidataIngest {
@@ -403,6 +464,11 @@ pub enum AdminAction {
             help = "JSON snapshot of counts and sample ids (written only with --confirm-destruction)"
         )]
         backup_manifest: PathBuf,
+    },
+    /// Fix `_sqlx_migrations.checksum` when a migration file changed after apply (local dev)
+    RepairMigrationChecksums {
+        #[arg(long, help = "Only repair this migration version (e.g. 35)")]
+        version: Option<i64>,
     },
 }
 

@@ -16,10 +16,10 @@ export interface DemoRosterEntry {
 export const DEMO_ROSTER: DemoRosterEntry[] = [
   {
     qid: "Q517",
-    labelEn: "Napoleon",
-    labelFr: "Napoléon",
+    labelEn: "Napoleon Bonaparte",
+    labelFr: "Napoléon Bonaparte",
     era: "historical",
-    wikiTitle: "Napoleon",
+    wikiTitle: "Napoleon Bonaparte",
   },
   {
     qid: "Q687",

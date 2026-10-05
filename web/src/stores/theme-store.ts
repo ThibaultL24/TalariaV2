@@ -18,8 +18,8 @@ function resolve(preference: Preference): Theme {
 export const useThemeStore = create<ThemeState>()(
   persist(
     (set, get) => ({
-      theme: "light",
-      preference: "light",
+      theme: "dark",
+      preference: "dark",
       setTheme: (preference) => set({ preference, theme: resolve(preference) }),
       syncSystem: () => set({ theme: resolve(get().preference) }),
     }),

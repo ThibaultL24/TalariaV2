@@ -13,11 +13,13 @@ export function EntityMap({
   id,
   filters,
   selected,
+  focus,
   onSelect,
 }: {
   id: string;
   filters: string;
   selected?: string;
+  focus?: { eventId: string; lat: number; lon: number };
   onSelect: (id: string) => void;
 }) {
   const [map, setMap] = useState<Map | null>(null);
@@ -86,6 +88,18 @@ export function EntityMap({
       map.off("moveend", schedule);
     };
   }, [id, filters, map]);
+
+  useEffect(() => {
+    if (!map || !focus) return;
+    const zoom = Math.max(map.getZoom(), 7.5);
+    map.flyTo({
+      center: [focus.lon, focus.lat],
+      zoom,
+      duration: 1100,
+      essential: true,
+    });
+  }, [map, focus?.eventId, focus?.lat, focus?.lon]);
+
   return (
     <div className="v3-map-layout">
       <div className="v3-map">
