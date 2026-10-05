@@ -414,6 +414,10 @@ a {
   opacity: 0.45;
 }
 
+.hero--home.hero--agora-photo::before {
+  content: none;
+}
+
 .hero--home.talaria-cartography-pattern::before {
   opacity: 0.45;
 }

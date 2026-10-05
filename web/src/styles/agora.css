@@ -189,54 +189,37 @@
 .hero--agora-photo {
   position: relative;
   overflow: hidden;
-  background-size: cover;
-  background-position: center 42%;
-  background-repeat: no-repeat;
 }
 
-[data-theme="light"] .hero--agora-photo {
-  background-image: url("/brand/hero-agora-day.jpg");
+[data-theme="light"] .hero.hero--agora-photo {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(247, 243, 234, 0.22) 0%,
+      rgba(247, 243, 234, 0.08) 48%,
+      color-mix(in srgb, var(--color-bg-primary) 82%, transparent) 100%
+    ),
+    url("/brand/hero-agora-day.jpg") center 42% / cover no-repeat;
 }
 
-[data-theme="dark"] .hero--agora-photo {
-  background-image: url("/brand/hero-agora-night.jpg");
+[data-theme="dark"] .hero.hero--agora-photo {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(8, 21, 28, 0.32) 0%,
+      rgba(8, 21, 28, 0.14) 48%,
+      color-mix(in srgb, var(--color-bg-primary) 82%, transparent) 100%
+    ),
+    url("/brand/hero-agora-night.jpg") center 42% / cover no-repeat;
 }
 
-.hero--agora-photo::before,
 .hero--agora-photo::after {
   content: "";
-  pointer-events: none;
-  z-index: 0;
-}
-
-.hero--agora-photo::before {
-  position: absolute;
-  inset: 0;
-  opacity: 1;
-}
-
-[data-theme="light"] .hero--agora-photo::before {
-  background: linear-gradient(
-    180deg,
-    rgba(247, 243, 234, 0.22) 0%,
-    rgba(247, 243, 234, 0.08) 48%,
-    color-mix(in srgb, var(--color-bg-primary) 82%, transparent) 100%
-  );
-}
-
-[data-theme="dark"] .hero--agora-photo::before {
-  background: linear-gradient(
-    180deg,
-    rgba(8, 21, 28, 0.32) 0%,
-    rgba(8, 21, 28, 0.14) 48%,
-    color-mix(in srgb, var(--color-bg-primary) 82%, transparent) 100%
-  );
-}
-
-.hero--agora-photo::after {
   position: absolute;
   inset: auto 0 0 0;
   height: 88px;
+  pointer-events: none;
+  z-index: 0;
   background: linear-gradient(to bottom, transparent, var(--color-bg-primary));
 }
 

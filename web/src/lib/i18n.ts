@@ -8,6 +8,7 @@ export interface AppMessages {
   productSubtitle: string;
   search: string;
   searchPlaceholder: string;
+  searchUnavailable: string;
   searchHint: string;
   searchInLibrary: string;
   searchNew: string;
@@ -160,6 +161,7 @@ const EN: AppMessages = {
   productSubtitle: "Life geography",
   search: "Search",
   searchPlaceholder: "Search a historical figure…",
+  searchUnavailable: "Search is closed for now — open a demo figure below.",
   searchHint: "Choose a person to read their life.",
   searchInLibrary: "In library",
   searchNew: "New",
@@ -167,7 +169,7 @@ const EN: AppMessages = {
   loadingMap: "Placing events on the map…",
   searchInProgress: "Search in progress",
   noResults: "No matches.",
-  emptySearch: "Search a historical figure to see their life.",
+  emptySearch: "Open a demo figure from the home page to explore a life.",
   close: "Close",
   closeDetail: "Close event",
   summary: "Summary",
@@ -198,7 +200,7 @@ const EN: AppMessages = {
   collectAgora: "Collect scholarship",
   explorer: "Map",
   heroEyebrow: "Historical geography",
-  heroSubtitle: "Search a person. See their life as points in time. Read the debates in the Agora.",
+  heroSubtitle: "Open a demo life. See it as points in time. Read the debates in the Agora.",
   startExploration: "Open a life",
   openAgora: "Open the Agora",
   livingMap: "A life in points",
@@ -217,7 +219,7 @@ const EN: AppMessages = {
   homeAboutWhitepaper: "Read the Talaria about page →",
   whitepaperNav: "About",
   whitepaperToc: "Contents",
-  agoraEmpty: "Search a historical figure to load works, theories and controversies.",
+  agoraEmpty: "Open a demo figure to load works, theories and controversies.",
   emptyTimeline: "No dated facts yet. Collect the life trace to fill the map and timeline.",
   chronPreviewTitle: "Landmark moments",
   chronPreviewHint:
@@ -279,7 +281,7 @@ const EN: AppMessages = {
   agoraSourceFilter: "Filter by catalog",
   agoraFilterEmpty: "No items for this catalog.",
   demoRosterTitle: "Demo figures",
-  demoRosterHint: "Ten curated lives — open the map or the Agora. Or search anyone else to collect a new life (no LLM required).",
+  demoRosterHint: "Ten curated lives — open the map or the Agora. Free search is paused for this demo.",
   demoRosterStats: (events, pins, claims) =>
     `${events} facts · ${pins} on map · ${claims} debates`,
   demoRosterPending: "Not loaded yet — open to collect.",
@@ -331,6 +333,7 @@ const FR: AppMessages = {
   productSubtitle: "Géographie d’une vie",
   search: "Rechercher",
   searchPlaceholder: "Rechercher une personnalité…",
+  searchUnavailable: "Recherche fermée pour l’instant — ouvrez une figure de la démo.",
   searchHint: "Choisissez une personne pour lire sa vie.",
   searchInLibrary: "En bibliothèque",
   searchNew: "Nouveau",
@@ -338,7 +341,7 @@ const FR: AppMessages = {
   loadingMap: "Placement des événements sur la carte…",
   searchInProgress: "Recherche en cours",
   noResults: "Aucun résultat.",
-  emptySearch: "Recherchez une personnalité pour voir sa vie.",
+  emptySearch: "Ouvrez une figure de la démo depuis l’accueil pour explorer une vie.",
   close: "Fermer",
   closeDetail: "Fermer l’événement",
   summary: "Résumé",
@@ -369,7 +372,7 @@ const FR: AppMessages = {
   collectAgora: "Collecter l’agora",
   explorer: "Carte",
   heroEyebrow: "Géographie historique",
-  heroSubtitle: "Cherchez une personne. Voyez sa vie en points dans le temps. Lisez les débats dans l’Agora.",
+  heroSubtitle: "Ouvrez une vie de la démo. Voyez-la en points dans le temps. Lisez les débats dans l’Agora.",
   startExploration: "Ouvrir une vie",
   openAgora: "Ouvrir l’Agora",
   livingMap: "Une vie en points",
@@ -388,7 +391,7 @@ const FR: AppMessages = {
   homeAboutWhitepaper: "Lire la page À propos Talaria →",
   whitepaperNav: "À propos",
   whitepaperToc: "Sommaire",
-  agoraEmpty: "Recherchez une personnalité pour charger travaux, théories et controverses.",
+  agoraEmpty: "Ouvrez une figure de la démo pour charger travaux, théories et controverses.",
   emptyTimeline: "Pas encore de faits datés. Lancez l’ingest pour remplir la carte et la frise.",
   chronPreviewTitle: "Dates majeures",
   chronPreviewHint:
@@ -451,7 +454,7 @@ const FR: AppMessages = {
   agoraSourceFilter: "Filtrer par catalogue",
   agoraFilterEmpty: "Aucun élément pour ce catalogue.",
   demoRosterTitle: "Figures de la démo",
-  demoRosterHint: "Dix vies choisies — ouvrir la carte ou l’Agora. Ou cherchez n’importe qui d’autre pour collecter une vie (sans LLM).",
+  demoRosterHint: "Dix vies choisies — ouvrir la carte ou l’Agora. La recherche libre est en pause pour cette démo.",
   demoRosterStats: (events, pins, claims) =>
     `${events} faits · ${pins} sur carte · ${claims} débats`,
   demoRosterPending: "Pas encore chargé — ouvrir pour collecter.",

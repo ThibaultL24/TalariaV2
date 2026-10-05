@@ -5,6 +5,7 @@ import { IngestProgressBadge } from "@/components/explorer/ingest-progress-badge
 import { Navbar } from "@/components/layout/navbar";
 import { EntitySearchBox } from "@/components/search/entity-search-box";
 import { usePersonPicker } from "@/hooks/use-person-picker";
+import { PUBLIC_PERSON_SEARCH_ENABLED } from "@/lib/demo-mode";
 import { useI18n } from "@/lib/i18n";
 import { useExplorerStore } from "@/stores/explorer-store";
 
@@ -20,6 +21,7 @@ export function ExplorerPage() {
   const subject = params.get("subject") ?? "";
 
   useEffect(() => {
+    if (!PUBLIC_PERSON_SEARCH_ENABLED) return;
     if (!subject || started.current === subject) return;
     started.current = subject;
     picker.selectPerson({

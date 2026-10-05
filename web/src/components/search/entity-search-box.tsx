@@ -1,6 +1,7 @@
 // web/src/components/search/entity-search-box.tsx
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SearchSuggestion } from "@/lib/schemas/entity";
+import { PUBLIC_PERSON_SEARCH_ENABLED } from "@/lib/demo-mode";
 import { useI18n } from "@/lib/i18n";
 
 interface EntitySearchBoxProps {
@@ -17,6 +18,7 @@ export function EntitySearchBox({
   isLoading,
 }: EntitySearchBoxProps) {
   const { t } = useI18n();
+  const searchEnabled = PUBLIC_PERSON_SEARCH_ENABLED;
   const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -35,7 +37,7 @@ export function EntitySearchBox({
   }, [clearBlurTimer]);
 
   const trimmed = value.trim();
-  const showPanel = isFocused && trimmed.length >= 2;
+  const showPanel = searchEnabled && isFocused && trimmed.length >= 2;
   const showList = suggestions.length > 0 && !isLoading;
 
   function queueSearch(next: string) {
@@ -49,13 +51,16 @@ export function EntitySearchBox({
     <div className="relative">
       <input
         type="search"
-        value={value}
+        value={searchEnabled ? value : ""}
+        disabled={!searchEnabled}
         onChange={(event) => {
+          if (!searchEnabled) return;
           const next = event.target.value;
           setValue(next);
           queueSearch(next);
         }}
         onFocus={() => {
+          if (!searchEnabled) return;
           clearBlurTimer();
           setIsFocused(true);
           if (trimmed.length >= 2) onSubmitQuery(trimmed);
@@ -73,9 +78,10 @@ export function EntitySearchBox({
             (event.target as HTMLInputElement).blur();
           }
         }}
-        placeholder={t.searchPlaceholder}
-        className="person-filter min-w-0 w-full"
+        placeholder={searchEnabled ? t.searchPlaceholder : t.searchUnavailable}
+        className="person-filter min-w-0 w-full disabled:cursor-not-allowed disabled:opacity-70"
         aria-label={t.personSearch}
+        aria-disabled={!searchEnabled}
         aria-autocomplete="list"
         aria-expanded={showPanel}
         autoComplete="off"
