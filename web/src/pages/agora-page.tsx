@@ -5,7 +5,7 @@ import { AgoraPanel } from "@/components/explorer/agora-panel";
 import { LaneIngestBar } from "@/components/explorer/lane-ingest-bar";
 import { Navbar } from "@/components/layout/navbar";
 import { TalariaSandalMark } from "@/components/brand/talaria-sandal-mark";
-import { WalletConnectButton } from "@/components/wallet/wallet-connect-button";
+import { IntuitionWalletPanel } from "@/components/wallet/intuition-wallet-panel";
 import { EntitySearchBox } from "@/components/search/entity-search-box";
 import { usePersonPicker } from "@/hooks/use-person-picker";
 import {
@@ -149,12 +149,9 @@ export function AgoraPage() {
               </span>
             </h1>
             <p className="hero__subtitle">{t.agoraHint}</p>
-            {entityId ? (
-              <div className="mt-4 max-w-lg intuition-panel">
-                <p className="intuition-panel__title">{t.intuitionTestnetPanel}</p>
-                <WalletConnectButton />
-              </div>
-            ) : null}
+            <div className="mt-4 max-w-lg">
+              <IntuitionWalletPanel />
+            </div>
             {busy ? (
               <p className="mt-3 text-sm text-(--color-text-secondary)">{t.searchInProgress}</p>
             ) : null}

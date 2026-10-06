@@ -8,13 +8,12 @@ const walletState = vi.hoisted(() => ({
   chainId: 13579,
   isConnected: false,
   isSupportedChain: true,
-  isConnecting: false,
-  connectError: null as Error | null,
 }));
 
 const connect = vi.fn();
 const disconnect = vi.fn();
 const switchChain = vi.fn();
+const injected = { id: "injected", name: "Injected", type: "injected" };
 
 vi.mock("@/hooks/use-intuition-wallet", () => ({
   useIntuitionWallet: () => ({
@@ -39,12 +38,14 @@ vi.mock("@/hooks/use-talaria-session", () => ({
 vi.mock("wagmi", () => ({
   useConnect: () => ({
     connect,
-    connectors: [{ id: "injected", name: "Injected" }],
-    isPending: walletState.isConnecting,
-    error: walletState.connectError,
+    connectors: [injected],
+    isPending: false,
+    error: null,
   }),
-  useDisconnect: () => ({ disconnect }),
+  useConnectors: () => [injected],
+  useDisconnect: () => ({ disconnect, isPending: false }),
   useSwitchChain: () => ({ switchChain, isPending: false }),
+  useBalance: () => ({ data: undefined, isLoading: false }),
 }));
 
 describe("WalletConnectButton", () => {
@@ -54,8 +55,6 @@ describe("WalletConnectButton", () => {
     walletState.chainId = 13579;
     walletState.isConnected = false;
     walletState.isSupportedChain = true;
-    walletState.isConnecting = false;
-    walletState.connectError = null;
     connect.mockReset();
     disconnect.mockReset();
     switchChain.mockReset();
@@ -65,9 +64,10 @@ describe("WalletConnectButton", () => {
     cleanup();
   });
 
-  it("connects via Wagmi and does not write talaria-wallet-v1", () => {
+  it("opens the wallet modal then connects via Wagmi without talaria-wallet-v1", () => {
     render(<WalletConnectButton />);
     fireEvent.click(screen.getByRole("button", { name: /connect wallet/i }));
+    fireEvent.click(screen.getByRole("button", { name: /browser wallet/i }));
     expect(connect).toHaveBeenCalled();
     expect(localStorage.getItem("talaria-wallet-v1")).toBeNull();
   });
@@ -76,8 +76,8 @@ describe("WalletConnectButton", () => {
     walletState.isConnected = true;
     walletState.address = "0x1234567890abcdef1234567890abcdef12345678";
     render(<WalletConnectButton />);
-    expect(screen.getByTitle(walletState.address)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /disconnect/i }));
+    fireEvent.click(screen.getByRole("button", { name: /0x1234/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /disconnect/i }));
     expect(disconnect).toHaveBeenCalled();
     expect(localStorage.getItem("talaria-wallet-v1")).toBeNull();
   });
@@ -89,6 +89,7 @@ describe("WalletConnectButton", () => {
     walletState.isSupportedChain = false;
     render(<WalletConnectButton />);
     fireEvent.click(screen.getByRole("button", { name: /switch network/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /switch network/i }));
     expect(switchChain).toHaveBeenCalled();
   });
 });

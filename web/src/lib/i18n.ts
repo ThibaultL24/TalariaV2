@@ -214,6 +214,21 @@ export interface AppMessages {
   walletConnectForStance: string;
   walletWrongNetwork: string;
   walletSwitchNetwork: string;
+  walletPanelKicker: string;
+  walletPanelTitle: string;
+  walletPanelLead: string;
+  walletConnectModalTitle: string;
+  walletEduTitle: string;
+  walletEduAssetsTitle: string;
+  walletEduAssetsBody: string;
+  walletEduLoginTitle: string;
+  walletEduLoginBody: string;
+  walletGetWallet: string;
+  walletLearnMore: string;
+  walletConnectHintNetwork: (network: string) => string;
+  walletNetworkHub: string;
+  walletConnected: string;
+  walletWrongNetworkDetail: string;
   talariaSignIn: string;
   talariaSignInHint: string;
   intuitionTestnetPanel: string;
@@ -457,6 +472,23 @@ const EN: AppMessages = {
   walletConnectForStance: "Connect your wallet to record a stance (simulation on testnet).",
   walletWrongNetwork: "Wrong network",
   walletSwitchNetwork: "Switch network",
+  walletPanelKicker: "Intuition",
+  walletPanelTitle: "Your wallet",
+  walletPanelLead: "Connect your wallet to take a stance on Intuition testnet.",
+  walletConnectModalTitle: "Connect a wallet",
+  walletEduTitle: "What is a wallet?",
+  walletEduAssetsTitle: "A home for your digital assets",
+  walletEduAssetsBody: "Wallets are used to send, receive, store, and display digital assets.",
+  walletEduLoginTitle: "A new way to log in",
+  walletEduLoginBody:
+    "Instead of creating new accounts and passwords on every website, just connect your wallet.",
+  walletGetWallet: "Get a wallet",
+  walletLearnMore: "Learn more",
+  walletConnectHintNetwork: (network) =>
+    `Connect on ${network}. Add the network in your wallet if prompted.`,
+  walletNetworkHub: "Network hub",
+  walletConnected: "Connected",
+  walletWrongNetworkDetail: "You're on the wrong network. Switch to continue.",
   talariaSignIn: "Sign in to Talaria",
   talariaSignInHint: "Sign a message to create a Talaria session. No gas, no Intuition transaction.",
   intuitionTestnetPanel: "Intuition · testnet",
@@ -704,6 +736,24 @@ const FR: AppMessages = {
     "Connectez votre wallet pour enregistrer une position (simulation testnet).",
   walletWrongNetwork: "Mauvais réseau",
   walletSwitchNetwork: "Changer de réseau",
+  walletPanelKicker: "Intuition",
+  walletPanelTitle: "Votre wallet",
+  walletPanelLead: "Connectez votre wallet pour prendre position sur Intuition testnet.",
+  walletConnectModalTitle: "Connecter un wallet",
+  walletEduTitle: "Qu’est-ce qu’un wallet ?",
+  walletEduAssetsTitle: "Un lieu pour vos actifs numériques",
+  walletEduAssetsBody:
+    "Un wallet sert à envoyer, recevoir, stocker et afficher des actifs numériques.",
+  walletEduLoginTitle: "Une autre façon de se connecter",
+  walletEduLoginBody:
+    "Au lieu de créer un compte et un mot de passe sur chaque site, connectez simplement votre wallet.",
+  walletGetWallet: "Obtenir un wallet",
+  walletLearnMore: "En savoir plus",
+  walletConnectHintNetwork: (network) =>
+    `Connexion sur ${network}. Ajoutez le réseau dans votre wallet si demandé.`,
+  walletNetworkHub: "Hub réseau",
+  walletConnected: "Connecté",
+  walletWrongNetworkDetail: "Vous n’êtes pas sur le bon réseau. Changez de réseau pour continuer.",
   talariaSignIn: "Connexion Talaria",
   talariaSignInHint:
     "Signez un message pour créer une session Talaria. Pas de gas, pas de transaction Intuition.",
