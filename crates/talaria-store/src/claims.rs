@@ -42,6 +42,8 @@ pub struct ClaimEvidenceRow {
     pub quote: Option<String>,
     pub sentence_id: Option<Uuid>,
     pub confidence: f64,
+    pub corpus_document_id: Option<Uuid>,
+    pub fragment_id: Option<Uuid>,
 }
 
 pub async fn insert_claim(pool: &PgPool, claim: &ClaimInsert) -> anyhow::Result<Uuid> {
@@ -103,9 +105,10 @@ pub async fn insert_claim_evidence(
     let id: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO soft_claim_evidence (
-            claim_id, source_system, locator, quote, sentence_id, confidence
+            claim_id, source_system, locator, quote, sentence_id, confidence,
+            corpus_document_id, fragment_id
         )
-        VALUES ($1,$2,$3,$4,$5,$6)
+        VALUES ($1,$2,$3,$4,$5,$6,NULL,NULL)
         RETURNING id
         "#,
     )
@@ -162,6 +165,7 @@ pub async fn list_claims_for_entity(
                OR (e1.qid IS NOT NULL AND e2.qid = e1.qid)
             WHERE e1.id = $1
           )
+          AND origin <> 'user'
           AND (
             NOT $3
             OR claim_kind IN ('theory', 'controversy', 'debate_stance')
@@ -208,7 +212,8 @@ pub async fn list_claim_evidence(
 ) -> anyhow::Result<Vec<ClaimEvidenceRow>> {
     let rows = sqlx::query_as::<_, ClaimEvidenceRow>(
         r#"
-        SELECT id, claim_id, source_system, locator, quote, sentence_id, confidence
+        SELECT id, claim_id, source_system, locator, quote, sentence_id, confidence,
+               corpus_document_id, fragment_id
         FROM soft_claim_evidence
         WHERE claim_id = $1
         ORDER BY confidence DESC
@@ -230,7 +235,8 @@ pub async fn list_claim_evidence_for_claims(
     }
     let rows = sqlx::query_as::<_, ClaimEvidenceRow>(
         r#"
-        SELECT id, claim_id, source_system, locator, quote, sentence_id, confidence
+        SELECT id, claim_id, source_system, locator, quote, sentence_id, confidence,
+               corpus_document_id, fragment_id
         FROM soft_claim_evidence
         WHERE claim_id = ANY($1)
         ORDER BY claim_id, confidence DESC

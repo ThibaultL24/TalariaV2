@@ -8,6 +8,7 @@ import { MapSourceManager } from "@/components/map/map-source-manager";
 import { MapLayers } from "@/components/map/map-layers";
 import { MapInteractions } from "@/components/map/map-interactions";
 import { getEntityView, type MapPage } from "@/lib/entity-views";
+import { useI18n } from "@/lib/i18n";
 import type { TalariaFeatureCollection } from "@/lib/schemas/geojson";
 export function EntityMap({
   id,
@@ -15,14 +16,18 @@ export function EntityMap({
   selected,
   focus,
   onSelect,
+  mode = "desktop",
 }: {
   id: string;
   filters: string;
   selected?: string;
   focus?: { eventId: string; lat: number; lon: number };
   onSelect: (id: string) => void;
+  mode?: "desktop" | "fullscreen";
 }) {
+  const { t } = useI18n();
   const [map, setMap] = useState<Map | null>(null);
+  const [legendOpen, setLegendOpen] = useState(false);
   const [data, setData] = useState<TalariaFeatureCollection>();
   const [keys, setKeys] = useState<LegendKey[]>([]);
   const presentKeys = useMemo(() => [...new Set((data?.features ?? []).map(f => legendKeyForEventType(String(f.properties.event_type))))], [data]);
@@ -90,6 +95,11 @@ export function EntityMap({
   }, [id, filters, map]);
 
   useEffect(() => {
+    if (!map) return;
+    map.resize();
+  }, [map, mode, legendOpen]);
+
+  useEffect(() => {
     if (!map || !focus) return;
     const zoom = Math.max(map.getZoom(), 7.5);
     map.flyTo({
@@ -101,7 +111,10 @@ export function EntityMap({
   }, [map, focus?.eventId, focus?.lat, focus?.lon]);
 
   return (
-    <div className="v3-map-layout">
+    <div
+      className={`v3-map-layout${mode === "fullscreen" ? " v3-map-layout--fullscreen" : ""}`}
+      data-mode={mode}
+    >
       <div className="v3-map">
       <MapCanvas onReady={setMap} />
       <MapSourceManager map={map} data={visible} />
@@ -113,8 +126,29 @@ export function EntityMap({
           {error}
         </p>
       )}
+      {mode === "fullscreen" ? (
+        <button
+          type="button"
+          className="v3-map-legend-toggle"
+          aria-expanded={legendOpen}
+          onClick={() => setLegendOpen((open) => !open)}
+        >
+          {t.immersiveLegend}
+        </button>
+      ) : null}
       </div>
-      <div className="v3-map-legend"><MapLegend presentKeys={presentKeys.length ? presentKeys : LEGEND_ORDER} selectedKeys={keys} onToggleKey={(key) => setKeys(old => old.includes(key) ? old.filter(k => k !== key) : [...old, key])} onClear={() => setKeys([])} /></div>
+      {(mode !== "fullscreen" || legendOpen) && (
+        <div className="v3-map-legend">
+          <MapLegend
+            presentKeys={presentKeys.length ? presentKeys : LEGEND_ORDER}
+            selectedKeys={keys}
+            onToggleKey={(key) =>
+              setKeys((old) => (old.includes(key) ? old.filter((k) => k !== key) : [...old, key]))
+            }
+            onClear={() => setKeys([])}
+          />
+        </div>
+      )}
     </div>
   );
 }

@@ -13,6 +13,10 @@ pub async fn connect(config: &AppConfig) -> anyhow::Result<DbPool> {
 }
 
 pub async fn run_migrations(pool: &DbPool) -> anyhow::Result<()> {
-    sqlx::migrate!("../../migrations").run(pool).await?;
+    // Re-resolved whenever migrations/ changes (see build.rs). ignore_missing
+    // lets a DB that already applied 040 start even if an older embed omitted it.
+    let mut migrator = sqlx::migrate!("../../migrations");
+    migrator.set_ignore_missing(true);
+    migrator.run(pool).await?;
     Ok(())
 }

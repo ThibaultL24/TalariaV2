@@ -9,7 +9,11 @@
 #![allow(dead_code)]
 
 mod agora_stance;
+mod auth;
 mod claim_extract;
+mod claim_signals;
+mod comments;
+mod agora_graph;
 mod cli;
 mod cli_dispatch;
 mod cli_helpers;
@@ -23,6 +27,7 @@ mod dump_ingest;
 mod geocode;
 mod historiography;
 mod ingest;
+mod interactions;
 mod intuition;
 mod judge;
 mod llm;

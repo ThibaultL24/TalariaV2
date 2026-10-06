@@ -7,6 +7,7 @@ description = "PostgreSQL + PostGIS persistence for Talaria Engine"
 [dependencies]
 anyhow = { workspace = true }
 chrono = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { workspace = true }
 talaria-core = { path = "../talaria-core" }
@@ -15,3 +16,4 @@ tracing = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
 uuid = { workspace = true }
+alloy-primitives = "1"

@@ -278,12 +278,63 @@ html:not([data-theme="dark"]) .historical-timeline {
   opacity: 0.85;
 }
 
+.historical-timeline--fullscreen {
+  position: relative;
+  width: 100%;
+  min-height: 0;
+}
+
+.historical-timeline--fullscreen .historical-timeline__body {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.historical-timeline--fullscreen .historical-timeline__canvas-host {
+  min-height: 0;
+  height: 100%;
+}
+
+.historical-timeline__drawer-toggle {
+  flex-shrink: 0;
+  margin: 8px 12px 0;
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-accent-strong);
+}
+
+.historical-timeline--fullscreen .historical-timeline__categories {
+  position: absolute;
+  z-index: 6;
+  top: 40px;
+  left: 8px;
+  right: 8px;
+  max-height: min(52dvh, 360px);
+  flex-direction: row;
+  flex-wrap: wrap;
+  border: 1px solid var(--ht-border);
+  border-radius: 12px;
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-md);
+}
+
+.historical-timeline--fullscreen .historical-timeline__categories[hidden] {
+  display: none;
+}
+
+.historical-timeline__drawer-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  border: 0;
+  background: rgb(0 0 0 / 0.28);
+}
+
 @media (max-width: 768px) {
-  .historical-timeline__body {
+  .historical-timeline:not(.historical-timeline--fullscreen) .historical-timeline__body {
     grid-template-columns: 1fr;
   }
 
-  .historical-timeline__categories {
+  .historical-timeline:not(.historical-timeline--fullscreen) .historical-timeline__categories {
     flex-direction: row;
     flex-wrap: wrap;
     border-right: 0;

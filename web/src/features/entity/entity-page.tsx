@@ -31,6 +31,8 @@ import { selectChronologicalPreview } from "@/lib/chronological-preview";
 import { eventTypeLabel } from "@/lib/event-taxonomy";
 import { useI18n } from "@/lib/i18n";
 import { EntityMap } from "./entity-map";
+import { useMediaQuery } from "@/hooks/use-media-query";
+import { COMPACT_VIEWPORT_MQ } from "@/lib/breakpoints";
 
 export function EntityPage() {
   const { entityId: routeEntityId, view = "overview" } = useParams();
@@ -73,6 +75,11 @@ export function EntityPage() {
   const [timelineZoomToken, setTimelineZoomToken] = useState(0);
   const [timelineZoomEventId, setTimelineZoomEventId] = useState<string | undefined>();
   const lens = useExplorerLens();
+  const compactViewport = useMediaQuery(COMPACT_VIEWPORT_MQ);
+  const scholarImmersive = lens === "scholar" && (view === "timeline" || view === "map");
+  const mobileStage = scholarImmersive && compactViewport;
+  const stageMode = mobileStage ? "fullscreen" : "desktop";
+  const [toolsOpen, setToolsOpen] = useState(false);
   const { locale, t } = useI18n();
   const scholarTabs = ["overview", "timeline", "map", "sources"] as const;
   const visitTabs = ["map", "heritage", "now"] as const;
@@ -274,8 +281,27 @@ export function EntityPage() {
     [events, lens, view],
   );
   return (
-    <div className={`v3-shell${immersive ? " v3-shell--immersive" : ""}`}>
-      <Navbar />
+    <div
+      className={`v3-shell${immersive ? " v3-shell--immersive" : ""}${scholarImmersive ? " v3-shell--scholar-stage" : ""}${mobileStage ? " v3-shell--mobile-stage" : ""}`}
+    >
+      {mobileStage ? (
+        <header className="v3-mobile-chrome">
+          <Link className="v3-mobile-chrome__back" to={`/entities/${entityId}/overview`}>
+            {t.immersiveBack}
+          </Link>
+          <h1 className="v3-mobile-chrome__title">{overview?.entity.label ?? "Loading…"}</h1>
+          <button
+            type="button"
+            className="v3-mobile-chrome__tools"
+            aria-expanded={toolsOpen}
+            onClick={() => setToolsOpen((open) => !open)}
+          >
+            {t.immersiveTools}
+          </button>
+        </header>
+      ) : (
+        <Navbar />
+      )}
       <main className={`v3-main${immersive ? " v3-main--immersive" : ""}`}>
         {!immersive && (
           <section className={view === "overview" ? "v3-overview-hero" : undefined}>
@@ -318,7 +344,7 @@ export function EntityPage() {
             </section>
           </section>
         )}
-        {immersive && entityId && (
+        {immersive && entityId && !mobileStage && (
           <div className="v3-immersive-bar">
             <h1 className="v3-immersive-title">
               {overview?.entity.label ?? "Loading…"}
@@ -371,7 +397,17 @@ export function EntityPage() {
           {entityId &&
             ((lens === "scholar" && (view === "map" || view === "timeline")) ||
               (lens === "visit" && (view === "map" || view === "heritage" || view === "now"))) && (
-            <div className="v3-moment-search-row">
+            <>
+              {mobileStage && toolsOpen ? (
+                <button
+                  type="button"
+                  className="v3-mobile-drawer-scrim"
+                  aria-label={t.close}
+                  onClick={() => setToolsOpen(false)}
+                />
+              ) : null}
+            {(!mobileStage || toolsOpen) && (
+            <div className={`v3-moment-search-row${mobileStage && toolsOpen ? " is-open" : ""}`}>
               <EventMomentSearch
                 events={events}
                 loading={loading}
@@ -398,6 +434,8 @@ export function EntityPage() {
                 </form>
               )}
             </div>
+            )}
+            </>
           )}
           {view === "map" && lens === "scholar" && (
             <EntityMap
@@ -406,6 +444,7 @@ export function EntityPage() {
               selected={eventId ?? undefined}
               focus={mapFocus}
               onSelect={select}
+              mode={stageMode}
             />
           )}
           {view === "map" && lens === "visit" && (
@@ -459,6 +498,7 @@ export function EntityPage() {
               spotlightEventId={eventId ?? undefined}
               zoomToEventId={timelineZoomEventId}
               zoomToEventToken={timelineZoomToken}
+              mode={stageMode}
               onSelect={select}
               onZoom={(a, b) => {
                 const copy = new URLSearchParams(params);

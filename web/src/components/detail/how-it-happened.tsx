@@ -44,6 +44,12 @@ export function shortLifeRecap(raw: string | null | undefined): string | null {
   return sentences.slice(0, 3).join(" ");
 }
 
+export function fullLifeRecap(raw: string | null | undefined): string | null {
+  const { lead, body } = parseDossierProse(raw ?? "");
+  const text = [lead, ...body].filter(Boolean).join(" ").trim();
+  return text.length < 12 ? null : text;
+}
+
 export function HowItHappened({ text, onCiteClick }: HowItHappenedProps) {
   const { t } = useI18n();
   const { lead, body } = parseDossierProse(text);

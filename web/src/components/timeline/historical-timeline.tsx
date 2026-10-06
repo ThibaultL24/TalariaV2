@@ -51,6 +51,7 @@ export interface HistoricalTimelineProps {
   zoomToEventToken?: number;
   onSelect: (id: string) => void;
   onZoom: (from: number, to: number) => void;
+  mode?: "desktop" | "fullscreen";
 }
 
 export function HistoricalTimeline({
@@ -63,6 +64,7 @@ export function HistoricalTimeline({
   zoomToEventToken = 0,
   onSelect,
   onZoom,
+  mode = "desktop",
 }: HistoricalTimelineProps) {
   const theme = useThemeStore((s) => s.theme);
   const themeRef = useRef(theme);
@@ -74,7 +76,8 @@ export function HistoricalTimeline({
   const [hovered, setHovered] = useState<TimelineEvent | null>(null);
   const [hoverPosition, setHoverPosition] = useState({ x: 0, y: 0 });
   const [activeLegend, setActiveLegend] = useState<Set<LegendKey> | null>(null);
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
   const domainRef = useRef(domain);
   const recalcSceneRef = useRef<() => void>(() => {});
   const pixiReadyRef = useRef(false);
@@ -504,9 +507,35 @@ export function HistoricalTimeline({
   const yearWindow = domainToYearWindow(domain);
 
   return (
-    <section className="historical-timeline" aria-label="Interactive timeline">
+    <section
+      className={`historical-timeline${mode === "fullscreen" ? " historical-timeline--fullscreen" : ""}`}
+      aria-label="Interactive timeline"
+      data-mode={mode}
+    >
+      {mode === "fullscreen" ? (
+        <button
+          type="button"
+          className="historical-timeline__drawer-toggle"
+          aria-expanded={categoriesOpen}
+          onClick={() => setCategoriesOpen((open) => !open)}
+        >
+          {t.immersiveCategories}
+        </button>
+      ) : null}
       <div className="historical-timeline__body">
-        <aside className="historical-timeline__categories" aria-label="Event categories">
+        {mode === "fullscreen" && categoriesOpen ? (
+          <button
+            type="button"
+            className="historical-timeline__drawer-scrim"
+            aria-label={t.close}
+            onClick={() => setCategoriesOpen(false)}
+          />
+        ) : null}
+        <aside
+          className={`historical-timeline__categories${mode === "fullscreen" && categoriesOpen ? " is-open" : ""}`}
+          aria-label="Event categories"
+          hidden={mode === "fullscreen" && !categoriesOpen}
+        >
           <button
             type="button"
             className={activeLegend === null ? "is-active" : ""}

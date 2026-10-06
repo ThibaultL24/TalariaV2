@@ -19,6 +19,8 @@ export interface AppMessages {
   emptySearch: string;
   close: string;
   closeDetail: string;
+  seeMore: string;
+  seeLess: string;
   summary: string;
   dossierTitle: string;
   dossierHint: string;
@@ -100,14 +102,82 @@ export interface AppMessages {
   relatedEvent: string;
   openDocument: string;
   matchScore: (pct: number) => string;
-  believe: string;
+  support: string;
   dispute: string;
-  stanceHint: string;
-  stanceNotOnChain: string;
-  stanceModeled: string;
-  stanceLiveDisabled: string;
-  stanceNotEligible: string;
-  intuitionStanceLabel: string;
+  uncertain: string;
+  signalEconomicHint: string;
+  signalSignInRequired: string;
+  signalWalletMismatch: string;
+  signalNotPublished: string;
+  signalPreparing: string;
+  signalAwaitingSignature: string;
+  signalSubmitted: string;
+  signalConfirming: string;
+  signalConfirmed: string;
+  signalFailed: string;
+  signalRejected: string;
+  signalSyncRetry: string;
+  signalConfirmTitle: string;
+  signalConfirm: string;
+  signalPreview: string;
+  signalCustomAmount: string;
+  comments: (n: number) => string;
+  commentsTitle: string;
+  openDiscussion: string;
+  closeDiscussion: string;
+  commentPlaceholder: string;
+  replyPlaceholder: string;
+  postComment: string;
+  postReply: string;
+  commentDeleted: string;
+  commentEdited: string;
+  anonymousHistorian: string;
+  reactionRelevant: string;
+  reactionWellSourced: string;
+  reactionInteresting: string;
+  reactionNeedsNuance: string;
+  reactionDisagree: string;
+  commentSignInRequired: string;
+  argumentSignInRequired: string;
+  openArguments: string;
+  closeArguments: string;
+  argumentsCount: (n: number) => string;
+  sourcesCount: (n: number) => string;
+  claimSourcesTitle: string;
+  addSource: string;
+  addArgument: string;
+  argumentRelation: string;
+  argumentSupports: string;
+  argumentContradicts: string;
+  argumentQualifies: string;
+  argumentStatement: string;
+  argumentEvidence: string;
+  submitArgument: string;
+  argumentsFor: string;
+  argumentsAgainst: string;
+  argumentsQualify: string;
+  argumentsTitle: string;
+  sourceNotIndexed: string;
+  pipelineOrigin: string;
+  openClaimDetails: string;
+  closeClaimDetails: string;
+  corpusEvidenceTitle: string;
+  noSourcesYet: string;
+  noArgumentsYet: string;
+  noCommentsYet: string;
+  communityContribution: string;
+  proposedStatus: string;
+  promoteToArgument: string;
+  selectSource: string;
+  retrySection: string;
+  sectionError: string;
+  intuitionPublished: string;
+  intuitionSignalAvailable: string;
+  intuitionNotPublished: string;
+  immersiveBack: string;
+  immersiveTools: string;
+  immersiveLegend: string;
+  immersiveCategories: string;
   intuitionTheoriesTitle: string;
   intuitionTheoriesHint: string;
   agoraTabTheories: string;
@@ -124,7 +194,6 @@ export interface AppMessages {
   demoIntuitionStar: string;
   demoIntuitionLive: string;
   demoIntuitionModeled: string;
-  stanceTestnetReady: string;
   homeVisionsTitle: string;
   homeVisionsHint: string;
   visionScholarTitle: string;
@@ -143,6 +212,10 @@ export interface AppMessages {
   walletConnectFailed: string;
   walletConnectHint: string;
   walletConnectForStance: string;
+  walletWrongNetwork: string;
+  walletSwitchNetwork: string;
+  talariaSignIn: string;
+  talariaSignInHint: string;
   intuitionTestnetPanel: string;
   lensToggleLabel: string;
   lensScholar: string;
@@ -172,6 +245,8 @@ const EN: AppMessages = {
   emptySearch: "Open a demo figure from the home page to explore a life.",
   close: "Close",
   closeDetail: "Close event",
+  seeMore: "See more",
+  seeLess: "See less",
   summary: "Summary",
   dossierTitle: "Context",
   dossierHint: "A short sourced recap — tap [n] to open the citation.",
@@ -215,7 +290,7 @@ const EN: AppMessages = {
     "Scholar for the sourced life, Visit for memory sites and exhibitions, Agora for debate.",
   homeAboutFreedom: "Freedom of opinion",
   homeAboutFreedomBody:
-    "Believe or dispute on Intuition — person, event, theory, interpretation or source. Expression is the rule; Talaria does not crown a single historical truth.",
+    "Support, dispute or mark uncertain in the Agora. Support and dispute deposit TRUST on Intuition; uncertain stays in Talaria. Expression is the rule; Talaria does not crown a single historical truth.",
   homeAboutWhitepaper: "Read the Talaria about page →",
   whitepaperNav: "About",
   whitepaperToc: "Contents",
@@ -263,18 +338,86 @@ const EN: AppMessages = {
   relatedEvent: "Related event",
   openDocument: "Open document",
   matchScore: (pct) => `match ${pct}%`,
-  believe: "I believe this",
-  dispute: "I don't believe this",
-  stanceHint: "Signal with a deposit on Intuition. No deposit means no position.",
-  stanceNotOnChain: "This target is not on Intuition yet.",
-  stanceModeled:
-    "Modeled Intuition signal — community trust without rewriting evidence.",
-  stanceLiveDisabled: "Deposits are paused until Intuition publish is repaired.",
-  stanceNotEligible: "This item is not an Intuition stance target.",
-  intuitionStanceLabel: "Intuition",
+  support: "Support",
+  dispute: "Dispute",
+  uncertain: "Uncertain",
+  signalEconomicHint:
+    "Support and Dispute deposit TRUST on Intuition. Uncertain is a Talaria position only.",
+  signalSignInRequired: "Sign in to Talaria to record a position.",
+  signalWalletMismatch: "Wallet changed — sign in to Talaria again",
+  signalNotPublished: "This claim is not published on Intuition yet.",
+  signalPreparing: "Preparing signal…",
+  signalAwaitingSignature: "Wallet confirmation required",
+  signalSubmitted: "Transaction submitted",
+  signalConfirming: "Waiting for confirmation",
+  signalConfirmed: "Signal confirmed",
+  signalFailed: "Transaction failed",
+  signalRejected: "Signature cancelled — no Talaria position was recorded.",
+  signalSyncRetry: "Transaction confirmed — retry saving to Talaria",
+  signalConfirmTitle: "Confirm Intuition deposit",
+  signalConfirm: "Sign deposit",
+  signalPreview: "Preview deposit",
+  signalCustomAmount: "Custom",
+  comments: (n) => (n === 1 ? "1 comment" : `${n} comments`),
+  commentsTitle: "Discussion",
+  openDiscussion: "Open comments",
+  closeDiscussion: "Hide comments",
+  commentPlaceholder: "Why do you support or dispute this interpretation?",
+  replyPlaceholder: "Reply",
+  postComment: "Post comment",
+  postReply: "Post reply",
+  commentDeleted: "Comment deleted",
+  commentEdited: "edited",
+  anonymousHistorian: "Anonymous historian",
+  reactionRelevant: "Relevant",
+  reactionWellSourced: "Well sourced",
+  reactionInteresting: "Interesting",
+  reactionNeedsNuance: "Needs nuance",
+  reactionDisagree: "Disagree",
+  commentSignInRequired: "Sign in to Talaria to comment.",
+  argumentSignInRequired: "Sign in to Talaria to add a source or argument.",
+  openArguments: "Open sources and arguments",
+  closeArguments: "Hide sources and arguments",
+  argumentsCount: (n) => (n === 1 ? "1 argument" : `${n} arguments`),
+  sourcesCount: (n) => (n === 1 ? "1 source" : `${n} sources`),
+  claimSourcesTitle: "Sources",
+  addSource: "Add source",
+  addArgument: "Add argument",
+  argumentRelation: "Relation",
+  argumentSupports: "Supports",
+  argumentContradicts: "Contradicts",
+  argumentQualifies: "Qualifies",
+  argumentStatement: "Statement",
+  argumentEvidence: "Evidence excerpt",
+  submitArgument: "Submit argument",
+  argumentsFor: "Arguments for",
+  argumentsAgainst: "Arguments against",
+  argumentsQualify: "Nuances",
+  argumentsTitle: "Arguments",
+  sourceNotIndexed: "Source not yet indexed",
+  pipelineOrigin: "Talaria corpus",
+  openClaimDetails: "Open evidence, sources and discussion",
+  closeClaimDetails: "Hide details",
+  corpusEvidenceTitle: "Evidence",
+  noSourcesYet: "No sources added yet",
+  noArgumentsYet: "No structured arguments yet",
+  noCommentsYet: "No comments yet",
+  communityContribution: "Community contribution",
+  proposedStatus: "Proposed",
+  promoteToArgument: "Promote to argument",
+  selectSource: "Source",
+  retrySection: "Retry",
+  sectionError: "Could not load this section.",
+  intuitionPublished: "Published on Intuition",
+  intuitionSignalAvailable: "Signal available",
+  intuitionNotPublished: "This claim is not published on Intuition",
+  immersiveBack: "Back",
+  immersiveTools: "Search and filters",
+  immersiveLegend: "Legend",
+  immersiveCategories: "Categories",
   intuitionTheoriesTitle: "Intuition — community trust",
   intuitionTheoriesHint:
-    "Believe or dispute a person, event, theory, interpretation or source. Signals never replace evidence.",
+    "Theories, controversies and scholarship — support or dispute published claims on Intuition.",
   agoraTabTheories: "Theories",
   agoraTabDebates: "Debates",
   agoraTabBibliography: "Bibliography",
@@ -291,8 +434,6 @@ const EN: AppMessages = {
   demoIntuitionLive: "Intuition testnet publish enabled for this deployment.",
   demoIntuitionModeled:
     "Theories are modeled (MetaSudo). Operators enable testnet with INTUITION_ALLOW_LIVE=1.",
-  stanceTestnetReady:
-    "Modeled — ready for Intuition testnet publish (operator: intuition-publish --live).",
   homeVisionsTitle: "Three ways to explore",
   homeVisionsHint:
     "Scholar for the sourced life, Visit for museums and exhibitions, Agora for theories and debate on Intuition.",
@@ -305,7 +446,7 @@ const EN: AppMessages = {
     "Museums, memorials and exhibitions linked to a person — what to see and what’s on now.",
   visionVisitBadge: "Preview soon",
   visionAgoraTitle: "Agora",
-  visionAgoraDesc: "Theories, controversies and scholarship — believe or dispute on Intuition testnet.",
+  visionAgoraDesc: "Theories, controversies and scholarship — support or dispute on Intuition testnet.",
   visionAgoraCta: "Open Agora",
   walletConnect: "Connect wallet",
   walletDisconnect: "Disconnect",
@@ -314,6 +455,10 @@ const EN: AppMessages = {
   walletConnectFailed: "Could not connect wallet.",
   walletConnectHint: "Testnet — on-chain triples come later; connection prepares your identity.",
   walletConnectForStance: "Connect your wallet to record a stance (simulation on testnet).",
+  walletWrongNetwork: "Wrong network",
+  walletSwitchNetwork: "Switch network",
+  talariaSignIn: "Sign in to Talaria",
+  talariaSignInHint: "Sign a message to create a Talaria session. No gas, no Intuition transaction.",
   intuitionTestnetPanel: "Intuition · testnet",
   lensToggleLabel: "Explorer mode",
   lensScholar: "Scholar",
@@ -344,6 +489,8 @@ const FR: AppMessages = {
   emptySearch: "Ouvrez une figure de la démo depuis l’accueil pour explorer une vie.",
   close: "Fermer",
   closeDetail: "Fermer l’événement",
+  seeMore: "Voir plus",
+  seeLess: "Voir moins",
   summary: "Résumé",
   dossierTitle: "Contexte",
   dossierHint: "Un minimum de contexte sourcé — tapez [n] pour ouvrir la citation.",
@@ -387,7 +534,7 @@ const FR: AppMessages = {
     "Scholar pour la vie sourcée, Visit pour lieux de mémoire et expositions, Agora pour le débat.",
   homeAboutFreedom: "Liberté d’opinion",
   homeAboutFreedomBody:
-    "Croire ou contester sur Intuition — personne, événement, théorie, interprétation ou source. L’expression est la règle ; Talaria ne couronne aucune vérité historique unique.",
+    "Soutenir, contester ou marquer incertain dans l’Agora. Soutenir et contester déposent du TRUST sur Intuition ; incertain reste dans Talaria. L’expression est la règle ; Talaria ne couronne aucune vérité historique unique.",
   homeAboutWhitepaper: "Lire la page À propos Talaria →",
   whitepaperNav: "À propos",
   whitepaperToc: "Sommaire",
@@ -435,19 +582,86 @@ const FR: AppMessages = {
   relatedEvent: "Fait lié",
   openDocument: "Ouvrir le document",
   matchScore: (pct) => `correspondance ${pct} %`,
-  believe: "J’y crois",
-  dispute: "Je n’y crois pas",
-  stanceHint: "Signaler en déposant sur Intuition. Pas de dépôt = pas de position.",
-  stanceNotOnChain: "Cette cible n’est pas encore sur Intuition.",
-  stanceModeled:
-    "Signal Intuition modélisé — confiance communautaire sans réécrire les preuves.",
-  stanceLiveDisabled:
-    "Les dépôts sont en pause jusqu’à la réparation de la publication Intuition.",
-  stanceNotEligible: "Cet élément n’est pas une cible de prise de position Intuition.",
-  intuitionStanceLabel: "Intuition",
+  support: "Soutenir",
+  dispute: "Contester",
+  uncertain: "Incertain",
+  signalEconomicHint:
+    "Soutenir et Contester déposent du TRUST sur Intuition. Incertain est une position Talaria seulement.",
+  signalSignInRequired: "Connectez-vous à Talaria pour enregistrer une position.",
+  signalWalletMismatch: "Portefeuille changé — reconnectez-vous à Talaria",
+  signalNotPublished: "Cette thèse n’est pas encore publiée sur Intuition.",
+  signalPreparing: "Préparation du signal…",
+  signalAwaitingSignature: "Confirmation du portefeuille requise",
+  signalSubmitted: "Transaction envoyée",
+  signalConfirming: "En attente de confirmation",
+  signalConfirmed: "Signal confirmé",
+  signalFailed: "La transaction a échoué",
+  signalRejected: "Signature annulée — aucune position Talaria n’a été enregistrée.",
+  signalSyncRetry: "Transaction confirmée — réessayer l’enregistrement Talaria",
+  signalConfirmTitle: "Confirmer le dépôt Intuition",
+  signalConfirm: "Signer le dépôt",
+  signalPreview: "Prévisualiser le dépôt",
+  signalCustomAmount: "Personnalisé",
+  comments: (n) => (n === 1 ? "1 commentaire" : `${n} commentaires`),
+  commentsTitle: "Discussion",
+  openDiscussion: "Ouvrir les commentaires",
+  closeDiscussion: "Masquer les commentaires",
+  commentPlaceholder: "Pourquoi soutenez-vous ou contestez-vous cette interprétation ?",
+  replyPlaceholder: "Répondre",
+  postComment: "Publier",
+  postReply: "Répondre",
+  commentDeleted: "Commentaire supprimé",
+  commentEdited: "modifié",
+  anonymousHistorian: "Historien anonyme",
+  reactionRelevant: "Pertinent",
+  reactionWellSourced: "Bien sourcé",
+  reactionInteresting: "Intéressant",
+  reactionNeedsNuance: "À nuancer",
+  reactionDisagree: "Pas d’accord",
+  commentSignInRequired: "Connectez-vous à Talaria pour commenter.",
+  argumentSignInRequired: "Connectez-vous à Talaria pour ajouter une source ou un argument.",
+  openArguments: "Ouvrir sources et arguments",
+  closeArguments: "Masquer sources et arguments",
+  argumentsCount: (n) => (n === 1 ? "1 argument" : `${n} arguments`),
+  sourcesCount: (n) => (n === 1 ? "1 source" : `${n} sources`),
+  claimSourcesTitle: "Sources",
+  addSource: "Ajouter une source",
+  addArgument: "Ajouter un argument",
+  argumentRelation: "Relation",
+  argumentSupports: "Soutient",
+  argumentContradicts: "Contredit",
+  argumentQualifies: "Qualifie",
+  argumentStatement: "Énoncé",
+  argumentEvidence: "Extrait d’évidence",
+  submitArgument: "Envoyer l’argument",
+  argumentsFor: "Arguments pour",
+  argumentsAgainst: "Arguments contre",
+  argumentsQualify: "Nuances",
+  argumentsTitle: "Arguments",
+  sourceNotIndexed: "Source pas encore indexée",
+  pipelineOrigin: "Corpus Talaria",
+  openClaimDetails: "Ouvrir preuves, sources et discussion",
+  closeClaimDetails: "Masquer le détail",
+  corpusEvidenceTitle: "Preuves",
+  noSourcesYet: "Aucune source ajoutée pour l’instant",
+  noArgumentsYet: "Aucun argument structuré pour l’instant",
+  noCommentsYet: "Aucun commentaire pour l’instant",
+  communityContribution: "Contribution communautaire",
+  proposedStatus: "Proposé",
+  promoteToArgument: "Proposer comme argument",
+  selectSource: "Source",
+  retrySection: "Réessayer",
+  sectionError: "Impossible de charger cette section.",
+  intuitionPublished: "Publié sur Intuition",
+  intuitionSignalAvailable: "Signal disponible",
+  intuitionNotPublished: "Cette affirmation n’est pas publiée sur Intuition",
+  immersiveBack: "Retour",
+  immersiveTools: "Recherche et filtres",
+  immersiveLegend: "Légende",
+  immersiveCategories: "Catégories",
   intuitionTheoriesTitle: "Intuition — confiance communautaire",
   intuitionTheoriesHint:
-    "Croire ou contester une personne, un événement, une théorie, une interprétation ou une source. Les signaux ne remplacent jamais les preuves.",
+    "Soutenir ou contester une thèse publiée sur Intuition. Les signaux ne remplacent jamais les preuves.",
   agoraTabTheories: "Théories",
   agoraTabDebates: "Débats",
   agoraTabBibliography: "Bibliographie",
@@ -464,8 +678,6 @@ const FR: AppMessages = {
   demoIntuitionLive: "Publication Intuition testnet activée sur ce déploiement.",
   demoIntuitionModeled:
     "Théories modélisées (MetaSudo). Activer le testnet avec INTUITION_ALLOW_LIVE=1.",
-  stanceTestnetReady:
-    "Modélisée — prête pour publication testnet (opérateur : intuition-publish --live).",
   homeVisionsTitle: "Trois façons d’explorer",
   homeVisionsHint:
     "Scholar pour la vie sourcée, Visit pour musées et expositions, Agora pour théories et débat sur Intuition.",
@@ -479,7 +691,7 @@ const FR: AppMessages = {
   visionVisitBadge: "Bientôt",
   visionAgoraTitle: "Agora",
   visionAgoraDesc:
-    "Théories, controverses et érudition — croire ou contester sur Intuition testnet.",
+    "Théories, controverses et érudition — soutenir ou contester sur Intuition testnet.",
   visionAgoraCta: "Ouvrir l’Agora",
   walletConnect: "Connecter le wallet",
   walletDisconnect: "Déconnecter",
@@ -490,6 +702,11 @@ const FR: AppMessages = {
     "Testnet — l’écriture des triples viendra ensuite ; la connexion prépare votre identité.",
   walletConnectForStance:
     "Connectez votre wallet pour enregistrer une position (simulation testnet).",
+  walletWrongNetwork: "Mauvais réseau",
+  walletSwitchNetwork: "Changer de réseau",
+  talariaSignIn: "Connexion Talaria",
+  talariaSignInHint:
+    "Signez un message pour créer une session Talaria. Pas de gas, pas de transaction Intuition.",
   intuitionTestnetPanel: "Intuition · testnet",
   lensToggleLabel: "Mode d’exploration",
   lensScholar: "Scholar",

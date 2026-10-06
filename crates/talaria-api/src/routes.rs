@@ -1,5 +1,5 @@
 // crates/talaria-api/src/routes.rs
-mod agora;
+mod auth;
 mod demo;
 mod documents;
 mod entities;
@@ -7,14 +7,15 @@ mod entity_views;
 mod visit;
 mod events;
 mod facets;
+mod interactions;
+mod claim_signals;
+mod comments;
+mod agora_graph;
 pub mod ingest;
 
 use axum::{
     routing::{get, post},
     Json, Router,
-};
-use agora::{
-    target_signals, target_simulation, theory_positions, theory_signals, theory_simulation,
 };
 use documents::{
     get_document, list_document_fragments, list_entity_bibliography, list_entity_documents,
@@ -36,9 +37,35 @@ use talaria_core::AppConfig;
 use talaria_store::{connect, run_migrations, seed_default_periods, DbPool};
 use tokio::sync::Mutex;
 use tower_http::compression::CompressionLayer;
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer};
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
+use axum::http::{header, HeaderValue, Method};
+
+fn cors_layer() -> CorsLayer {
+    // Same-origin (Vite proxy + Docker serving web/dist) does not need CORS.
+    // Cross-origin cookies require an explicit origin; never use permissive + credentials.
+    match std::env::var("TALARIA_CORS_ORIGIN") {
+        Ok(origin) if !origin.trim().is_empty() => CorsLayer::new()
+            .allow_origin(AllowOrigin::exact(
+                origin.trim().parse::<HeaderValue>().unwrap_or_else(|_| HeaderValue::from_static("http://localhost:5173")),
+            ))
+            .allow_credentials(true)
+            .allow_methods(AllowMethods::list([
+                Method::GET,
+                Method::POST,
+                Method::PATCH,
+                Method::DELETE,
+                Method::OPTIONS,
+            ]))
+            .allow_headers(AllowHeaders::list([
+                header::CONTENT_TYPE,
+                header::COOKIE,
+                header::AUTHORIZATION,
+            ])),
+        _ => CorsLayer::new(),
+    }
+}
 
 pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
     let pool = connect(&config).await?;
@@ -83,23 +110,6 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
             get(visit::now_geojson),
         )
         .route("/api/v1/entities/{entity_id}/claims", get(list_claims))
-        .route("/api/v1/agora/theories/{claim_id}/signals", get(theory_signals))
-        .route(
-            "/api/v1/agora/theories/{claim_id}/simulation",
-            post(theory_simulation),
-        )
-        .route(
-            "/api/v1/agora/theories/{claim_id}/positions",
-            post(theory_positions),
-        )
-        .route(
-            "/api/v1/intuition/targets/{kind}/{target_id}/signals",
-            get(target_signals),
-        )
-        .route(
-            "/api/v1/intuition/targets/{kind}/{target_id}/simulation",
-            post(target_simulation),
-        )
         .route(
             "/api/v1/entities/{entity_id}/documents",
             get(list_entity_documents),
@@ -124,13 +134,18 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/v1/ingest/agora", post(start_agora_ingest))
         .route("/api/v1/ingest/{job_id}", get(get_ingest_job))
         .route("/api/v1/ingest/explorer/{job_id}/status", get(get_explorer_status))
+        .merge(auth::router())
+        .merge(interactions::router())
+        .merge(claim_signals::router())
+        .merge(comments::router())
+        .merge(agora_graph::router())
         .with_state(AppState {
             pool,
             offline_only,
             config,
             ingest_jobs,
         })
-        .layer(CorsLayer::permissive())
+        .layer(cors_layer())
         .layer(CompressionLayer::new())
         .layer(TraceLayer::new_for_http());
 

@@ -8,7 +8,7 @@ import {
   type TimelineEvent,
 } from "@/lib/api";
 import { resolveSourceParagraphHref } from "@/components/detail/source-ref-url";
-import { shortLifeRecap } from "@/components/detail/how-it-happened";
+import { fullLifeRecap, shortLifeRecap } from "@/components/detail/how-it-happened";
 import { eventDate } from "@/lib/entity-views";
 import { useI18n } from "@/lib/i18n";
 import { localizedEventTitle, localizedPlaceLabel } from "@/lib/localize-event-copy";
@@ -23,6 +23,7 @@ export function EventDetailCard({ event, onClose, offlineOnly: _offlineOnly = fa
   const { t, locale } = useI18n();
   const [detail, setDetail] = useState<EventDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [summaryOpen, setSummaryOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -42,8 +43,15 @@ export function EventDetailCard({ event, onClose, offlineOnly: _offlineOnly = fa
     };
   }, [event.id, locale]);
 
+  useEffect(() => {
+    setSummaryOpen(false);
+  }, [event.id]);
+
   const resolved = detail?.event ?? event;
-  const recap = shortLifeRecap(detail?.narrative?.event_summary ?? resolved.summary);
+  const fullRecap = fullLifeRecap(detail?.narrative?.event_summary ?? resolved.summary);
+  const previewRecap = shortLifeRecap(detail?.narrative?.event_summary ?? resolved.summary);
+  const recap = summaryOpen ? fullRecap : previewRecap;
+  const canExpand = Boolean(fullRecap && previewRecap && fullRecap.length > previewRecap.length + 4);
   const displayTitle = localizedEventTitle(resolved, locale);
   const mappedPlace = localizedPlaceLabel(resolved.place_label, locale);
   const placeLabel = mappedPlace && !/^Q\d+$/i.test(mappedPlace) ? mappedPlace : null;
@@ -81,7 +89,21 @@ export function EventDetailCard({ event, onClose, offlineOnly: _offlineOnly = fa
 
       <div className="flex-1 space-y-4 p-4">
         {loading ? <p className="text-sm text-(--color-text-muted)">{t.loading}</p> : null}
-        {recap ? <p className="text-sm leading-relaxed text-(--color-text-primary)">{recap}</p> : null}
+        {recap ? (
+          <div>
+            <p className="text-sm leading-relaxed text-(--color-text-primary)">{recap}</p>
+            {canExpand ? (
+              <button
+                type="button"
+                className="mt-2 text-sm font-medium text-(--color-primary) hover:underline"
+                onClick={() => setSummaryOpen((open) => !open)}
+                aria-expanded={summaryOpen}
+              >
+                {summaryOpen ? t.seeLess : t.seeMore}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         {passage ? (
           <a
             href={passage}

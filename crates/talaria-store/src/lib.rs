@@ -3,11 +3,13 @@
 
 pub mod canonical_events;
 pub mod claims;
+pub mod claim_graph;
 pub mod corpus;
 pub mod corpus_dump;
 pub mod cosmos_judgments;
 pub mod dump_runs;
 pub mod entities;
+pub mod interaction_types;
 pub mod intuition;
 pub mod judgments;
 pub mod media;
@@ -23,6 +25,10 @@ pub mod sentences;
 pub mod wikibase;
 pub mod wiki_pages;
 pub mod wiki_sections;
+pub mod users;
+pub mod user_interactions;
+pub mod intuition_user_signals;
+pub mod comments;
 pub mod visit;
 pub mod visit_opportunities;
 
@@ -37,6 +43,13 @@ pub use claims::{
     insert_claim_relation, list_claim_evidence, list_claim_evidence_for_claims,
     list_claims_for_entity, list_sentences_for_claims, ClaimEvidenceRow, ClaimInsert, ClaimRow,
     SentenceForClaims,
+};
+pub use claim_graph::{
+    attach_claim_source, count_arguments_for_claims, count_sources_for_claims,
+    fragment_for_document, insert_linked_claim_evidence, insert_user_claim, list_arguments_for_claim,
+    list_claim_sources, normalize_argument_statement, parse_argument_relation,
+    ArgumentRelationRow, ClaimCountRow, ClaimSourceRow, FragmentForEvidence, DEFAULT_ARGUMENT_LIMIT,
+    MAX_ARGUMENT_CHARS, MAX_ARGUMENT_LIMIT,
 };
 pub use corpus::{
     count_corpus_snapshots, get_corpus_document, link_corpus_snapshot, list_document_contributions,
@@ -103,6 +116,35 @@ pub use person_events::{
 };
 pub use migrate_repair::repair_migration_checksums;
 pub use pool::{connect, run_migrations, DbPool};
+pub use users::{
+    consume_wallet_challenge, evm_address_for_user, get_active_session_user, get_wallet_challenge,
+    hash_session_token, insert_session, insert_wallet_challenge, is_check_violation,
+    is_unique_violation, lookup_user_by_evm, postgres_error_code, resolve_or_create_evm_user,
+    revoke_session, AddressError, AuthChallengeRow, NormalizedEvmAddress, SessionRow, UserRow,
+    EVM_WALLET_PROVIDER,
+};
+pub use interaction_types::{
+    allowed_actions, default_visibility, is_allowed, InteractionAction, InteractionTargetType,
+    InteractionVisibility,
+};
+pub use user_interactions::{
+    delete_owned_interaction, find_interaction, get_interaction, list_mine_for_targets,
+    list_user_interactions, replace_claim_stance, summarize_public_counts, upsert_interaction,
+    InteractionCountRow, InteractionMineRow, InteractionUpsertResult, UpsertInteraction,
+    UserInteractionRow,
+};
+pub use intuition_user_signals::{
+    get_published_claim_intuition, get_signal_by_tx_hash, insert_confirmed_signal,
+    ClaimIntuitionBinding, IntuitionUserSignalInsert, IntuitionUserSignalRow,
+};
+pub use comments::{
+    aggregate_reactions, count_active_comments_for_claims, count_replies_for_parents,
+    delete_reaction, get_comment, insert_comment, insert_reaction, list_comment_authors,
+    list_my_reactions, list_replies_for_parents, list_root_comments, normalize_comment_body,
+    soft_delete_owned_comment, update_owned_comment_body, CommentAuthorRow, CommentCountRow,
+    CommentReactionType, CommentRow, DEFAULT_ROOT_LIMIT, MAX_COMMENT_CHARS, MAX_REPLIES_PER_ROOT,
+    MAX_ROOT_LIMIT, ReactionCountRow, ReactionMineRow, ReplyCountRow,
+};
 pub use profiles::{
     get_period_by_slug, link_entity_period, link_entity_to_centuries, list_entity_profiles,
     list_periods, list_profile_catalog, seed_default_periods, upsert_entity_profile, upsert_period,

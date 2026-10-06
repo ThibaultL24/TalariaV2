@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AgoraPanel } from "@/components/explorer/agora-panel";
 import { LaneIngestBar } from "@/components/explorer/lane-ingest-bar";
-import { IntuitionStanceBar } from "@/components/intuition/intuition-stance-bar";
 import { Navbar } from "@/components/layout/navbar";
 import { TalariaSandalMark } from "@/components/brand/talaria-sandal-mark";
 import { WalletConnectButton } from "@/components/wallet/wallet-connect-button";
@@ -154,9 +153,6 @@ export function AgoraPage() {
               <div className="mt-4 max-w-lg intuition-panel">
                 <p className="intuition-panel__title">{t.intuitionTestnetPanel}</p>
                 <WalletConnectButton />
-                <div className="mt-3">
-                  <IntuitionStanceBar targetKind="person" targetId={entityId} eager />
-                </div>
               </div>
             ) : null}
             {busy ? (

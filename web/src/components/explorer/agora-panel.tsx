@@ -3,19 +3,13 @@ import { useEffect, useMemo, useState } from "react";
 import {
   type BibliographyItem,
   type EntityClaim,
+  type InteractionSummary,
 } from "@/lib/api";
-import {
-  IntuitionStanceBar,
-  isStanceClaimKind,
-} from "@/components/intuition/intuition-stance-bar";
-import {
-  debateTypeLabel,
-  evidenceLayerLabel,
-  groupClaimsByDebateType,
-} from "@/lib/agora-taxonomy";
-import { epistemicBadgeClass, epistemicStatusLabel } from "@/lib/event-taxonomy";
+import { ClaimCard } from "@/components/agora/claim-card";
+import { groupClaimsByDebateType } from "@/lib/agora-taxonomy";
 import { sourceKindBadgeClass, sourceSystemLabel } from "@/lib/source-labels";
 import { useI18n } from "@/lib/i18n";
+import { useInteractionSummary } from "@/hooks/use-interaction-summary";
 
 interface AgoraPanelProps {
   claims: EntityClaim[];
@@ -28,11 +22,6 @@ interface AgoraPanelProps {
 }
 
 type AgoraTab = "theories" | "debates" | "bibliography";
-
-function evidenceHref(locator: string | null | undefined): string | null {
-  if (!locator) return null;
-  return /^https?:\/\//i.test(locator) ? locator : null;
-}
 
 function claimSources(claim: EntityClaim): string[] {
   const keys = new Set<string>();
@@ -48,93 +37,6 @@ function claimMatchesSource(claim: EntityClaim, source: string | null): boolean 
   const sources = claimSources(claim);
   if (source === "other") return sources.length === 0;
   return sources.includes(source);
-}
-
-function ClaimCard({
-  claim,
-  onOpenEvent,
-}: {
-  claim: EntityClaim;
-  onOpenEvent?: (eventId: string) => void;
-}) {
-  const { locale, t } = useI18n();
-  const debateType =
-    debateTypeLabel(claim.debate_type, locale) ?? debateTypeLabel(claim.claim_kind, locale);
-  const layer = evidenceLayerLabel(claim.evidence_layer, locale);
-  const linked = claim.canonical_event_id;
-
-  return (
-    <article className="nebula-timeline-card w-full p-3 text-left">
-      <div className="flex flex-wrap items-center gap-1.5">
-        {debateType ? (
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-(--color-text-secondary)">
-            {debateType}
-          </span>
-        ) : null}
-        <span
-          className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${epistemicBadgeClass(claim.epistemic_status)}`}
-        >
-          {epistemicStatusLabel(claim.epistemic_status, locale)}
-        </span>
-        {layer ? (
-          <span className="agora-layer-badge">{layer}</span>
-        ) : null}
-      </div>
-      <p className="mt-2 text-sm leading-snug text-(--color-text-primary)">{claim.text}</p>
-      {claim.evidence.length > 0 ? (
-        <ul className="mt-2 space-y-2 text-[11px] text-(--color-text-secondary)">
-          {claim.evidence.map((row) => {
-            const href = evidenceHref(row.document_url) ?? evidenceHref(row.locator) ?? null;
-            const source = row.source_kind ?? row.source_system;
-            return (
-              <li
-                key={row.id}
-                className="agora-evidence-row"
-              >
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span
-                    className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${sourceKindBadgeClass(source)}`}
-                  >
-                    {sourceSystemLabel(source, t.sourceFallback)}
-                  </span>
-                  {row.document_title ? (
-                    <span className="text-(--color-text-primary)">{row.document_title}</span>
-                  ) : null}
-                </div>
-                {href ? (
-                  <a
-                    href={href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-1 inline-block text-(--color-accent-strong) hover:underline"
-                  >
-                    {t.openSource}
-                  </a>
-                ) : null}
-                {row.quote ? (
-                  <p className="mt-1 line-clamp-4 italic text-(--color-text-muted)">{row.quote}</p>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <p className="mt-2 text-[11px] text-(--color-text-muted)">{t.noEvidenceLocator}</p>
-      )}
-      {linked && onOpenEvent ? (
-        <button
-          type="button"
-          className="mt-2 text-[11px] text-(--color-accent-strong) hover:underline"
-          onClick={() => onOpenEvent(linked)}
-        >
-          {t.relatedEvent}
-        </button>
-      ) : null}
-      {isStanceClaimKind(claim.claim_kind) ? (
-        <IntuitionStanceBar targetKind="claim" targetId={claim.id} />
-      ) : null}
-    </article>
-  );
 }
 
 function SourceFilterBar({
@@ -224,11 +126,6 @@ function BibliographyList({ items }: { items: BibliographyItem[] }) {
               {t.openDocument}
             </a>
           ) : null}
-          <IntuitionStanceBar
-            targetKind="source"
-            targetId={doc.id}
-            compact
-          />
         </li>
       ))}
     </ul>
@@ -239,10 +136,16 @@ function ClaimList({
   claims,
   onOpenEvent,
   emptyLabel,
+  summaries,
+  onChanged,
+  bibliography,
 }: {
   claims: EntityClaim[];
   onOpenEvent?: (eventId: string) => void;
   emptyLabel: string;
+  summaries: Map<string, InteractionSummary>;
+  onChanged?: () => void;
+  bibliography?: BibliographyItem[];
 }) {
   const { t, locale } = useI18n();
   if (claims.length === 0) {
@@ -261,7 +164,14 @@ function ClaimList({
           ) : null}
           <div className="space-y-2">
             {group.claims.map((claim) => (
-              <ClaimCard key={claim.id} claim={claim} onOpenEvent={onOpenEvent} />
+              <ClaimCard
+                key={claim.id}
+                claim={claim}
+                onOpenEvent={onOpenEvent}
+                summary={summaries.get(claim.id)}
+                onChanged={onChanged}
+                bibliography={bibliography}
+              />
             ))}
           </div>
         </div>
@@ -311,6 +221,15 @@ export function AgoraPanel({
   const { t } = useI18n();
   const [tab, setTab] = useState<AgoraTab>("theories");
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
+  const claimIds = useMemo(() => claims.map((c) => c.id), [claims]);
+  const { summaries, reload } = useInteractionSummary(
+    claimIds.length ? "claim" : null,
+    claimIds,
+  );
+  const summaryMap = useMemo(
+    () => new Map(summaries.map((row) => [row.target_id, row])),
+    [summaries],
+  );
 
   const theories = useMemo(
     () => claims.filter((c) => c.claim_kind.trim().toLowerCase() === "theory"),
@@ -433,6 +352,9 @@ export function AgoraPanel({
           claims={filteredClaims}
           onOpenEvent={onOpenEvent}
           emptyLabel={t.agoraFilterEmpty}
+          summaries={summaryMap}
+          onChanged={() => void reload()}
+          bibliography={bibliography}
         />
       )}
     </div>

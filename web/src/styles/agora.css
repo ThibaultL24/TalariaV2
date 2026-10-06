@@ -155,16 +155,46 @@
   cursor: not-allowed;
 }
 
-.intuition-stance-btn--believe {
+.intuition-stance-btn--support {
   border-color: color-mix(in srgb, var(--color-trust-high) 55%, var(--color-border-subtle));
   background: color-mix(in srgb, var(--color-trust-high) 12%, var(--color-bg-surface));
   color: color-mix(in srgb, var(--color-trust-high) 85%, var(--color-text-primary));
 }
 
-.intuition-stance-btn--dispute {
-  border-color: color-mix(in srgb, var(--color-trust-low) 50%, var(--color-border-subtle));
-  background: color-mix(in srgb, var(--color-trust-low) 10%, var(--color-bg-surface));
-  color: color-mix(in srgb, var(--color-trust-low) 80%, var(--color-text-primary));
+.intuition-stance-btn--uncertain {
+  border-color: color-mix(in srgb, var(--color-text-muted) 55%, var(--color-border-subtle));
+  background: color-mix(in srgb, var(--color-text-muted) 10%, var(--color-bg-surface));
+  color: var(--color-text-secondary);
+}
+
+.intuition-stance-btn.is-mine {
+  outline: 1px solid var(--color-accent);
+}
+
+.claim-action-bar {
+  margin-top: 0.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--color-border-subtle) 70%, transparent);
+  padding-top: 0.5rem;
+}
+
+.claim-action-bar__counts {
+  margin-bottom: 0.4rem;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.claim-action-bar__confirm {
+  margin-top: 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-border-subtle);
+  padding: 8px;
+  background: var(--color-bg-elevated);
+}
+
+.claim-action-bar__confirm-title {
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 4px;
 }
 
 [data-theme="dark"] .nebula-timeline-card {
@@ -226,4 +256,246 @@
 .hero--agora-photo > * {
   position: relative;
   z-index: 1;
+}
+
+.claim-action-bar__intuition {
+  margin: 0.35rem 0 0;
+  font-size: 10px;
+  color: var(--color-text-secondary);
+}
+
+.claim-card__counts {
+  margin-top: 0.4rem;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.claim-card__details {
+  margin-top: 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.claim-section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.claim-section-heading h3,
+.claim-graph h3,
+.claim-graph h4,
+.claim-evidence h3 {
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+}
+
+.claim-section-empty {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-top: 0.3rem;
+}
+
+.agora-source-row {
+  border: 1px dashed color-mix(in srgb, var(--color-border-subtle) 80%, transparent);
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+  margin-top: 0.4rem;
+  min-width: 0;
+}
+
+.agora-source-row__title {
+  font-size: 12px;
+  color: var(--color-text-primary);
+}
+
+.agora-source-row__meta,
+.agora-source-row a {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  word-break: break-word;
+}
+
+.agora-community-badge {
+  display: inline-block;
+  margin-top: 0.25rem;
+  font-size: 10px;
+  color: var(--color-text-secondary);
+}
+
+.argument-card {
+  margin-top: 0.45rem;
+  border-left: 3px solid var(--color-accent);
+  padding: 0.4rem 0.55rem;
+  background: color-mix(in srgb, var(--color-bg-elevated) 70%, transparent);
+  min-width: 0;
+}
+
+.argument-card__statement {
+  font-size: 12px;
+  margin-top: 0.2rem;
+}
+
+.argument-card__source,
+.argument-card__meta,
+.argument-card__evidence {
+  font-size: 10px;
+  color: var(--color-text-muted);
+}
+
+.agora-evidence-row {
+  border-left: 3px solid var(--color-text-muted);
+  padding: 0.35rem 0.5rem;
+  background: color-mix(in srgb, var(--color-bg-surface) 80%, transparent);
+}
+
+.agora-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: color-mix(in srgb, black 45%, transparent);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0.75rem;
+}
+
+.agora-modal {
+  width: min(100%, 28rem);
+  max-height: 88vh;
+  overflow: auto;
+  border-radius: 12px 12px 0 0;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-subtle);
+  padding: 0.85rem;
+}
+
+.agora-modal__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+.agora-modal__header h3 {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.argument-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.argument-form textarea,
+.argument-form select,
+.agora-modal select {
+  width: 100%;
+  min-width: 0;
+  border-radius: 6px;
+  border: 1px solid var(--color-border-subtle);
+  background: transparent;
+  padding: 0.4rem;
+  font-size: 12px;
+}
+
+@media (min-width: 640px) {
+  .agora-modal-backdrop {
+    align-items: center;
+  }
+  .agora-modal {
+    border-radius: 12px;
+  }
+}
+
+.claim-discussion {
+  margin-top: 0.45rem;
+}
+
+.claim-discussion__toggle {
+  font-size: 11px;
+  color: var(--color-accent-strong);
+}
+
+.comment-composer {
+  margin-top: 0.5rem;
+}
+
+.comment-composer__input {
+  width: 100%;
+  min-height: 4rem;
+  border-radius: 6px;
+  border: 1px solid var(--color-border-subtle);
+  background: transparent;
+  padding: 0.4rem;
+  font-size: 12px;
+}
+
+.comment-list {
+  margin-top: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.comment-card {
+  border-top: 1px solid color-mix(in srgb, var(--color-border-subtle) 70%, transparent);
+  padding-top: 0.4rem;
+}
+
+.comment-card__meta {
+  font-size: 10px;
+  color: var(--color-text-muted);
+}
+
+.comment-card__body {
+  margin-top: 0.2rem;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.comment-card__deleted {
+  margin-top: 0.2rem;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--color-text-muted);
+}
+
+.comment-card__reply-toggle {
+  margin-top: 0.25rem;
+  font-size: 10px;
+  color: var(--color-accent-strong);
+}
+
+.comment-card__replies {
+  margin-left: 0.75rem;
+  margin-top: 0.4rem;
+}
+
+.comment-reaction-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.35rem;
+}
+
+.comment-reaction {
+  font-size: 10px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border-subtle);
+  padding: 0.1rem 0.45rem;
+}
+
+.comment-reaction.is-mine {
+  outline: 1px solid var(--color-accent);
 }
