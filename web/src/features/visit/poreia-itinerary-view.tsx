@@ -15,17 +15,16 @@ export function PoreiaItineraryView({
   const [matches, setMatches] = useState<PoreiaDestination[]>([]);
   const [searching, setSearching] = useState(false);
   const [selectedCity, setSelectedCity] = useState<PoreiaDestination>();
-  const [mode, setMode] = useState<"walking"|"cycling"|"driving">("walking");
   const [radiusKm, setRadiusKm] = useState(25);
   useEffect(() => {
     const controller = new AbortController();
     setResult(undefined);
     setError("");
-    void fetchPoreiaItinerary(entityId, controller.signal, destination, mode)
+    void fetchPoreiaItinerary(entityId, controller.signal, destination)
       .then(data => { if (!controller.signal.aborted) setResult(data); })
       .catch(e => { if (!controller.signal.aborted) setError(String(e)); });
     return () => controller.abort();
-  }, [entityId, destination, mode]);
+  }, [entityId, destination]);
 
   return (
     <section className="poreia-route" aria-labelledby="poreia-route-title">
@@ -52,13 +51,6 @@ export function PoreiaItineraryView({
         <button type="submit" className="button button--primary" disabled={searching}>
           {searching ? "Recherche…" : "Rechercher"}
         </button>
-        <label>Transport
-          <select value={mode} onChange={event => setMode(event.target.value as typeof mode)}>
-            <option value="walking">À pied</option>
-            <option value="cycling">À vélo</option>
-            <option value="driving">En voiture</option>
-          </select>
-        </label>
         <label>Rayon
           <select value={radiusKm} onChange={event => {
             const value=Number(event.target.value);
@@ -96,10 +88,10 @@ export function PoreiaItineraryView({
       {result?.routing === "osrm" ? (
         <p className="poreia-route__metrics">
           Trajet calculé : {result.route_distance_km?.toLocaleString("fr-FR",{maximumFractionDigits:1})} km
-          · environ {result.travel_minutes} min · {mode === "walking" ? "à pied" : mode === "cycling" ? "à vélo" : "en voiture"}
+          · environ {result.travel_minutes} min
         </p>
       ) : result?.stops.length ? (
-        <p className="v3-note">Aucun moteur de routage vérifié n'est configuré pour ce mode : seules les distances à vol d'oiseau sont disponibles.</p>
+        <p className="v3-note">Aucun itinéraire vérifié n'est disponible : seules les distances à vol d'oiseau sont affichées.</p>
       ) : null}
       {error && <p role="alert">{error}</p>}
       {!result && !error && <p role="status">Chargement du parcours…</p>}
