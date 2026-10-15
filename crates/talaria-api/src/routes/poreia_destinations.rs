@@ -100,8 +100,9 @@ pub async fn search(
         let result=json!({"items":[],"source":"wikidata","query":q});
         cache_put(key,result.clone());return Json(result).into_response()
     }
+    let ids = qids.join("|");
     let detail=client.get("https://www.wikidata.org/w/api.php")
-        .query(&[("action","wbgetentities"),("ids",qids.join("|").as_str()),
+        .query(&[("action","wbgetentities"),("ids",ids.as_str()),
             ("props","claims"),("format","json")]).send().await;
     let Ok(resp)=detail else {return error(StatusCode::BAD_GATEWAY,"wikidata_unreachable")};
     if !resp.status().is_success(){return error(StatusCode::BAD_GATEWAY,"wikidata_entity_error")}
