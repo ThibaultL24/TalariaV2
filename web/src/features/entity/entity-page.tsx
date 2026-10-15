@@ -464,7 +464,22 @@ export function EntityPage() {
               id={entityId}
               selected={eventId ?? undefined}
               focus={mapFocus}
-              onSelect={select}
+              onSelect={(id) => {
+                const site = visitSites.find(row => row.id === id);
+                if (site) setMapFocus({ eventId: id, lat: site.coordinates.lat, lon: site.coordinates.lon });
+                else select(id);
+              }}
+            />
+          )}
+          {view === "heritage" && lens === "visit" && (
+            <VisitSitesList
+              sites={visitSites}
+              onFocus={(site) => {
+                setMapFocus({ eventId: site.id, lat: site.coordinates.lat, lon: site.coordinates.lon });
+                const copy = new URLSearchParams(params);
+                copy.delete("event");
+                navigate(`/entities/${entityId}/map?${copy.toString()}`);
+              }}
             />
           )}
           {view === "heritage" && lens === "visit" && (
