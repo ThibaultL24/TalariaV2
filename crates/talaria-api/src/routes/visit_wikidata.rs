@@ -142,3 +142,35 @@ mod tests {
     #[test] fn parses_wkt(){assert_eq!(parse_point("Point(2.3 48.8)"),Some((48.8,2.3)));assert_eq!(parse_point("Point(400 50)"),None);}
     #[test] fn invalid_bboxes(){assert!(bbox(Some("2,48,1,49")).is_err());assert!(bbox(Some("a,b,c,d")).is_err());}
 }
+
+pub async fn sites_geojson(
+    State(state): State<AppState>,
+    Path(entity_id): Path<Uuid>,
+    Query(query): Query<SitesQuery>,
+) -> Response {
+    let bbox=match bbox(query.bbox.as_deref()){Ok(v)=>v,Err(_)=>return failure(StatusCode::BAD_REQUEST,"invalid_bbox")};
+    let limit=query.limit.unwrap_or(200).clamp(1,500);
+    let rows=sqlx::query_as::<_,(Uuid,String,String,String,String,f64,f64)>(r#"
+        SELECT s.id,s.wikidata_qid,s.label,s.kind,p.relation_pid,
+               ST_Y(s.geom::geometry),ST_X(s.geom::geometry)
+        FROM visit_person_sites p JOIN visit_sites s ON s.id=p.site_id
+        WHERE p.entity_id=$1 AND s.publication_status='published'
+          AND ($2::float8 IS NULL OR ST_Intersects(s.geom,ST_MakeEnvelope($2,$3,$4,$5,4326)::geography))
+        ORDER BY s.label,s.wikidata_qid LIMIT $6
+    "#)
+    .bind(entity_id).bind(bbox.map(|b|b[0])).bind(bbox.map(|b|b[1]))
+    .bind(bbox.map(|b|b[2])).bind(bbox.map(|b|b[3])).bind(limit)
+    .fetch_all(&state.pool).await;
+    match rows {
+        Ok(rows)=>{
+            let features:Vec<Value>=rows.iter().map(|(id,qid,label,kind,pid,lat,lon)| json!({
+                "type":"Feature","id":id,
+                "geometry":{"type":"Point","coordinates":[lon,lat]},
+                "properties":{"id":id,"title":label,"event_type":"museum",
+                  "visit_layer":"heritage_site","kind":kind,"wikidata_qid":qid,"relation_pid":pid}
+            })).collect();
+            Json(json!({"type":"FeatureCollection","features":features,"count":features.len()})).into_response()
+        },
+        Err(e)=>{tracing::error!(error=%e,"visit geojson query failed");failure(StatusCode::INTERNAL_SERVER_ERROR,"database_error")}
+    }
+}
