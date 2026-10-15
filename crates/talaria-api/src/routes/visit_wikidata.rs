@@ -244,3 +244,64 @@ pub async fn refresh_osm(
         Err(_) =>failure(StatusCode::INTERNAL_SERVER_ERROR,"database_error")
     }
 }
+
+#[derive(Debug, Deserialize, Default)]
+pub struct ItineraryQuery { pub max_stops: Option<usize> }
+
+fn straight_line_km(a:(f64,f64),b:(f64,f64))->f64 {
+    let dlat=(b.0-a.0).to_radians();
+    let dlon=(b.1-a.1).to_radians();
+    let h=(dlat/2.0).sin().powi(2)+a.0.to_radians().cos()*b.0.to_radians().cos()*(dlon/2.0).sin().powi(2);
+    6371.0088*2.0*h.sqrt().asin()
+}
+
+/// Geographic discovery sequence, NOT a walkable route or travel time.
+pub async fn itinerary(
+    State(state): State<AppState>,
+    Path(entity_id): Path<Uuid>,
+    Query(query): Query<ItineraryQuery>,
+)->Response {
+    let max_stops=query.max_stops.unwrap_or(6).clamp(1,12);
+    let rows=sqlx::query_as::<_,(Uuid,String,String,f64,f64)>(r#"
+        SELECT s.id,s.wikidata_qid,s.label,ST_Y(s.geom::geometry),ST_X(s.geom::geometry)
+        FROM visit_sites s
+        WHERE s.publication_status='published'
+          AND EXISTS(SELECT 1 FROM visit_person_sites p WHERE p.entity_id=$1 AND p.site_id=s.id)
+        ORDER BY s.label LIMIT 250
+    "#).bind(entity_id).fetch_all(&state.pool).await;
+    let Ok(mut pending)=rows else {return failure(StatusCode::INTERNAL_SERVER_ERROR,"database_error")};
+    if pending.is_empty(){return Json(json!({
+        "stops":[],"legs":[],"routing":"straight_line_only","travel_minutes":null,
+        "message":"Aucun site patrimonial lié à cette personne n'est encore disponible."
+    })).into_response()}
+    // Deterministic starting site by label. Subsequent stops favor geographical proximity.
+    let mut route=Vec::new();
+    route.push(pending.remove(0));
+    while !pending.is_empty() && route.len()<max_stops {
+        let prev=route.last().expect("route is never empty");
+        let i=pending.iter().enumerate().min_by(|(_,a),(_,b)| {
+            straight_line_km((prev.3,prev.4),(a.3,a.4))
+            .total_cmp(&straight_line_km((prev.3,prev.4),(b.3,b.4)))
+        }).map(|(i,_)|i).unwrap_or(0);
+        route.push(pending.remove(i));
+    }
+    let legs:Vec<Value>=route.windows(2).map(|w|json!({
+        "from_site_id":w[0].0,"to_site_id":w[1].0,
+        "straight_line_km":(straight_line_km((w[0].3,w[0].4),(w[1].3,w[1].4))*10.0).round()/10.0,
+        "travel_minutes":null
+    })).collect();
+    let stops:Vec<Value>=route.iter().map(|(id,qid,label,lat,lon)|json!({
+        "id":id,"wikidata_qid":qid,"label":label,"coordinates":{"lat":lat,"lon":lon}
+    })).collect();
+    Json(json!({"stops":stops,"legs":legs,"routing":"straight_line_only",
+        "optimized_for":"geographic_proximity","travel_minutes":null,
+        "warning":"Ordre géographique indicatif : ne représente ni un itinéraire routable ni des horaires d'ouverture."
+    })).into_response()
+}
+
+#[cfg(test)]
+mod itinerary_tests {
+    use super::*;
+    #[test] fn zero_distance(){assert!(straight_line_km((48.8,2.3),(48.8,2.3))<0.001);}
+    #[test] fn geographic_distance_is_positive(){assert!(straight_line_km((48.8,2.3),(48.9,2.4))>10.0);}
+}
