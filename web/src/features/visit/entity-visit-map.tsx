@@ -110,7 +110,7 @@ export function EntityVisitMap({
     map.flyTo({
       center: [focus.lon, focus.lat],
       zoom,
-      duration: 1100,
+      duration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 850,
       essential: true,
     });
   }, [map, focus?.eventId, focus?.lat, focus?.lon]);
