@@ -2539,3 +2539,66 @@ a {
 .poreia-destination-form input { width: min(100%, 10rem); min-height: 42px; padding: .5rem .65rem; border: 1px solid var(--color-border-subtle); border-radius: .5rem; color: var(--color-text-primary); background: var(--color-bg-surface); }
 .poreia-destination-form input:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 @media(max-width:520px) { .poreia-destination-form label { flex: 1 1 36%; } .poreia-destination-form button { flex: 1 1 100%; } }
+
+
+/* Three editorial entrances. Reuse the established Aegean brand imagery, never
+   replace the brand hero or put illustrative images in historical evidence. */
+.home-visions__card { overflow: hidden; }
+.home-visions__card-art {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: clamp(112px, 11vw, 150px);
+  margin: -22px -20px 10px;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background-position: center 46%;
+  background-size: cover;
+  background-repeat: no-repeat;
+  isolation: isolate;
+}
+.home-visions__card-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 42%,
+    color-mix(in srgb, var(--color-bg-surface) 27%, transparent) 100%);
+  pointer-events: none;
+}
+[data-theme="light"] .home-visions__card-art--istoria { background-image: url("/brand/hero-overview-day.jpg"); }
+[data-theme="dark"] .home-visions__card-art--istoria { background-image: url("/brand/hero-overview-night.jpg"); }
+[data-theme="light"] .home-visions__card-art--poreia { background-image: url("/brand/hero-aegean-day.jpg"); }
+[data-theme="dark"] .home-visions__card-art--poreia { background-image: url("/brand/hero-aegean-night.jpg"); }
+[data-theme="light"] .home-visions__card-art--agora { background-image: url("/brand/hero-agora-day.jpg"); }
+[data-theme="dark"] .home-visions__card-art--agora { background-image: url("/brand/hero-agora-night.jpg"); }
+.home-visions__card-art--istoria { background-position: 50% 48%; }
+.home-visions__card-art--poreia { background-position: 50% 58%; }
+.home-visions__card-art--agora { background-position: 50% 44%; }
+.home-visions__card .experience-etymology {
+  margin: 0 0 .45rem;
+  min-height: 2.5em;
+  color: var(--color-text-secondary);
+}
+.home-visions__card-title { font-size: clamp(1.3rem, 1.5vw, 1.6rem); }
+.home-visions__card .button { margin-top: auto; align-self: flex-start; }
+.home-visions__card--visit .home-visions__card-top {
+  display: block;
+}
+.v3-shell--poreia .v3-overview-hero { background-position: 50% 56%; }
+[data-theme="light"] .v3-shell--poreia .v3-overview-hero { background-image: url("/brand/hero-aegean-day.jpg"); }
+[data-theme="dark"] .v3-shell--poreia .v3-overview-hero { background-image: url("/brand/hero-aegean-night.jpg"); }
+.v3-shell--poreia .v3-overview-hero::before {
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--color-bg-primary) 73%, transparent) 0%,
+    color-mix(in srgb, var(--color-bg-primary) 55%, transparent) 52%,
+    color-mix(in srgb, var(--color-bg-primary) 12%, transparent) 100%);
+}
+@media (max-width: 720px) {
+  .home-visions__card-art { min-height: 132px; }
+  .v3-shell--poreia .v3-overview-hero::before {
+    background: linear-gradient(180deg,
+      color-mix(in srgb, var(--color-bg-primary) 72%, transparent) 0%,
+      color-mix(in srgb, var(--color-bg-primary) 80%, transparent) 100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-visions__card { transition: none; }
+}
