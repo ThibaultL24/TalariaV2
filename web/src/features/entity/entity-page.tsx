@@ -504,6 +504,12 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
               }}
             />
           )}
+          {view === "itinerary" && lens === "visit" && (
+            <PoreiaItineraryView entityId={entityId} onFocus={(point) => {
+              setMapFocus({ eventId: point.id, lat: point.lat, lon: point.lon });
+              navigate(`/poreia/${entityId}/map`);
+            }} />
+          )}
           {view === "now" && lens === "visit" && (
             <VisitNowList
               items={visitNow}
