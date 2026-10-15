@@ -21,6 +21,11 @@ pub mod quality;
 pub mod sentences;
 pub mod wikibase;
 pub mod wiki_pages;
+pub mod visit;
+pub mod visit_catalog;
+pub mod merimee_csv;
+pub mod merimee;
+pub mod merimee_audit;
 pub mod wiki_sections;
 
 pub use canonical_events::{
@@ -123,6 +128,25 @@ pub use sentences::{
 pub use wikibase::{upsert_wikibase_statement, WikibaseStatementInsert};
 pub use wiki_pages::{
     list_pages_for_sentence_split, store_extracted_page, WikiPageRecord, WikiPageRow,
+};
+pub use merimee::{
+    count_notices, get_merimee_notice, import_merimee_csv, import_merimee_file, merimee_hits_for_entity,
+    MerimeeImportReport, MerimeeNoticeSummary,
+};
+pub use merimee_audit::{
+    collect_audit_snapshot, dry_run_csv, resume_row_from_last_partial, CsvParseDryRun, MerimeeAuditSnapshot,
+};
+pub use merimee_csv::{DATASET_URI, DEFAULT_CSV_URL};
+pub use visit_catalog::{
+    catalog_heritage, specific_site_label, AcceptedMedia, AcceptedSite, CatalogReport, ClaimDirection,
+    CommonsCandidate, MerimeeHit, PlaceClaim, PlaceProfile,
+};
+pub use visit::{
+    activity_status, commemoration_status, fingerprint, haversine_km, insert_activity,
+    insert_commemoration, insert_itinerary, link_heritage, list_activities, list_commemorations,
+    list_heritage_sites, load_site_points, order_stops, persist_catalog, project_lived_heritage,
+    relation_for_lived_event, require_provenance, site_content_hash, upsert_heritage_site,
+    ActivityRow, CommemorationRow, HeritageSiteRow, ITINERARY_GENERATION_VERSION, TemporalError,
 };
 pub use wiki_sections::{
     list_pages_for_section_split, list_sections_for_title, list_sections_matching_page,

@@ -1,0 +1,101 @@
+/* Visit product surface. Tokens come from the shared theme. */
+.visit-shell {
+  min-height: 100%;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+}
+
+.visit-hero {
+  padding: 1.5rem 1rem 1rem;
+  max-width: 72rem;
+  margin: 0 auto;
+}
+
+.visit-hero h1 {
+  font-size: clamp(1.8rem, 4vw, 3rem);
+  letter-spacing: -0.03em;
+  margin: 0.25rem 0;
+}
+
+.visit-layout {
+  display: grid;
+  gap: 1rem;
+  padding: 0 1rem 5rem;
+  max-width: 72rem;
+  margin: 0 auto;
+}
+
+@media (min-width: 900px) {
+  .visit-layout {
+    grid-template-columns: minmax(0, 1.1fr) minmax(18rem, 0.9fr);
+  }
+}
+
+.visit-map {
+  min-height: 22rem;
+  height: 55vh;
+  border-radius: 1.25rem;
+  overflow: hidden;
+  border: 1px solid var(--color-border-subtle);
+}
+
+.visit-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.visit-card,
+.visit-panel {
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 1rem;
+  padding: 0.9rem 1rem;
+}
+
+.visit-card h2,
+.visit-panel h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+}
+
+.visit-meta {
+  color: var(--color-text-muted, var(--navbar-chrome-muted));
+  font-size: 0.85rem;
+}
+
+.visit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.visit-actions button,
+.visit-actions a,
+.visit-hero button {
+  border-radius: 999px;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-elevated);
+  color: inherit;
+  padding: 0.45rem 0.8rem;
+  font: inherit;
+  text-decoration: none;
+}
+
+.visit-dock {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+  background: color-mix(in srgb, var(--color-bg-primary) 92%, transparent);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .visit-shell * {
+    scroll-behavior: auto;
+    transition: none;
+  }
+}

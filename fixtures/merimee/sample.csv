@@ -1,0 +1,6 @@
+Reference;Denomination_de_l_edifice;Adresse_forme_index;Commune_forme_index;Nature_de_la_protection;Historique;Description_de_l_edifice;Personnes_liees_a_l_edifice;Liens_externes;Région;Département;coordonnees_au_format_WGS84
+PA00086272;hôtel;Place des Vosges 6;Paris 4e Arrondissement;arrêté;Hugo y résida.;Victor Hugo y a vécu selon la description libre.;Hugo Victor (écrivain);https://www.wikidata.org/wiki/Q190063;Île-de-France;Paris;48.8548221740133, 2.36611679564894
+PA00088918;hôtel;Rue de la Tour 12;Paris 16e Arrondissement;arrêté;;;Hugo Victor (écrivain, habitant célèbre);;Île-de-France;Paris;48.8807451144355, 2.33629787403382
+PA00101544;maison;Grande-Rue 140;Besançon;arrêté;;;Hugo Victor (habitant célèbre);;Bourgogne-Franche-Comté;Doubs;47.2346120559922, 6.02922411430524
+;immeuble;Rue sans ref;Lyon;arrêté;;;Hugo Victor (écrivain);;Auvergne-Rhône-Alpes;Rhône;45.75, 4.85
+PA000BAD01;maison;Rue invalide;Test;arrêté;;;Napoleon Bonaparte (empereur);;Test;Test;not-valid-coords

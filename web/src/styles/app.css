@@ -518,6 +518,136 @@ a {
   color: var(--home-about-subhead);
 }
 
+.home-lanes {
+  padding: 0 1.25rem 1.5rem;
+}
+
+.home-lanes__list {
+  list-style: none;
+  margin: 0 auto;
+  padding: 0;
+  max-width: 68rem;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.home-lanes__list a {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-height: 5.5rem;
+  padding: 0.9rem 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--home-about-pillar-border);
+  color: inherit;
+  text-decoration: none;
+  font-family: var(--font-body);
+}
+
+.home-lanes__list strong {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.home-lanes__list span {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--home-about-body);
+}
+
+.demo-roster__featured {
+  list-style: none;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+
+.featured-figure {
+  display: grid;
+  gap: 0.5rem;
+  border: 1px solid var(--home-about-pillar-border);
+  border-radius: 0.9rem;
+  overflow: hidden;
+  background: var(--home-about-pillar-bg);
+}
+
+.featured-figure__main {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr;
+  min-height: 8.5rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.featured-figure__main img,
+.featured-figure__fallback {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: rgba(var(--rgb-sea-accent), 0.12);
+}
+
+.featured-figure__copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 1rem 1.1rem;
+}
+
+.featured-figure__copy h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.4rem, 2.5vw, 2rem);
+}
+
+.featured-figure__cta {
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+}
+
+.featured-figure__lanes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0 1rem 0.85rem 8.6rem;
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+}
+
+.featured-figure__lanes a,
+.featured-figure__lanes button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0.35rem 0;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+@media (max-width: 720px) {
+  .home-lanes__list {
+    grid-template-columns: 1fr;
+  }
+  .featured-figure__lanes {
+    padding-left: 1rem;
+  }
+}
+
+@media (min-width: 900px) {
+  .demo-roster__featured {
+    grid-template-columns: 1fr;
+  }
+  .featured-figure__main {
+    grid-template-columns: 11rem 1fr;
+    min-height: 11rem;
+  }
+}
+
 .demo-roster__grid {
   list-style: none;
   margin: 0;

@@ -7,6 +7,8 @@ mod entity_views;
 mod events;
 mod facets;
 pub mod ingest;
+mod visit;
+mod visit_upstream;
 
 use axum::{
     routing::{get, post},
@@ -98,6 +100,26 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/v1/events/geojson", get(geojson))
         .route("/api/v1/events/{event_id}", get(detail))
         .route("/api/v1/events/{event_id}/evidence", get(evidence))
+        .route("/api/v1/entities/by-qid/{qid}", get(visit::by_qid))
+        .route(
+            "/api/v1/entities/{entity_id}/visit/project",
+            post(visit::project),
+        )
+        .route(
+            "/api/v1/entities/{entity_id}/visit/discover",
+            post(visit::discover),
+        )
+        .route("/api/v1/entities/{entity_id}/visit/sites", get(visit::sites))
+        .route(
+            "/api/v1/entities/{entity_id}/visit/activities",
+            get(visit::activities).post(visit::create_activity),
+        )
+        .route(
+            "/api/v1/entities/{entity_id}/visit/commemorations",
+            get(visit::commemorations).post(visit::create_commemoration),
+        )
+        .route("/api/v1/entities/{entity_id}/visit/map", get(visit::map))
+        .route("/api/v1/visit/itineraries", post(visit::create_itinerary))
         .route("/api/v1/ingest", post(start_ingest))
         .route("/api/v1/ingest/explorer", post(start_explorer_ingest))
         .route("/api/v1/ingest/agora", post(start_agora_ingest))

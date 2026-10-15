@@ -38,6 +38,24 @@ struct Cursor {
     id: Uuid,
 }
 
+/// Event types that describe memory of a person, not a deed they lived.
+pub const LIFE_VIEW_EXCLUDED_TYPES: &[&str] = &[
+    "statue",
+    "museum",
+    "memorial",
+    "street_naming",
+    "commemoration",
+];
+
+pub fn life_view_exclusion_sql() -> String {
+    let list = LIFE_VIEW_EXCLUDED_TYPES
+        .iter()
+        .map(|kind| format!("'{kind}'"))
+        .collect::<Vec<_>>()
+        .join(",");
+    format!(" AND ce.event_type NOT IN ({list})")
+}
+
 fn error(status: StatusCode, code: &str) -> Response {
     (status, Json(json!({"error": code}))).into_response()
 }
@@ -154,6 +172,8 @@ async fn view(state: AppState, entity: Uuid, query: ViewQuery, map: bool) -> Res
     }
     let mut sql = QueryBuilder::<Postgres>::new("SELECT ce.id, ce.entity_id, COALESCE(e.canonical_name,e.wikipedia_title) AS person_name, ce.event_type, ce.epistemic_status, ce.title, ce.summary, ce.start_time, ce.time_json, ce.place_label, ce.confidence, ce.map_eligible, ST_Y(ce.geom::geometry) AS lat, ST_X(ce.geom::geometry) AS lon FROM person_timeline_projection ce JOIN entities e ON e.id=ce.entity_id WHERE ce.entity_id=");
     sql.push_bind(entity);
+    // Life of the person. Memorials and later honors stay on Visit, not this view.
+    sql.push(life_view_exclusion_sql());
     if !map {
         let threshold = match resolution {
             "overview" => 0.8f64,
@@ -273,6 +293,12 @@ pub async fn overview(State(state): State<AppState>, Path(entity_id): Path<Uuid>
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn scholar_life_view_excludes_commemorations() {
+        assert!(LIFE_VIEW_EXCLUDED_TYPES.contains(&"commemoration"));
+        assert!(life_view_exclusion_sql().contains("'commemoration'"));
+    }
+
     #[test]
     fn bbox_rejects_non_finite_reversed_and_out_of_bounds() {
         for value in ["NaN,0,1,1", "10,0,-10,1", "0,91,1,92", "0,1,2"] {

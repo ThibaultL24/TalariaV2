@@ -35,6 +35,15 @@ export function parseDossierProse(raw: string): ParsedDossier {
   return { lead, body };
 }
 
+export function shortLifeRecap(raw: string | null | undefined): string | null {
+  const { lead, body } = parseDossierProse(raw ?? "");
+  const text = [lead, ...body].filter(Boolean).join(" ").trim();
+  if (text.length < 12) return null;
+  const sentences =
+    text.match(/[^.!?]+[.!?]+/g)?.map((sentence) => sentence.trim()).filter(Boolean) ?? [text];
+  return sentences.slice(0, 3).join(" ");
+}
+
 export function HowItHappened({ text, onCiteClick }: HowItHappenedProps) {
   const { t } = useI18n();
   const { lead, body } = parseDossierProse(text);
@@ -48,7 +57,7 @@ export function HowItHappened({ text, onCiteClick }: HowItHappenedProps) {
         </p>
         <h4
           className="mt-0.5 text-sm font-semibold tracking-wide text-(--color-text-primary)"
-          style={{ fontFamily: "var(--font-display)" }}
+          style={{ fontFamily: "var(--font-body)" }}
         >
           {t.dossierTitle}
         </h4>

@@ -1,490 +1,74 @@
 // web/src/pages/explorer-page.tsx
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import type { Map } from "maplibre-gl";
-import { EventDetailCard } from "@/components/detail/event-detail-card";
-import { ExplorerFactsPanel } from "@/components/explorer/explorer-facts-panel";
+import { useEffect, useRef } from "react";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { IngestProgressBadge } from "@/components/explorer/ingest-progress-badge";
 import { Navbar } from "@/components/layout/navbar";
-import { MapCanvas } from "@/components/map/map-canvas";
-import { MapInteractions } from "@/components/map/map-interactions";
-import { MapLayers } from "@/components/map/map-layers";
-import { MapLegend } from "@/components/map/map-legend";
-import { MapSourceManager } from "@/components/map/map-source-manager";
 import { EntitySearchBox } from "@/components/search/entity-search-box";
 import { usePersonPicker } from "@/hooks/use-person-picker";
-import {
-  fetchEntity,
-  fetchGeoJson,
-  fetchTimeline,
-  type GeoJsonFeatureCollection,
-  type TimelineEvent,
-} from "@/lib/api";
-import {
-  attachLegendKeys,
-  eventMatchesLegendFilter,
-  legendKeyForEventType,
-  type LegendKey,
-} from "@/lib/event-legend";
-import { localizeFeatureCollection, localizedEventTitle, localizedPlaceLabel, localizedPersonLabel } from "@/lib/localize-event-copy";
-import {
-  boundsOfMapFeatures,
-  spreadStackedMapPoints,
-} from "@/lib/geo";
 import { useI18n } from "@/lib/i18n";
-import type { TalariaFeatureCollection } from "@/lib/schemas/geojson";
 import { useExplorerStore } from "@/stores/explorer-store";
 
-const INGEST_POLL_MS = 1500;
-const LIVE_LIMIT = 2000;
-const NARROW_LANDSCAPE_MQ = "(max-width: 899px) and (orientation: landscape)";
-
-function toMapCollection(data: GeoJsonFeatureCollection): TalariaFeatureCollection {
-  return spreadStackedMapPoints(data) as TalariaFeatureCollection;
-}
-
-function useNarrowLandscape(): boolean {
-  const [matches, setMatches] = useState(() =>
-    typeof window !== "undefined" ? window.matchMedia(NARROW_LANDSCAPE_MQ).matches : false,
-  );
-
-  useEffect(() => {
-    const mq = window.matchMedia(NARROW_LANDSCAPE_MQ);
-    const sync = () => setMatches(mq.matches);
-    sync();
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
-  }, []);
-
-  return matches;
-}
-
+/** Search landing. A resolved person opens the life timeline. */
 export function ExplorerPage() {
-  const { t, locale } = useI18n();
-  const [map, setMap] = useState<Map | null>(null);
-  const [allEvents, setAllEvents] = useState<TimelineEvent[]>([]);
-  const [geojson, setGeojson] = useState<GeoJsonFeatureCollection | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [dataVersion, setDataVersion] = useState(0);
-  const [mapFocus, setMapFocus] = useState(false);
-  const [forceFacts, setForceFacts] = useState(false);
-  const isLandscape = useNarrowLandscape();
-  const mapHostRef = useRef<HTMLDivElement | null>(null);
-
-  const handleCountsChanged = useCallback((_timeline: number, _mapPins: number) => {
-    setDataVersion((v) => v + 1);
-  }, []);
-
-  const {
-    suggestions,
-    setSearchQuery,
-    searchLoading,
-    selectPerson,
-    ingestBusy,
-    error,
-    ingestPhase,
-    currentPage,
-    timelineEvents,
-    mapPins,
-    preciseDates,
-    preciseCoords,
-    evidenceCount,
-    wikiPages,
-    sourcesPending,
-  } = usePersonPicker({ onCountsChanged: handleCountsChanged });
-
-  const {
-    entityId,
-    entityLabel,
-    personFilter,
-    selectedEventId,
-    setSelectedEventId,
-    closeDetail,
-    setEntity,
-    filters,
-    toggleLegendFilter,
-    setFilters,
-  } = useExplorerStore();
-  const [searchParams] = useSearchParams();
-  const entityFromUrl = searchParams.get("entity");
+  const { t } = useI18n();
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const entityFromUrl = params.get("entity");
+  const entityId = useExplorerStore((state) => state.entityId);
+  const started = useRef("");
+  const picker = usePersonPicker();
+  const subject = params.get("subject") ?? "";
 
   useEffect(() => {
-    if (!entityFromUrl || entityId === entityFromUrl) return;
-    let cancelled = false;
-    fetchEntity(entityFromUrl)
-      .then((entity) => {
-        if (cancelled) return;
-        if (entity) {
-          setEntity(entity.id, entity.label, entity.qid);
-          return;
-        }
-        setEntity(entityFromUrl);
-      })
-      .catch(() => {
-        if (!cancelled) setEntity(entityFromUrl);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [entityFromUrl, entityId, setEntity]);
-
-  const hasEntity = Boolean(entityId || personFilter);
-  const hideFacts = mapFocus || (isLandscape && !forceFacts);
-  const showChrome = hasEntity && allEvents.length > 0;
-
-  useEffect(() => {
-    if (!isLandscape) setForceFacts(false);
-  }, [isLandscape]);
-
-  useEffect(() => {
-    if (!hasEntity) {
-      setAllEvents([]);
-      setGeojson(null);
-      return;
-    }
-
-    let cancelled = false;
-    let inFlight = false;
-    let first = true;
-    setLoadError(null);
-
-    const query = {
-      entityId: entityId ?? undefined,
-      person: personFilter ?? undefined,
-      limit: LIVE_LIMIT,
-      lang: locale,
-    };
-
-    async function load() {
-      if (inFlight) return;
-      inFlight = true;
-      if (first && !ingestBusy) setLoading(true);
-      try {
-        const [timeline, mapData] = await Promise.all([
-          fetchTimeline(query),
-          fetchGeoJson(query),
-        ]);
-        if (cancelled) return;
-        setAllEvents(
-          timeline.events.map((event) => ({
-            ...event,
-            title: localizedEventTitle(event, locale),
-            place_label: localizedPlaceLabel(event.place_label, locale) ?? event.place_label,
-          })),
-        );
-        setGeojson(attachLegendKeys(localizeFeatureCollection(mapData, locale)));
-        setLoadError(null);
-      } catch (err) {
-        if (!cancelled && first) {
-          setLoadError(err instanceof Error ? err.message : t.loadFailed);
-        }
-      } finally {
-        inFlight = false;
-        if (!cancelled && first) {
-          setLoading(false);
-          first = false;
-        }
-      }
-    }
-
-    // Initial load
-    load();
-
-    // Poll only while ingest is writing — idle refresh wastes bandwidth on 300KB payloads.
-    if (!ingestBusy) {
-      return () => {
-        cancelled = true;
-      };
-    }
-    const tick = window.setInterval(load, INGEST_POLL_MS);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(tick);
-    };
-  }, [entityId, personFilter, hasEntity, ingestBusy, dataVersion, locale, t.loadFailed]);
-
-  useEffect(() => {
-    if (!map) return;
-    map.setPadding({ top: 12, bottom: 24, left: 12, right: 12 });
-  }, [map]);
-
-  useEffect(() => {
-    if (!map) return;
-    const host = mapHostRef.current;
-    if (!host || typeof ResizeObserver === "undefined") {
-      map.resize();
-      return;
-    }
-    const ro = new ResizeObserver(() => {
-      map.resize();
+    if (!subject || started.current === subject) return;
+    started.current = subject;
+    picker.selectPerson({
+      label: subject,
+      qid: params.get("qid"),
+      known_locally: false,
     });
-    ro.observe(host);
-    map.resize();
-    return () => ro.disconnect();
-  }, [map, hideFacts, showChrome]);
+  }, [subject, params, picker]);
 
-  const selectedLegendKeys = filters.legendKeys as LegendKey[];
-
-  const visibleEvents = useMemo(() => {
-    return allEvents.filter((event) =>
-      eventMatchesLegendFilter(event.event_type, selectedLegendKeys),
-    );
-  }, [allEvents, selectedLegendKeys]);
-
-  const visibleGeoJson = useMemo(() => {
-    if (!geojson) return { type: "FeatureCollection" as const, features: [] };
-    const byYear = geojson;
-    if (selectedLegendKeys.length === 0) return byYear;
-    return {
-      type: "FeatureCollection" as const,
-      features: byYear.features.filter((feature) =>
-        eventMatchesLegendFilter(
-          String(feature.properties?.event_type ?? ""),
-          selectedLegendKeys,
-        ),
-      ),
-    };
-  }, [geojson, selectedLegendKeys]);
-
-  const presentKeys = useMemo(() => {
-    const keys = new Set<LegendKey>();
-    for (const event of allEvents) {
-      keys.add(legendKeyForEventType(event.event_type));
-    }
-    return [...keys];
-  }, [allEvents]);
-
-  const selectedEvent = useMemo(() => {
-    if (!selectedEventId) return null;
-    const fromTimeline = allEvents.find((event) => event.id === selectedEventId);
-    if (fromTimeline) return fromTimeline;
-    const feature = geojson?.features.find((row) => {
-      const props = row.properties ?? {};
-      return String(props.id ?? props.event_id ?? row.id ?? "") === selectedEventId;
-    });
-    if (!feature) return null;
-    const props = feature.properties ?? {};
-    const coords = feature.geometry?.coordinates;
-    return {
-      id: selectedEventId,
-      entity_id: String(props.entity_id ?? entityId ?? ""),
-      person: String(props.person ?? entityLabel ?? ""),
-      event_type: String(props.event_type ?? "unknown"),
-      epistemic_status: String(props.epistemic_status ?? "attested"),
-      title: String(props.title ?? (locale === "fr" ? "Événement" : "Event")),
-      summary: (props.summary as string | null | undefined) ?? null,
-      start_time: (props.start_time as string | null | undefined) ?? null,
-      place_label: (props.place_label as string | null | undefined) ?? null,
-      confidence: Number(props.confidence ?? 0.5),
-      map_eligible: true,
-      coordinates:
-        Array.isArray(coords) && coords.length >= 2
-          ? { lon: Number(coords[0]), lat: Number(coords[1]) }
-          : null,
-    };
-  }, [allEvents, selectedEventId, geojson, entityId, entityLabel, locale]);
-
-  const handleSelectEvent = useCallback(
-    (eventId: string) => {
-      setSelectedEventId(eventId);
-      const event = allEvents.find((item) => item.id === eventId);
-      if (map && event?.coordinates) {
-        map.flyTo({
-          center: [event.coordinates.lon, event.coordinates.lat],
-          zoom: 8,
-          essential: true,
-          padding: { top: 12, bottom: 48, left: 12, right: 12 },
-        });
-      }
-    },
-    [allEvents, map, setSelectedEventId],
-  );
-
-  useEffect(() => {
-    if (!selectedEventId) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") closeDetail();
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectedEventId, closeDetail]);
-
-  const mapData = hasEntity ? toMapCollection(visibleGeoJson) : undefined;
-  const banner = error ?? loadError;
-  const fittedEntity = useRef<string>("");
-
-  // Track if we've done initial fit for current entity
-  const initialFitDone = useRef(false);
-
-  // Reset initial fit flag when entity changes
-  useEffect(() => {
-    initialFitDone.current = false;
-    fittedEntity.current = "";
-  }, [entityId, personFilter]);
-
-  useEffect(() => {
-    const entityKey = entityId ?? personFilter ?? "";
-    if (!map || !entityKey || !mapData?.features.length) return;
-    
-    // Only fit bounds on initial load or when switching entities
-    // Skip during incremental updates to preserve user's camera position
-    if (initialFitDone.current && ingestBusy) return;
-    
-    const token = `${entityKey}:${ingestBusy ? "busy" : "idle"}`;
-    if (fittedEntity.current === token) return;
-    
-    const box = boundsOfMapFeatures(mapData);
-    if (!box) return;
-    
-    fittedEntity.current = token;
-    initialFitDone.current = true;
-    
-    map.fitBounds(box, {
-      padding: { top: 40, bottom: 40, left: 28, right: 28 },
-      maxZoom: 6,
-      duration: 700,
-    });
-  }, [entityId, ingestBusy, map, mapData, personFilter]);
-
-  const layoutClass = [
-    "explorer-layout",
-    "app-shell",
-    "map-shell",
-    "flex",
-    "h-screen",
-    "flex-col",
-    hideFacts ? "explorer-layout--map-focus" : "",
-    isLandscape ? "explorer-layout--landscape" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const destination = entityId || (!subject ? entityFromUrl : null);
+  if (destination) {
+    const job = picker.jobId ? `?job=${encodeURIComponent(picker.jobId)}` : "";
+    return <Navigate to={`/entities/${destination}/overview${job}`} replace />;
+  }
 
   return (
-    <div className={layoutClass}>
+    <div className="v3-shell">
       <Navbar
         center={
           <EntitySearchBox
-            suggestions={suggestions}
-            onSubmitQuery={setSearchQuery}
-            onSelect={selectPerson}
-            isLoading={searchLoading}
+            suggestions={picker.suggestions}
+            onSubmitQuery={picker.setSearchQuery}
+            onSelect={(item) => {
+              const id = picker.selectPerson(item);
+              if (id) navigate(`/entities/${id}/timeline`);
+            }}
+            isLoading={picker.searchLoading}
           />
         }
       />
-
-      <main className="explorer-layout__main">
-        <section className="explorer-layout__map-column" aria-label={t.explorer}>
-          <div ref={mapHostRef} className="explorer-layout__map">
-            <div className="absolute inset-0">
-              <MapCanvas onReady={setMap} />
-            </div>
-            <MapSourceManager map={map} data={mapData} />
-            <MapLayers map={map} data={mapData} selectedEventId={selectedEventId} />
-            <MapInteractions map={map} onSelectEvent={handleSelectEvent} />
-
-            {entityId && <Link className="absolute bottom-5 left-5 z-10 rounded-lg bg-(--color-bg-surface) px-4 py-3" to={`/entities/${entityId}/overview`}>Open V3 · Overview / Timeline / Map / Sources</Link>}
-            {entityLabel ? (
-              <div className="pointer-events-none absolute top-3 left-3 z-10 max-w-[min(100%-5rem,16rem)] truncate rounded-lg border border-(--map-panel-border) bg-(--color-bg-elevated)/80 px-3 py-1.5 text-sm font-medium backdrop-blur-sm">
-                {localizedPersonLabel(entityLabel, locale)}
-              </div>
-            ) : null}
-
-            {(ingestBusy || loading) && (
-              <IngestProgressBadge
-                phase={ingestPhase}
-                currentPage={currentPage}
-                timelineEvents={timelineEvents}
-                mapPins={mapPins}
-                preciseDates={preciseDates}
-                preciseCoords={preciseCoords}
-                evidenceCount={evidenceCount}
-                wikiPages={wikiPages}
-                sourcesPending={sourcesPending}
-                isRunning={ingestBusy}
-                error={error}
-              />
-            )}
-
-            {!ingestBusy && banner ? (
-              <p className="absolute top-14 left-1/2 z-10 max-w-[min(100%-2rem,24rem)] -translate-x-1/2 rounded-lg bg-red-950/80 px-3 py-1.5 text-center text-sm text-red-200">
-                {banner}
-              </p>
-            ) : null}
-
-            {!hasEntity && !ingestBusy ? (
-              <div className="pointer-events-none absolute top-1/3 left-1/2 z-10 w-[min(100%-2rem,24rem)] -translate-x-1/2 text-center text-sm text-(--color-text-secondary)">
-                {t.emptySearch}
-              </div>
-            ) : null}
-
-            {hasEntity ? (
-              <button
-                type="button"
-                className="explorer-layout__map-focus-btn"
-                onClick={() => {
-                  if (hideFacts) {
-                    setMapFocus(false);
-                    setForceFacts(true);
-                  } else {
-                    setMapFocus(true);
-                    setForceFacts(false);
-                  }
-                }}
-                aria-pressed={hideFacts}
-              >
-                {hideFacts ? t.mapFocusOff : t.mapFocusOn}
-              </button>
-            ) : null}
-          </div>
-
-          {showChrome ? (
-            <div className="explorer-layout__chrome">
-              <MapLegend
-                presentKeys={presentKeys}
-                selectedKeys={selectedLegendKeys}
-                onToggleKey={toggleLegendFilter}
-                onClear={() => setFilters({ legendKeys: [] })}
-              />
-
-            </div>
-          ) : null}
-        </section>
-
-        {showChrome && !hideFacts ? (
-          <div className="explorer-layout__facts">
-            <ExplorerFactsPanel
-              events={visibleEvents}
-              mapPinCount={visibleEvents.filter((event) => event.map_eligible).length}
-              isLoading={loading}
-              onSelectEvent={handleSelectEvent}
-            />
-          </div>
-        ) : null}
-      </main>
-
-      {selectedEventId && selectedEvent ? (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center sm:p-6"
-          role="presentation"
-        >
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/45 backdrop-blur-sm"
-            aria-label={t.closeDetail}
-            onClick={closeDetail}
+      <main className="v3-main">
+        <h1>{t.explorer}</h1>
+        <p className="v3-note">{subject || t.emptySearch}</p>
+        {picker.ingestBusy && (
+          <IngestProgressBadge
+            phase={picker.ingestPhase}
+            currentPage={picker.currentPage}
+            timelineEvents={picker.timelineEvents}
+            mapPins={picker.mapPins}
+            preciseDates={picker.preciseDates}
+            preciseCoords={picker.preciseCoords}
+            evidenceCount={picker.evidenceCount}
+            wikiPages={picker.wikiPages}
+            sourcesPending={picker.sourcesPending}
+            isRunning={picker.ingestBusy}
+            error={picker.error}
           />
-          <div
-            className="nebula-event-detail relative flex max-h-[min(88vh,760px)] w-full max-w-lg flex-col overflow-hidden rounded-xl"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="event-detail-card-title"
-          >
-            <EventDetailCard event={selectedEvent} onClose={closeDetail} offlineOnly={false} />
-          </div>
-        </div>
-      ) : null}
+        )}
+      </main>
     </div>
   );
 }

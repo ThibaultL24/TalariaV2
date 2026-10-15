@@ -25,6 +25,7 @@ export interface AppMessages {
   noSources: string;
   openSource: string;
   openParagraph: string;
+  readPassage: string;
   untilYear: string;
   eventsVisible: (visible: number, total: number) => string;
   factsTitle: string;
@@ -121,6 +122,34 @@ export interface AppMessages {
   demoIntuitionLive: string;
   demoIntuitionModeled: string;
   stanceTestnetReady: string;
+  scholar: string;
+  visit: string;
+  visitEyebrow: string;
+  visitSubtitle: string;
+  visitProject: string;
+  visitDiscover: string;
+  visitEmpty: string;
+  visitLegacy: string;
+  visitRoutingNote: string;
+  openInScholar: string;
+  openInVisit: string;
+  productLaneScholarTitle: string;
+  productLaneScholarBody: string;
+  productLaneVisitTitle: string;
+  productLaneVisitBody: string;
+  productLaneAgoraTitle: string;
+  productLaneAgoraBody: string;
+  exploreLife: string;
+  discoverPlaces: string;
+  exploreDebates: string;
+  tabOverview: string;
+  tabTimeline: string;
+  tabMap: string;
+  tabSources: string;
+  entityLead: string;
+  unknownDate: string;
+  openEventDetail: string;
+  imageCredit: string;
 }
 
 const EN: AppMessages = {
@@ -128,14 +157,14 @@ const EN: AppMessages = {
   productSubtitle: "Life geography",
   search: "Search",
   searchPlaceholder: "Search a historical figure…",
-  searchHint: "Choose a person to place their life on the map.",
+  searchHint: "Choose a person to read their life.",
   searchInLibrary: "In library",
   searchNew: "New",
   loading: "Loading…",
   loadingMap: "Placing events on the map…",
   searchInProgress: "Search in progress",
   noResults: "No matches.",
-  emptySearch: "Search a historical figure to see their life on the map.",
+  emptySearch: "Search a historical figure to see their life.",
   close: "Close",
   closeDetail: "Close event",
   summary: "Summary",
@@ -145,6 +174,7 @@ const EN: AppMessages = {
   noSources: "No sources for this event.",
   openSource: "Open source",
   openParagraph: "Open the paragraph",
+  readPassage: "Read the passage",
   untilYear: "Up to",
   eventsVisible: (visible, total) => `${visible} / ${total} facts`,
   factsTitle: "Facts",
@@ -165,11 +195,11 @@ const EN: AppMessages = {
   collectAgora: "Collect scholarship",
   explorer: "Map",
   heroEyebrow: "Historical geography",
-  heroSubtitle: "Search a person. See their life on the map. Read the debates in the Agora.",
-  startExploration: "Open the map",
+  heroSubtitle: "Search a person. See their life as points in time. Read the debates in the Agora.",
+  startExploration: "Open a life",
   openAgora: "Open the Agora",
-  livingMap: "Living map",
-  livingMapDesc: "Dated facts, anecdotes and places from Wikipedia and catalogs.",
+  livingMap: "A life in points",
+  livingMapDesc: "Dated facts and anecdotes from the person's life, each one tied to its source.",
   homeAboutTitle: "A life in space and argument",
   homeAboutSources: "Each point keeps its summary and the sources that mention it.",
   homeAboutDoctrine: "About",
@@ -255,6 +285,34 @@ const EN: AppMessages = {
     "Theories are modeled (MetaSudo). Operators enable testnet with INTUITION_ALLOW_LIVE=1.",
   stanceTestnetReady:
     "Modeled — ready for Intuition testnet publish (operator: intuition-publish --live).",
+  scholar: "Scholar",
+  visit: "Visit",
+  visitEyebrow: "Walk Through History",
+  visitSubtitle: "Discover the places, monuments and experiences that bring history to life.",
+  visitProject: "Build places from the documented life",
+  visitDiscover: "Discover identified heritage sites",
+  visitEmpty: "No heritage places yet. Project them from geolocated life events, or this person has none.",
+  visitLegacy: "Legacy and memory",
+  visitRoutingNote: "No routing engine is configured. The order uses straight-line distance. Travel times are not shown.",
+  openInScholar: "Understand this life in Scholar",
+  openInVisit: "Discover places in Visit",
+  productLaneScholarTitle: "Scholar — understand the history",
+  productLaneScholarBody: "A dated life, a map, and the sources behind each fact.",
+  productLaneVisitTitle: "Visit — discover the places",
+  productLaneVisitBody: "Houses, monuments, museums and routes tied to a person.",
+  productLaneAgoraTitle: "Agora — explore the interpretations",
+  productLaneAgoraBody: "Theories, arguments and controversies, kept apart from the life facts.",
+  exploreLife: "Explore the life",
+  discoverPlaces: "Discover the places",
+  exploreDebates: "Explore the debates",
+  tabOverview: "Overview",
+  tabTimeline: "Timeline",
+  tabMap: "Map",
+  tabSources: "Sources",
+  entityLead: "A life, its places, and the evidence.",
+  unknownDate: "Unknown date",
+  openEventDetail: "Open the full record",
+  imageCredit: "Image: Wikimedia",
 };
 
 const FR: AppMessages = {
@@ -262,14 +320,14 @@ const FR: AppMessages = {
   productSubtitle: "Géographie d’une vie",
   search: "Rechercher",
   searchPlaceholder: "Rechercher une personnalité…",
-  searchHint: "Choisissez une personne pour placer sa vie sur la carte.",
+  searchHint: "Choisissez une personne pour lire sa vie.",
   searchInLibrary: "En bibliothèque",
   searchNew: "Nouveau",
   loading: "Chargement…",
   loadingMap: "Placement des événements sur la carte…",
   searchInProgress: "Recherche en cours",
   noResults: "Aucun résultat.",
-  emptySearch: "Recherchez une personnalité pour voir sa vie sur la carte.",
+  emptySearch: "Recherchez une personnalité pour voir sa vie.",
   close: "Fermer",
   closeDetail: "Fermer l’événement",
   summary: "Résumé",
@@ -279,6 +337,7 @@ const FR: AppMessages = {
   noSources: "Aucune source pour cet événement.",
   openSource: "Ouvrir la source",
   openParagraph: "Ouvrir le paragraphe",
+  readPassage: "Lire le passage",
   untilYear: "Jusqu’en",
   eventsVisible: (visible, total) => `${visible} / ${total} faits`,
   factsTitle: "Faits",
@@ -299,11 +358,11 @@ const FR: AppMessages = {
   collectAgora: "Collecter l’agora",
   explorer: "Carte",
   heroEyebrow: "Géographie historique",
-  heroSubtitle: "Cherchez une personne. Voyez sa vie sur la carte. Lisez les débats dans l’Agora.",
-  startExploration: "Ouvrir la carte",
+  heroSubtitle: "Cherchez une personne. Voyez sa vie en points dans le temps. Lisez les débats dans l’Agora.",
+  startExploration: "Ouvrir une vie",
   openAgora: "Ouvrir l’Agora",
-  livingMap: "Carte vivante",
-  livingMapDesc: "Faits datés, anecdotes et lieux issus de Wikipédia et des catalogues.",
+  livingMap: "Une vie en points",
+  livingMapDesc: "Faits datés et anecdotes de la vie de la personne, chacun rattaché à sa source.",
   homeAboutTitle: "Une vie dans l’espace et le débat",
   homeAboutSources: "Chaque point garde son résumé et les sources qui en parlent.",
   homeAboutDoctrine: "À propos",
@@ -390,6 +449,34 @@ const FR: AppMessages = {
     "Théories modélisées (MetaSudo). Activer le testnet avec INTUITION_ALLOW_LIVE=1.",
   stanceTestnetReady:
     "Modélisée — prête pour publication testnet (opérateur : intuition-publish --live).",
+  scholar: "Scholar",
+  visit: "Visit",
+  visitEyebrow: "Walk Through History",
+  visitSubtitle: "Découvrez les lieux, monuments et expériences qui rendent l’histoire visitable.",
+  visitProject: "Construire les lieux depuis la vie documentée",
+  visitDiscover: "Découvrir les sites patrimoniaux identifiés",
+  visitEmpty: "Aucun lieu patrimonial. Projetez-les depuis les événements géolocalisés, ou cette personne n’en a pas.",
+  visitLegacy: "Mémoire et postérité",
+  visitRoutingNote: "Aucun moteur de routage n’est configuré. L’ordre suit la distance à vol d’oiseau. Aucun temps de trajet n’est affiché.",
+  openInScholar: "Comprendre cette vie dans Scholar",
+  openInVisit: "Découvrir les lieux dans Visit",
+  productLaneScholarTitle: "Scholar — comprendre l’histoire",
+  productLaneScholarBody: "Une vie datée, une carte, et les sources derrière chaque fait.",
+  productLaneVisitTitle: "Visit — découvrir les lieux",
+  productLaneVisitBody: "Maisons, monuments, musées et parcours liés à une personne.",
+  productLaneAgoraTitle: "Agora — explorer les interprétations",
+  productLaneAgoraBody: "Théories, arguments et controverses, séparés des faits de la vie.",
+  exploreLife: "Explorer sa vie",
+  discoverPlaces: "Découvrir ses lieux",
+  exploreDebates: "Explorer les débats",
+  tabOverview: "Aperçu",
+  tabTimeline: "Frise",
+  tabMap: "Carte",
+  tabSources: "Sources",
+  entityLead: "Une vie, ses lieux, et les preuves.",
+  unknownDate: "Date inconnue",
+  openEventDetail: "Ouvrir la fiche complète",
+  imageCredit: "Image : Wikimedia",
 };
 
 export const messages: Record<AppLocale, AppMessages> = { en: EN, fr: FR };

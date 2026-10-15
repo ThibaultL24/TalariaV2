@@ -13,6 +13,9 @@ export interface DemoRosterEntry {
   intuitionStar?: boolean;
 }
 
+/** Editorial home banners. Search results stay compact. */
+export const FEATURED_ROSTER_QIDS = ["Q517", "Q535", "Q7186"] as const;
+
 export const DEMO_ROSTER: DemoRosterEntry[] = [
   {
     qid: "Q517",

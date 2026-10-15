@@ -31,8 +31,11 @@ export function Navbar({ center }: NavbarProps) {
           <NavLink to="/" end className={linkClass}>
             {t.home}
           </NavLink>
-          <NavLink to="/explorer" className={linkClass}>
-            {t.explorer}
+          <NavLink to="/scholar" className={linkClass}>
+            {t.scholar}
+          </NavLink>
+          <NavLink to="/visit" className={linkClass}>
+            {t.visit}
           </NavLink>
           <NavLink to="/agora" className={linkClass}>
             {t.agora}

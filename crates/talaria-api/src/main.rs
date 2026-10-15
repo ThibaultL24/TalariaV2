@@ -32,6 +32,7 @@ mod place_conflict;
 mod quality;
 mod rebuild;
 mod routes;
+mod visit_cli;
 mod wiki_persist;
 mod wikidata_ingest;
 
@@ -459,6 +460,29 @@ async fn main() -> anyhow::Result<()> {
         Commands::IntuitionPublish { subject, live } => {
             intuition::run_intuition_publish(&config, &subject, live).await?
         }
+        Commands::Visit { action } => match action {
+            cli::VisitAction::ImportMerimee {
+                file,
+                url,
+                resume_after_row,
+                resume_last_partial,
+                skip_dry_run,
+            } => {
+                visit_cli::run_import_merimee(
+                    &config,
+                    file,
+                    url,
+                    resume_after_row,
+                    resume_last_partial,
+                    skip_dry_run,
+                )
+                    .await?
+            }
+            cli::VisitAction::MerimeeStatus => visit_cli::run_merimee_status(&config).await?,
+            cli::VisitAction::MerimeeCoverage { qid, label } => {
+                visit_cli::run_merimee_coverage(&config, &qid, &label).await?
+            }
+        },
         Commands::Admin { action } => match action {
             AdminAction::RebuildPersonPipeline {
                 confirm_destruction,

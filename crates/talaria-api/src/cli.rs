@@ -275,10 +275,44 @@ pub enum Commands {
         #[arg(long, help = "Blocked: live Intuition writes are disabled until IPFS atom IDs and tx simulation are fixed")]
         live: bool,
     },
+    /// Visit heritage operator tools (local Mérimée CSV)
+    Visit {
+        #[command(subcommand)]
+        action: VisitAction,
+    },
     /// Operator admin actions (destructive rebuild is explicit)
     Admin {
         #[command(subcommand)]
         action: AdminAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum VisitAction {
+    /// Stream-import the official data.gouv.fr Mérimée CSV into merimee_notices
+    ImportMerimee {
+        #[arg(long, help = "Local CSV path (semicolon-separated)")]
+        file: Option<PathBuf>,
+        #[arg(long, help = "Download URL (defaults to the 2024-02-13 data.gouv resource)")]
+        url: Option<String>,
+        #[arg(long, default_value_t = 0, help = "Skip rows up to this CSV row number (resume)")]
+        resume_after_row: u64,
+        #[arg(
+            long,
+            help = "Resume after last partial/failed run for the same source URI"
+        )]
+        resume_last_partial: bool,
+        #[arg(long, help = "Skip pre-import parse dry-run (faster re-import)")]
+        skip_dry_run: bool,
+    },
+    /// JSON audit snapshot (notices, links, import runs)
+    MerimeeStatus,
+    /// Simulate catalog acceptance for one person from local notices
+    MerimeeCoverage {
+        #[arg(long)]
+        qid: String,
+        #[arg(long)]
+        label: String,
     },
 }
 

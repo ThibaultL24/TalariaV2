@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, NavLink, useParams, useSearchParams } from "react-router-dom";
+import { Link, NavLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Navbar } from "@/components/layout/navbar";
 import { EventDetailCard } from "@/components/detail/event-detail-card";
 import {
@@ -14,6 +14,8 @@ import {
   type EntityOverview,
   type Page,
 } from "@/lib/entity-views";
+import { useI18n } from "@/lib/i18n";
+import { useExplorerStore } from "@/stores/explorer-store";
 import { useThemeStore } from "@/stores/theme-store";
 import { TimelineCanvas } from "./timeline-canvas";
 import { EntityMap } from "./entity-map";
@@ -24,12 +26,15 @@ export function EntityPage() {
   const [overview, setOverview] = useState<EntityOverview>();
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const provider = params.get("provider") ?? "";
-  const [providers, setProviders] = useState<{name: string; count: number}[]>([]);
+  const [providers, setProviders] = useState<{ name: string; count: number }[]>([]);
   const [sources, setSources] = useState<BibliographyItem[]>([]);
   const [next, setNext] = useState<string | null>(null);
   const [selected, setSelected] = useState<TimelineEvent>();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const { t } = useI18n();
+  const navigate = useNavigate();
+  const setEntity = useExplorerStore((state) => state.setEntity);
   const preference = useThemeStore((s) => s.preference);
   const setTheme = useThemeStore((s) => s.setTheme);
   const filters = new URLSearchParams();
@@ -41,8 +46,10 @@ export function EntityPage() {
   const activeRequest = useRef("");
   activeRequest.current = `${entityId}/${view}?${filterString}&provider=${provider}`;
   const eventId = params.get("event");
-  const from = Number(params.get("from") ?? overview?.time_bounds.from ?? 0);
-  const to = Number(params.get("to") ?? overview?.time_bounds.to ?? from + 1);
+  const lifeFrom = overview?.time_bounds.from ?? 1;
+  const lifeTo = Math.max(lifeFrom + 1, overview?.time_bounds.to ?? lifeFrom + 1);
+  const from = Number(params.get("from") ?? lifeFrom);
+  const to = Number(params.get("to") ?? lifeTo);
   const resolution = "detail";
   useEffect(() => {
     const controller = new AbortController();
@@ -111,8 +118,7 @@ export function EntityPage() {
     if (eventId)
       void fetchEventDetail(eventId)
         .then((result) => {
-          if (!cancelled && result.event?.entity_id === entityId)
-            setSelected(result.event);
+          if (!cancelled && result.event?.entity_id === entityId) setSelected(result.event);
         })
         .catch((e: unknown) => {
           if (!cancelled) setError(String(e));
@@ -171,17 +177,15 @@ export function EntityPage() {
       <main className="v3-main">
         <div className="v3-heading">
           <div>
-            <p className="v3-eyebrow">TALARIA · EXPLORER</p>
-            <h1>{overview?.entity.label ?? "Loading…"}</h1>
-            <p>Explore a life through time, places and evidence.</p>
+            <p className="v3-eyebrow">{t.scholar}</p>
+            <h1>{overview?.entity.label ?? t.loading}</h1>
+            <p>{t.entityLead}</p>
           </div>
           <label>
             Appearance{" "}
             <select
               value={preference}
-              onChange={(e) =>
-                setTheme(e.target.value as "light" | "dark" | "system")
-              }
+              onChange={(e) => setTheme(e.target.value as "light" | "dark" | "system")}
             >
               <option value="light">Light</option>
               <option value="dark">Dark</option>
@@ -189,16 +193,35 @@ export function EntityPage() {
             </select>
           </label>
         </div>
-        <nav className="v3-tabs" aria-label="Entity views">
-          {["overview", "timeline", "map", "sources"].map((tab) => (
+        <nav className="v3-tabs" aria-label={t.scholar}>
+          {(
+            [
+              ["overview", t.tabOverview],
+              ["timeline", t.tabTimeline],
+              ["map", t.tabMap],
+              ["sources", t.tabSources],
+            ] as const
+          ).map(([tab, label]) => (
             <NavLink
               key={tab}
               to={`/entities/${entityId}/${tab}?${params}`}
               className={({ isActive }) => (isActive ? "active" : "")}
             >
-              {tab}
+              {label}
             </NavLink>
           ))}
+        </nav>
+        <nav className="v3-tabs v3-tabs--products" aria-label={t.productName}>
+          <Link to={`/visit/${overview?.entity.qid ?? entityId}`}>{t.visit}</Link>
+          <button
+            type="button"
+            onClick={() => {
+              setEntity(entityId, overview?.entity.label, overview?.entity.qid);
+              navigate("/agora");
+            }}
+          >
+            {t.agora}
+          </button>
         </nav>
         {error && <p role="alert">{error}</p>}
         {(view === "timeline" || view === "map") && (
@@ -252,6 +275,8 @@ export function EntityPage() {
             events={events}
             from={from}
             to={to}
+            lifeFrom={lifeFrom}
+            lifeTo={lifeTo}
             onSelect={select}
             onZoom={(a, b) => {
               const copy = new URLSearchParams(params);
@@ -263,47 +288,45 @@ export function EntityPage() {
         )}
         {view === "overview" && (
           <section>
-            <h2>
-              Chronological preview
-            </h2>
-            <p className="v3-note">
-              Dates retain the precision and uncertainty recorded in the
-              sources.
-            </p>
+            <h2>Chronological preview</h2>
+            <p className="v3-note">Dates retain the precision and uncertainty recorded in the sources.</p>
             <ol className="v3-events">
-              {events.slice(0, 8).map(
-                (event) => (
-                  <li key={event.id}>
-                    <span>{eventDate(event)}</span>
-                    <button onClick={() => select(event.id)}>
-                      {event.title}
-                    </button>
-                    <small>
-                      {event.event_type.replaceAll("_", " ")} ·{" "}
-                      {event.place_label ?? "Place not established"}
-                    </small>
-                  </li>
-                ),
-              )}
+              {events.slice(0, 8).map((event) => (
+                <li key={event.id}>
+                  <span>{eventDate(event)}</span>
+                  <button onClick={() => select(event.id)}>{event.title}</button>
+                  <small>
+                    {event.event_type.replaceAll("_", " ")} · {event.place_label ?? "Place not established"}
+                  </small>
+                </li>
+              ))}
             </ol>
-            {!events.length && !loading && (
-              <p>No events match this selection.</p>
-            )}
+            {!events.length && !loading && <p>No events match this selection.</p>}
           </section>
         )}
-        {view === "timeline" && next && <button disabled={loading} onClick={() => void loadMore()}>Load more moments</button>}
+        {view === "timeline" && next && (
+          <button disabled={loading} onClick={() => void loadMore()}>
+            Load more moments
+          </button>
+        )}
         {view === "sources" && (
           <section>
             <h2>Source documents</h2>
             <p className="v3-note">
-              Catalog matches are not proof of an event. Open an event to
-              inspect its supporting evidence.
+              Catalog matches are not proof of an event. Open an event to inspect its supporting evidence.
             </p>
             <div className="v3-provider-tabs" role="group" aria-label="Filter by database">
-              {[{name: "", count: providers.reduce((sum, item) => sum + item.count, 0)}, ...providers].map((item) =>
-                <button key={item.name} aria-pressed={provider === item.name} onClick={() => update("provider", item.name)}>
-                  {item.name ? providerLabel(item.name) : "All databases"} <span>{item.count}</span>
-                </button>)}
+              {[{ name: "", count: providers.reduce((sum, item) => sum + item.count, 0) }, ...providers].map(
+                (item) => (
+                  <button
+                    key={item.name}
+                    aria-pressed={provider === item.name}
+                    onClick={() => update("provider", item.name)}
+                  >
+                    {item.name ? providerLabel(item.name) : "All databases"} <span>{item.count}</span>
+                  </button>
+                ),
+              )}
             </div>
             <div className="v3-sources">
               {sources.map((source) => (
@@ -312,22 +335,18 @@ export function EntityPage() {
                     {providerLabel(source.source_kind)} · {source.document_type.replaceAll("_", " ")}
                   </span>
                   <h3>{source.title}</h3>
-                  <p>{source.language?.toUpperCase() ?? ""} {source.academic_status.replaceAll("_", " ")}</p>
+                  <p>
+                    {source.language?.toUpperCase() ?? ""} {source.academic_status.replaceAll("_", " ")}
+                  </p>
                   {source.canonical_url && (
-                    <a
-                      href={source.canonical_url}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
+                    <a href={source.canonical_url} target="_blank" rel="noreferrer">
                       Open source ↗
                     </a>
                   )}
                 </article>
               ))}
             </div>
-            {!sources.length && !loading && (
-              <p>No source documents available.</p>
-            )}
+            {!sources.length && !loading && <p>No source documents available.</p>}
             {next && (
               <button disabled={loading} onClick={() => void loadMore()}>
                 Load more sources
@@ -340,27 +359,34 @@ export function EntityPage() {
           <aside className="v3-detail">
             <div className="v3-detail-links">
               {selected.map_eligible && (
-                <Link to={`/entities/${entityId}/map?${params}`}>
-                  View on map
-                </Link>
+                <Link to={`/entities/${entityId}/map?${params}`}>View on map</Link>
               )}
-              <Link to={`/entities/${entityId}/timeline?${params}`}>
-                View in timeline
-              </Link>
+              <Link to={`/entities/${entityId}/timeline?${params}`}>View in timeline</Link>
             </div>
-            <EventDetailCard
-              event={selected}
-              onClose={() => select()}
-            />
+            <EventDetailCard event={selected} onClose={() => select()} />
           </aside>
         )}
-        <Link to={`/explorer?entity=${entityId}`}>Open original explorer</Link>
       </main>
     </div>
   );
 }
 
 function providerLabel(name: string): string {
-  const labels: Record<string, string> = { wikipedia: "Wikipedia", wikidata: "Wikidata", hal: "HAL", bnf: "BnF", gallica: "Gallica", persee: "Persée", openalex: "OpenAlex", openlibrary: "Open Library", open_library: "Open Library", internet_archive: "Internet Archive", theses_fr: "theses.fr", europeana: "Europeana", commons: "Wikimedia Commons", wikisource: "Wikisource" };
+  const labels: Record<string, string> = {
+    wikipedia: "Wikipedia",
+    wikidata: "Wikidata",
+    hal: "HAL",
+    bnf: "BnF",
+    gallica: "Gallica",
+    persee: "Persée",
+    openalex: "OpenAlex",
+    openlibrary: "Open Library",
+    open_library: "Open Library",
+    internet_archive: "Internet Archive",
+    theses_fr: "theses.fr",
+    europeana: "Europeana",
+    commons: "Wikimedia Commons",
+    wikisource: "Wikisource",
+  };
   return labels[name] ?? name.replaceAll("_", " ");
 }

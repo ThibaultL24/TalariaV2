@@ -52,27 +52,19 @@ test("event deep link opens evidence detail with Intuition disabled", async () =
   open("/entities/person-1/timeline?event=event-1");
   await screen.findByRole("heading", { name: "Victor Hugo" });
   await screen.findByText("A sourced occurrence");
-  expect(
-    screen.getByRole("link", { name: "View on map" }).getAttribute("href"),
-  ).toContain("event=event-1");
+  expect(screen.getByRole("link", { name: "View on map" }).getAttribute("href")).toContain("event=event-1");
   expect(screen.queryByRole("list")).toBeNull();
   expect(vi.mocked(fetch).mock.calls.every(([url]) => !String(url).includes("intuition"))).toBe(true);
 });
 test("time filter is sent to the entity-scoped API", async () => {
   open("/entities/person-1/timeline");
   await screen.findByRole("heading", { name: "Victor Hugo" });
-  fireEvent.change(screen.getByLabelText("From"), {
-    target: { value: "1851" },
-  });
+  fireEvent.change(screen.getByLabelText("From"), { target: { value: "1851" } });
   await vi.waitFor(() =>
     expect(
-      vi
-        .mocked(fetch)
-        .mock.calls.some(
-          ([url]) =>
-            String(url).includes("timeline?") &&
-            String(url).includes("from=1851"),
-        ),
+      vi.mocked(fetch).mock.calls.some(
+        ([url]) => String(url).includes("timeline?") && String(url).includes("from=1851"),
+      ),
     ).toBe(true),
   );
 });
