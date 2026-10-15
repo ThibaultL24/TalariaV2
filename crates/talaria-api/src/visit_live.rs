@@ -7,8 +7,7 @@ use sqlx::PgPool;
 use talaria_sources::wdqs::{fetch_culture_about_person, WdqsCultureItem};
 use talaria_store::{
     find_active_person_event_by_occurrence, find_active_person_event_by_title,
-    find_nearby_visit_heritage, insert_person_event, upsert_visit_opportunity, PersonEventInsert,
-    VisitOpportunityInsert,
+    upsert_visit_opportunity, VisitOpportunityInsert,
 };
 
 const VISIT_HERITAGE_DEDUP_RADIUS_M: f64 = 80.0;
@@ -113,90 +112,14 @@ pub async fn enrich_wikidata_culture_split(
     Ok((heritage, opportunities))
 }
 
+// Compatibility shim for legacy CLI callers. Tourism sites use visit_sites, never canonical_events.
 async fn upsert_wikidata_heritage(
-    pool: &PgPool,
-    entity_id: Uuid,
-    event_type: &str,
-    item: &WdqsCultureItem,
+    _pool: &PgPool,
+    _entity_id: Uuid,
+    _event_type: &str,
+    _item: &WdqsCultureItem,
 ) -> anyhow::Result<bool> {
-    let (lat, lon) = match (item.lat, item.lon) {
-        (Some(lat), Some(lon)) if lat.is_finite() && lon.is_finite() => (lat, lon),
-        _ => return Ok(false),
-    };
-    let occurrence_key = format!("visit-wikidata:{}", item.item_qid);
-    if find_active_person_event_by_occurrence(pool, entity_id, &occurrence_key)
-        .await?
-        .is_some()
-    {
-        return Ok(false);
-    }
-    if find_active_person_event_by_title(pool, entity_id, &item.label)
-        .await?
-        .is_some()
-    {
-        return Ok(false);
-    }
-    if find_nearby_visit_heritage(
-        pool,
-        entity_id,
-        event_type,
-        lat,
-        lon,
-        VISIT_HERITAGE_DEDUP_RADIUS_M,
-    )
-    .await?
-    .is_some()
-    {
-        return Ok(false);
-    }
-    let year = item
-        .start
-        .as_deref()
-        .and_then(|s| s.get(0..4))
-        .and_then(|y| y.parse::<i32>().ok());
-    let surface = year.map(|y| y.to_string());
-    let time_json = if let Some(year) = year {
-        serde_json::json!({
-            "kind": "approx",
-            "precision": "year",
-            "start": year.to_string(),
-            "surface": year.to_string(),
-        })
-    } else {
-        serde_json::json!({"kind": "unknown", "precision": "year"})
-    };
-    let start_time = year.and_then(|y| {
-        NaiveDate::from_ymd_opt(y, 1, 1)
-            .and_then(|d| d.and_hms_opt(0, 0, 0))
-            .map(|ndt| DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc))
-    });
-    let fingerprint = hex::encode(
-        Sha256::digest(format!("visit-heritage|{entity_id}|{occurrence_key}").as_bytes()),
-    );
-    insert_person_event(
-        pool,
-        &PersonEventInsert {
-            entity_id,
-            event_type: event_type.into(),
-            epistemic_status: "attested".into(),
-            title: item.label.clone(),
-            summary: None,
-            start_time,
-            time_json,
-            place_label: item.place_label.clone(),
-            lat: Some(lat),
-            lon: Some(lon),
-            confidence: 0.7,
-            map_eligible: true,
-            fingerprint,
-            occurrence_key,
-            occurrence_stem: surface,
-            predicate: "commemorated_at".into(),
-            place_identity_qid: None,
-        },
-    )
-    .await?;
-    Ok(true)
+    Ok(false)
 }
 
 async fn upsert_wikidata_culture(
