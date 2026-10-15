@@ -348,3 +348,32 @@ html:not([data-theme="dark"]) .historical-timeline {
     transition: none;
   }
 }
+
+/* Quiet editorial treatment for denser chronologies. Do not animate canvas redraws via CSS. */
+.historical-timeline {
+  box-shadow: 0 16px 44px color-mix(in srgb, var(--ht-border) 27%, transparent);
+}
+.historical-timeline__tooltip {
+  border-radius: .8rem;
+  max-width: min(270px, calc(100vw - 2rem));
+  overflow: hidden;
+  box-shadow: 0 18px 36px color-mix(in srgb, #000 19%, transparent);
+}
+.historical-timeline__tooltip-title {
+  font-family: var(--font-body, Inter, sans-serif);
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+.historical-timeline__categories button {
+  min-height: 34px;
+  font-family: var(--font-body, Inter, sans-serif);
+}
+.historical-timeline__phases button:focus-visible {
+  outline: 2px solid var(--ht-primary);
+  outline-offset: 2px;
+}
+.historical-timeline__canvas-host canvas:active { cursor: grabbing; }
+@media (prefers-reduced-motion: reduce) {
+  .historical-timeline__categories button,
+  .historical-timeline__phases button { transition: none; }
+}
