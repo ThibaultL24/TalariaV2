@@ -307,7 +307,7 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
   );
   return (
     <div
-      className={`v3-shell${immersive ? " v3-shell--immersive" : ""}${scholarImmersive ? " v3-shell--scholar-stage" : ""}${mobileStage ? " v3-shell--mobile-stage" : ""}`}
+      className={`v3-shell v3-shell--${experience}${immersive ? " v3-shell--immersive" : ""}${scholarImmersive ? " v3-shell--scholar-stage" : ""}${mobileStage ? " v3-shell--mobile-stage" : ""}`}
     >
       {mobileStage ? (
         <header className="v3-mobile-chrome">
@@ -329,7 +329,7 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
       )}
       <main className={`v3-main${immersive ? " v3-main--immersive" : ""}`}>
         {!immersive && (
-          <section className={view === "overview" ? "v3-overview-hero" : undefined}>
+          <section className={view === "overview" || !entityId ? "v3-overview-hero" : undefined}>
             <div className="v3-heading">
               <div>
                 <p className="v3-eyebrow">TALARIA · {experience === "istoria" ? "ISTORIA" : "POREIA"}</p>
