@@ -29,6 +29,7 @@ import { EntityVisitMap } from "@/features/visit/entity-visit-map";
 import { VisitHeritageList } from "@/features/visit/visit-heritage-list";
 import { VisitNowList } from "@/features/visit/visit-now-list";
 import { VisitSitesList } from "@/features/visit/visit-sites-list";
+import { PoreiaItineraryView } from "@/features/visit/poreia-itinerary-view";
 
 import { selectChronologicalPreview } from "@/lib/chronological-preview";
 import { eventTypeLabel } from "@/lib/event-taxonomy";
@@ -85,7 +86,7 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
   const [toolsOpen, setToolsOpen] = useState(false);
   const { locale, t } = useI18n();
   const scholarTabs = ["overview", "timeline", "map", "sources"] as const;
-  const visitTabs = ["map", "heritage", "now"] as const;
+  const visitTabs = ["map", "heritage", "itinerary", "now"] as const;
   const [visitNow, setVisitNow] = useState<VisitOpportunity[]>([]);
   const [visitSites, setVisitSites] = useState<VisitSite[]>([]);
   const tabs = lens === "visit" ? visitTabs : scholarTabs;
@@ -100,7 +101,7 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
   const filters = new URLSearchParams();
   const immersive =
     lens === "visit"
-      ? view === "map" || view === "heritage" || view === "now"
+      ? view === "map" || view === "heritage" || view === "itinerary" || view === "now"
       : view === "timeline" || view === "map";
   for (const key of ["from", "to", "types"]) {
     const value = params.get(key);
