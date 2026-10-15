@@ -4,6 +4,7 @@ mod demo;
 mod documents;
 mod entities;
 mod entity_views;
+mod landmarks;
 mod visit;
 mod visit_wikidata;
 mod events;
@@ -88,6 +89,8 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/v1/entities/search", get(search_entities))
         .route("/api/v1/entities/{entity_id}", get(get_entity))
         .route("/api/v1/entities/{entity_id}/overview", get(entity_views::overview))
+        .route("/api/v1/entities/{entity_id}/landmarks", get(landmarks::list))
+        .route("/api/v1/entities/{entity_id}/landmarks/refresh", post(landmarks::refresh))
         .route("/api/v1/entities/{entity_id}/timeline", get(entity_views::timeline))
         .route("/api/v1/entities/{entity_id}/events", get(entity_views::map))
         .route(
