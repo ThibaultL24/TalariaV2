@@ -45,7 +45,7 @@ export function HomePage() {
 
   function onSelect(item: SearchSuggestion) {
     selectPerson(item);
-    navigate("/explorer");
+    navigate("/istoria");
   }
 
   function openFigure(entry: RosterCard, lane: "explorer" | "agora") {
@@ -61,7 +61,7 @@ export function HomePage() {
     }
     if (entry.stats?.entity_id) {
       setEntity(entry.stats.entity_id, label, entry.qid);
-      navigate(`/entities/${entry.stats.entity_id}/map`);
+      navigate(`/istoria/${entry.stats.entity_id}/overview`);
       return;
     }
     setPersonFilter(label, label, entry.qid);
@@ -91,7 +91,7 @@ export function HomePage() {
                 />
               </div>
               <div className="hero__cta">
-                <Link className="button button--primary hero__cta-primary" to="/explorer">
+                <Link className="button button--primary hero__cta-primary" to="/istoria">
                   {t.startExploration}
                 </Link>
                 <Link className="button button--ghost hero__cta-secondary" to="/agora">
@@ -110,20 +110,23 @@ export function HomePage() {
             </header>
             <ul className="home-visions__grid">
               <li className="home-visions__card home-visions__card--scholar">
-                <h3 className="home-visions__card-title">{t.visionScholarTitle}</h3>
+                <h3 className="home-visions__card-title">Istoria</h3>
+                <p className="experience-etymology">ἱστορία · Enquête, recherche et connaissance de l’histoire</p>
                 <p className="home-visions__card-text">{t.visionScholarDesc}</p>
                 <Link className="button button--primary" to="/explorer">{t.visionScholarCta}</Link>
               </li>
               <li className="home-visions__card home-visions__card--visit">
                 <div className="home-visions__card-top">
-                  <h3 className="home-visions__card-title">{t.visionVisitTitle}</h3>
-                  <span className="home-visions__badge">{t.visionVisitBadge}</span>
+                  <h3 className="home-visions__card-title">Poreia</h3>
+                  <p className="experience-etymology">πορεία · Voyage, cheminement et découverte des lieux</p>
+
                 </div>
                 <p className="home-visions__card-text">{t.visionVisitDesc}</p>
                 <Link className="button button--ghost" to="/explorer">{t.visionVisitCta}</Link>
               </li>
               <li className="home-visions__card home-visions__card--agora">
                 <h3 className="home-visions__card-title">{t.visionAgoraTitle}</h3>
+                <p className="experience-etymology">ἀγορά · Place publique, échange et débat des idées</p>
                 <p className="home-visions__card-text">{t.visionAgoraDesc}</p>
                 <Link className="button button--ghost" to="/agora">{t.visionAgoraCta}</Link>
               </li>
