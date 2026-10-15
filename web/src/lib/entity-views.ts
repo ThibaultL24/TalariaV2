@@ -153,8 +153,15 @@ export interface PoreiaItinerary {
 }
 export async function fetchPoreiaItinerary(
   id: string, signal?: AbortSignal,
+  destination?: { lat: number; lon: number; radiusKm: number },
 ): Promise<PoreiaItinerary> {
-  const response = await fetch(`/api/v1/entities/${encodeURIComponent(id)}/visit/itinerary?max_stops=8`, { signal });
+  const params = new URLSearchParams({ max_stops: "8" });
+  if (destination) {
+    params.set("lat", String(destination.lat));
+    params.set("lon", String(destination.lon));
+    params.set("radius_km", String(destination.radiusKm));
+  }
+  const response = await fetch(`/api/v1/entities/${encodeURIComponent(id)}/visit/itinerary?${params}`, { signal });
   if (!response.ok) throw new Error(`Request failed (${response.status})`);
   return response.json() as Promise<PoreiaItinerary>;
 }
