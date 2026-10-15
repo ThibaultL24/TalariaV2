@@ -174,3 +174,62 @@ pub async fn sites_geojson(
         Err(e)=>{tracing::error!(error=%e,"visit geojson query failed");failure(StatusCode::INTERNAL_SERVER_ERROR,"database_error")}
     }
 }
+
+pub async fn refresh_osm(
+    State(state): State<AppState>,
+    Path(site_id): Path<Uuid>,
+) -> Response {
+    if state.offline_only { return failure(StatusCode::SERVICE_UNAVAILABLE,"offline_only") }
+    let row:Option<(String,)> = match sqlx::query_as("SELECT wikidata_qid FROM visit_sites WHERE id=$1")
+        .bind(site_id).fetch_optional(&state.pool).await {
+        Ok(r)=>r,Err(_)=>return failure(StatusCode::INTERNAL_SERVER_ERROR,"database_error")
+    };
+    let Some((qid,))=row else { return failure(StatusCode::NOT_FOUND,"site_not_found") };
+    if !valid_qid(&qid){return failure(StatusCode::BAD_REQUEST,"invalid_qid")}
+    let overpass_query=format!(
+        "[out:json][timeout:20];nwr[\"wikidata\"=\"{qid}\"][\"opening_hours\"];out tags 10;"
+    );
+    let client=match reqwest::Client::builder()
+        .user_agent("Talaria/1.0 (OpenStreetMap exact-QID hours; https://github.com/ThibaultL24/TalariaV2)")
+        .timeout(std::time::Duration::from_secs(35)).build() {
+        Ok(c)=>c, Err(_)=>return failure(StatusCode::INTERNAL_SERVER_ERROR,"http_client_error")
+    };
+    let response=match client.post("https://overpass-api.de/api/interpreter")
+        .form(&[("data",overpass_query)])
+        .send().await {
+            Ok(r)=>r, Err(_)=>return failure(StatusCode::BAD_GATEWAY,"osm_unreachable")
+        };
+    if !response.status().is_success(){return failure(StatusCode::BAD_GATEWAY,"osm_error")}
+    let payload:Value=match response.json().await {
+        Ok(v)=>v, Err(_)=>return failure(StatusCode::BAD_GATEWAY,"osm_invalid_response")
+    };
+    let matches=payload.get("elements").and_then(Value::as_array).into_iter().flatten()
+        .filter_map(|v|{
+            let tags=v.get("tags")?;
+            if tags.get("wikidata")?.as_str()? != qid {return None}
+            let hours=tags.get("opening_hours")?.as_str()?.trim();
+            let element_type=v.get("type")?.as_str()?;
+            let element_id=v.get("id")?.as_i64()?;
+            if hours.is_empty() || hours.len()>512 || element_id<=0 ||
+                !matches!(element_type,"node"|"way"|"relation") {return None}
+            Some((element_type.to_string(),element_id,hours.to_string()))
+        }).collect::<Vec<_>>();
+    // Ambiguous matching OSM objects must be reviewed, not merged automatically.
+    if matches.len()!=1 {
+        return Json(json!({"status":"unverified","matches":matches.len(),"opening_hours":null})).into_response()
+    }
+    let (element_type,element_id,hours)=&matches[0];
+    let result=sqlx::query(r#"
+        UPDATE visit_sites
+        SET osm_opening_hours=$2, osm_object_type=$3, osm_object_id=$4,
+            osm_checked_at=NOW(), updated_at=NOW()
+        WHERE id=$1 AND wikidata_qid=$5
+    "#).bind(site_id).bind(hours).bind(element_type).bind(element_id).bind(qid)
+        .execute(&state.pool).await;
+    match result {
+        Ok(_) => Json(json!({"status":"found","opening_hours":hours,
+            "source":"openstreetmap","osm_object_type":element_type,
+            "osm_object_id":element_id,"open_now":null})).into_response(),
+        Err(_) =>failure(StatusCode::INTERNAL_SERVER_ERROR,"database_error")
+    }
+}
