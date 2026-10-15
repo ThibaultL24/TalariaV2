@@ -100,6 +100,7 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
         )
         .route("/api/v1/entities/{entity_id}/visit/discover", post(visit_wikidata::discover))
         .route("/api/v1/entities/{entity_id}/visit/sites", get(visit_wikidata::sites))
+        .route("/api/v1/entities/{entity_id}/visit/sites/geojson", get(visit_wikidata::sites_geojson))
         .route(
             "/api/v1/entities/{entity_id}/visit/anchors",
             get(visit::anchors),
