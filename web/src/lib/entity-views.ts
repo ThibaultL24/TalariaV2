@@ -105,3 +105,39 @@ export function eventDate(event: TimelineEvent): string {
   if (time.kind === "range") return `${time.start ?? "?"} – ${time.end ?? "?"}`;
   return `${time.kind === "approx" ? "≈ " : ""}${time.start ?? "?"}`;
 }
+
+export interface VisitSite {
+  id: string;
+  wikidata_qid: string;
+  label: string;
+  kind: "building" | "museum" | "monument" | "memorial" | "burial_site" | "residence";
+  relation_pid: "P547" | "P138" | "P119" | "P551";
+  coordinates: { lat: number; lon: number };
+  visitability: "unknown" | "verified_visitable" | "verified_closed" | "restricted";
+}
+
+export async function fetchVisitSites(
+  id: string,
+  options?: { signal?: AbortSignal },
+): Promise<{ sites: VisitSite[]; count: number }> {
+  const response = await fetch(`/api/v1/entities/${encodeURIComponent(id)}/visit/sites`, {
+    signal: options?.signal,
+  });
+  if (!response.ok) throw new Error(`Request failed (${response.status})`);
+  return response.json() as Promise<{ sites: VisitSite[]; count: number }>;
+}
+
+export async function fetchVisitSitesGeojson(
+  id: string,
+  options?: { bbox?: string; signal?: AbortSignal },
+): Promise<GeoJsonFeatureCollection> {
+  const params = new URLSearchParams();
+  if (options?.bbox) params.set("bbox", options.bbox);
+  params.set("limit", "500");
+  const response = await fetch(
+    `/api/v1/entities/${encodeURIComponent(id)}/visit/sites/geojson?${params}`,
+    { signal: options?.signal },
+  );
+  if (!response.ok) throw new Error(`Request failed (${response.status})`);
+  return response.json() as Promise<GeoJsonFeatureCollection>;
+}
