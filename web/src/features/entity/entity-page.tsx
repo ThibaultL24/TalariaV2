@@ -336,7 +336,7 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
                 <h1>
                   <span className="talaria-heading-with-mark">
                     <TalariaSandalMark />
-                    {overview?.entity.label ?? (entityId ? "Loading…" : "Overview")}
+                    {overview?.entity.label ?? (entityId ? "Loading…" : experience === "poreia" ? "Poreia" : "Istoria")}
                   </span>
                 </h1>
                 <p>{experience === "istoria"
