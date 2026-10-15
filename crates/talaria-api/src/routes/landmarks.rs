@@ -17,8 +17,8 @@ fn fail(status: StatusCode, code: &str) -> Response {
 /// Refresh only an editorial projection. Reuses existing event evidence and locally
 /// stored Wikipedia Lead; no LLM, no canonical insert/update.
 pub async fn refresh(State(state): State<AppState>, Path(entity_id): Path<Uuid>) -> Response {
-    if state.offline_only {
-        // Local material is sufficient even in offline mode.
+    if !matches!(std::env::var("TALARIA_ENABLE_LANDMARK_REFRESH").as_deref(), Ok("1")|Ok("true")) {
+        return fail(StatusCode::FORBIDDEN,"landmark_refresh_disabled");
     }
     let mut tx=match state.pool.begin().await {
         Ok(tx)=>tx,Err(_)=>return fail(StatusCode::INTERNAL_SERVER_ERROR,"database_error")
@@ -76,7 +76,7 @@ pub async fn list(
 ) -> Response {
     let limit=query.limit.unwrap_or(12);
     if !(1..=50).contains(&limit) {return fail(StatusCode::BAD_REQUEST,"invalid_limit")}
-    let rows=sqlx::query_as::<_,(Uuid,String,String,String,serde_json::Value,String,String,Option<i64>,i16)>(r#"
+    let rows=sqlx::query_as::<_,(Uuid,String,String,String,serde_json::Value,String,String,String,Option<i64>,i16)>(r#"
         WITH best AS (
           SELECT DISTINCT ON (lm.canonical_event_id)
              lm.canonical_event_id,lm.importance_score,lm.sentence_id,
@@ -86,7 +86,7 @@ pub async fn list(
           ORDER BY lm.canonical_event_id,lm.importance_score DESC,lm.sentence_id
         )
         SELECT ce.id,ce.title,ce.event_type,ce.epistemic_status,
-               ce.time_json,s.text,wp.title,b.wikipedia_revision_id,b.importance_score
+               ce.time_json,s.text,wp.title,wp.wiki_lang,b.wikipedia_revision_id,b.importance_score
         FROM best b JOIN canonical_events ce ON ce.id=b.canonical_event_id
         JOIN sentences s ON s.id=b.sentence_id
         JOIN wiki_pages wp ON wp.id=s.wiki_page_id
@@ -97,15 +97,15 @@ pub async fn list(
     match rows {
         Ok(rows)=>Json(json!({"count":rows.len(),"selection":"wikipedia_lead_evidence",
             "algorithm_version":VERSION,
-            "landmarks":rows.into_iter().map(|(id,title,event_type,epistemic_status,time,quote,page,revision,score)|json!({
+            "landmarks":rows.into_iter().map(|(id,title,event_type,epistemic_status,time,quote,page,lang,revision,score)|json!({
                 "event_id":id,"title":title,"event_type":event_type,
                 "epistemic_status":epistemic_status,"time":time,
                 "importance_score":score,"lead_evidence":{
                     "quote":quote,"wikipedia_page":page,
                     "revision_id":revision,
                     "source_url":match revision {
-                        Some(rev)=>format!("https://en.wikipedia.org/w/index.php?title={}&oldid={}",page.replace(' ',"_"),rev),
-                        None=>format!("https://en.wikipedia.org/wiki/{}",page.replace(' ',"_"))
+                        Some(rev)=>format!("https://{}.wikipedia.org/w/index.php?title={}&oldid={}",lang,page.replace(' ',"_"),rev),
+                        None=>format!("https://{}.wikipedia.org/wiki/{}",lang,page.replace(' ',"_"))
                     }
                 }
             })).collect::<Vec<_>>()})).into_response(),
