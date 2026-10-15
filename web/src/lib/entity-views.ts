@@ -141,3 +141,20 @@ export async function fetchVisitSitesGeojson(
   if (!response.ok) throw new Error(`Request failed (${response.status})`);
   return response.json() as Promise<GeoJsonFeatureCollection>;
 }
+
+export interface PoreiaItinerary {
+  stops: Array<{ id: string; wikidata_qid: string; label: string; coordinates: { lat: number; lon: number } }>;
+  legs: Array<{ from_site_id: string; to_site_id: string; straight_line_km: number; travel_minutes: null }>;
+  routing: "straight_line_only";
+  optimized_for?: "geographic_proximity";
+  travel_minutes: null;
+  warning?: string;
+  message?: string;
+}
+export async function fetchPoreiaItinerary(
+  id: string, signal?: AbortSignal,
+): Promise<PoreiaItinerary> {
+  const response = await fetch(`/api/v1/entities/${encodeURIComponent(id)}/visit/itinerary?max_stops=8`, { signal });
+  if (!response.ok) throw new Error(`Request failed (${response.status})`);
+  return response.json() as Promise<PoreiaItinerary>;
+}
