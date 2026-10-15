@@ -43,7 +43,7 @@ SELECT DISTINCT ?site ?siteLabel ?relation ?geo ?class WHERE {{
   FILTER EXISTS {{
     ?site wdt:P31/wdt:P279* ?allowed .
     VALUES ?allowed {{
-      wd:Q41176 wd:Q33506 wd:Q4989906 wd:Q5003624 wd:Q811979
+      wd:Q41176 wd:Q33506 wd:Q4989906 wd:Q5003624 wd:Q811979 wd:Q3947 wd:Q39614
     }}
   }}
   SERVICE wikibase:label {{ bd:serviceParam wikibase:language "fr,en". }}
@@ -166,7 +166,7 @@ pub async fn sites_geojson(
             let features:Vec<Value>=rows.iter().map(|(id,qid,label,kind,pid,lat,lon)| json!({
                 "type":"Feature","id":id,
                 "geometry":{"type":"Point","coordinates":[lon,lat]},
-                "properties":{"id":id,"title":label,"event_type":"museum",
+                "properties":{"id":id,"title":label,"event_type": match kind.as_str() { "museum"=>"museum","monument"=>"statue","memorial"=>"memorial","burial_site"=>"burial",_=>"residence" },
                   "visit_layer":"heritage_site","kind":kind,"wikidata_qid":qid,"relation_pid":pid}
             })).collect();
             Json(json!({"type":"FeatureCollection","features":features,"count":features.len()})).into_response()
