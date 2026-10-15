@@ -5,6 +5,7 @@ mod documents;
 mod entities;
 mod entity_views;
 mod visit;
+mod visit_wikidata;
 mod events;
 mod facets;
 mod interactions;
@@ -97,6 +98,8 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
             "/api/v1/entities/{entity_id}/visit/heritage/geojson",
             get(visit::heritage_geojson),
         )
+        .route("/api/v1/entities/{entity_id}/visit/discover", post(visit_wikidata::discover))
+        .route("/api/v1/entities/{entity_id}/visit/sites", get(visit_wikidata::sites))
         .route(
             "/api/v1/entities/{entity_id}/visit/anchors",
             get(visit::anchors),
