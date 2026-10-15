@@ -499,3 +499,21 @@
 .comment-reaction.is-mine {
   outline: 1px solid var(--color-accent);
 }
+
+/* Distinct classical agora artwork; former art remains as a fallback. */
+[data-theme="light"] .hero.hero--agora-photo {
+  background:
+    linear-gradient(90deg, rgba(247,243,234,.90),rgba(247,243,234,.64) 48%,rgba(247,243,234,.14)),
+    url("/brand/agora-scene.webp") center 50% / cover no-repeat,
+    url("/brand/hero-agora-day.jpg") center 50% / cover no-repeat;
+}
+[data-theme="dark"] .hero.hero--agora-photo {
+  background:
+    linear-gradient(90deg, rgba(7,18,29,.92),rgba(7,18,29,.71) 48%,rgba(7,18,29,.20)),
+    url("/brand/agora-scene.webp") center 50% / cover no-repeat,
+    url("/brand/hero-agora-night.jpg") center 50% / cover no-repeat;
+}
+@media(max-width:720px) {
+  [data-theme="light"] .hero.hero--agora-photo { background-position:center,65% center,65% center; }
+  [data-theme="dark"] .hero.hero--agora-photo { background-position:center,65% center,65% center; }
+}
