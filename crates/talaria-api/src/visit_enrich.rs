@@ -11,10 +11,8 @@ use talaria_sources::{
 };
 use sha2::{Digest, Sha256};
 use talaria_store::{
-    find_active_person_event_by_occurrence, find_active_person_event_by_title,
-    find_entity_by_qid, find_entity_by_wikipedia_title, find_nearby_visit_heritage, get_entity,
-    insert_person_event, search_local_entities, upsert_visit_opportunity, PersonEventInsert,
-    VisitOpportunityInsert,
+    find_entity_by_qid, find_entity_by_wikipedia_title, get_entity,
+    search_local_entities, upsert_visit_opportunity, VisitOpportunityInsert,
 };
 
 const VISIT_HERITAGE_DEDUP_RADIUS_M: f64 = 80.0;
@@ -343,80 +341,14 @@ fn fixture_matches_qid(row_qid: Option<&str>, entity_qid: Option<&str>) -> bool 
     }
 }
 
+// Legacy fixtures are intentionally excluded from canonical_events.
+// Import real heritage through /visit/discover and visit_sites.
 async fn seed_heritage_fixture(
-    pool: &PgPool,
-    entity_id: Uuid,
-    row: &FixtureHeritage,
+    _pool: &PgPool,
+    _entity_id: Uuid,
+    _row: &FixtureHeritage,
 ) -> anyhow::Result<bool> {
-    let occurrence_key = format!("visit-fixture:{}", row.source_record_id);
-    if find_active_person_event_by_occurrence(pool, entity_id, &occurrence_key)
-        .await?
-        .is_some()
-    {
-        return Ok(false);
-    }
-    if find_active_person_event_by_title(pool, entity_id, &row.title)
-        .await?
-        .is_some()
-    {
-        return Ok(false);
-    }
-    if find_nearby_visit_heritage(
-        pool,
-        entity_id,
-        &row.event_type,
-        row.lat,
-        row.lon,
-        VISIT_HERITAGE_DEDUP_RADIUS_M,
-    )
-    .await?
-    .is_some()
-    {
-        return Ok(false);
-    }
-    let surface = row.year.map(|y| y.to_string());
-    let time_json = if let Some(year) = row.year {
-        serde_json::json!({
-            "kind": "approx",
-            "precision": "year",
-            "start": year.to_string(),
-            "surface": year.to_string(),
-        })
-    } else {
-        serde_json::json!({"kind": "unknown", "precision": "year"})
-    };
-    let start_time = row.year.and_then(|y| {
-        chrono::NaiveDate::from_ymd_opt(y, 1, 1)
-            .and_then(|d| d.and_hms_opt(0, 0, 0))
-            .map(|ndt| chrono::DateTime::<Utc>::from_naive_utc_and_offset(ndt, Utc))
-    });
-    let fingerprint = hex::encode(
-        Sha256::digest(format!("visit-heritage|{entity_id}|{occurrence_key}").as_bytes()),
-    );
-    insert_person_event(
-        pool,
-        &PersonEventInsert {
-            entity_id,
-            event_type: row.event_type.clone(),
-            epistemic_status: "attested".into(),
-            title: row.title.clone(),
-            summary: row.summary.clone(),
-            start_time,
-            time_json,
-            place_label: row.place_label.clone(),
-            lat: Some(row.lat),
-            lon: Some(row.lon),
-            confidence: 0.75,
-            map_eligible: true,
-            fingerprint,
-            occurrence_key,
-            occurrence_stem: surface,
-            predicate: "commemorated_at".into(),
-            place_identity_qid: None,
-        },
-    )
-    .await?;
-    Ok(true)
+    Ok(false)
 }
 
 pub async fn resolve_entity(
