@@ -299,7 +299,7 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
     >
       {mobileStage ? (
         <header className="v3-mobile-chrome">
-          <Link className="v3-mobile-chrome__back" to={`/${experience}/${entityId}/overview`}>
+          <Link className="v3-mobile-chrome__back" to={`/${experience}/${entityId}/${experience === "poreia" ? "map" : "overview"}`}>
             {t.immersiveBack}
           </Link>
           <h1 className="v3-mobile-chrome__title">{overview?.entity.label ?? "Loading…"}</h1>
@@ -362,12 +362,12 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
             <h1 className="v3-immersive-title">
               {overview?.entity.label ?? "Loading…"}
             </h1>
-            <VisitLensToggle entityId={entityId} view={view} />
+            <span className="talaria-experience__subtitle">{experience === "istoria" ? "Faits & anecdotes" : "Tourisme patrimonial"}</span>
           </div>
         )}
         {entityId && !immersive && (
           <div className="v3-lens-row">
-            <VisitLensToggle entityId={entityId} view={view} />
+            <span className="talaria-experience__subtitle">{experience === "istoria" ? "Faits & anecdotes" : "Tourisme patrimonial"}</span>
           </div>
         )}
         {entityId && (
@@ -622,9 +622,9 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
                   View on map
                 </Link>
               )}
-              <Link to={`/${experience}/${entityId}/timeline?${params}`}>
+              {experience === "istoria" && <Link to={`/${experience}/${entityId}/timeline?${params}`}>
                 View in timeline
-              </Link>
+              </Link>}
             </div>
             <EventDetailCard
               event={selected}
