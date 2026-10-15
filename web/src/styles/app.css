@@ -2602,3 +2602,19 @@ a {
 @media (prefers-reduced-motion: reduce) {
   .home-visions__card { transition: none; }
 }
+
+/* Poreia journey: restrained editorial panorama, reusing the paired Aegean
+   art assets and reserving text against a solid surface for readability. */
+.poreia-route__banner {
+  height: clamp(130px, 18vw, 220px);
+  margin-bottom: clamp(18px, 3vw, 30px);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  background-position: center 52%;
+  background-size: cover;
+  background-repeat: no-repeat;
+  box-shadow: var(--shadow-sm);
+}
+[data-theme="light"] .poreia-route__banner { background-image: url("/brand/hero-aegean-day.jpg"); }
+[data-theme="dark"] .poreia-route__banner { background-image: url("/brand/hero-aegean-night.jpg"); }
+@media(max-width:640px) { .poreia-route__banner { height: 120px; } }
