@@ -22,7 +22,12 @@ fn bbox(input: Option<&str>) -> Result<Option<[f64;4]>, ()> {
     Ok(Some([nums[0],nums[1],nums[2],nums[3]]))
 }
 
+fn mutation_enabled()->bool {
+    matches!(std::env::var("TALARIA_ENABLE_VISIT_DISCOVERY").as_deref(),Ok("1")|Ok("true"))
+}
+
 pub async fn discover(State(state): State<AppState>, Path(entity_id): Path<Uuid>) -> Response {
+    if !mutation_enabled() { return failure(StatusCode::FORBIDDEN,"visit_discovery_disabled") }
     if state.offline_only { return failure(StatusCode::SERVICE_UNAVAILABLE, "offline_only"); }
     let row: Option<(Option<String>,)> = match sqlx::query_as("SELECT qid FROM entities WHERE id=$1")
         .bind(entity_id).fetch_optional(&state.pool).await {
@@ -179,6 +184,7 @@ pub async fn refresh_osm(
     State(state): State<AppState>,
     Path(site_id): Path<Uuid>,
 ) -> Response {
+    if !mutation_enabled() { return failure(StatusCode::FORBIDDEN,"visit_discovery_disabled") }
     if state.offline_only { return failure(StatusCode::SERVICE_UNAVAILABLE,"offline_only") }
     let row:Option<(String,)> = match sqlx::query_as("SELECT wikidata_qid FROM visit_sites WHERE id=$1")
         .bind(site_id).fetch_optional(&state.pool).await {
