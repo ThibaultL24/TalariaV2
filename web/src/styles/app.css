@@ -2510,3 +2510,23 @@ a {
 @media (prefers-reduced-motion: reduce) {
   .v3-tabs a { transition: none; }
 }
+
+/* Poreia: editorial itinerary with concrete places and honest distance metadata. */
+.poreia-route { max-width: 1000px; margin: clamp(1rem, 4vw, 3rem) auto; padding: 0 clamp(1rem, 3vw, 2rem); }
+.poreia-route__header { margin-bottom: 2rem; }
+.poreia-route__header h2 { font-family: var(--font-display, Georgia, serif); font-size: clamp(1.65rem, 3vw, 2.5rem); line-height: 1.12; }
+.poreia-route__header p:last-child { max-width: 60ch; color: var(--color-text-secondary, #737b83); line-height: 1.65; }
+.poreia-route__stops { list-style: none; margin: 0; padding: 0; display: grid; gap: .85rem; }
+.poreia-route__stop {
+  display: grid; grid-template-columns: 3rem minmax(0,1fr) auto; align-items: center; gap: 1rem;
+  padding: 1.2rem; border: 1px solid var(--color-border-subtle, #c3cbd2);
+  border-radius: 1rem; background: var(--color-bg-surface, transparent);
+}
+.poreia-route__index { font-family: var(--font-display, Georgia, serif); font-size: 1.3rem; opacity: .58; }
+.poreia-route__stop h3 { margin: 0 0 .3rem; font-family: var(--font-body, Inter, sans-serif); font-weight: 650; }
+.poreia-route__stop p { margin: .15rem 0; font-size: .85rem; color: var(--color-text-secondary, #737b83); }
+.poreia-route__disclaimer { margin-top: 1.5rem; font-size: .84rem; line-height: 1.65; color: var(--color-text-secondary, #737b83); }
+@media (max-width: 680px) {
+  .poreia-route__stop { grid-template-columns: 2.25rem minmax(0, 1fr); }
+  .poreia-route__stop .button { grid-column: 2; width: max-content; }
+}
