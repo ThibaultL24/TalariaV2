@@ -2618,3 +2618,53 @@ a {
 [data-theme="light"] .poreia-route__banner { background-image: url("/brand/hero-aegean-day.jpg"); }
 [data-theme="dark"] .poreia-route__banner { background-image: url("/brand/hero-aegean-night.jpg"); }
 @media(max-width:640px) { .poreia-route__banner { height: 120px; } }
+
+
+/* New Greek-experience artwork. The previous photographs remain as resilient
+   fallbacks until the generated WebP files are uploaded under /public/brand. */
+[data-theme="light"] .home-visions__card-art--istoria {
+  background-image: url("/brand/istoria-scene.webp"), url("/brand/hero-overview-day.jpg");
+}
+[data-theme="dark"] .home-visions__card-art--istoria {
+  background-image: linear-gradient(rgba(5,16,27,.26),rgba(5,16,27,.26)), url("/brand/istoria-scene.webp"), url("/brand/hero-overview-night.jpg");
+}
+[data-theme="light"] .home-visions__card-art--poreia {
+  background-image: url("/brand/poreia-scene.webp"), url("/brand/hero-aegean-day.jpg");
+}
+[data-theme="dark"] .home-visions__card-art--poreia {
+  background-image: linear-gradient(rgba(5,16,27,.24),rgba(5,16,27,.24)), url("/brand/poreia-scene.webp"), url("/brand/hero-aegean-night.jpg");
+}
+[data-theme="light"] .home-visions__card-art--agora {
+  background-image: url("/brand/agora-scene.webp"), url("/brand/hero-agora-day.jpg");
+}
+[data-theme="dark"] .home-visions__card-art--agora {
+  background-image: linear-gradient(rgba(5,16,27,.25),rgba(5,16,27,.25)), url("/brand/agora-scene.webp"), url("/brand/hero-agora-night.jpg");
+}
+[data-theme="light"] .v3-shell--istoria .v3-overview-hero {
+  background-image: url("/brand/istoria-scene.webp"), url("/brand/hero-overview-day.jpg");
+}
+[data-theme="dark"] .v3-shell--istoria .v3-overview-hero {
+  background-image: url("/brand/istoria-scene.webp"), url("/brand/hero-overview-night.jpg");
+}
+[data-theme="light"] .v3-shell--poreia .v3-overview-hero {
+  background-image: url("/brand/poreia-scene.webp"), url("/brand/hero-aegean-day.jpg");
+}
+[data-theme="dark"] .v3-shell--poreia .v3-overview-hero {
+  background-image: url("/brand/poreia-scene.webp"), url("/brand/hero-aegean-night.jpg");
+}
+[data-theme="light"] .poreia-route__banner {
+  background-image: url("/brand/poreia-scene.webp"), url("/brand/hero-aegean-day.jpg");
+}
+[data-theme="dark"] .poreia-route__banner {
+  background-image: url("/brand/poreia-scene.webp"), url("/brand/hero-aegean-night.jpg");
+}
+[data-theme="light"] .v3-overview-hero::before {
+  background: linear-gradient(90deg,rgba(247,243,234,.93) 0%,rgba(247,243,234,.8) 38%,rgba(247,243,234,.12) 100%);
+}
+[data-theme="dark"] .v3-overview-hero::before {
+  background: linear-gradient(90deg,rgba(7,18,29,.95) 0%,rgba(7,18,29,.8) 44%,rgba(7,18,29,.2) 100%);
+}
+@media (max-width: 720px) {
+  [data-theme="light"] .v3-overview-hero::before { background: linear-gradient(rgba(247,243,234,.88),rgba(247,243,234,.7)); }
+  [data-theme="dark"] .v3-overview-hero::before { background: linear-gradient(rgba(7,18,29,.89),rgba(7,18,29,.68)); }
+}
