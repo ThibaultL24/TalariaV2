@@ -74,11 +74,16 @@ SELECT DISTINCT ?site ?siteLabel ?relation ?geo ?class WHERE {{
         let Some(site_qid)=site_uri.strip_prefix("http://www.wikidata.org/entity/").or_else(||site_uri.strip_prefix("https://www.wikidata.org/entity/")) else {rejected+=1;continue};
         if !valid_qid(site_qid) || label.trim().is_empty(){rejected+=1;continue}
         let Some((lat,lon))=parse_point(wkt) else {rejected+=1;continue};
-        let kind = match field("class").unwrap_or("") {
-            "http://www.wikidata.org/entity/Q33506" => "museum",
-            "http://www.wikidata.org/entity/Q4989906" => "monument",
-            "http://www.wikidata.org/entity/Q5003624" => "memorial",
-            _ => "building",
+        let kind = match pid {
+            "P119" => "burial_site",
+            "P551" => "residence",
+            _ => match field("class").unwrap_or("") {
+                "http://www.wikidata.org/entity/Q33506" => "museum",
+                "http://www.wikidata.org/entity/Q4989906" => "monument",
+                "http://www.wikidata.org/entity/Q5003624" => "memorial",
+                "http://www.wikidata.org/entity/Q39614" => "burial_site",
+                _ => "building",
+            },
         };
         let mut tx=match state.pool.begin().await { Ok(v)=>v,Err(_)=>return failure(StatusCode::INTERNAL_SERVER_ERROR,"database_error")};
         let site_id:Result<Uuid,_>=sqlx::query_scalar(r#"
