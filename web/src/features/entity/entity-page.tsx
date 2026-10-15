@@ -88,7 +88,6 @@ export function EntityPage() {
   const visitTabs = ["map", "heritage", "now"] as const;
   const [visitNow, setVisitNow] = useState<VisitOpportunity[]>([]);
   const [visitSites, setVisitSites] = useState<VisitSite[]>([]);
-  const [visitRefresh, setVisitRefresh] = useState(0);
   const tabs = lens === "visit" ? visitTabs : scholarTabs;
   useEffect(() => {
     if (!entityId || lens !== "visit") return;
@@ -97,7 +96,7 @@ export function EntityPage() {
       .then(result => { if (!controller.signal.aborted) setVisitSites(result.sites); })
       .catch(() => { if (!controller.signal.aborted) setVisitSites([]); });
     return () => controller.abort();
-  }, [entityId, lens, visitRefresh]);
+  }, [entityId, lens]);
   const filters = new URLSearchParams();
   const immersive =
     lens === "visit"
