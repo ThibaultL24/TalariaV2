@@ -70,9 +70,6 @@ export function selectChronologicalPreview(
   events: TimelineEvent[],
   limit = 10,
 ): TimelineEvent[] {
-  if (events.length <= limit) {
-    return [...events].sort(compareChronological);
-  }
 
   // Landmark status must be earned by sourced significance, not just chronology.
   // Birth and death belong in biographical metadata rather than monopolizing cards.
