@@ -65,7 +65,7 @@ export function HomePage() {
       return;
     }
     setPersonFilter(label, label, entry.qid);
-    navigate("/explorer");
+    navigate("/istoria");
   }
 
   return (
@@ -113,7 +113,7 @@ export function HomePage() {
                 <h3 className="home-visions__card-title">Istoria</h3>
                 <p className="experience-etymology">ἱστορία · Enquête, recherche et connaissance de l’histoire</p>
                 <p className="home-visions__card-text">{t.visionScholarDesc}</p>
-                <Link className="button button--primary" to="/explorer">{t.visionScholarCta}</Link>
+                <Link className="button button--primary" to="/istoria">{t.visionScholarCta}</Link>
               </li>
               <li className="home-visions__card home-visions__card--visit">
                 <div className="home-visions__card-top">
@@ -122,7 +122,7 @@ export function HomePage() {
 
                 </div>
                 <p className="home-visions__card-text">{t.visionVisitDesc}</p>
-                <Link className="button button--ghost" to="/explorer">{t.visionVisitCta}</Link>
+                <Link className="button button--ghost" to="/poreia">{t.visionVisitCta}</Link>
               </li>
               <li className="home-visions__card home-visions__card--agora">
                 <h3 className="home-visions__card-title">{t.visionAgoraTitle}</h3>
