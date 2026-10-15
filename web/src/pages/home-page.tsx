@@ -111,14 +111,14 @@ export function HomePage() {
             <ul className="home-visions__grid">
               <li className="home-visions__card home-visions__card--scholar">
                 <h3 className="home-visions__card-title">Istoria</h3>
-                <p className="experience-etymology">ἱστορία · Enquête, recherche et connaissance de l’histoire</p>
+                <p className="experience-etymology">{locale === "fr" ? "ἱστορία · Enquête, recherche et connaissance de l’histoire" : "ἱστορία · Inquiry, research and historical understanding"}</p>
                 <p className="home-visions__card-text">{t.visionScholarDesc}</p>
                 <Link className="button button--primary" to="/istoria">{t.visionScholarCta}</Link>
               </li>
               <li className="home-visions__card home-visions__card--visit">
                 <div className="home-visions__card-top">
                   <h3 className="home-visions__card-title">Poreia</h3>
-                  <p className="experience-etymology">πορεία · Voyage, cheminement et découverte des lieux</p>
+                  <p className="experience-etymology">{locale === "fr" ? "πορεία · Voyage, cheminement et découverte des lieux" : "πορεία · Journey, exploration and discovery of places"}</p>
 
                 </div>
                 <p className="home-visions__card-text">{t.visionVisitDesc}</p>
@@ -126,7 +126,7 @@ export function HomePage() {
               </li>
               <li className="home-visions__card home-visions__card--agora">
                 <h3 className="home-visions__card-title">{t.visionAgoraTitle}</h3>
-                <p className="experience-etymology">ἀγορά · Place publique, échange et débat des idées</p>
+                <p className="experience-etymology">{locale === "fr" ? "ἀγορά · Place publique, échange et débat des idées" : "ἀγορά · Public forum, exchange and debate"}</p>
                 <p className="home-visions__card-text">{t.visionAgoraDesc}</p>
                 <Link className="button button--ghost" to="/agora">{t.visionAgoraCta}</Link>
               </li>
