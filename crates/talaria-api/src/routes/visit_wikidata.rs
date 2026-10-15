@@ -246,7 +246,7 @@ pub async fn refresh_osm(
 }
 
 #[derive(Debug, Deserialize, Default)]
-pub struct ItineraryQuery { pub max_stops: Option<usize>, pub lat: Option<f64>, pub lon: Option<f64>, pub radius_km: Option<f64> }
+pub struct ItineraryQuery { pub max_stops: Option<usize>, pub lat: Option<f64>, pub lon: Option<f64>, pub radius_km: Option<f64>, pub mode: Option<String> }
 
 fn straight_line_km(a:(f64,f64),b:(f64,f64))->f64 {
     let dlat=(b.0-a.0).to_radians();
@@ -262,6 +262,8 @@ pub async fn itinerary(
     Query(query): Query<ItineraryQuery>,
 )->Response {
     let max_stops=query.max_stops.unwrap_or(6).clamp(1,12);
+    let mode=query.mode.as_deref().unwrap_or("walking");
+    if !matches!(mode,"walking"|"cycling"|"driving"){return failure(StatusCode::BAD_REQUEST,"invalid_travel_mode")}
     let origin=match (query.lat,query.lon) {
         (None,None)=>None,
         (Some(lat),Some(lon)) if lat.is_finite() && lon.is_finite()
@@ -310,7 +312,58 @@ pub async fn itinerary(
     let stops:Vec<Value>=route.iter().map(|(id,qid,label,lat,lon)|json!({
         "id":id,"wikidata_qid":qid,"label":label,"coordinates":{"lat":lat,"lon":lon}
     })).collect();
-    Json(json!({"stops":stops,"legs":legs,"routing":"straight_line_only",
+    // Routing is optional and must be configured with a trusted, operator-controlled
+    // OSRM service for each transport profile. We never assume a public demo API.
+    let routing_env=match mode {
+        "walking"=>"TALARIA_OSRM_WALKING_URL",
+        "cycling"=>"TALARIA_OSRM_CYCLING_URL",
+        _=>"TALARIA_OSRM_DRIVING_URL"
+    };
+    if route.len()>=2 {
+        if let Ok(base)=std::env::var(routing_env) {
+            let base=base.trim_end_matches('/');
+            if base.starts_with("https://") || base.starts_with("http://127.0.0.1:") ||
+               base.starts_with("http://localhost:") {
+                let coordinates=route.iter().map(|(_,_,_,lat,lon)|format!("{lon},{lat}"))
+                    .collect::<Vec<_>>().join(";");
+                let url=format!("{base}/route/v1/driving/{coordinates}");
+                let client=reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(12)).build();
+                if let Ok(client)=client {
+                    if let Ok(resp)=client.get(url).query(&[
+                        ("overview","full"),("geometries","geojson"),("steps","false")
+                    ]).send().await {
+                        if resp.status().is_success() {
+                            if let Ok(body)=resp.json::<Value>().await {
+                                if let Some(best)=body.get("routes").and_then(Value::as_array)
+                                    .and_then(|items|items.first()) {
+                                    let length=best.get("distance").and_then(Value::as_f64);
+                                    let duration=best.get("duration").and_then(Value::as_f64);
+                                    let shape=best.get("geometry");
+                                    if let (Some(meters),Some(seconds),Some(geometry))=(length,duration,shape) {
+                                        if meters.is_finite() && seconds.is_finite() &&
+                                           meters>=0.0 && seconds>=0.0 &&
+                                           geometry.get("type").and_then(Value::as_str)==Some("LineString") {
+                                            return Json(json!({
+                                              "stops":stops,"legs":legs,"routing":"osrm",
+                                              "travel_mode":mode,
+                                              "route_distance_km":meters/1000.0,
+                                              "travel_minutes":(seconds/60.0).ceil() as i64,
+                                              "route_geometry":geometry,
+                                              "provider":"operator_configured_osrm",
+                                              "warning":"Durée indicative issue du moteur de routage ; vérifier accès, horaires et conditions de visite."
+                                            })).into_response();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Json(json!({"stops":stops,"legs":legs,"travel_mode":mode,"routing":"straight_line_only",
         "optimized_for":"geographic_proximity","origin":origin.map(|(lat,lon)|json!({"lat":lat,"lon":lon})),"radius_km":if origin.is_some(){Some(radius)}else{None},"travel_minutes":null,
         "warning":"Ordre géographique indicatif : ne représente ni un itinéraire routable ni des horaires d'ouverture."
     })).into_response()
