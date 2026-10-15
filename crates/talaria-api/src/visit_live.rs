@@ -129,6 +129,7 @@ async fn upsert_wikidata_culture(
 ) -> anyhow::Result<bool> {
     let starts_at = parse_day_start(item.start.as_deref());
     let ends_at = parse_day_end(item.end.as_deref());
+    if starts_at.is_none() || ends_at.is_none() { return Ok(false); }
     let canonical_url = format!("https://www.wikidata.org/wiki/{}", item.item_qid);
     upsert_visit_opportunity(
         pool,
@@ -270,13 +271,15 @@ pub async fn enrich_from_openagenda(
         .build()?;
     let now = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     let size = cap.min(50).max(1);
-    let url = format!(
-        "https://api.openagenda.com/v2/events?search={}&threshold=auto&size={}&sort=timings.asc&timings%5Bgte%5D={}",
-        urlencoding_encode(label),
-        size,
-        urlencoding_encode(&now),
-    );
-    let resp = client.get(&url).header("key", &key).send().await?;
+    let resp = client.get("https://api.openagenda.com/v2/events")
+        .header("key", &key)
+        .query(&[
+            ("search", label.to_string()),
+            ("threshold", "auto".to_string()),
+            ("size", size.to_string()),
+            ("sort", "timings.asc".to_string()),
+            ("timings[gte]", now),
+        ]).send().await?;
     if !resp.status().is_success() {
         tracing::warn!(status = %resp.status(), "openagenda search failed");
         return Ok(0);
@@ -298,6 +301,13 @@ pub async fn enrich_from_openagenda(
             break;
         }
         if let Some(row) = parse_openagenda_event(&event, &langs) {
+            // A search hit is not necessarily an activity related to this person.
+            let needle = label.trim().to_lowercase();
+            let searchable = format!("{} {}", row.title, row.summary.as_deref().unwrap_or("")).to_lowercase();
+            if !searchable.contains(&needle) || !matches!((row.starts_at, row.ends_at),
+                (Some(start), Some(end)) if end >= Utc::now() && end >= start) {
+                continue;
+            }
             upsert_visit_opportunity(pool, &row.with_entity(entity_id)).await?;
             written += 1;
         }
