@@ -246,7 +246,7 @@ pub async fn refresh_osm(
 }
 
 #[derive(Debug, Deserialize, Default)]
-pub struct ItineraryQuery { pub max_stops: Option<usize> }
+pub struct ItineraryQuery { pub max_stops: Option<usize>, pub lat: Option<f64>, pub lon: Option<f64>, pub radius_km: Option<f64> }
 
 fn straight_line_km(a:(f64,f64),b:(f64,f64))->f64 {
     let dlat=(b.0-a.0).to_radians();
@@ -262,19 +262,36 @@ pub async fn itinerary(
     Query(query): Query<ItineraryQuery>,
 )->Response {
     let max_stops=query.max_stops.unwrap_or(6).clamp(1,12);
+    let origin=match (query.lat,query.lon) {
+        (None,None)=>None,
+        (Some(lat),Some(lon)) if lat.is_finite() && lon.is_finite()
+          && (-90.0..=90.0).contains(&lat) && (-180.0..=180.0).contains(&lon) => Some((lat,lon)),
+        _=>return failure(StatusCode::BAD_REQUEST,"invalid_origin")
+    };
+    let radius=query.radius_km.unwrap_or(25.0);
+    if !radius.is_finite() || !(1.0..=200.0).contains(&radius) {
+        return failure(StatusCode::BAD_REQUEST,"invalid_radius_km")
+    }
     let rows=sqlx::query_as::<_,(Uuid,String,String,f64,f64)>(r#"
         SELECT s.id,s.wikidata_qid,s.label,ST_Y(s.geom::geometry),ST_X(s.geom::geometry)
         FROM visit_sites s
         WHERE s.publication_status='published'
           AND EXISTS(SELECT 1 FROM visit_person_sites p WHERE p.entity_id=$1 AND p.site_id=s.id)
+          AND ($2::float8 IS NULL OR ST_DWithin(
+                s.geom,ST_SetSRID(ST_MakePoint($3,$2),4326)::geography,$4))
         ORDER BY s.label LIMIT 250
-    "#).bind(entity_id).fetch_all(&state.pool).await;
+    "#).bind(entity_id).bind(origin.map(|v|v.0)).bind(origin.map(|v|v.1))
+       .bind(radius*1000.0).fetch_all(&state.pool).await;
     let Ok(mut pending)=rows else {return failure(StatusCode::INTERNAL_SERVER_ERROR,"database_error")};
     if pending.is_empty(){return Json(json!({
         "stops":[],"legs":[],"routing":"straight_line_only","travel_minutes":null,
         "message":"Aucun site patrimonial lié à cette personne n'est encore disponible."
     })).into_response()}
-    // Deterministic starting site by label. Subsequent stops favor geographical proximity.
+    if let Some(start)=origin {
+        pending.sort_by(|a,b| straight_line_km(start,(a.3,a.4))
+          .total_cmp(&straight_line_km(start,(b.3,b.4))).then_with(||a.1.cmp(&b.1)));
+    }
+    // Deterministic nearest-neighbor sequence, not actual road routing.
     let mut route=Vec::new();
     route.push(pending.remove(0));
     while !pending.is_empty() && route.len()<max_stops {
@@ -294,7 +311,7 @@ pub async fn itinerary(
         "id":id,"wikidata_qid":qid,"label":label,"coordinates":{"lat":lat,"lon":lon}
     })).collect();
     Json(json!({"stops":stops,"legs":legs,"routing":"straight_line_only",
-        "optimized_for":"geographic_proximity","travel_minutes":null,
+        "optimized_for":"geographic_proximity","origin":origin.map(|(lat,lon)|json!({"lat":lat,"lon":lon})),"radius_km":if origin.is_some(){Some(radius)}else{None},"travel_minutes":null,
         "warning":"Ordre géographique indicatif : ne représente ni un itinéraire routable ni des horaires d'ouverture."
     })).into_response()
 }
