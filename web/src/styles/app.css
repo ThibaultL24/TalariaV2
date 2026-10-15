@@ -2456,3 +2456,57 @@ a {
     animation: none;
   }
 }
+
+/* Istoria / Poreia / Agora — shared visual language, separate journeys. */
+.home-visions__card { position: relative; isolation: isolate; }
+.home-visions__card-title { letter-spacing: -.025em; text-wrap: balance; }
+.experience-etymology {
+  margin: .4rem 0 1rem;
+  max-width: 33ch;
+  color: var(--color-text-secondary, #747c83);
+  font-family: var(--font-body, Inter, sans-serif);
+  font-size: .77rem;
+  line-height: 1.55;
+  letter-spacing: .008em;
+}
+.home-visions__card:focus-within {
+  outline: 2px solid var(--color-border-strong, currentColor);
+  outline-offset: 3px;
+}
+.home-visions__card .button { min-height: 42px; }
+.v3-heading h1 { text-wrap: balance; }
+.v3-overview-hero .v3-heading p:not(.v3-eyebrow) {
+  font-family: var(--font-body, Inter, sans-serif);
+  max-width: 64ch;
+  line-height: 1.65;
+}
+.v3-chron-preview {
+  max-width: 1160px;
+  margin-inline: auto;
+}
+.v3-chron-preview .v3-events button {
+  font-family: var(--font-body, Inter, sans-serif);
+  text-align: start;
+  text-wrap: pretty;
+}
+.v3-tabs {
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: 1rem;
+}
+.v3-tabs a {
+  scroll-snap-align: start;
+  transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease;
+}
+.v3-tabs a:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+.talaria-experience__subtitle { font-family: var(--font-body, Inter, sans-serif); opacity: .8; }
+@media (max-width: 640px) {
+  .home-visions__grid { gap: 1rem; }
+  .home-visions__card { min-width: 0; }
+  .v3-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .v3-tabs a { transition: none; }
+}
