@@ -147,8 +147,8 @@ pub async fn list_visit_now(
                ST_Y(vo.geom::geometry) AS lat, ST_X(vo.geom::geometry) AS lon
         FROM visit_opportunities vo
         WHERE vo.entity_id = $1
-          AND (vo.ends_at IS NULL OR vo.ends_at >= $2)
-          AND (vo.starts_at IS NULL OR vo.starts_at <= $3)
+          AND vo.starts_at IS NOT NULL AND vo.ends_at IS NOT NULL
+          AND vo.ends_at >= $2 AND vo.starts_at <= $3
     "#;
     let map_clause = if map_only {
         " AND vo.geom IS NOT NULL"

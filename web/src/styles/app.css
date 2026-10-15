@@ -2456,3 +2456,165 @@ a {
     animation: none;
   }
 }
+
+/* Istoria / Poreia / Agora — shared visual language, separate journeys. */
+.home-visions__card { position: relative; isolation: isolate; }
+.home-visions__card-title { letter-spacing: -.025em; text-wrap: balance; }
+.experience-etymology {
+  margin: .4rem 0 1rem;
+  max-width: 33ch;
+  color: var(--color-text-secondary, #747c83);
+  font-family: var(--font-body, Inter, sans-serif);
+  font-size: .77rem;
+  line-height: 1.55;
+  letter-spacing: .008em;
+}
+.home-visions__card:focus-within {
+  outline: 2px solid var(--color-border-strong, currentColor);
+  outline-offset: 3px;
+}
+.home-visions__card .button { min-height: 42px; }
+.v3-heading h1 { text-wrap: balance; }
+.v3-overview-hero .v3-heading p:not(.v3-eyebrow) {
+  font-family: var(--font-body, Inter, sans-serif);
+  max-width: 64ch;
+  line-height: 1.65;
+}
+.v3-chron-preview {
+  max-width: 1160px;
+  margin-inline: auto;
+}
+.v3-chron-preview .v3-events button {
+  font-family: var(--font-body, Inter, sans-serif);
+  text-align: start;
+  text-wrap: pretty;
+}
+.v3-tabs {
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: 1rem;
+}
+.v3-tabs a {
+  scroll-snap-align: start;
+  transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease;
+}
+.v3-tabs a:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+.talaria-experience__subtitle { font-family: var(--font-body, Inter, sans-serif); opacity: .8; }
+@media (max-width: 640px) {
+  .home-visions__grid { gap: 1rem; }
+  .home-visions__card { min-width: 0; }
+  .v3-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .v3-tabs a { transition: none; }
+}
+
+/* Poreia: editorial itinerary with concrete places and honest distance metadata. */
+.poreia-route { max-width: 1000px; margin: clamp(1rem, 4vw, 3rem) auto; padding: 0 clamp(1rem, 3vw, 2rem); }
+.poreia-route__header { margin-bottom: 2rem; }
+.poreia-route__header h2 { font-family: var(--font-display, Georgia, serif); font-size: clamp(1.65rem, 3vw, 2.5rem); line-height: 1.12; }
+.poreia-route__header p:last-child { max-width: 60ch; color: var(--color-text-secondary, #737b83); line-height: 1.65; }
+.poreia-route__stops { list-style: none; margin: 0; padding: 0; display: grid; gap: .85rem; }
+.poreia-route__stop {
+  display: grid; grid-template-columns: 3rem minmax(0,1fr) auto; align-items: center; gap: 1rem;
+  padding: 1.2rem; border: 1px solid var(--color-border-subtle, #c3cbd2);
+  border-radius: 1rem; background: var(--color-bg-surface, transparent);
+}
+.poreia-route__index { font-family: var(--font-display, Georgia, serif); font-size: 1.3rem; opacity: .58; }
+.poreia-route__stop h3 { margin: 0 0 .3rem; font-family: var(--font-body, Inter, sans-serif); font-weight: 650; }
+.poreia-route__stop p { margin: .15rem 0; font-size: .85rem; color: var(--color-text-secondary, #737b83); }
+.poreia-route__disclaimer { margin-top: 1.5rem; font-size: .84rem; line-height: 1.65; color: var(--color-text-secondary, #737b83); }
+@media (max-width: 680px) {
+  .poreia-route__stop { grid-template-columns: 2.25rem minmax(0, 1fr); }
+  .poreia-route__stop .button { grid-column: 2; width: max-content; }
+}
+
+/* A landmark is an editorial projection, but its source must remain plainly accessible. */
+.istoria-landmark-source { display: inline-block; margin-top: .4rem; font-size: .78rem; color: var(--color-text-secondary); text-decoration: underline; text-underline-offset: 3px; }
+.istoria-landmark-source:hover,.istoria-landmark-source:focus-visible { color: var(--color-text-primary); }
+.poreia-destination-form { display: flex; align-items: end; flex-wrap: wrap; gap: .75rem; margin-block: 1.2rem; }
+.poreia-destination-form label { display: grid; gap: .4rem; font-size: .78rem; font-weight: 600; }
+.poreia-destination-form input { width: min(100%, 10rem); min-height: 42px; padding: .5rem .65rem; border: 1px solid var(--color-border-subtle); border-radius: .5rem; color: var(--color-text-primary); background: var(--color-bg-surface); }
+.poreia-destination-form input:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+@media(max-width:520px) { .poreia-destination-form label { flex: 1 1 36%; } .poreia-destination-form button { flex: 1 1 100%; } }
+
+
+/* Three editorial entrances. Reuse the established Aegean brand imagery, never
+   replace the brand hero or put illustrative images in historical evidence. */
+.home-visions__card { overflow: hidden; }
+.home-visions__card-art {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: clamp(112px, 11vw, 150px);
+  margin: -22px -20px 10px;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background-position: center 46%;
+  background-size: cover;
+  background-repeat: no-repeat;
+  isolation: isolate;
+}
+.home-visions__card-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 42%,
+    color-mix(in srgb, var(--color-bg-surface) 27%, transparent) 100%);
+  pointer-events: none;
+}
+[data-theme="light"] .home-visions__card-art--istoria { background-image: url("/brand/hero-overview-day.jpg"); }
+[data-theme="dark"] .home-visions__card-art--istoria { background-image: url("/brand/hero-overview-night.jpg"); }
+[data-theme="light"] .home-visions__card-art--poreia { background-image: url("/brand/hero-aegean-day.jpg"); }
+[data-theme="dark"] .home-visions__card-art--poreia { background-image: url("/brand/hero-aegean-night.jpg"); }
+[data-theme="light"] .home-visions__card-art--agora { background-image: url("/brand/hero-agora-day.jpg"); }
+[data-theme="dark"] .home-visions__card-art--agora { background-image: url("/brand/hero-agora-night.jpg"); }
+.home-visions__card-art--istoria { background-position: 50% 48%; }
+.home-visions__card-art--poreia { background-position: 50% 58%; }
+.home-visions__card-art--agora { background-position: 50% 44%; }
+.home-visions__card .experience-etymology {
+  margin: 0 0 .45rem;
+  min-height: 2.5em;
+  color: var(--color-text-secondary);
+}
+.home-visions__card-title { font-size: clamp(1.3rem, 1.5vw, 1.6rem); }
+.home-visions__card .button { margin-top: auto; align-self: flex-start; }
+.home-visions__card--visit .home-visions__card-top {
+  display: block;
+}
+.v3-shell--poreia .v3-overview-hero { background-position: 50% 56%; }
+[data-theme="light"] .v3-shell--poreia .v3-overview-hero { background-image: url("/brand/hero-aegean-day.jpg"); }
+[data-theme="dark"] .v3-shell--poreia .v3-overview-hero { background-image: url("/brand/hero-aegean-night.jpg"); }
+.v3-shell--poreia .v3-overview-hero::before {
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--color-bg-primary) 73%, transparent) 0%,
+    color-mix(in srgb, var(--color-bg-primary) 55%, transparent) 52%,
+    color-mix(in srgb, var(--color-bg-primary) 12%, transparent) 100%);
+}
+@media (max-width: 720px) {
+  .home-visions__card-art { min-height: 132px; }
+  .v3-shell--poreia .v3-overview-hero::before {
+    background: linear-gradient(180deg,
+      color-mix(in srgb, var(--color-bg-primary) 72%, transparent) 0%,
+      color-mix(in srgb, var(--color-bg-primary) 80%, transparent) 100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-visions__card { transition: none; }
+}
+
+/* Poreia journey: restrained editorial panorama, reusing the paired Aegean
+   art assets and reserving text against a solid surface for readability. */
+.poreia-route__banner {
+  height: clamp(130px, 18vw, 220px);
+  margin-bottom: clamp(18px, 3vw, 30px);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  background-position: center 52%;
+  background-size: cover;
+  background-repeat: no-repeat;
+  box-shadow: var(--shadow-sm);
+}
+[data-theme="light"] .poreia-route__banner { background-image: url("/brand/hero-aegean-day.jpg"); }
+[data-theme="dark"] .poreia-route__banner { background-image: url("/brand/hero-aegean-night.jpg"); }
+@media(max-width:640px) { .poreia-route__banner { height: 120px; } }

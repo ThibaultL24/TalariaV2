@@ -15,18 +15,24 @@ import {
 import {
   fetchVisitHeritage,
   fetchVisitNow,
+  fetchVisitSites,
+  fetchSourcedLandmarks,
+  type SourcedLandmark,
   getEntityView,
   eventDate,
   type EntityOverview,
   type Page,
   type VisitOpportunity,
+  type VisitSite,
 } from "@/lib/entity-views";
 import { EventMomentSearch } from "@/components/search/event-moment-search";
 import { HistoricalTimeline } from "@/components/timeline/historical-timeline";
 import { EntityVisitMap } from "@/features/visit/entity-visit-map";
 import { VisitHeritageList } from "@/features/visit/visit-heritage-list";
 import { VisitNowList } from "@/features/visit/visit-now-list";
-import { VisitLensToggle, useExplorerLens } from "@/features/visit/visit-lens-toggle";
+import { VisitSitesList } from "@/features/visit/visit-sites-list";
+import { PoreiaItineraryView } from "@/features/visit/poreia-itinerary-view";
+
 import { selectChronologicalPreview } from "@/lib/chronological-preview";
 import { eventTypeLabel } from "@/lib/event-taxonomy";
 import { useI18n } from "@/lib/i18n";
@@ -34,8 +40,8 @@ import { EntityMap } from "./entity-map";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { COMPACT_VIEWPORT_MQ } from "@/lib/breakpoints";
 
-export function EntityPage() {
-  const { entityId: routeEntityId, view = "overview" } = useParams();
+export function EntityPage({ experience = "istoria" }: { experience?: "istoria" | "poreia" }) {
+  const { entityId: routeEntityId, view = experience === "poreia" ? "map" : "overview" } = useParams();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const storedId = useExplorerStore(s => s.entityId);
@@ -55,9 +61,9 @@ export function EntityPage() {
   useEffect(() => {
     if (storedId && pendingSelection.current) {
       pendingSelection.current = false;
-      navigate(`/entities/${storedId}/map`);
+      navigate(`/${experience}/${storedId}/map`);
     } else if (!routeEntityId && entityId) {
-      navigate(`/entities/${entityId}/map`, { replace: true });
+      navigate(`/${experience}/${entityId}/map`, { replace: true });
     }
   }, [storedId, entityId, routeEntityId, navigate]);
   const [overview, setOverview] = useState<EntityOverview>();
@@ -74,22 +80,41 @@ export function EntityPage() {
   >();
   const [timelineZoomToken, setTimelineZoomToken] = useState(0);
   const [timelineZoomEventId, setTimelineZoomEventId] = useState<string | undefined>();
-  const lens = useExplorerLens();
+  const lens = experience === "poreia" ? "visit" : "scholar";
   const compactViewport = useMediaQuery(COMPACT_VIEWPORT_MQ);
-  const scholarImmersive = lens === "scholar" && (view === "timeline" || view === "map");
+  const scholarImmersive = Boolean(entityId) && lens === "scholar" && (view === "timeline" || view === "map");
   const mobileStage = scholarImmersive && compactViewport;
   const stageMode = mobileStage ? "fullscreen" : "desktop";
   const [toolsOpen, setToolsOpen] = useState(false);
   const { locale, t } = useI18n();
   const scholarTabs = ["overview", "timeline", "map", "sources"] as const;
-  const visitTabs = ["map", "heritage", "now"] as const;
+  const visitTabs = ["map", "heritage", "itinerary", "now"] as const;
   const [visitNow, setVisitNow] = useState<VisitOpportunity[]>([]);
+  const [visitSites, setVisitSites] = useState<VisitSite[]>([]);
+  const [sourcedLandmarks, setSourcedLandmarks] = useState<SourcedLandmark[]>([]);
   const tabs = lens === "visit" ? visitTabs : scholarTabs;
+  useEffect(() => {
+    if (!entityId || lens !== "visit") return;
+    const controller = new AbortController();
+    void fetchVisitSites(entityId, { signal: controller.signal })
+      .then(result => { if (!controller.signal.aborted) setVisitSites(result.sites); })
+      .catch(() => { if (!controller.signal.aborted) setVisitSites([]); });
+    return () => controller.abort();
+  }, [entityId, lens]);
+  useEffect(() => {
+    setSourcedLandmarks([]);
+    if (!entityId || experience !== "istoria") return;
+    const controller = new AbortController();
+    void fetchSourcedLandmarks(entityId, controller.signal)
+      .then(result => { if (!controller.signal.aborted) setSourcedLandmarks(Array.isArray(result?.landmarks) ? result.landmarks : []); })
+      .catch(() => { if (!controller.signal.aborted) setSourcedLandmarks([]); });
+    return () => controller.abort();
+  }, [entityId, experience, revision]);
   const filters = new URLSearchParams();
-  const immersive =
+  const immersive = Boolean(entityId) && (
     lens === "visit"
-      ? view === "map" || view === "heritage" || view === "now"
-      : view === "timeline" || view === "map";
+      ? view === "map" || view === "heritage" || view === "itinerary" || view === "now"
+      : view === "timeline" || view === "map");
   for (const key of ["from", "to", "types"]) {
     const value = params.get(key);
     if (value && !(view === "timeline" && (key === "from" || key === "to"))) filters.set(key, value);
@@ -105,7 +130,7 @@ export function EntityPage() {
   useEffect(() => {
     if (!entityId || lens !== "visit") return;
     if (!visitTabs.includes(view as (typeof visitTabs)[number])) {
-      navigate(`/entities/${entityId}/map?${params.toString()}`, { replace: true });
+      navigate(`/${experience}/${entityId}/map?${params.toString()}`, { replace: true });
     }
   }, [entityId, lens, view, navigate, params]);
   useEffect(() => {
@@ -217,7 +242,7 @@ export function EntityPage() {
       if (view === "heritage") {
         const copy = new URLSearchParams(params);
         copy.set("event", event.id);
-        navigate(`/entities/${entityId}/map?${copy.toString()}`);
+        navigate(`/${experience}/${entityId}/map?${copy.toString()}`);
       }
       return;
     }
@@ -282,11 +307,11 @@ export function EntityPage() {
   );
   return (
     <div
-      className={`v3-shell${immersive ? " v3-shell--immersive" : ""}${scholarImmersive ? " v3-shell--scholar-stage" : ""}${mobileStage ? " v3-shell--mobile-stage" : ""}`}
+      className={`v3-shell v3-shell--${experience}${immersive ? " v3-shell--immersive" : ""}${scholarImmersive ? " v3-shell--scholar-stage" : ""}${mobileStage ? " v3-shell--mobile-stage" : ""}`}
     >
       {mobileStage ? (
         <header className="v3-mobile-chrome">
-          <Link className="v3-mobile-chrome__back" to={`/entities/${entityId}/overview`}>
+          <Link className="v3-mobile-chrome__back" to={`/${experience}/${entityId}/${experience === "poreia" ? "map" : "overview"}`}>
             {t.immersiveBack}
           </Link>
           <h1 className="v3-mobile-chrome__title">{overview?.entity.label ?? "Loading…"}</h1>
@@ -304,17 +329,26 @@ export function EntityPage() {
       )}
       <main className={`v3-main${immersive ? " v3-main--immersive" : ""}`}>
         {!immersive && (
-          <section className={view === "overview" ? "v3-overview-hero" : undefined}>
+          <section className={view === "overview" || !entityId ? "v3-overview-hero" : undefined}>
             <div className="v3-heading">
               <div>
-                <p className="v3-eyebrow">TALARIA · EXPLORER</p>
+                <p className="v3-eyebrow">TALARIA · {experience === "istoria" ? "ISTORIA" : "POREIA"}</p>
                 <h1>
                   <span className="talaria-heading-with-mark">
                     <TalariaSandalMark />
-                    {overview?.entity.label ?? (entityId ? "Loading…" : "Overview")}
+                    {overview?.entity.label ?? (entityId ? "Loading…" : experience === "poreia" ? "Poreia" : "Istoria")}
                   </span>
                 </h1>
-                <p>Explore a life through time, places and evidence.</p>
+                <p>{experience === "istoria"
+                  ? "L’enquête historique : faits, chronologie et sources."
+                  : "Le voyage culturel : lieux, monuments et parcours."}</p>
+                {entityId && (
+                  <div className="talaria-experience-links">
+                    <Link className="button button--ghost" to={experience === "istoria" ? `/poreia/${entityId}/map` : `/istoria/${entityId}/overview`}>
+                      {experience === "istoria" ? "Découvrir ses lieux dans Poreia →" : "Explorer sa vie dans Istoria →"}
+                    </Link>
+                  </div>
+                )}
               </div>
             </div>
             <section className="v3-search" aria-label="Search a person">
@@ -328,7 +362,7 @@ export function EntityPage() {
                   const selectedId = useExplorerStore.getState().entityId;
                   if (selectedId) {
                     pendingSelection.current = false;
-                    navigate(`/entities/${selectedId}/map`);
+                    navigate(`/${experience}/${selectedId}/map`);
                   }
                 }}
               />
@@ -339,7 +373,7 @@ export function EntityPage() {
               )}
               {picker.error && <p role="alert">{picker.error}</p>}
               {!entityId && !picker.ingestBusy && (
-                <p className="v3-note">Search for a person to explore their life, places and sources.</p>
+                <p className="v3-note">{experience === "istoria" ? "Rechercher une personnalité pour découvrir sa vie et ses sources." : "Rechercher une personnalité pour découvrir les lieux et parcours associés."}</p>
               )}
             </section>
           </section>
@@ -349,12 +383,12 @@ export function EntityPage() {
             <h1 className="v3-immersive-title">
               {overview?.entity.label ?? "Loading…"}
             </h1>
-            <VisitLensToggle entityId={entityId} view={view} />
+            <span className="talaria-experience__subtitle">{experience === "istoria" ? "Faits & anecdotes" : "Tourisme patrimonial"}</span>
           </div>
         )}
         {entityId && !immersive && (
           <div className="v3-lens-row">
-            <VisitLensToggle entityId={entityId} view={view} />
+            <span className="talaria-experience__subtitle">{experience === "istoria" ? "Faits & anecdotes" : "Tourisme patrimonial"}</span>
           </div>
         )}
         {entityId && (
@@ -362,10 +396,12 @@ export function EntityPage() {
             {tabs.map((tab) => (
               <NavLink
                 key={tab}
-                to={`/entities/${entityId}/${tab}?${params}`}
+                to={`/${experience}/${entityId}/${tab}?${params}`}
                 className={({ isActive }) => (isActive ? "active" : "")}
               >
-                {tab === "heritage"
+                {tab === "itinerary"
+                  ? "Parcours"
+                  : tab === "heritage"
                   ? t.visitHeritageTab
                   : tab === "now"
                     ? t.visitNowTab
@@ -452,7 +488,22 @@ export function EntityPage() {
               id={entityId}
               selected={eventId ?? undefined}
               focus={mapFocus}
-              onSelect={select}
+              onSelect={(id) => {
+                const site = visitSites.find(row => row.id === id);
+                if (site) setMapFocus({ eventId: id, lat: site.coordinates.lat, lon: site.coordinates.lon });
+                else select(id);
+              }}
+            />
+          )}
+          {view === "heritage" && lens === "visit" && (
+            <VisitSitesList
+              sites={visitSites}
+              onFocus={(site) => {
+                setMapFocus({ eventId: site.id, lat: site.coordinates.lat, lon: site.coordinates.lon });
+                const copy = new URLSearchParams(params);
+                copy.delete("event");
+                navigate(`/${experience}/${entityId}/map?${copy.toString()}`);
+              }}
             />
           )}
           {view === "heritage" && lens === "visit" && (
@@ -466,6 +517,12 @@ export function EntityPage() {
                 else select(id);
               }}
             />
+          )}
+          {view === "itinerary" && lens === "visit" && (
+            <PoreiaItineraryView entityId={entityId} onFocus={(point) => {
+              setMapFocus({ eventId: point.id, lat: point.lat, lon: point.lon });
+              navigate(`/poreia/${entityId}/map`);
+            }} />
           )}
           {view === "now" && lens === "visit" && (
             <VisitNowList
@@ -484,7 +541,7 @@ export function EntityPage() {
                 select(id);
                 const copy = new URLSearchParams(params);
                 copy.set("event", id);
-                navigate(`/entities/${entityId}/map?${copy.toString()}`);
+                navigate(`/${experience}/${entityId}/map?${copy.toString()}`);
               }}
             />
           )}
@@ -522,18 +579,25 @@ export function EntityPage() {
         {lens === "scholar" && view === "overview" && (
           <section className="v3-chron-preview">
             <h2>{t.chronPreviewTitle}</h2>
-            <p className="v3-note">{t.chronPreviewHint}</p>
+            <p className="v3-note">{sourcedLandmarks.length ? "Épisodes présents dans l’introduction Wikipédia et reliés à des preuves déjà ingérées." : "Sélection indicative selon les catégories historiques ; correspondance avec l’introduction Wikipédia non vérifiée."}</p>
             <ol className="v3-events v3-events--landmarks">
-              {chronPreviewEvents.map((event) => (
+              {sourcedLandmarks.length ? sourcedLandmarks.map((landmark) => (
+                <li key={landmark.event_id}>
+                  <span>{landmark.time?.start ?? "Date non précisée"}</span>
+                  <button type="button" onClick={() => select(landmark.event_id)}>
+                    {landmark.title}
+                  </button>
+                  <small>{eventTypeLabel(landmark.event_type, locale)} · Wikipédia, introduction</small>
+                  <a className="istoria-landmark-source" href={landmark.lead_evidence.source_url}
+                     target="_blank" rel="noopener noreferrer">
+                     Consulter la source{landmark.lead_evidence.revision_id ? " (révision archivée)" : ""} ↗
+                  </a>
+                </li>
+              )) : chronPreviewEvents.map(event => (
                 <li key={event.id}>
                   <span>{eventDate(event)}</span>
-                  <button type="button" onClick={() => select(event.id)}>
-                    {event.title}
-                  </button>
-                  <small>
-                    {eventTypeLabel(event.event_type, locale)} ·{" "}
-                    {event.place_label ?? "Place not established"}
-                  </small>
+                  <button type="button" onClick={() => select(event.id)}>{event.title}</button>
+                  <small>{eventTypeLabel(event.event_type, locale)} · {event.place_label ?? "Lieu non établi"}</small>
                 </li>
               ))}
             </ol>
@@ -590,13 +654,13 @@ export function EntityPage() {
           <aside className="v3-detail">
             <div className="v3-detail-links">
               {selected.map_eligible && (
-                <Link to={`/entities/${entityId}/map?${params}`}>
+                <Link to={`/${experience}/${entityId}/map?${params}`}>
                   View on map
                 </Link>
               )}
-              <Link to={`/entities/${entityId}/timeline?${params}`}>
+              {experience === "istoria" && <Link to={`/${experience}/${entityId}/timeline?${params}`}>
                 View in timeline
-              </Link>
+              </Link>}
             </div>
             <EventDetailCard
               event={selected}

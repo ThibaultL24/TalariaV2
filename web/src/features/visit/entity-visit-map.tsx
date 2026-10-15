@@ -10,7 +10,7 @@ import {
   type LegendKey,
 } from "@/lib/event-legend";
 import { spreadStackedMapPoints } from "@/lib/geo";
-import { fetchVisitHeritageGeojson, fetchVisitNowGeojson } from "@/lib/entity-views";
+import { fetchVisitHeritageGeojson, fetchVisitNowGeojson, fetchVisitSitesGeojson } from "@/lib/entity-views";
 import { MapCanvas } from "@/components/map/map-canvas";
 import { MapSourceManager } from "@/components/map/map-source-manager";
 import { MapLayers } from "@/components/map/map-layers";
@@ -75,12 +75,13 @@ export function EntityVisitMap({
       void Promise.all([
         fetchVisitHeritageGeojson(id, { bbox, signal }),
         fetchVisitNowGeojson(id, { bbox, signal }),
+        fetchVisitSitesGeojson(id, { bbox, signal }),
       ])
-        .then(([heritage, now]) => {
+        .then(([heritage, now, sites]) => {
           if (signal.aborted) return;
           const merged: GeoJsonFeatureCollection = {
             type: "FeatureCollection",
-            features: [...heritage.features, ...now.features],
+            features: [...heritage.features, ...now.features, ...sites.features],
           };
           setData(
             spreadStackedMapPoints(attachLegendKeys(merged)) as TalariaFeatureCollection,
@@ -109,7 +110,7 @@ export function EntityVisitMap({
     map.flyTo({
       center: [focus.lon, focus.lat],
       zoom,
-      duration: 1100,
+      duration: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 850,
       essential: true,
     });
   }, [map, focus?.eventId, focus?.lat, focus?.lon]);

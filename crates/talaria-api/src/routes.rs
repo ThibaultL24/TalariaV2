@@ -4,7 +4,10 @@ mod demo;
 mod documents;
 mod entities;
 mod entity_views;
+mod landmarks;
 mod visit;
+mod visit_wikidata;
+mod poreia_destinations;
 mod events;
 mod facets;
 mod interactions;
@@ -87,6 +90,8 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/v1/entities/search", get(search_entities))
         .route("/api/v1/entities/{entity_id}", get(get_entity))
         .route("/api/v1/entities/{entity_id}/overview", get(entity_views::overview))
+        .route("/api/v1/entities/{entity_id}/landmarks", get(landmarks::list))
+        .route("/api/v1/entities/{entity_id}/landmarks/refresh", post(landmarks::refresh))
         .route("/api/v1/entities/{entity_id}/timeline", get(entity_views::timeline))
         .route("/api/v1/entities/{entity_id}/events", get(entity_views::map))
         .route(
@@ -97,6 +102,12 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
             "/api/v1/entities/{entity_id}/visit/heritage/geojson",
             get(visit::heritage_geojson),
         )
+        .route("/api/v1/entities/{entity_id}/visit/discover", post(visit_wikidata::discover))
+        .route("/api/v1/visit/sites/{site_id}/refresh-osm", post(visit_wikidata::refresh_osm))
+        .route("/api/v1/entities/{entity_id}/visit/sites", get(visit_wikidata::sites))
+        .route("/api/v1/entities/{entity_id}/visit/sites/geojson", get(visit_wikidata::sites_geojson))
+        .route("/api/v1/entities/{entity_id}/visit/itinerary", get(visit_wikidata::itinerary))
+        .route("/api/v1/visit/destinations", get(poreia_destinations::search))
         .route(
             "/api/v1/entities/{entity_id}/visit/anchors",
             get(visit::anchors),

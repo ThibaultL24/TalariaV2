@@ -2,8 +2,8 @@
 import type { TimelineEvent } from "@/lib/api";
 
 const MAJOR_TYPE_SCORE: Record<string, number> = {
-  birth: 100,
-  death: 100,
+  birth: 12,
+  death: 12,
   battle: 88,
   siege: 84,
   office: 86,
@@ -18,8 +18,8 @@ const MAJOR_TYPE_SCORE: Record<string, number> = {
   publication: 58,
   creation: 56,
   travel: 42,
-  residence: 38,
-  education: 40,
+  residence: 25,
+  education: 30,
   anecdote: 28,
   historical_fact: 32,
   life_event: 30,
@@ -58,44 +58,33 @@ export function previewImportanceScore(event: TimelineEvent): number {
   if (event.time?.precision === "day") score += 10;
   else if (event.time?.precision === "month") score += 5;
   if (event.map_eligible) score += 3;
+  if (event.event_type === "birth" || event.event_type === "death") score -= 20;
   return score;
 }
 
 /**
- * Pick landmark moments for the overview list: birth/death anchors + top-ranked public life.
+ * Pick meaningful life episodes; birth/death are fallback only.
  * Result is sorted chronologically for reading.
  */
 export function selectChronologicalPreview(
   events: TimelineEvent[],
   limit = 10,
 ): TimelineEvent[] {
-  if (events.length <= limit) {
-    return [...events].sort(compareChronological);
-  }
 
-  const byId = new Map(events.map((event) => [event.id, event]));
-  const birth = events.find((event) => event.event_type === "birth");
-  const death = events.find((event) => event.event_type === "death");
-  const reserved = new Set<string>();
-  if (birth) reserved.add(birth.id);
-  if (death) reserved.add(death.id);
-
-  const slots = Math.max(1, limit - reserved.size);
-  const ranked = events
-    .filter((event) => !reserved.has(event.id))
+  // Landmark status must be earned by sourced significance, not just chronology.
+  // Birth and death belong in biographical metadata rather than monopolizing cards.
+  const ranked = [...events]
+    .filter((event) => !["birth", "death"].includes(event.event_type))
     .sort(
       (a, b) =>
         previewImportanceScore(b) - previewImportanceScore(a) ||
         compareChronological(a, b),
     )
-    .slice(0, slots);
+    .slice(0, limit);
 
-  const picked: TimelineEvent[] = [];
-  for (const id of [birth?.id, ...ranked.map((e) => e.id), death?.id]) {
-    if (!id || picked.some((e) => e.id === id)) continue;
-    const event = byId.get(id);
-    if (event) picked.push(event);
-  }
+  const picked = ranked.length
+    ? ranked
+    : [...events].sort((a, b) => previewImportanceScore(b) - previewImportanceScore(a)).slice(0, limit);
 
   return picked.sort(compareChronological);
 }
