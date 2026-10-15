@@ -39,7 +39,7 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { COMPACT_VIEWPORT_MQ } from "@/lib/breakpoints";
 
 export function EntityPage({ experience = "istoria" }: { experience?: "istoria" | "poreia" }) {
-  const { entityId: routeEntityId, view = "overview" } = useParams();
+  const { entityId: routeEntityId, view = experience === "poreia" ? "map" : "overview" } = useParams();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const storedId = useExplorerStore(s => s.entityId);
@@ -80,7 +80,7 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
   const [timelineZoomEventId, setTimelineZoomEventId] = useState<string | undefined>();
   const lens = experience === "poreia" ? "visit" : "scholar";
   const compactViewport = useMediaQuery(COMPACT_VIEWPORT_MQ);
-  const scholarImmersive = lens === "scholar" && (view === "timeline" || view === "map");
+  const scholarImmersive = Boolean(entityId) && lens === "scholar" && (view === "timeline" || view === "map");
   const mobileStage = scholarImmersive && compactViewport;
   const stageMode = mobileStage ? "fullscreen" : "desktop";
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -99,10 +99,10 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
     return () => controller.abort();
   }, [entityId, lens]);
   const filters = new URLSearchParams();
-  const immersive =
+  const immersive = Boolean(entityId) && (
     lens === "visit"
       ? view === "map" || view === "heritage" || view === "itinerary" || view === "now"
-      : view === "timeline" || view === "map";
+      : view === "timeline" || view === "map");
   for (const key of ["from", "to", "types"]) {
     const value = params.get(key);
     if (value && !(view === "timeline" && (key === "from" || key === "to"))) filters.set(key, value);
@@ -361,7 +361,7 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
               )}
               {picker.error && <p role="alert">{picker.error}</p>}
               {!entityId && !picker.ingestBusy && (
-                <p className="v3-note">Search for a person to explore their life, places and sources.</p>
+                <p className="v3-note">{experience === "istoria" ? "Rechercher une personnalité pour découvrir sa vie et ses sources." : "Rechercher une personnalité pour découvrir les lieux et parcours associés."}</p>
               )}
             </section>
           </section>
@@ -387,7 +387,9 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
                 to={`/${experience}/${entityId}/${tab}?${params}`}
                 className={({ isActive }) => (isActive ? "active" : "")}
               >
-                {tab === "heritage"
+                {tab === "itinerary"
+                  ? "Parcours"
+                  : tab === "heritage"
                   ? t.visitHeritageTab
                   : tab === "now"
                     ? t.visitNowTab
