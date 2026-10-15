@@ -7,6 +7,7 @@ mod entity_views;
 mod landmarks;
 mod visit;
 mod visit_wikidata;
+mod poreia_destinations;
 mod events;
 mod facets;
 mod interactions;
@@ -106,6 +107,7 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/v1/entities/{entity_id}/visit/sites", get(visit_wikidata::sites))
         .route("/api/v1/entities/{entity_id}/visit/sites/geojson", get(visit_wikidata::sites_geojson))
         .route("/api/v1/entities/{entity_id}/visit/itinerary", get(visit_wikidata::itinerary))
+        .route("/api/v1/visit/destinations", get(poreia_destinations::search))
         .route(
             "/api/v1/entities/{entity_id}/visit/anchors",
             get(visit::anchors),
