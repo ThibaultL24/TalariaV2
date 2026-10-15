@@ -14,7 +14,7 @@ Do not transplant migrations 033–035 from `cursor/local-aegean-tourism`: this 
 
 ## Known limits
 
-- New Wikidata import is **explicit**, not scheduled. Post requests trigger a public WDQS query: add authentication, quotas and cache coordination before deploying the endpoint to public production.
+- New Wikidata import is **explicit**, not scheduled. Mutation endpoints return 403 unless `TALARIA_ENABLE_VISIT_DISCOVERY=1` is set. This feature flag is not authentication: add authentication, quotas and cache coordination before enabling on public production.
 - The query is intentionally conservative: some important sites will be absent if Wikidata lacks an eligible type or direct P625. No empty-site placeholder is created.
 - No paid third-party service is required for Wikidata lookup; OpenAgenda requires a configured free public API key.
 - `visit_opportunities` is a pre-existing `main` table, not the unrelated `cultural_activities` table from the divergent local branch.
@@ -38,7 +38,7 @@ cd web && npm ci && npm run build && npx vitest run
 For API smoke tests, obtain the internal UUID (not the QID):
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/entities/14eb944a-fa31-459a-be7d-1f32488e2bd6/visit/discover
+TALARIA_ENABLE_VISIT_DISCOVERY=1 cargo run -p talaria-api -- serve # in API terminal\n# From another terminal:\ncurl -X POST http://localhost:8080/api/v1/entities/14eb944a-fa31-459a-be7d-1f32488e2bd6/visit/discover
 curl http://localhost:8080/api/v1/entities/14eb944a-fa31-459a-be7d-1f32488e2bd6/visit/sites
 curl http://localhost:8080/api/v1/entities/14eb944a-fa31-459a-be7d-1f32488e2bd6/visit/sites/geojson
 ```
