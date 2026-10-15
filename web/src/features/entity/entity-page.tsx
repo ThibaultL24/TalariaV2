@@ -16,6 +16,8 @@ import {
   fetchVisitHeritage,
   fetchVisitNow,
   fetchVisitSites,
+  fetchSourcedLandmarks,
+  type SourcedLandmark,
   getEntityView,
   eventDate,
   type EntityOverview,
@@ -89,6 +91,7 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
   const visitTabs = ["map", "heritage", "itinerary", "now"] as const;
   const [visitNow, setVisitNow] = useState<VisitOpportunity[]>([]);
   const [visitSites, setVisitSites] = useState<VisitSite[]>([]);
+  const [sourcedLandmarks, setSourcedLandmarks] = useState<SourcedLandmark[]>([]);
   const tabs = lens === "visit" ? visitTabs : scholarTabs;
   useEffect(() => {
     if (!entityId || lens !== "visit") return;
@@ -98,6 +101,15 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
       .catch(() => { if (!controller.signal.aborted) setVisitSites([]); });
     return () => controller.abort();
   }, [entityId, lens]);
+  useEffect(() => {
+    setSourcedLandmarks([]);
+    if (!entityId || experience !== "istoria") return;
+    const controller = new AbortController();
+    void fetchSourcedLandmarks(entityId, controller.signal)
+      .then(result => { if (!controller.signal.aborted) setSourcedLandmarks(result.landmarks); })
+      .catch(() => { if (!controller.signal.aborted) setSourcedLandmarks([]); });
+    return () => controller.abort();
+  }, [entityId, experience, revision]);
   const filters = new URLSearchParams();
   const immersive = Boolean(entityId) && (
     lens === "visit"
@@ -567,9 +579,9 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
         {lens === "scholar" && view === "overview" && (
           <section className="v3-chron-preview">
             <h2>{t.chronPreviewTitle}</h2>
-            <p className="v3-note">{t.chronPreviewHint}</p>
+            <p className="v3-note">{sourcedLandmarks.length ? "Épisodes présents dans l’introduction Wikipédia et reliés à des preuves déjà ingérées." : "Sélection indicative selon les catégories historiques ; correspondance avec l’introduction Wikipédia non vérifiée."}</p>
             <ol className="v3-events v3-events--landmarks">
-              {chronPreviewEvents.map((event) => (
+              {(sourcedLandmarks.length ? sourcedLandmarks.map(landmark => events.find(e => e.id === landmark.event_id)).filter((e): e is TimelineEvent => Boolean(e)) : chronPreviewEvents).map((event) => (
                 <li key={event.id}>
                   <span>{eventDate(event)}</span>
                   <button type="button" onClick={() => select(event.id)}>
