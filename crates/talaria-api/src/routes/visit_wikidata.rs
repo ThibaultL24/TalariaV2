@@ -176,7 +176,7 @@ pub async fn sites_geojson(
             let features:Vec<Value>=rows.iter().map(|(id,qid,label,kind,pid,lat,lon)| json!({
                 "type":"Feature","id":id,
                 "geometry":{"type":"Point","coordinates":[lon,lat]},
-                "properties":{"id":id,"title":label,"event_type": match kind.as_str() { "museum"=>"museum","monument"=>"statue","memorial"=>"memorial","burial_site"=>"burial",_=>"residence" },
+                "properties":{"id":id,"title":label,"event_type": match kind { "museum"=>"museum","monument"=>"statue","memorial"=>"memorial","burial_site"=>"burial",_=>"residence" },
                   "visit_layer":"heritage_site","kind":kind,"wikidata_qid":qid,"relation_pid":pid}
             })).collect();
             Json(json!({"type":"FeatureCollection","features":features,"count":features.len()})).into_response()
