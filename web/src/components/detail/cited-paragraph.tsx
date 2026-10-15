@@ -21,7 +21,7 @@ export function CitedParagraph({
           ? "text-[15px] leading-[1.55] text-(--color-text-primary)"
           : "text-[13.5px] leading-[1.7] text-(--color-text-secondary)"
       }
-      style={{ fontFamily: "var(--font-body)" }}
+      style={isLead ? { fontFamily: "var(--font-display)" } : undefined}
     >
       {parts.map((part, index) => {
         const match = part.match(/^\[(\d+)\]$/);

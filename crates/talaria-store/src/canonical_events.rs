@@ -157,6 +157,78 @@ pub async fn insert_event_evidence(
     Ok(id)
 }
 
+/// Places a visitor can go to: houses, tombs, museums, memorials.
+/// Battles, offices, and anecdotes stay on the life map.
+pub const TOURISM_EVENT_TYPES: &[&str] = &[
+    "residence",
+    "burial",
+    "museum",
+    "memorial",
+    "statue",
+    "street_naming",
+    "commemoration",
+];
+
+pub async fn list_tourism_events(
+    pool: &PgPool,
+    entity_id: Uuid,
+    limit: i64,
+    bbox: Option<[f64; 4]>,
+    map_only: bool,
+) -> anyhow::Result<Vec<CanonicalEventRow>> {
+    let (west, south, east, north) = match bbox {
+        Some([west, south, east, north]) => (Some(west), Some(south), Some(east), Some(north)),
+        None => (None, None, None, None),
+    };
+    let rows = sqlx::query_as::<_, CanonicalEventRow>(
+        r#"
+        SELECT
+            ce.id,
+            ce.entity_id,
+            COALESCE(e.canonical_name, e.wikipedia_title) AS person_name,
+            ce.event_type,
+            ce.epistemic_status,
+            ce.title,
+            ce.summary,
+            ce.start_time,
+            ce.time_json,
+            ce.place_label,
+            ce.confidence,
+            ce.map_eligible,
+            ST_Y(ce.geom::geometry) AS lat,
+            ST_X(ce.geom::geometry) AS lon
+        FROM canonical_events ce
+        INNER JOIN entities e ON e.id = ce.entity_id
+        WHERE ce.entity_id = $1
+          AND ce.is_active = true
+          AND ce.pipeline = 'person'
+          AND ce.event_type IN (
+            'residence', 'burial', 'museum', 'memorial', 'statue', 'street_naming', 'commemoration'
+          )
+          AND ($2::bool = false OR ce.geom IS NOT NULL)
+          AND (
+            $3::float8 IS NULL
+            OR ST_Intersects(
+              ce.geom,
+              ST_MakeEnvelope($3, $4, $5, $6, 4326)::geography
+            )
+          )
+        ORDER BY ce.start_time ASC NULLS LAST, ce.title ASC
+        LIMIT $7
+        "#,
+    )
+    .bind(entity_id)
+    .bind(map_only)
+    .bind(west)
+    .bind(south)
+    .bind(east)
+    .bind(north)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
 pub async fn list_timeline_events(
     pool: &PgPool,
     entity_id: Option<Uuid>,

@@ -1,0 +1,501 @@
+/* web/src/styles/agora.css — Agora & Intuition UI (light + dark) */
+
+.agora-canvas {
+  background:
+    radial-gradient(ellipse 70% 45% at 50% -5%, rgba(var(--rgb-sea-accent), 0.06), transparent 55%),
+    var(--color-bg-primary);
+}
+
+.nebula-timeline-card {
+  position: relative;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+.nebula-timeline-card:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-border-subtle));
+  box-shadow: var(--shadow-md);
+}
+
+.agora-lane-banner {
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 28%, var(--color-border-subtle));
+  background: var(--color-primary-soft);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  line-height: 1.45;
+  padding: 8px 12px;
+}
+
+.agora-lane-banner strong {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.agora-tablist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 1px solid var(--color-border-subtle);
+  padding-bottom: 8px;
+}
+
+.agora-tab {
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.agora-tab:hover {
+  background: var(--color-bg-elevated);
+  color: var(--color-text-secondary);
+}
+
+.agora-tab.is-active {
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.agora-tab__count {
+  margin-left: 6px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.72;
+}
+
+.agora-chip {
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.agora-chip:hover {
+  color: var(--color-text-secondary);
+  border-color: var(--color-border-strong);
+}
+
+.agora-chip.is-active {
+  background: var(--color-accent-soft);
+  color: var(--color-text-primary);
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border-subtle));
+}
+
+.agora-evidence-row {
+  border-radius: 8px;
+  border: 1px solid var(--color-border-subtle);
+  background: var(--color-bg-elevated);
+  padding: 6px 8px;
+}
+
+.agora-layer-badge {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  color: var(--color-text-muted);
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border-subtle);
+}
+
+.intuition-panel {
+  border-radius: 12px;
+  border: 1px solid var(--agora-intuition-border);
+  background: var(--agora-intuition-surface);
+  box-shadow: var(--agora-intuition-shadow);
+  padding: 12px 14px;
+}
+
+.intuition-panel__title {
+  margin: 0 0 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--agora-intuition-dim);
+}
+
+.intuition-stance-btn {
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.intuition-stance-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.intuition-stance-btn--support {
+  border-color: color-mix(in srgb, var(--color-trust-high) 55%, var(--color-border-subtle));
+  background: color-mix(in srgb, var(--color-trust-high) 12%, var(--color-bg-surface));
+  color: color-mix(in srgb, var(--color-trust-high) 85%, var(--color-text-primary));
+}
+
+.intuition-stance-btn--uncertain {
+  border-color: color-mix(in srgb, var(--color-text-muted) 55%, var(--color-border-subtle));
+  background: color-mix(in srgb, var(--color-text-muted) 10%, var(--color-bg-surface));
+  color: var(--color-text-secondary);
+}
+
+.intuition-stance-btn.is-mine {
+  outline: 1px solid var(--color-accent);
+}
+
+.claim-action-bar {
+  margin-top: 0.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--color-border-subtle) 70%, transparent);
+  padding-top: 0.5rem;
+}
+
+.claim-action-bar__counts {
+  margin-bottom: 0.4rem;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.claim-action-bar__confirm {
+  margin-top: 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-border-subtle);
+  padding: 8px;
+  background: var(--color-bg-elevated);
+}
+
+.claim-action-bar__confirm-title {
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+[data-theme="dark"] .nebula-timeline-card {
+  background: rgba(17, 19, 23, 0.6);
+  border-color: var(--color-border-subtle);
+  box-shadow: none;
+}
+
+[data-theme="dark"] .agora-chip {
+  background: rgba(17, 19, 23, 0.55);
+}
+
+[data-theme="dark"] .agora-tab.is-active {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+[data-theme="dark"] .agora-evidence-row {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.hero--agora-photo {
+  position: relative;
+  overflow: hidden;
+}
+
+[data-theme="light"] .hero.hero--agora-photo {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(247, 243, 234, 0.22) 0%,
+      rgba(247, 243, 234, 0.08) 48%,
+      color-mix(in srgb, var(--color-bg-primary) 82%, transparent) 100%
+    ),
+    url("/brand/hero-agora-day.jpg") center 42% / cover no-repeat;
+}
+
+[data-theme="dark"] .hero.hero--agora-photo {
+  background:
+    linear-gradient(
+      180deg,
+      rgba(8, 21, 28, 0.32) 0%,
+      rgba(8, 21, 28, 0.14) 48%,
+      color-mix(in srgb, var(--color-bg-primary) 82%, transparent) 100%
+    ),
+    url("/brand/hero-agora-night.jpg") center 42% / cover no-repeat;
+}
+
+.hero--agora-photo::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 88px;
+  pointer-events: none;
+  z-index: 0;
+  background: linear-gradient(to bottom, transparent, var(--color-bg-primary));
+}
+
+.hero--agora-photo > * {
+  position: relative;
+  z-index: 1;
+}
+
+.claim-action-bar__intuition {
+  margin: 0.35rem 0 0;
+  font-size: 10px;
+  color: var(--color-text-secondary);
+}
+
+.claim-card__counts {
+  margin-top: 0.4rem;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.claim-card__details {
+  margin-top: 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.claim-section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+}
+
+.claim-section-heading h3,
+.claim-graph h3,
+.claim-graph h4,
+.claim-evidence h3 {
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+}
+
+.claim-section-empty {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-top: 0.3rem;
+}
+
+.agora-source-row {
+  border: 1px dashed color-mix(in srgb, var(--color-border-subtle) 80%, transparent);
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+  margin-top: 0.4rem;
+  min-width: 0;
+}
+
+.agora-source-row__title {
+  font-size: 12px;
+  color: var(--color-text-primary);
+}
+
+.agora-source-row__meta,
+.agora-source-row a {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  word-break: break-word;
+}
+
+.agora-community-badge {
+  display: inline-block;
+  margin-top: 0.25rem;
+  font-size: 10px;
+  color: var(--color-text-secondary);
+}
+
+.argument-card {
+  margin-top: 0.45rem;
+  border-left: 3px solid var(--color-accent);
+  padding: 0.4rem 0.55rem;
+  background: color-mix(in srgb, var(--color-bg-elevated) 70%, transparent);
+  min-width: 0;
+}
+
+.argument-card__statement {
+  font-size: 12px;
+  margin-top: 0.2rem;
+}
+
+.argument-card__source,
+.argument-card__meta,
+.argument-card__evidence {
+  font-size: 10px;
+  color: var(--color-text-muted);
+}
+
+.agora-evidence-row {
+  border-left: 3px solid var(--color-text-muted);
+  padding: 0.35rem 0.5rem;
+  background: color-mix(in srgb, var(--color-bg-surface) 80%, transparent);
+}
+
+.agora-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: color-mix(in srgb, black 45%, transparent);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0.75rem;
+}
+
+.agora-modal {
+  width: min(100%, 28rem);
+  max-height: 88vh;
+  overflow: auto;
+  border-radius: 12px 12px 0 0;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-subtle);
+  padding: 0.85rem;
+}
+
+.agora-modal__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+.agora-modal__header h3 {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.argument-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.argument-form textarea,
+.argument-form select,
+.agora-modal select {
+  width: 100%;
+  min-width: 0;
+  border-radius: 6px;
+  border: 1px solid var(--color-border-subtle);
+  background: transparent;
+  padding: 0.4rem;
+  font-size: 12px;
+}
+
+@media (min-width: 640px) {
+  .agora-modal-backdrop {
+    align-items: center;
+  }
+  .agora-modal {
+    border-radius: 12px;
+  }
+}
+
+.claim-discussion {
+  margin-top: 0.45rem;
+}
+
+.claim-discussion__toggle {
+  font-size: 11px;
+  color: var(--color-accent-strong);
+}
+
+.comment-composer {
+  margin-top: 0.5rem;
+}
+
+.comment-composer__input {
+  width: 100%;
+  min-height: 4rem;
+  border-radius: 6px;
+  border: 1px solid var(--color-border-subtle);
+  background: transparent;
+  padding: 0.4rem;
+  font-size: 12px;
+}
+
+.comment-list {
+  margin-top: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.comment-card {
+  border-top: 1px solid color-mix(in srgb, var(--color-border-subtle) 70%, transparent);
+  padding-top: 0.4rem;
+}
+
+.comment-card__meta {
+  font-size: 10px;
+  color: var(--color-text-muted);
+}
+
+.comment-card__body {
+  margin-top: 0.2rem;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.comment-card__deleted {
+  margin-top: 0.2rem;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--color-text-muted);
+}
+
+.comment-card__reply-toggle {
+  margin-top: 0.25rem;
+  font-size: 10px;
+  color: var(--color-accent-strong);
+}
+
+.comment-card__replies {
+  margin-left: 0.75rem;
+  margin-top: 0.4rem;
+}
+
+.comment-reaction-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.35rem;
+}
+
+.comment-reaction {
+  font-size: 10px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border-subtle);
+  padding: 0.1rem 0.45rem;
+}
+
+.comment-reaction.is-mine {
+  outline: 1px solid var(--color-accent);
+}

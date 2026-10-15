@@ -151,6 +151,459 @@ paths:
                         count: {type: integer}
         '500': {$ref: '#/components/responses/Error'}
 
+  /api/v1/interactions:
+    post:
+      summary: Create or upsert a stateful Talaria interaction
+      description: |
+        Session cookie required. `user_id` is taken from the session, never the body.
+        Idempotent for non-stance actions: first insert returns 201, duplicate returns 200 with the same row.
+        Claim stances (support/dispute/uncertain) replace transactionally so exactly one stance remains.
+        No Intuition fields (tx_hash, term_id, intuition_status).
+        source target v1 = corpus_documents.id (Scholar corpus document).
+        route is not supported (Visit has no durable itinerary UUID; TODO PR8).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InteractionCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InteractionEnvelope'
+        '200':
+          description: Existing row returned (idempotent upsert)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InteractionEnvelope'
+        '400': {$ref: '#/components/responses/StructuredError'}
+        '401': {$ref: '#/components/responses/StructuredError'}
+        '404': {$ref: '#/components/responses/StructuredError'}
+        '500': {$ref: '#/components/responses/StructuredError'}
+  /api/v1/interactions/{id}:
+    delete:
+      summary: Delete an interaction owned by the session user
+      description: Foreign ids return 404 (no existence leak).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '204': {description: Deleted}
+        '401': {$ref: '#/components/responses/StructuredError'}
+        '404': {$ref: '#/components/responses/StructuredError'}
+        '500': {$ref: '#/components/responses/StructuredError'}
+  /api/v1/me/interactions:
+    get:
+      summary: List the session user's interactions (cursor pagination)
+      parameters:
+        - name: action
+          in: query
+          schema: {$ref: '#/components/schemas/InteractionAction'}
+        - name: target_type
+          in: query
+          schema: {$ref: '#/components/schemas/InteractionTargetType'}
+        - name: cursor
+          in: query
+          schema: {type: string}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 50}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/Interaction'}
+                  next_cursor: {type: [string, 'null']}
+        '401': {$ref: '#/components/responses/StructuredError'}
+        '400': {$ref: '#/components/responses/StructuredError'}
+  /api/v1/interactions/summary:
+    get:
+      summary: Batch public interaction counts (max 100 ids, one grouped query)
+      description: |
+        Public, no auth required. `counts` include only visibility=public.
+        `mine` is empty for anonymous callers; authenticated callers see their rows including private.
+      parameters:
+        - name: target_type
+          in: query
+          required: true
+          schema: {$ref: '#/components/schemas/InteractionTargetType'}
+        - name: target_ids
+          in: query
+          required: true
+          description: Comma-separated UUIDs, max 100
+          schema: {type: string}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [summaries]
+                properties:
+                  summaries:
+                    type: array
+                    items: {$ref: '#/components/schemas/InteractionSummary'}
+        '400': {$ref: '#/components/responses/StructuredError'}
+
+  /api/v1/claims/{claim_id}/intuition:
+    get:
+      summary: Intuition readiness for a soft claim
+      description: |
+        Read-only. ready means a published triple termId exists.
+        counter_term_id is resolved on the client via MultiVault getInverseTripleId.
+        Does not create triples.
+      parameters:
+        - name: claim_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {type: string, enum: [ready, not_published]}
+                  claim_id: {type: string, format: uuid}
+                  chain_id: {type: integer}
+                  triple_term_id: {type: string}
+                  counter_term_id: {type: [string, 'null']}
+        '404': {$ref: '#/components/responses/StructuredError'}
+  /api/v1/claims/{claim_id}/signals/sync:
+    post:
+      summary: Verify a user-signed MultiVault deposit and persist Talaria stance
+      description: |
+        Session required. Backend verifies receipt, MultiVault, receiver wallet, and termId.
+        Idempotent on tx_hash. Uncertain is not accepted here.
+      parameters:
+        - name: claim_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, tx_hash]
+              properties:
+                action: {type: string, enum: [support, dispute]}
+                tx_hash: {type: string}
+      responses:
+        '200':
+          description: Existing tx already synced
+        '201':
+          description: Stance created after verified deposit
+        '400': {$ref: '#/components/responses/StructuredError'}
+        '401': {$ref: '#/components/responses/StructuredError'}
+        '404': {$ref: '#/components/responses/StructuredError'}
+        '409': {$ref: '#/components/responses/StructuredError'}
+
+  /api/v1/claims/{claim_id}/sources:
+    get:
+      summary: List Scholar corpus documents attached to an Agora claim
+      parameters:
+        - name: claim_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/ClaimSource'}
+        '400': {$ref: '#/components/responses/StructuredError'}
+        '404': {$ref: '#/components/responses/StructuredError'}
+    post:
+      summary: Attach an indexed corpus document to a claim
+      description: Session required. Idempotent. No free-text URLs.
+      parameters:
+        - name: claim_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [corpus_document_id]
+              properties:
+                corpus_document_id: {type: string, format: uuid}
+      responses:
+        '200': {description: Source already attached}
+        '201': {description: Source attached}
+        '400': {$ref: '#/components/responses/StructuredError'}
+        '401': {$ref: '#/components/responses/StructuredError'}
+        '404': {$ref: '#/components/responses/StructuredError'}
+
+  /api/v1/claims/{claim_id}/arguments:
+    get:
+      summary: List structured arguments targeting a claim
+      description: Uses soft_claim_relations (supports, contradicts, qualifies). Off-chain.
+      parameters:
+        - name: claim_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: limit
+          in: query
+          schema: {type: integer, default: 20, maximum: 50}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/Argument'}
+        '400': {$ref: '#/components/responses/StructuredError'}
+        '404': {$ref: '#/components/responses/StructuredError'}
+    post:
+      summary: Create a sourced argument (or counter-claim) as a soft_claim
+      description: Session required. Requires corpus_document_id and fragment_id or quote. No Intuition publish.
+      parameters:
+        - name: claim_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [relation, statement, corpus_document_id]
+              properties:
+                relation: {$ref: '#/components/schemas/ArgumentRelation'}
+                statement: {type: string, minLength: 1, maxLength: 4000}
+                corpus_document_id: {type: string, format: uuid}
+                fragment_id: {type: [string, 'null'], format: uuid}
+                quote: {type: [string, 'null'], minLength: 1, maxLength: 4000}
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [argument]
+                properties:
+                  argument: {$ref: '#/components/schemas/Argument'}
+        '400': {$ref: '#/components/responses/StructuredError'}
+        '401': {$ref: '#/components/responses/StructuredError'}
+        '404': {$ref: '#/components/responses/StructuredError'}
+
+  /api/v1/comments/{comment_id}/promote:
+    post:
+      summary: Promote an owned comment into a structured argument
+      description: Comment body is unchanged. User must still supply source and evidence.
+      parameters:
+        - name: comment_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [relation, corpus_document_id]
+              properties:
+                relation: {$ref: '#/components/schemas/ArgumentRelation'}
+                statement: {type: string}
+                corpus_document_id: {type: string, format: uuid}
+                fragment_id: {type: [string, 'null'], format: uuid}
+                quote: {type: [string, 'null']}
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [argument]
+                properties:
+                  argument: {$ref: '#/components/schemas/Argument'}
+        '400': {$ref: '#/components/responses/StructuredError'}
+        '401': {$ref: '#/components/responses/StructuredError'}
+        '404': {$ref: '#/components/responses/StructuredError'}
+
+  /api/v1/claims/{claim_id}/comments:
+    get:
+      summary: List Agora comments for a claim
+      description: |
+        Public. Roots newest first. Replies oldest first, max 20 per root.
+        Deleted comments keep their place; body is omitted. Off-chain only.
+      parameters:
+        - name: claim_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: cursor
+          in: query
+          schema: {type: string}
+        - name: limit
+          in: query
+          schema: {type: integer, default: 20, maximum: 50}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/Comment'}
+                  next_cursor: {type: [string, 'null']}
+        '400': {$ref: '#/components/responses/StructuredError'}
+        '404': {$ref: '#/components/responses/StructuredError'}
+    post:
+      summary: Create a root comment or a single-level reply
+      description: Session required. parent_comment_id must be a root of this claim.
+      parameters:
+        - name: claim_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: {type: string, minLength: 1, maxLength: 4000}
+                parent_comment_id: {type: [string, 'null'], format: uuid}
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [comment]
+                properties:
+                  comment: {$ref: '#/components/schemas/Comment'}
+        '400': {$ref: '#/components/responses/StructuredError'}
+        '401': {$ref: '#/components/responses/StructuredError'}
+        '404': {$ref: '#/components/responses/StructuredError'}
+  /api/v1/comments/{comment_id}:
+    patch:
+      summary: Edit own active comment
+      description: Foreign ownership returns comment_not_found.
+      parameters:
+        - name: comment_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: {type: string, minLength: 1, maxLength: 4000}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  comment: {$ref: '#/components/schemas/Comment'}
+        '400': {$ref: '#/components/responses/StructuredError'}
+        '401': {$ref: '#/components/responses/StructuredError'}
+        '404': {$ref: '#/components/responses/StructuredError'}
+    delete:
+      summary: Soft-delete own comment
+      description: status=deleted; replies remain; body omitted from public DTO.
+      parameters:
+        - name: comment_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  comment: {$ref: '#/components/schemas/Comment'}
+        '401': {$ref: '#/components/responses/StructuredError'}
+        '404': {$ref: '#/components/responses/StructuredError'}
+  /api/v1/comments/{comment_id}/reactions:
+    post:
+      summary: Add a semantic reaction (Talaria-only, not an Intuition signal)
+      parameters:
+        - name: comment_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reaction_type]
+              properties:
+                reaction_type: {$ref: '#/components/schemas/CommentReactionType'}
+      responses:
+        '200':
+          description: Already present (idempotent)
+        '201':
+          description: Created
+        '400': {$ref: '#/components/responses/StructuredError'}
+        '401': {$ref: '#/components/responses/StructuredError'}
+        '404': {$ref: '#/components/responses/StructuredError'}
+  /api/v1/comments/{comment_id}/reactions/{reaction_type}:
+    delete:
+      summary: Remove own semantic reaction
+      parameters:
+        - name: comment_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: reaction_type
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/CommentReactionType'}
+      responses:
+        '200':
+          description: Comment with updated counts
+        '400': {$ref: '#/components/responses/StructuredError'}
+        '401': {$ref: '#/components/responses/StructuredError'}
+        '404': {$ref: '#/components/responses/StructuredError'}
+
 components:
   parameters:
     Entity:
@@ -194,7 +647,169 @@ components:
             required: [error]
             properties:
               error: {type: string}
+    StructuredError:
+      description: Code + message, never raw SQL
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              error:
+                type: object
+                required: [code, message]
+                properties:
+                  code:
+                    type: string
+                    enum:
+                      - unauthenticated
+                      - invalid_action
+                      - invalid_target_type
+                      - invalid_action_for_target
+                      - target_not_found
+                      - interaction_not_found
+                      - invalid_visibility
+                      - batch_too_large
+                      - database_error
+                      - invalid_address
+                      - conflict
+                      - expired_challenge
+                      - invalid_signature
+                  message: {type: string}
   schemas:
+    InteractionAction:
+      type: string
+      enum:
+        - interest
+        - follow
+        - save
+        - support
+        - dispute
+        - uncertain
+        - useful
+        - credible
+        - not_credible
+        - want_to_visit
+        - visited
+    InteractionTargetType:
+      type: string
+      enum: [person, claim, source, place, event]
+      description: route is omitted until Visit has a durable UUID (PR8)
+    InteractionVisibility:
+      type: string
+      enum: [private, public]
+    InteractionCreate:
+      type: object
+      required: [action, target_type, target_id]
+      properties:
+        action: {$ref: '#/components/schemas/InteractionAction'}
+        target_type: {$ref: '#/components/schemas/InteractionTargetType'}
+        target_id: {type: string, format: uuid}
+        visibility: {$ref: '#/components/schemas/InteractionVisibility'}
+      description: |
+        Visibility defaults: save/follow/interest/visited/want_to_visit=private;
+        support/dispute/uncertain/useful/credible/not_credible=public.
+        Never send user_id or wallet_address.
+    Interaction:
+      type: object
+      required: [id, action, target_type, target_id, visibility, created_at, updated_at]
+      properties:
+        id: {type: string, format: uuid}
+        action: {$ref: '#/components/schemas/InteractionAction'}
+        target_type: {$ref: '#/components/schemas/InteractionTargetType'}
+        target_id: {type: string, format: uuid}
+        visibility: {$ref: '#/components/schemas/InteractionVisibility'}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    InteractionEnvelope:
+      type: object
+      required: [interaction]
+      properties:
+        interaction: {$ref: '#/components/schemas/Interaction'}
+    InteractionSummary:
+      type: object
+      required: [target_id, counts, comment_count, mine]
+      properties:
+        target_id: {type: string, format: uuid}
+        counts:
+          type: object
+          additionalProperties: {type: integer}
+        comment_count: {type: integer}
+        argument_count: {type: integer}
+        source_count: {type: integer}
+        mine:
+          type: array
+          items: {$ref: '#/components/schemas/InteractionAction'}
+    CommentReactionType:
+      type: string
+      enum: [relevant, well_sourced, interesting, needs_nuance, disagree]
+    Comment:
+      type: object
+      required: [id, claim_id, author, status, created_at, reactions, my_reactions]
+      properties:
+        id: {type: string, format: uuid}
+        claim_id: {type: string, format: uuid}
+        author:
+          type: object
+          required: [id, display_name]
+          properties:
+            id: {type: string, format: uuid}
+            display_name: {type: [string, 'null']}
+        body: {type: [string, 'null']}
+        status: {type: string, enum: [active, deleted]}
+        edited_at: {type: [string, 'null'], format: date-time}
+        created_at: {type: string, format: date-time}
+        reactions:
+          type: object
+          additionalProperties: {type: integer}
+        my_reactions:
+          type: array
+          items: {$ref: '#/components/schemas/CommentReactionType'}
+        replies:
+          type: array
+          items: {$ref: '#/components/schemas/Comment'}
+        reply_count: {type: integer}
+    ArgumentRelation:
+      type: string
+      enum: [supports, contradicts, qualifies]
+    ClaimSource:
+      type: object
+      required: [corpus_document_id, title, source_kind, document_type, created_at]
+      properties:
+        corpus_document_id: {type: string, format: uuid}
+        title: {type: string}
+        source_kind: {type: string}
+        canonical_url: {type: [string, 'null']}
+        document_type: {type: string}
+        created_at: {type: string, format: date-time}
+    Argument:
+      type: object
+      required: [id, target_claim_id, relation, statement, origin, contribution_status, created_at, sources, evidence]
+      properties:
+        id: {type: string, format: uuid}
+        target_claim_id: {type: string, format: uuid}
+        relation: {$ref: '#/components/schemas/ArgumentRelation'}
+        statement: {type: string}
+        origin: {type: string, enum: [pipeline, user]}
+        contribution_status: {type: string, enum: [proposed, active, rejected]}
+        created_at: {type: string, format: date-time}
+        author:
+          type: [object, 'null']
+          properties:
+            id: {type: string, format: uuid}
+            display_name: {type: [string, 'null']}
+        sources:
+          type: array
+          items: {$ref: '#/components/schemas/ClaimSource'}
+        evidence:
+          type: array
+          items:
+            type: object
+            properties:
+              id: {type: string, format: uuid}
+              quote: {type: [string, 'null']}
+              locator: {type: [string, 'null']}
+              source_system: {type: string}
     Pagination:
       type: object
       required: [next_cursor]

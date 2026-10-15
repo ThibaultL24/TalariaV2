@@ -111,6 +111,19 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
         )
         .route("/api/v1/entities/{entity_id}/visit/sites", get(visit::sites))
         .route(
+            "/api/v1/entities/{entity_id}/visit/heritage",
+            get(visit::heritage),
+        )
+        .route(
+            "/api/v1/entities/{entity_id}/visit/heritage/geojson",
+            get(visit::heritage_geojson),
+        )
+        .route("/api/v1/entities/{entity_id}/visit/now", get(visit::now))
+        .route(
+            "/api/v1/entities/{entity_id}/visit/now/geojson",
+            get(visit::now_geojson),
+        )
+        .route(
             "/api/v1/entities/{entity_id}/visit/activities",
             get(visit::activities).post(visit::create_activity),
         )

@@ -3,8 +3,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AgoraPanel } from "@/components/explorer/agora-panel";
 import { LaneIngestBar } from "@/components/explorer/lane-ingest-bar";
-import { IntuitionStanceBar } from "@/components/intuition/intuition-stance-bar";
 import { Navbar } from "@/components/layout/navbar";
+import { TalariaSandalMark } from "@/components/brand/talaria-sandal-mark";
+import { IntuitionWalletPanel } from "@/components/wallet/intuition-wallet-panel";
 import { EntitySearchBox } from "@/components/search/entity-search-box";
 import { usePersonPicker } from "@/hooks/use-person-picker";
 import {
@@ -138,20 +139,23 @@ export function AgoraPage() {
         }
       />
       <main className="agora-canvas min-h-0 flex-1 overflow-y-auto">
-        <section className="hero hero--landing hero--home hero--agora px-4 py-8">
+        <section className="hero hero--landing hero--home hero--agora hero--agora-photo px-4 py-8">
           <div className="mx-auto max-w-3xl">
             <p className="hero__eyebrow">{localizedPersonLabel(entityLabel, locale) || t.agora}</p>
-            <h1 className="hero__title hero__title--agora text-4xl">{t.agora}</h1>
+            <h1 className="hero__title hero__title--agora text-4xl">
+              <span className="talaria-heading-with-mark">
+                <TalariaSandalMark />
+                {t.agora}
+              </span>
+            </h1>
             <p className="hero__subtitle">{t.agoraHint}</p>
-            {entityId ? (
-              <div className="mt-4 max-w-md rounded-lg border border-(--color-border-subtle) bg-(--color-bg-elevated)/70 px-3 py-2">
-                <IntuitionStanceBar targetKind="person" targetId={entityId} eager />
-              </div>
-            ) : null}
+            <div className="mt-4 max-w-lg">
+              <IntuitionWalletPanel />
+            </div>
             {busy ? (
               <p className="mt-3 text-sm text-(--color-text-secondary)">{t.searchInProgress}</p>
             ) : null}
-            {error ? <p className="mt-3 text-sm text-red-300">{error}</p> : null}
+            {error ? <p className="mt-3 text-sm text-(--color-trust-low)">{error}</p> : null}
           </div>
         </section>
         <div className="mx-auto max-w-3xl px-4 pb-12">

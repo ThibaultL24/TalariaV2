@@ -1,10 +1,11 @@
 // src/features/map/styles/eventLayers.ts
 
 import type { CircleLayerSpecification, SymbolLayerSpecification } from "maplibre-gl";
-import { MAP_LAYER_COLORS_DARK } from "@/components/map/map-colors";
+import { MAP_LAYER_PALETTE } from "@/map/map-theme";
 import { mapLibreLegendColorExpr } from "@/lib/event-legend";
 
-/** Mode clair — carte parchemin / OSM (couleurs d’origine). */
+const L = MAP_LAYER_PALETTE.light;
+const D = MAP_LAYER_PALETTE.dark;
 export const clustersLayer: CircleLayerSpecification = {
   id: "clusters",
   type: "circle",
@@ -13,9 +14,9 @@ export const clustersLayer: CircleLayerSpecification = {
   paint: {
     "circle-radius": ["step", ["get", "point_count"], 16, 25, 22, 100, 30],
     "circle-opacity": 0.92,
-    "circle-color": "#3B6F8A",
+    "circle-color": L.cluster,
     "circle-stroke-width": 1.5,
-    "circle-stroke-color": "#4a3728",
+    "circle-stroke-color": L.pointStroke,
   },
 };
 
@@ -31,7 +32,7 @@ export const clusterCountLayer: SymbolLayerSpecification = {
     "text-font": ["Noto Sans Regular"],
   },
   paint: {
-    "text-color": "#F8EFD9",
+    "text-color": L.countText,
   },
 };
 
@@ -51,7 +52,7 @@ export const unclusteredEventsLayer: CircleLayerSpecification = {
     ],
     "circle-color": mapLibreLegendColorExpr() as unknown as string,
     "circle-stroke-width": 1.5,
-    "circle-stroke-color": "#4a3728",
+    "circle-stroke-color": L.pointStroke,
     "circle-opacity": 0.95,
   },
 };
@@ -63,16 +64,14 @@ export const selectedEventLayer: CircleLayerSpecification = {
   filter: ["==", ["id"], ""],
   paint: {
     "circle-radius": 13,
-    "circle-color": "#5b77be",
+    "circle-color": L.selected,
     "circle-stroke-width": 3,
-    "circle-stroke-color": "#2E2A22",
-    "circle-opacity": 0.2,
+    "circle-stroke-color": L.selectedStroke,
+    "circle-opacity": L.selectedFillOpacity,
   },
 };
 
-const D = MAP_LAYER_COLORS_DARK;
-
-/** Mode sombre — clusters cyan foncé ; points selon confiance. */
+/** Mode sombre — Aegean Night */
 export const clustersLayerDark: CircleLayerSpecification = {
   ...clustersLayer,
   paint: {
@@ -91,7 +90,7 @@ export const clusterCountLayerDark: SymbolLayerSpecification = {
     "text-font": ["Noto Sans Regular"],
   },
   paint: {
-    "text-color": D.marble,
+    "text-color": D.countText,
   },
 };
 
@@ -119,10 +118,10 @@ export const selectedEventLayerDark: CircleLayerSpecification = {
   ...selectedEventLayer,
   paint: {
     "circle-radius": 13,
-    "circle-color": D.accentStrong,
+    "circle-color": D.selected,
     "circle-stroke-width": 3,
-    "circle-stroke-color": D.marble,
-    "circle-opacity": 0.35,
+    "circle-stroke-color": D.selectedStroke,
+    "circle-opacity": D.selectedFillOpacity,
   },
 };
 
@@ -134,7 +133,7 @@ export const anecdotesLayer: CircleLayerSpecification = {
     "circle-radius": 10,
     "circle-color": mapLibreLegendColorExpr() as unknown as string,
     "circle-stroke-width": 1.5,
-    "circle-stroke-color": "#4a3728",
+    "circle-stroke-color": L.pointStroke,
     "circle-opacity": 0.95,
   },
 };
@@ -157,10 +156,10 @@ export const selectedAnecdoteLayer: CircleLayerSpecification = {
   filter: ["==", ["id"], ""],
   paint: {
     "circle-radius": 14,
-    "circle-color": "#c9a227",
+    "circle-color": L.anecdoteSelected,
     "circle-stroke-width": 3,
-    "circle-stroke-color": "#2E2A22",
-    "circle-opacity": 0.25,
+    "circle-stroke-color": L.selectedStroke,
+    "circle-opacity": L.selectedFillOpacity,
   },
 };
 
@@ -168,10 +167,10 @@ export const selectedAnecdoteLayerDark: CircleLayerSpecification = {
   ...selectedAnecdoteLayer,
   paint: {
     "circle-radius": 14,
-    "circle-color": D.anecdote,
+    "circle-color": D.anecdoteSelected,
     "circle-stroke-width": 3,
-    "circle-stroke-color": D.marble,
-    "circle-opacity": 0.35,
+    "circle-stroke-color": D.selectedStroke,
+    "circle-opacity": D.selectedFillOpacity,
   },
 };
 

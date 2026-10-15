@@ -12,13 +12,14 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use talaria_store::{
     activity_status, catalog_heritage, commemoration_status, insert_activity, insert_commemoration, insert_itinerary,
-    list_activities, list_commemorations, list_heritage_sites, load_site_points, order_stops,
+    list_activities, list_commemorations, list_heritage_sites, list_tourism_events, load_site_points, order_stops,
     persist_catalog, project_lived_heritage, require_provenance, ActivityRow, CatalogReport, ClaimDirection,
     CommonsCandidate, CommemorationRow, HeritageSiteRow, MerimeeHit, PlaceClaim, PlaceProfile,
     ITINERARY_GENERATION_VERSION,
 };
 use uuid::Uuid;
 
+use super::events::event_to_json_list;
 use super::AppState;
 
 #[derive(Debug, Deserialize)]
@@ -545,6 +546,81 @@ pub async fn create_itinerary(
             error(StatusCode::INTERNAL_SERVER_ERROR, "database_error")
         }
     }
+}
+
+pub async fn heritage(
+    State(state): State<AppState>,
+    Path(entity_id): Path<Uuid>,
+    Query(query): Query<PageQuery>,
+) -> Response {
+    let bbox = match parse_bbox(query.bbox.as_deref()) {
+        Ok(bbox) => bbox,
+        Err(response) => return response,
+    };
+    let limit = query.limit.unwrap_or(200).clamp(1, 500);
+    let events = match list_tourism_events(&state.pool, entity_id, limit, bbox, false).await {
+        Ok(rows) => rows,
+        Err(err) => {
+            tracing::error!(error = %err, "visit heritage failed");
+            return error(StatusCode::INTERNAL_SERVER_ERROR, "database_error");
+        }
+    };
+    let items: Vec<Value> = events.iter().map(event_to_json_list).collect();
+    Json(json!({ "events": items, "count": items.len() })).into_response()
+}
+
+pub async fn heritage_geojson(
+    State(state): State<AppState>,
+    Path(entity_id): Path<Uuid>,
+    Query(query): Query<PageQuery>,
+) -> Response {
+    let bbox = match parse_bbox(query.bbox.as_deref()) {
+        Ok(bbox) => bbox,
+        Err(response) => return response,
+    };
+    let limit = query.limit.unwrap_or(500).clamp(1, 500);
+    let events = match list_tourism_events(&state.pool, entity_id, limit, bbox, true).await {
+        Ok(rows) => rows,
+        Err(err) => {
+            tracing::error!(error = %err, "visit heritage geojson failed");
+            return error(StatusCode::INTERNAL_SERVER_ERROR, "database_error");
+        }
+    };
+    let features: Vec<Value> = events
+        .iter()
+        .filter_map(|event| {
+            let (lat, lon) = (event.lat?, event.lon?);
+            let mut properties = event_to_json_list(event);
+            if let Some(object) = properties.as_object_mut() {
+                object.insert("event_type".into(), json!(event.event_type));
+            }
+            Some(json!({
+                "type": "Feature",
+                "id": event.id.to_string(),
+                "geometry": { "type": "Point", "coordinates": [lon, lat] },
+                "properties": properties,
+            }))
+        })
+        .collect();
+    Json(json!({
+        "type": "FeatureCollection",
+        "features": features,
+        "count": features.len(),
+    }))
+    .into_response()
+}
+
+pub async fn now() -> Response {
+    Json(json!({ "opportunities": [], "count": 0 })).into_response()
+}
+
+pub async fn now_geojson() -> Response {
+    Json(json!({
+        "type": "FeatureCollection",
+        "features": [],
+        "count": 0,
+    }))
+    .into_response()
 }
 
 #[cfg(test)]

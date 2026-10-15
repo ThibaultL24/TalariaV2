@@ -47,6 +47,10 @@ export function usePersonPicker(opts: UsePersonPickerOptions = {}) {
 
   const progressiveIngest = useProgressiveIngest({
     onCountsChanged: opts.onCountsChanged,
+    onEntityResolved: (id) => {
+      const current = useExplorerStore.getState();
+      if (current.entityId !== id) setEntity(id, current.entityLabel, current.entityQid);
+    },
   });
 
   useEffect(() => {

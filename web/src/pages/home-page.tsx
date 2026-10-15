@@ -1,12 +1,12 @@
 // web/src/pages/home-page.tsx
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { TalariaHeroWordmark } from "@/components/brand/talaria-hero-wordmark";
 import { Navbar } from "@/components/layout/navbar";
 import { EntitySearchBox } from "@/components/search/entity-search-box";
 import { usePersonPicker } from "@/hooks/use-person-picker";
 import { fetchDemoRoster, type DemoRosterItem } from "@/lib/api";
-import { DEMO_ROSTER, FEATURED_ROSTER_QIDS, type DemoRosterEntry } from "@/lib/demo-roster";
-import { fetchWikipediaPageSummary } from "@/lib/wikipedia";
+import { DEMO_ROSTER, type DemoRosterEntry } from "@/lib/demo-roster";
 import { useI18n } from "@/lib/i18n";
 import type { SearchSuggestion } from "@/lib/schemas/entity";
 import { useExplorerStore } from "@/stores/explorer-store";
@@ -19,11 +19,10 @@ export function HomePage() {
   const { t, locale } = useI18n();
   const navigate = useNavigate();
   const { setEntity, setPersonFilter } = useExplorerStore();
-  const { suggestions, setSearchQuery, searchLoading } = usePersonPicker({ startLifeIngest: false });
+  const { suggestions, setSearchQuery, searchLoading, selectPerson } = usePersonPicker({ startLifeIngest: false });
   const [roster, setRoster] = useState<RosterCard[]>(() =>
     DEMO_ROSTER.map((entry) => ({ ...entry })),
   );
-  const [portraits, setPortraits] = useState<Record<string, { url: string; page: string }>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -44,69 +43,43 @@ export function HomePage() {
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    const featured = DEMO_ROSTER.filter((entry) =>
-      (FEATURED_ROSTER_QIDS as readonly string[]).includes(entry.qid),
-    );
-    void Promise.all(
-      featured.map(async (entry) => {
-        const summary = await fetchWikipediaPageSummary("en", entry.wikiTitle);
-        return [
-          entry.qid,
-          summary?.thumbnailSource
-            ? { url: summary.thumbnailSource, page: summary.url ?? "" }
-            : null,
-        ] as const;
-      }),
-    ).then((pairs) => {
-      if (cancelled) return;
-      setPortraits(
-        Object.fromEntries(
-          pairs.flatMap(([qid, portrait]) => (portrait ? [[qid, portrait]] : [])),
-        ),
-      );
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   function onSelect(item: SearchSuggestion) {
-    const qid = item.qid ? `&qid=${encodeURIComponent(item.qid)}` : "";
-    const subject = encodeURIComponent(item.label);
-    if (item.known_locally && item.entity_id) {
-      navigate(`/entities/${item.entity_id}/overview`);
-      return;
-    }
-    navigate(`/explorer?subject=${subject}${qid}`);
+    selectPerson(item);
+    navigate("/explorer");
   }
 
   function openFigure(entry: RosterCard, lane: "explorer" | "agora") {
     const label = locale === "fr" ? entry.labelFr : entry.labelEn;
     if (lane === "agora") {
-      if (entry.stats?.entity_id) setEntity(entry.stats.entity_id, label, entry.qid);
-      else setPersonFilter(label, label, entry.qid);
+      if (entry.stats?.entity_id) {
+        setEntity(entry.stats.entity_id, label, entry.qid);
+      } else {
+        setPersonFilter(label, label, entry.qid);
+      }
       navigate("/agora");
       return;
     }
     if (entry.stats?.entity_id) {
-      navigate(`/entities/${entry.stats.entity_id}/overview`);
+      setEntity(entry.stats.entity_id, label, entry.qid);
+      navigate(`/entities/${entry.stats.entity_id}/map`);
       return;
     }
-    navigate(`/explorer?subject=${encodeURIComponent(label)}${entry.qid ? `&qid=${encodeURIComponent(entry.qid)}` : ""}`);
+    setPersonFilter(label, label, entry.qid);
+    navigate("/explorer");
   }
 
   return (
     <div className="app-shell app-shell--home">
       <Navbar />
       <main className="home-main">
-        <section className="hero hero--landing hero--home" aria-labelledby="home-hero-title">
+        <section
+          className="hero hero--landing hero--home hero--aegean-photo"
+          aria-labelledby="home-hero-title"
+        >
           <div className="hero__grid">
             <div className="hero__copy">
-              <p className="hero__eyebrow">{t.heroEyebrow}</p>
-              <h1 id="home-hero-title" className="hero__title">
-                {t.productName}
+              <h1 id="home-hero-title" className="hero__title hero__title--wordmark">
+                <TalariaHeroWordmark />
               </h1>
               <p className="hero__subtitle">{t.heroSubtitle}</p>
               <div className="mx-auto mt-6 w-full max-w-xl">
@@ -126,48 +99,36 @@ export function HomePage() {
                 </Link>
               </div>
             </div>
-            <aside className="hero__aside" aria-label={t.productSubtitle}>
-              <div className="hero__features">
-                <article className="hero__feature">
-                  <span className="hero__feature-mark" aria-hidden />
-                  <div className="hero__feature-body">
-                    <h3 className="hero__feature-title">{t.livingMap}</h3>
-                    <p className="hero__feature-text">{t.livingMapDesc}</p>
-                  </div>
-                </article>
-                <article className="hero__feature">
-                  <span className="hero__feature-mark hero__feature-mark--soft" aria-hidden />
-                  <div className="hero__feature-body">
-                    <h3 className="hero__feature-title">{t.agora}</h3>
-                    <p className="hero__feature-text">{t.agoraHint}</p>
-                  </div>
-                </article>
-              </div>
-            </aside>
           </div>
         </section>
 
-        <section className="home-lanes" aria-label={t.productName}>
-          <ul className="home-lanes__list">
-            <li>
-              <Link to="/scholar">
-                <strong>{t.productLaneScholarTitle}</strong>
-                <span>{t.productLaneScholarBody}</span>
-              </Link>
-            </li>
-            <li>
-              <Link to="/visit">
-                <strong>{t.productLaneVisitTitle}</strong>
-                <span>{t.productLaneVisitBody}</span>
-              </Link>
-            </li>
-            <li>
-              <Link to="/agora">
-                <strong>{t.productLaneAgoraTitle}</strong>
-                <span>{t.productLaneAgoraBody}</span>
-              </Link>
-            </li>
-          </ul>
+        <section className="home-visions" aria-labelledby="home-visions-title">
+          <div className="home-visions__inner">
+            <header className="home-visions__header">
+              <h2 id="home-visions-title" className="home-visions__title">{t.homeVisionsTitle}</h2>
+              <p className="home-visions__hint">{t.homeVisionsHint}</p>
+            </header>
+            <ul className="home-visions__grid">
+              <li className="home-visions__card home-visions__card--scholar">
+                <h3 className="home-visions__card-title">{t.visionScholarTitle}</h3>
+                <p className="home-visions__card-text">{t.visionScholarDesc}</p>
+                <Link className="button button--primary" to="/explorer">{t.visionScholarCta}</Link>
+              </li>
+              <li className="home-visions__card home-visions__card--visit">
+                <div className="home-visions__card-top">
+                  <h3 className="home-visions__card-title">{t.visionVisitTitle}</h3>
+                  <span className="home-visions__badge">{t.visionVisitBadge}</span>
+                </div>
+                <p className="home-visions__card-text">{t.visionVisitDesc}</p>
+                <Link className="button button--ghost" to="/explorer">{t.visionVisitCta}</Link>
+              </li>
+              <li className="home-visions__card home-visions__card--agora">
+                <h3 className="home-visions__card-title">{t.visionAgoraTitle}</h3>
+                <p className="home-visions__card-text">{t.visionAgoraDesc}</p>
+                <Link className="button button--ghost" to="/agora">{t.visionAgoraCta}</Link>
+              </li>
+            </ul>
+          </div>
         </section>
 
         <section className="demo-roster" aria-labelledby="demo-roster-title">
@@ -178,44 +139,8 @@ export function HomePage() {
               </h2>
               <p className="demo-roster__hint">{t.demoRosterHint}</p>
             </header>
-            <ul className="demo-roster__featured">
-              {roster
-                .filter((entry) => (FEATURED_ROSTER_QIDS as readonly string[]).includes(entry.qid))
-                .map((entry) => {
-                  const label = locale === "fr" ? entry.labelFr : entry.labelEn;
-                  const portrait = portraits[entry.qid];
-                  return (
-                    <li key={entry.qid} className="featured-figure">
-                      <Link className="featured-figure__main" to={`/scholar/${entry.qid}`}>
-                        {portrait ? (
-                          <img src={portrait.url} alt="" width={160} height={200} loading="lazy" />
-                        ) : (
-                          <span className="featured-figure__fallback" aria-hidden />
-                        )}
-                        <span className="featured-figure__copy">
-                          <h3>{label}</h3>
-                          <span className="featured-figure__cta">{t.exploreLife}</span>
-                        </span>
-                      </Link>
-                      <div className="featured-figure__lanes">
-                        {portrait?.page ? (
-                          <a href={portrait.page} rel="noopener noreferrer">
-                            {t.imageCredit}
-                          </a>
-                        ) : null}
-                        <Link to={`/visit/${entry.qid}`}>{t.discoverPlaces}</Link>
-                        <button type="button" onClick={() => openFigure(entry, "agora")}>
-                          {t.exploreDebates}
-                        </button>
-                      </div>
-                    </li>
-                  );
-                })}
-            </ul>
             <ul className="demo-roster__grid">
-              {roster
-                .filter((entry) => !(FEATURED_ROSTER_QIDS as readonly string[]).includes(entry.qid))
-                .map((entry) => {
+              {roster.map((entry) => {
                 const label = locale === "fr" ? entry.labelFr : entry.labelEn;
                 const events = entry.stats?.event_count ?? 0;
                 const pins = entry.stats?.map_pin_count ?? 0;

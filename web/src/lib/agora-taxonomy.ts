@@ -55,6 +55,11 @@ export function evidenceLayerLabel(
   return EVIDENCE_LAYER_LABELS[locale][key] ?? value.replace(/_/g, " ");
 }
 
+export function isStanceClaimKind(claimKind: string): boolean {
+  const kind = claimKind.trim().toLowerCase();
+  return kind === "theory" || kind === "controversy" || kind === "debate_stance";
+}
+
 export function groupClaimsByDebateType<T extends { debate_type?: string | null }>(
   claims: T[],
   locale: AppLocale = "en",

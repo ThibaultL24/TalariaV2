@@ -2,6 +2,9 @@
 import type { ReactNode } from "react";
 import { Link, NavLink } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
+import { TalariaNavbarBrand } from "@/components/brand/talaria-navbar-brand";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { IntuitionConnectButton } from "@/components/wallet/intuition-connect-button";
 
 interface NavbarProps {
   center?: ReactNode;
@@ -19,11 +22,8 @@ export function Navbar({ center }: NavbarProps) {
 
   return (
     <header className="navbar">
-      <Link to="/" className="navbar__brand">
-        <div>
-          <div className="navbar__title">{t.productName}</div>
-          <div className="navbar__subtitle">{t.productSubtitle}</div>
-        </div>
+      <Link to="/" className="navbar__brand" aria-label={t.productName}>
+        <TalariaNavbarBrand />
       </Link>
       {center ? <div className="navbar__center">{center}</div> : null}
       <div className="navbar__actions">
@@ -31,11 +31,8 @@ export function Navbar({ center }: NavbarProps) {
           <NavLink to="/" end className={linkClass}>
             {t.home}
           </NavLink>
-          <NavLink to="/scholar" className={linkClass}>
-            {t.scholar}
-          </NavLink>
-          <NavLink to="/visit" className={linkClass}>
-            {t.visit}
+          <NavLink to="/explorer" className={linkClass}>
+            {t.explorer}
           </NavLink>
           <NavLink to="/agora" className={linkClass}>
             {t.agora}
@@ -44,6 +41,8 @@ export function Navbar({ center }: NavbarProps) {
             {t.whitepaperNav}
           </NavLink>
         </nav>
+        <IntuitionConnectButton variant="navbar" />
+        <ThemeToggle />
         <div className="flex shrink-0 overflow-hidden rounded-full border border-(--color-border-subtle) text-[11px] font-semibold">
           <button
             type="button"

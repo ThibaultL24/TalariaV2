@@ -454,38 +454,6 @@ export async function fetchExplorerStatus(jobId: string): Promise<ExplorerIngest
   return response.json();
 }
 
-export interface TheoryStanceResponse {
-  status: string;
-  code: string;
-  actionable: boolean;
-  claim_id?: string;
-  claim_kind?: string;
-  target_kind?: string;
-  target_id?: string;
-  publication_status?: string | null;
-  triple_term_id?: string | null;
-  vote_triple_id?: string | null;
-  category?: string | null;
-  stance?: string;
-  vault?: string;
-  reason?: string;
-  calldata?: null;
-  intuition_network?: string;
-  intuition_live_allowed?: boolean;
-  preview?: {
-    status?: string;
-    vaultTermId?: string;
-    previewShares?: string;
-    minShares?: string;
-    assets?: string;
-    txHash?: string;
-    message?: string;
-  };
-}
-
-export type IntuitionStanceResponse = TheoryStanceResponse;
-export type IntuitionTargetKind = "person" | "event" | "claim" | "source";
-
 export interface DemoRosterItem {
   qid: string;
   entity_id?: string | null;
@@ -509,50 +477,420 @@ export async function fetchDemoRoster(): Promise<DemoRosterResponse> {
   return response.json();
 }
 
-export async function fetchTheorySignals(claimId: string): Promise<TheoryStanceResponse> {
-  return fetchIntuitionSignals("claim", claimId);
+export interface TalariaAuthUser {
+  id: string;
+  wallet_address: string | null;
 }
 
-export async function simulateTheoryStance(
-  claimId: string,
-  stance: "believe" | "dispute",
-): Promise<TheoryStanceResponse> {
-  return simulateIntuitionStance("claim", claimId, stance);
+export interface TalariaMeResponse {
+  authenticated: boolean;
+  user?: TalariaAuthUser;
 }
 
-export async function fetchIntuitionSignals(
-  kind: IntuitionTargetKind,
-  targetId: string,
-): Promise<IntuitionStanceResponse> {
-  const path =
-    kind === "claim"
-      ? `/api/v1/agora/theories/${encodeURIComponent(targetId)}/signals`
-      : `/api/v1/intuition/targets/${kind}/${encodeURIComponent(targetId)}/signals`;
-  const response = await fetch(path);
-  const data = (await response.json()) as IntuitionStanceResponse;
-  if (!response.ok && response.status !== 503) {
-    throw new Error(data.reason ?? data.code ?? "signals fetch failed");
-  }
-  return data;
+export async function fetchTalariaMe(): Promise<TalariaMeResponse> {
+  const response = await fetch("/api/v1/auth/me", { credentials: "include" });
+  if (!response.ok) throw new Error("auth me failed");
+  return response.json();
 }
 
-export async function simulateIntuitionStance(
-  kind: IntuitionTargetKind,
-  targetId: string,
-  stance: "believe" | "dispute",
-): Promise<IntuitionStanceResponse> {
-  const path =
-    kind === "claim"
-      ? `/api/v1/agora/theories/${encodeURIComponent(targetId)}/simulation`
-      : `/api/v1/intuition/targets/${kind}/${encodeURIComponent(targetId)}/simulation`;
-  const response = await fetch(path, {
+export async function requestWalletChallenge(
+  address: string,
+  chainId: number,
+): Promise<{ challenge_id: string; message: string }> {
+  const response = await fetch("/api/v1/auth/wallet/challenge", {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ stance, min_shares: "1" }),
+    body: JSON.stringify({ address, chain_id: chainId }),
   });
-  const data = (await response.json()) as IntuitionStanceResponse;
-  if (!response.ok && response.status !== 503) {
-    throw new Error(data.reason ?? data.code ?? "simulation failed");
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data?.error?.code ?? "challenge_failed");
   }
   return data;
+}
+
+export async function verifyWalletChallenge(
+  challengeId: string,
+  message: string,
+  signature: string,
+): Promise<{ user: TalariaAuthUser }> {
+  const response = await fetch("/api/v1/auth/wallet/verify", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      challenge_id: challengeId,
+      message,
+      signature,
+    }),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data?.error?.code ?? "verify_failed");
+  }
+  return data;
+}
+
+export async function logoutTalariaSession(): Promise<void> {
+  await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" });
+}
+
+export type InteractionAction =
+  | "interest"
+  | "follow"
+  | "save"
+  | "support"
+  | "dispute"
+  | "uncertain"
+  | "useful"
+  | "credible"
+  | "not_credible"
+  | "want_to_visit"
+  | "visited";
+
+export type InteractionTargetType =
+  | "person"
+  | "claim"
+  | "source"
+  | "place"
+  | "event";
+
+export type InteractionVisibility = "private" | "public";
+
+export interface Interaction {
+  id: string;
+  action: InteractionAction;
+  target_type: InteractionTargetType;
+  target_id: string;
+  visibility: InteractionVisibility;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InteractionListResponse {
+  items: Interaction[];
+  next_cursor: string | null;
+}
+
+export interface InteractionSummary {
+  target_id: string;
+  counts: Record<string, number>;
+  comment_count?: number;
+  argument_count?: number;
+  source_count?: number;
+  mine: InteractionAction[];
+}
+
+export type CommentReactionType =
+  | "relevant"
+  | "well_sourced"
+  | "interesting"
+  | "needs_nuance"
+  | "disagree";
+
+export interface CommentAuthor {
+  id: string;
+  display_name: string | null;
+}
+
+export interface AgoraComment {
+  id: string;
+  claim_id: string;
+  author: CommentAuthor;
+  body: string | null;
+  status: "active" | "deleted";
+  edited_at: string | null;
+  created_at: string;
+  reactions: Record<string, number>;
+  my_reactions: CommentReactionType[];
+  replies?: AgoraComment[];
+  reply_count?: number;
+}
+
+export async function fetchClaimComments(
+  claimId: string,
+  params: { cursor?: string; limit?: number } = {},
+): Promise<{ items: AgoraComment[]; next_cursor: string | null }> {
+  const qs = new URLSearchParams();
+  if (params.cursor) qs.set("cursor", params.cursor);
+  if (params.limit) qs.set("limit", String(params.limit));
+  const suffix = qs.size ? `?${qs}` : "";
+  const response = await fetch(
+    `/api/v1/claims/${encodeURIComponent(claimId)}/comments${suffix}`,
+    { credentials: "include" },
+  );
+  if (!response.ok) await readApiError(response);
+  return response.json();
+}
+
+export async function postClaimComment(
+  claimId: string,
+  body: string,
+  parentCommentId?: string | null,
+): Promise<{ comment: AgoraComment }> {
+  const response = await fetch(`/api/v1/claims/${encodeURIComponent(claimId)}/comments`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body, parent_comment_id: parentCommentId ?? null }),
+  });
+  if (!response.ok) await readApiError(response);
+  return response.json();
+}
+
+export type ArgumentRelation = "supports" | "contradicts" | "qualifies";
+
+export interface ClaimSource {
+  corpus_document_id: string;
+  title: string;
+  source_kind: string;
+  canonical_url?: string | null;
+  document_type: string;
+  created_at: string;
+}
+
+export interface AgoraArgument {
+  id: string;
+  target_claim_id: string;
+  relation: ArgumentRelation;
+  statement: string;
+  origin: string;
+  contribution_status: string;
+  created_at: string;
+  author?: { id: string; display_name?: string | null } | null;
+  sources: ClaimSource[];
+  evidence: {
+    id: string;
+    quote?: string | null;
+    locator?: string | null;
+    source_system: string;
+  }[];
+}
+
+export async function fetchClaimSources(claimId: string): Promise<{ items: ClaimSource[] }> {
+  const response = await fetch(`/api/v1/claims/${encodeURIComponent(claimId)}/sources`, {
+    credentials: "include",
+  });
+  if (!response.ok) await readApiError(response);
+  return response.json();
+}
+
+export async function postClaimSource(
+  claimId: string,
+  corpusDocumentId: string,
+): Promise<{ source: ClaimSource }> {
+  const response = await fetch(`/api/v1/claims/${encodeURIComponent(claimId)}/sources`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ corpus_document_id: corpusDocumentId }),
+  });
+  if (!response.ok) await readApiError(response);
+  return response.json();
+}
+
+export async function fetchClaimArguments(
+  claimId: string,
+): Promise<{ items: AgoraArgument[] }> {
+  const response = await fetch(`/api/v1/claims/${encodeURIComponent(claimId)}/arguments`, {
+    credentials: "include",
+  });
+  if (!response.ok) await readApiError(response);
+  return response.json();
+}
+
+export async function postClaimArgument(
+  claimId: string,
+  body: {
+    relation: ArgumentRelation;
+    statement: string;
+    corpus_document_id: string;
+    quote: string;
+  },
+): Promise<{ argument: AgoraArgument }> {
+  const response = await fetch(`/api/v1/claims/${encodeURIComponent(claimId)}/arguments`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) await readApiError(response);
+  return response.json();
+}
+
+export async function promoteCommentToArgument(
+  commentId: string,
+  body: {
+    relation: ArgumentRelation;
+    statement?: string;
+    corpus_document_id: string;
+    quote: string;
+  },
+): Promise<{ argument: AgoraArgument }> {
+  const response = await fetch(`/api/v1/comments/${encodeURIComponent(commentId)}/promote`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) await readApiError(response);
+  return response.json();
+}
+
+export async function patchComment(
+  commentId: string,
+  body: string,
+): Promise<{ comment: AgoraComment }> {
+  const response = await fetch(`/api/v1/comments/${encodeURIComponent(commentId)}`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+  if (!response.ok) await readApiError(response);
+  return response.json();
+}
+
+export async function deleteComment(commentId: string): Promise<{ comment: AgoraComment }> {
+  const response = await fetch(`/api/v1/comments/${encodeURIComponent(commentId)}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!response.ok) await readApiError(response);
+  return response.json();
+}
+
+export async function addCommentReaction(
+  commentId: string,
+  reactionType: CommentReactionType,
+): Promise<{ comment: AgoraComment }> {
+  const response = await fetch(`/api/v1/comments/${encodeURIComponent(commentId)}/reactions`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reaction_type: reactionType }),
+  });
+  if (!response.ok) await readApiError(response);
+  return response.json();
+}
+
+export async function removeCommentReaction(
+  commentId: string,
+  reactionType: CommentReactionType,
+): Promise<{ comment: AgoraComment }> {
+  const response = await fetch(
+    `/api/v1/comments/${encodeURIComponent(commentId)}/reactions/${encodeURIComponent(reactionType)}`,
+    { method: "DELETE", credentials: "include" },
+  );
+  if (!response.ok) await readApiError(response);
+  return response.json();
+}
+
+export class ApiError extends Error {
+  code: string;
+  constructor(code: string, message?: string) {
+    super(message ?? code);
+    this.code = code;
+  }
+}
+
+async function readApiError(response: Response): Promise<never> {
+  const data = await response.json().catch(() => ({}));
+  throw new ApiError(data?.error?.code ?? "request_failed", data?.error?.message);
+}
+
+export async function postInteraction(body: {
+  action: InteractionAction;
+  target_type: InteractionTargetType;
+  target_id: string;
+  visibility?: InteractionVisibility;
+}): Promise<{ interaction: Interaction; created: boolean }> {
+  const response = await fetch("/api/v1/interactions", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) await readApiError(response);
+  const data = (await response.json()) as { interaction: Interaction };
+  return { interaction: data.interaction, created: response.status === 201 };
+}
+
+export async function deleteInteraction(id: string): Promise<void> {
+  const response = await fetch(`/api/v1/interactions/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!response.ok) await readApiError(response);
+}
+
+export async function fetchMyInteractions(params: {
+  action?: InteractionAction;
+  target_type?: InteractionTargetType;
+  cursor?: string;
+  limit?: number;
+} = {}): Promise<InteractionListResponse> {
+  const qs = new URLSearchParams();
+  if (params.action) qs.set("action", params.action);
+  if (params.target_type) qs.set("target_type", params.target_type);
+  if (params.cursor) qs.set("cursor", params.cursor);
+  if (params.limit) qs.set("limit", String(params.limit));
+  const suffix = qs.size ? `?${qs}` : "";
+  const response = await fetch(`/api/v1/me/interactions${suffix}`, {
+    credentials: "include",
+  });
+  if (!response.ok) await readApiError(response);
+  return response.json();
+}
+
+export type ClaimIntuitionStatus =
+  | {
+      status: "ready";
+      claim_id: string;
+      chain_id: number;
+      triple_term_id: string;
+      counter_term_id: string | null;
+    }
+  | { status: "not_published"; claim_id: string };
+
+export async function fetchClaimIntuition(claimId: string): Promise<ClaimIntuitionStatus> {
+  const response = await fetch(`/api/v1/claims/${encodeURIComponent(claimId)}/intuition`, {
+    credentials: "include",
+  });
+  if (!response.ok) await readApiError(response);
+  return response.json();
+}
+
+export async function syncClaimSignal(
+  claimId: string,
+  action: "support" | "dispute",
+  txHash: string,
+): Promise<{ interaction: Interaction; synced: boolean }> {
+  const response = await fetch(`/api/v1/claims/${encodeURIComponent(claimId)}/signals/sync`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, tx_hash: txHash }),
+  });
+  if (!response.ok) await readApiError(response);
+  return response.json();
+}
+
+export async function fetchInteractionSummary(
+  targetType: InteractionTargetType,
+  targetIds: string[],
+): Promise<{ summaries: InteractionSummary[] }> {
+  if (targetIds.length > 100) {
+    throw new ApiError("batch_too_large");
+  }
+  const qs = new URLSearchParams({
+    target_type: targetType,
+    target_ids: targetIds.join(","),
+  });
+  const response = await fetch(`/api/v1/interactions/summary?${qs}`, {
+    credentials: "include",
+  });
+  if (!response.ok) await readApiError(response);
+  return response.json();
 }

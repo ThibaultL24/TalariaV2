@@ -3,18 +3,15 @@
 import { useEffect, useRef } from "react";
 import maplibregl, { type Map } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { ANTIQUE_MAP_STYLE } from "@/styles/map-style-antique";
+import { pickMapStyle } from "@/map/map-theme";
 import { useThemeStore } from "@/stores/theme-store";
 
 interface MapCanvasProps {
   onReady?: (map: Map) => void;
 }
 
-const OPENFREEMAP_DARK = "https://tiles.openfreemap.org/styles/dark";
-
-function pickStyle(isDark: boolean): string | maplibregl.StyleSpecification {
-  if (isDark) return OPENFREEMAP_DARK;
-  return ANTIQUE_MAP_STYLE as maplibregl.StyleSpecification;
+function pickStyle(isDark: boolean) {
+  return pickMapStyle(isDark);
 }
 
 export function MapCanvas({ onReady }: MapCanvasProps) {
@@ -35,6 +32,8 @@ export function MapCanvas({ onReady }: MapCanvasProps) {
     });
 
     map.addControl(new maplibregl.NavigationControl(), "top-right");
+    const observer = new ResizeObserver(() => map.resize());
+    observer.observe(containerRef.current);
     mapRef.current = map;
     prevThemeRef.current = useThemeStore.getState().theme;
 
@@ -43,6 +42,7 @@ export function MapCanvas({ onReady }: MapCanvasProps) {
     });
 
     return () => {
+      observer.disconnect();
       map.remove();
       mapRef.current = null;
       prevThemeRef.current = null;

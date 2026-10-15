@@ -8,6 +8,7 @@ export interface AppMessages {
   productSubtitle: string;
   search: string;
   searchPlaceholder: string;
+  searchUnavailable: string;
   searchHint: string;
   searchInLibrary: string;
   searchNew: string;
@@ -18,6 +19,8 @@ export interface AppMessages {
   emptySearch: string;
   close: string;
   closeDetail: string;
+  seeMore: string;
+  seeLess: string;
   summary: string;
   dossierTitle: string;
   dossierHint: string;
@@ -63,6 +66,8 @@ export interface AppMessages {
   whitepaperToc: string;
   agoraEmpty: string;
   emptyTimeline: string;
+  chronPreviewTitle: string;
+  chronPreviewHint: string;
   loadingTimeline: string;
   loadingAgora: string;
   loadingSources: string;
@@ -97,14 +102,82 @@ export interface AppMessages {
   relatedEvent: string;
   openDocument: string;
   matchScore: (pct: number) => string;
-  believe: string;
+  support: string;
   dispute: string;
-  stanceHint: string;
-  stanceNotOnChain: string;
-  stanceModeled: string;
-  stanceLiveDisabled: string;
-  stanceNotEligible: string;
-  intuitionStanceLabel: string;
+  uncertain: string;
+  signalEconomicHint: string;
+  signalSignInRequired: string;
+  signalWalletMismatch: string;
+  signalNotPublished: string;
+  signalPreparing: string;
+  signalAwaitingSignature: string;
+  signalSubmitted: string;
+  signalConfirming: string;
+  signalConfirmed: string;
+  signalFailed: string;
+  signalRejected: string;
+  signalSyncRetry: string;
+  signalConfirmTitle: string;
+  signalConfirm: string;
+  signalPreview: string;
+  signalCustomAmount: string;
+  comments: (n: number) => string;
+  commentsTitle: string;
+  openDiscussion: string;
+  closeDiscussion: string;
+  commentPlaceholder: string;
+  replyPlaceholder: string;
+  postComment: string;
+  postReply: string;
+  commentDeleted: string;
+  commentEdited: string;
+  anonymousHistorian: string;
+  reactionRelevant: string;
+  reactionWellSourced: string;
+  reactionInteresting: string;
+  reactionNeedsNuance: string;
+  reactionDisagree: string;
+  commentSignInRequired: string;
+  argumentSignInRequired: string;
+  openArguments: string;
+  closeArguments: string;
+  argumentsCount: (n: number) => string;
+  sourcesCount: (n: number) => string;
+  claimSourcesTitle: string;
+  addSource: string;
+  addArgument: string;
+  argumentRelation: string;
+  argumentSupports: string;
+  argumentContradicts: string;
+  argumentQualifies: string;
+  argumentStatement: string;
+  argumentEvidence: string;
+  submitArgument: string;
+  argumentsFor: string;
+  argumentsAgainst: string;
+  argumentsQualify: string;
+  argumentsTitle: string;
+  sourceNotIndexed: string;
+  pipelineOrigin: string;
+  openClaimDetails: string;
+  closeClaimDetails: string;
+  corpusEvidenceTitle: string;
+  noSourcesYet: string;
+  noArgumentsYet: string;
+  noCommentsYet: string;
+  communityContribution: string;
+  proposedStatus: string;
+  promoteToArgument: string;
+  selectSource: string;
+  retrySection: string;
+  sectionError: string;
+  intuitionPublished: string;
+  intuitionSignalAvailable: string;
+  intuitionNotPublished: string;
+  immersiveBack: string;
+  immersiveTools: string;
+  immersiveLegend: string;
+  immersiveCategories: string;
   intuitionTheoriesTitle: string;
   intuitionTheoriesHint: string;
   agoraTabTheories: string;
@@ -121,35 +194,61 @@ export interface AppMessages {
   demoIntuitionStar: string;
   demoIntuitionLive: string;
   demoIntuitionModeled: string;
-  stanceTestnetReady: string;
-  scholar: string;
-  visit: string;
-  visitEyebrow: string;
-  visitSubtitle: string;
-  visitProject: string;
-  visitDiscover: string;
-  visitEmpty: string;
-  visitLegacy: string;
-  visitRoutingNote: string;
-  openInScholar: string;
-  openInVisit: string;
-  productLaneScholarTitle: string;
-  productLaneScholarBody: string;
-  productLaneVisitTitle: string;
-  productLaneVisitBody: string;
-  productLaneAgoraTitle: string;
-  productLaneAgoraBody: string;
-  exploreLife: string;
-  discoverPlaces: string;
-  exploreDebates: string;
-  tabOverview: string;
-  tabTimeline: string;
-  tabMap: string;
-  tabSources: string;
-  entityLead: string;
-  unknownDate: string;
-  openEventDetail: string;
-  imageCredit: string;
+  homeVisionsTitle: string;
+  homeVisionsHint: string;
+  visionScholarTitle: string;
+  visionScholarDesc: string;
+  visionScholarCta: string;
+  visionVisitTitle: string;
+  visionVisitDesc: string;
+  visionVisitBadge: string;
+  visionAgoraTitle: string;
+  visionAgoraDesc: string;
+  visionAgoraCta: string;
+  walletConnect: string;
+  walletDisconnect: string;
+  walletConnecting: string;
+  walletNoProvider: string;
+  walletConnectFailed: string;
+  walletConnectHint: string;
+  walletConnectForStance: string;
+  walletWrongNetwork: string;
+  walletSwitchNetwork: string;
+  walletPanelKicker: string;
+  walletPanelTitle: string;
+  walletPanelLead: string;
+  walletConnectModalTitle: string;
+  walletEduTitle: string;
+  walletEduAssetsTitle: string;
+  walletEduAssetsBody: string;
+  walletEduLoginTitle: string;
+  walletEduLoginBody: string;
+  walletGetWallet: string;
+  walletLearnMore: string;
+  walletConnectHintNetwork: (network: string) => string;
+  walletNetworkHub: string;
+  walletConnected: string;
+  walletWrongNetworkDetail: string;
+  talariaSignIn: string;
+  talariaSignInHint: string;
+  intuitionTestnetPanel: string;
+  lensToggleLabel: string;
+  lensScholar: string;
+  lensVisit: string;
+  lensScholarHint: string;
+  lensVisitHint: string;
+  scholarOverviewTab: string;
+  scholarTimelineTab: string;
+  scholarMapTab: string;
+  scholarSourcesTab: string;
+  visitMapTab: string;
+  visitHeritageTab: string;
+  visitHeritageEmpty: string;
+  visitNowTab: string;
+  visitNowEmpty: string;
+  visitNowEnds: string;
+  visitNowOpenSource: string;
+  visionVisitCta: string;
 }
 
 const EN: AppMessages = {
@@ -157,6 +256,7 @@ const EN: AppMessages = {
   productSubtitle: "Life geography",
   search: "Search",
   searchPlaceholder: "Search a historical figure…",
+  searchUnavailable: "Search is closed for now — open a demo figure below.",
   searchHint: "Choose a person to read their life.",
   searchInLibrary: "In library",
   searchNew: "New",
@@ -164,9 +264,11 @@ const EN: AppMessages = {
   loadingMap: "Placing events on the map…",
   searchInProgress: "Search in progress",
   noResults: "No matches.",
-  emptySearch: "Search a historical figure to see their life.",
+  emptySearch: "Open a demo figure from the home page to explore a life.",
   close: "Close",
   closeDetail: "Close event",
+  seeMore: "See more",
+  seeLess: "See less",
   summary: "Summary",
   dossierTitle: "Context",
   dossierHint: "A short sourced recap — tap [n] to open the citation.",
@@ -195,7 +297,7 @@ const EN: AppMessages = {
   collectAgora: "Collect scholarship",
   explorer: "Map",
   heroEyebrow: "Historical geography",
-  heroSubtitle: "Search a person. See their life as points in time. Read the debates in the Agora.",
+  heroSubtitle: "Open a demo life. See it as points in time. Read the debates in the Agora.",
   startExploration: "Open a life",
   openAgora: "Open the Agora",
   livingMap: "A life in points",
@@ -205,17 +307,20 @@ const EN: AppMessages = {
   homeAboutDoctrine: "About",
   homeAboutDoctrineBody:
     "Explore a life. Examine the evidence. Form your own judgment.",
-  homeAboutSeparates: "Two spaces",
+  homeAboutSeparates: "Three spaces",
   homeAboutSeparatesBody:
-    "Explorer for situated facts. Agora for readings and controversies.",
+    "Scholar for the sourced life, Visit for memory sites and exhibitions, Agora for debate.",
   homeAboutFreedom: "Freedom of opinion",
   homeAboutFreedomBody:
-    "Believe or dispute on Intuition — person, event, theory, interpretation or source. Expression is the rule; Talaria does not crown a single historical truth.",
+    "Support, dispute or mark uncertain in the Agora. Support and dispute deposit TRUST on Intuition; uncertain stays in Talaria. Expression is the rule; Talaria does not crown a single historical truth.",
   homeAboutWhitepaper: "Read the Talaria about page →",
   whitepaperNav: "About",
   whitepaperToc: "Contents",
-  agoraEmpty: "Search a historical figure to load works, theories and controversies.",
+  agoraEmpty: "Open a demo figure to load works, theories and controversies.",
   emptyTimeline: "No dated facts yet. Collect the life trace to fill the map and timeline.",
+  chronPreviewTitle: "Landmark moments",
+  chronPreviewHint:
+    "Birth, death, and the major turning points — not every dated mention in the sources.",
   loadingTimeline: "Loading timeline…",
   loadingAgora: "Loading agora…",
   loadingSources: "Loading sources…",
@@ -255,25 +360,93 @@ const EN: AppMessages = {
   relatedEvent: "Related event",
   openDocument: "Open document",
   matchScore: (pct) => `match ${pct}%`,
-  believe: "I believe this",
-  dispute: "I don't believe this",
-  stanceHint: "Signal with a deposit on Intuition. No deposit means no position.",
-  stanceNotOnChain: "This target is not on Intuition yet.",
-  stanceModeled:
-    "Modeled Intuition signal — community trust without rewriting evidence.",
-  stanceLiveDisabled: "Deposits are paused until Intuition publish is repaired.",
-  stanceNotEligible: "This item is not an Intuition stance target.",
-  intuitionStanceLabel: "Intuition",
+  support: "Support",
+  dispute: "Dispute",
+  uncertain: "Uncertain",
+  signalEconomicHint:
+    "Support and Dispute deposit TRUST on Intuition. Uncertain is a Talaria position only.",
+  signalSignInRequired: "Sign in to Talaria to record a position.",
+  signalWalletMismatch: "Wallet changed — sign in to Talaria again",
+  signalNotPublished: "This claim is not published on Intuition yet.",
+  signalPreparing: "Preparing signal…",
+  signalAwaitingSignature: "Wallet confirmation required",
+  signalSubmitted: "Transaction submitted",
+  signalConfirming: "Waiting for confirmation",
+  signalConfirmed: "Signal confirmed",
+  signalFailed: "Transaction failed",
+  signalRejected: "Signature cancelled — no Talaria position was recorded.",
+  signalSyncRetry: "Transaction confirmed — retry saving to Talaria",
+  signalConfirmTitle: "Confirm Intuition deposit",
+  signalConfirm: "Sign deposit",
+  signalPreview: "Preview deposit",
+  signalCustomAmount: "Custom",
+  comments: (n) => (n === 1 ? "1 comment" : `${n} comments`),
+  commentsTitle: "Discussion",
+  openDiscussion: "Open comments",
+  closeDiscussion: "Hide comments",
+  commentPlaceholder: "Why do you support or dispute this interpretation?",
+  replyPlaceholder: "Reply",
+  postComment: "Post comment",
+  postReply: "Post reply",
+  commentDeleted: "Comment deleted",
+  commentEdited: "edited",
+  anonymousHistorian: "Anonymous historian",
+  reactionRelevant: "Relevant",
+  reactionWellSourced: "Well sourced",
+  reactionInteresting: "Interesting",
+  reactionNeedsNuance: "Needs nuance",
+  reactionDisagree: "Disagree",
+  commentSignInRequired: "Sign in to Talaria to comment.",
+  argumentSignInRequired: "Sign in to Talaria to add a source or argument.",
+  openArguments: "Open sources and arguments",
+  closeArguments: "Hide sources and arguments",
+  argumentsCount: (n) => (n === 1 ? "1 argument" : `${n} arguments`),
+  sourcesCount: (n) => (n === 1 ? "1 source" : `${n} sources`),
+  claimSourcesTitle: "Sources",
+  addSource: "Add source",
+  addArgument: "Add argument",
+  argumentRelation: "Relation",
+  argumentSupports: "Supports",
+  argumentContradicts: "Contradicts",
+  argumentQualifies: "Qualifies",
+  argumentStatement: "Statement",
+  argumentEvidence: "Evidence excerpt",
+  submitArgument: "Submit argument",
+  argumentsFor: "Arguments for",
+  argumentsAgainst: "Arguments against",
+  argumentsQualify: "Nuances",
+  argumentsTitle: "Arguments",
+  sourceNotIndexed: "Source not yet indexed",
+  pipelineOrigin: "Talaria corpus",
+  openClaimDetails: "Open evidence, sources and discussion",
+  closeClaimDetails: "Hide details",
+  corpusEvidenceTitle: "Evidence",
+  noSourcesYet: "No sources added yet",
+  noArgumentsYet: "No structured arguments yet",
+  noCommentsYet: "No comments yet",
+  communityContribution: "Community contribution",
+  proposedStatus: "Proposed",
+  promoteToArgument: "Promote to argument",
+  selectSource: "Source",
+  retrySection: "Retry",
+  sectionError: "Could not load this section.",
+  intuitionPublished: "Published on Intuition",
+  intuitionSignalAvailable: "Signal available",
+  intuitionNotPublished: "This claim is not published on Intuition",
+  immersiveBack: "Back",
+  immersiveTools: "Search and filters",
+  immersiveLegend: "Legend",
+  immersiveCategories: "Categories",
   intuitionTheoriesTitle: "Intuition — community trust",
   intuitionTheoriesHint:
-    "Believe or dispute a person, event, theory, interpretation or source. Signals never replace evidence.",
+    "Theories, controversies and scholarship — support or dispute published claims on Intuition.",
   agoraTabTheories: "Theories",
   agoraTabDebates: "Debates",
   agoraTabBibliography: "Bibliography",
   agoraSourceFilter: "Filter by catalog",
   agoraFilterEmpty: "No items for this catalog.",
   demoRosterTitle: "Demo figures",
-  demoRosterHint: "Ten curated lives — open the map or the Agora. Or search anyone else to collect a new life (no LLM required).",
+  demoRosterHint: "Ten curated lives — open the map or the Agora. Free search is paused for this demo.",
   demoRosterStats: (events, pins, claims) =>
     `${events} facts · ${pins} on map · ${claims} debates`,
   demoRosterPending: "Not loaded yet — open to collect.",
@@ -283,36 +456,67 @@ const EN: AppMessages = {
   demoIntuitionLive: "Intuition testnet publish enabled for this deployment.",
   demoIntuitionModeled:
     "Theories are modeled (MetaSudo). Operators enable testnet with INTUITION_ALLOW_LIVE=1.",
-  stanceTestnetReady:
-    "Modeled — ready for Intuition testnet publish (operator: intuition-publish --live).",
-  scholar: "Scholar",
-  visit: "Visit",
-  visitEyebrow: "Walk Through History",
-  visitSubtitle: "Discover the places, monuments and experiences that bring history to life.",
-  visitProject: "Build places from the documented life",
-  visitDiscover: "Discover identified heritage sites",
-  visitEmpty: "No heritage places yet. Project them from geolocated life events, or this person has none.",
-  visitLegacy: "Legacy and memory",
-  visitRoutingNote: "No routing engine is configured. The order uses straight-line distance. Travel times are not shown.",
-  openInScholar: "Understand this life in Scholar",
-  openInVisit: "Discover places in Visit",
-  productLaneScholarTitle: "Scholar — understand the history",
-  productLaneScholarBody: "A dated life, a map, and the sources behind each fact.",
-  productLaneVisitTitle: "Visit — discover the places",
-  productLaneVisitBody: "Houses, monuments, museums and routes tied to a person.",
-  productLaneAgoraTitle: "Agora — explore the interpretations",
-  productLaneAgoraBody: "Theories, arguments and controversies, kept apart from the life facts.",
-  exploreLife: "Explore the life",
-  discoverPlaces: "Discover the places",
-  exploreDebates: "Explore the debates",
-  tabOverview: "Overview",
-  tabTimeline: "Timeline",
-  tabMap: "Map",
-  tabSources: "Sources",
-  entityLead: "A life, its places, and the evidence.",
-  unknownDate: "Unknown date",
-  openEventDetail: "Open the full record",
-  imageCredit: "Image: Wikimedia",
+  homeVisionsTitle: "Three ways to explore",
+  homeVisionsHint:
+    "Scholar for the sourced life, Visit for museums and exhibitions, Agora for theories and debate on Intuition.",
+  visionScholarTitle: "Scholar",
+  visionScholarDesc:
+    "Timeline, map and sources — the documented life, with evidence and precision on dates.",
+  visionScholarCta: "Open Explorer",
+  visionVisitTitle: "Visit",
+  visionVisitDesc:
+    "Museums, memorials and exhibitions linked to a person — what to see and what’s on now.",
+  visionVisitBadge: "Preview soon",
+  visionAgoraTitle: "Agora",
+  visionAgoraDesc: "Theories, controversies and scholarship — support or dispute on Intuition testnet.",
+  visionAgoraCta: "Open Agora",
+  walletConnect: "Connect wallet",
+  walletDisconnect: "Disconnect",
+  walletConnecting: "Connecting…",
+  walletNoProvider: "Install a Web3 wallet (e.g. MetaMask) for testnet.",
+  walletConnectFailed: "Could not connect wallet.",
+  walletConnectHint: "Testnet — on-chain triples come later; connection prepares your identity.",
+  walletConnectForStance: "Connect your wallet to record a stance (simulation on testnet).",
+  walletWrongNetwork: "Wrong network",
+  walletSwitchNetwork: "Switch network",
+  walletPanelKicker: "Intuition",
+  walletPanelTitle: "Your wallet",
+  walletPanelLead: "Connect your wallet to take a stance on Intuition testnet.",
+  walletConnectModalTitle: "Connect a wallet",
+  walletEduTitle: "What is a wallet?",
+  walletEduAssetsTitle: "A home for your digital assets",
+  walletEduAssetsBody: "Wallets are used to send, receive, store, and display digital assets.",
+  walletEduLoginTitle: "A new way to log in",
+  walletEduLoginBody:
+    "Instead of creating new accounts and passwords on every website, just connect your wallet.",
+  walletGetWallet: "Get a wallet",
+  walletLearnMore: "Learn more",
+  walletConnectHintNetwork: (network) =>
+    `Connect on ${network}. Add the network in your wallet if prompted.`,
+  walletNetworkHub: "Network hub",
+  walletConnected: "Connected",
+  walletWrongNetworkDetail: "You're on the wrong network. Switch to continue.",
+  talariaSignIn: "Sign in to Talaria",
+  talariaSignInHint: "Sign a message to create a Talaria session. No gas, no Intuition transaction.",
+  intuitionTestnetPanel: "Intuition · testnet",
+  lensToggleLabel: "Explorer mode",
+  lensScholar: "Facts & anecdotes",
+  lensVisit: "Tourism",
+  lensScholarHint: "Dated life: events and anecdotes, each with its sources.",
+  lensVisitHint: "Places you can visit: monuments, houses, exhibitions.",
+  scholarOverviewTab: "Overview",
+  scholarTimelineTab: "Timeline",
+  scholarMapTab: "Life map",
+  scholarSourcesTab: "Sources",
+  visitMapTab: "Visit map",
+  visitHeritageTab: "Monuments",
+  visitHeritageEmpty: "No visit places indexed for this person yet — museums and memorials appear here after ingest.",
+  visitNowTab: "Now",
+  visitNowEmpty:
+    "No exhibitions or events near this person’s places in the current window — run visit-enrich or widen dates.",
+  visitNowEnds: "Ends",
+  visitNowOpenSource: "Source",
+  visionVisitCta: "Browse lives",
 };
 
 const FR: AppMessages = {
@@ -320,6 +524,7 @@ const FR: AppMessages = {
   productSubtitle: "Géographie d’une vie",
   search: "Rechercher",
   searchPlaceholder: "Rechercher une personnalité…",
+  searchUnavailable: "Recherche fermée pour l’instant — ouvrez une figure de la démo.",
   searchHint: "Choisissez une personne pour lire sa vie.",
   searchInLibrary: "En bibliothèque",
   searchNew: "Nouveau",
@@ -327,9 +532,11 @@ const FR: AppMessages = {
   loadingMap: "Placement des événements sur la carte…",
   searchInProgress: "Recherche en cours",
   noResults: "Aucun résultat.",
-  emptySearch: "Recherchez une personnalité pour voir sa vie.",
+  emptySearch: "Ouvrez une figure de la démo depuis l’accueil pour explorer une vie.",
   close: "Fermer",
   closeDetail: "Fermer l’événement",
+  seeMore: "Voir plus",
+  seeLess: "Voir moins",
   summary: "Résumé",
   dossierTitle: "Contexte",
   dossierHint: "Un minimum de contexte sourcé — tapez [n] pour ouvrir la citation.",
@@ -358,7 +565,7 @@ const FR: AppMessages = {
   collectAgora: "Collecter l’agora",
   explorer: "Carte",
   heroEyebrow: "Géographie historique",
-  heroSubtitle: "Cherchez une personne. Voyez sa vie en points dans le temps. Lisez les débats dans l’Agora.",
+  heroSubtitle: "Ouvrez une vie de la démo. Voyez-la en points dans le temps. Lisez les débats dans l’Agora.",
   startExploration: "Ouvrir une vie",
   openAgora: "Ouvrir l’Agora",
   livingMap: "Une vie en points",
@@ -368,17 +575,20 @@ const FR: AppMessages = {
   homeAboutDoctrine: "À propos",
   homeAboutDoctrineBody:
     "Explorer une vie. Examiner les preuves. Former son propre jugement.",
-  homeAboutSeparates: "Deux espaces",
+  homeAboutSeparates: "Trois espaces",
   homeAboutSeparatesBody:
-    "Explorer pour les faits situés. Agora pour les lectures et controverses.",
+    "Scholar pour la vie sourcée, Visit pour lieux de mémoire et expositions, Agora pour le débat.",
   homeAboutFreedom: "Liberté d’opinion",
   homeAboutFreedomBody:
-    "Croire ou contester sur Intuition — personne, événement, théorie, interprétation ou source. L’expression est la règle ; Talaria ne couronne aucune vérité historique unique.",
+    "Soutenir, contester ou marquer incertain dans l’Agora. Soutenir et contester déposent du TRUST sur Intuition ; incertain reste dans Talaria. L’expression est la règle ; Talaria ne couronne aucune vérité historique unique.",
   homeAboutWhitepaper: "Lire la page À propos Talaria →",
   whitepaperNav: "À propos",
   whitepaperToc: "Sommaire",
-  agoraEmpty: "Recherchez une personnalité pour charger travaux, théories et controverses.",
+  agoraEmpty: "Ouvrez une figure de la démo pour charger travaux, théories et controverses.",
   emptyTimeline: "Pas encore de faits datés. Lancez l’ingest pour remplir la carte et la frise.",
+  chronPreviewTitle: "Dates majeures",
+  chronPreviewHint:
+    "Naissance, mort et grands tournants — pas chaque mention datée dans les sources.",
   loadingTimeline: "Chargement de la frise…",
   loadingAgora: "Chargement de l’agora…",
   loadingSources: "Chargement des sources…",
@@ -418,26 +628,93 @@ const FR: AppMessages = {
   relatedEvent: "Fait lié",
   openDocument: "Ouvrir le document",
   matchScore: (pct) => `correspondance ${pct} %`,
-  believe: "J’y crois",
-  dispute: "Je n’y crois pas",
-  stanceHint: "Signaler en déposant sur Intuition. Pas de dépôt = pas de position.",
-  stanceNotOnChain: "Cette cible n’est pas encore sur Intuition.",
-  stanceModeled:
-    "Signal Intuition modélisé — confiance communautaire sans réécrire les preuves.",
-  stanceLiveDisabled:
-    "Les dépôts sont en pause jusqu’à la réparation de la publication Intuition.",
-  stanceNotEligible: "Cet élément n’est pas une cible de prise de position Intuition.",
-  intuitionStanceLabel: "Intuition",
+  support: "Soutenir",
+  dispute: "Contester",
+  uncertain: "Incertain",
+  signalEconomicHint:
+    "Soutenir et Contester déposent du TRUST sur Intuition. Incertain est une position Talaria seulement.",
+  signalSignInRequired: "Connectez-vous à Talaria pour enregistrer une position.",
+  signalWalletMismatch: "Portefeuille changé — reconnectez-vous à Talaria",
+  signalNotPublished: "Cette thèse n’est pas encore publiée sur Intuition.",
+  signalPreparing: "Préparation du signal…",
+  signalAwaitingSignature: "Confirmation du portefeuille requise",
+  signalSubmitted: "Transaction envoyée",
+  signalConfirming: "En attente de confirmation",
+  signalConfirmed: "Signal confirmé",
+  signalFailed: "La transaction a échoué",
+  signalRejected: "Signature annulée — aucune position Talaria n’a été enregistrée.",
+  signalSyncRetry: "Transaction confirmée — réessayer l’enregistrement Talaria",
+  signalConfirmTitle: "Confirmer le dépôt Intuition",
+  signalConfirm: "Signer le dépôt",
+  signalPreview: "Prévisualiser le dépôt",
+  signalCustomAmount: "Personnalisé",
+  comments: (n) => (n === 1 ? "1 commentaire" : `${n} commentaires`),
+  commentsTitle: "Discussion",
+  openDiscussion: "Ouvrir les commentaires",
+  closeDiscussion: "Masquer les commentaires",
+  commentPlaceholder: "Pourquoi soutenez-vous ou contestez-vous cette interprétation ?",
+  replyPlaceholder: "Répondre",
+  postComment: "Publier",
+  postReply: "Répondre",
+  commentDeleted: "Commentaire supprimé",
+  commentEdited: "modifié",
+  anonymousHistorian: "Historien anonyme",
+  reactionRelevant: "Pertinent",
+  reactionWellSourced: "Bien sourcé",
+  reactionInteresting: "Intéressant",
+  reactionNeedsNuance: "À nuancer",
+  reactionDisagree: "Pas d’accord",
+  commentSignInRequired: "Connectez-vous à Talaria pour commenter.",
+  argumentSignInRequired: "Connectez-vous à Talaria pour ajouter une source ou un argument.",
+  openArguments: "Ouvrir sources et arguments",
+  closeArguments: "Masquer sources et arguments",
+  argumentsCount: (n) => (n === 1 ? "1 argument" : `${n} arguments`),
+  sourcesCount: (n) => (n === 1 ? "1 source" : `${n} sources`),
+  claimSourcesTitle: "Sources",
+  addSource: "Ajouter une source",
+  addArgument: "Ajouter un argument",
+  argumentRelation: "Relation",
+  argumentSupports: "Soutient",
+  argumentContradicts: "Contredit",
+  argumentQualifies: "Qualifie",
+  argumentStatement: "Énoncé",
+  argumentEvidence: "Extrait d’évidence",
+  submitArgument: "Envoyer l’argument",
+  argumentsFor: "Arguments pour",
+  argumentsAgainst: "Arguments contre",
+  argumentsQualify: "Nuances",
+  argumentsTitle: "Arguments",
+  sourceNotIndexed: "Source pas encore indexée",
+  pipelineOrigin: "Corpus Talaria",
+  openClaimDetails: "Ouvrir preuves, sources et discussion",
+  closeClaimDetails: "Masquer le détail",
+  corpusEvidenceTitle: "Preuves",
+  noSourcesYet: "Aucune source ajoutée pour l’instant",
+  noArgumentsYet: "Aucun argument structuré pour l’instant",
+  noCommentsYet: "Aucun commentaire pour l’instant",
+  communityContribution: "Contribution communautaire",
+  proposedStatus: "Proposé",
+  promoteToArgument: "Proposer comme argument",
+  selectSource: "Source",
+  retrySection: "Réessayer",
+  sectionError: "Impossible de charger cette section.",
+  intuitionPublished: "Publié sur Intuition",
+  intuitionSignalAvailable: "Signal disponible",
+  intuitionNotPublished: "Cette affirmation n’est pas publiée sur Intuition",
+  immersiveBack: "Retour",
+  immersiveTools: "Recherche et filtres",
+  immersiveLegend: "Légende",
+  immersiveCategories: "Catégories",
   intuitionTheoriesTitle: "Intuition — confiance communautaire",
   intuitionTheoriesHint:
-    "Croire ou contester une personne, un événement, une théorie, une interprétation ou une source. Les signaux ne remplacent jamais les preuves.",
+    "Soutenir ou contester une thèse publiée sur Intuition. Les signaux ne remplacent jamais les preuves.",
   agoraTabTheories: "Théories",
   agoraTabDebates: "Débats",
   agoraTabBibliography: "Bibliographie",
   agoraSourceFilter: "Filtrer par catalogue",
   agoraFilterEmpty: "Aucun élément pour ce catalogue.",
   demoRosterTitle: "Figures de la démo",
-  demoRosterHint: "Dix vies choisies — ouvrir la carte ou l’Agora. Ou cherchez n’importe qui d’autre pour collecter une vie (sans LLM).",
+  demoRosterHint: "Dix vies choisies — ouvrir la carte ou l’Agora. La recherche libre est en pause pour cette démo.",
   demoRosterStats: (events, pins, claims) =>
     `${events} faits · ${pins} sur carte · ${claims} débats`,
   demoRosterPending: "Pas encore chargé — ouvrir pour collecter.",
@@ -447,36 +724,73 @@ const FR: AppMessages = {
   demoIntuitionLive: "Publication Intuition testnet activée sur ce déploiement.",
   demoIntuitionModeled:
     "Théories modélisées (MetaSudo). Activer le testnet avec INTUITION_ALLOW_LIVE=1.",
-  stanceTestnetReady:
-    "Modélisée — prête pour publication testnet (opérateur : intuition-publish --live).",
-  scholar: "Scholar",
-  visit: "Visit",
-  visitEyebrow: "Walk Through History",
-  visitSubtitle: "Découvrez les lieux, monuments et expériences qui rendent l’histoire visitable.",
-  visitProject: "Construire les lieux depuis la vie documentée",
-  visitDiscover: "Découvrir les sites patrimoniaux identifiés",
-  visitEmpty: "Aucun lieu patrimonial. Projetez-les depuis les événements géolocalisés, ou cette personne n’en a pas.",
-  visitLegacy: "Mémoire et postérité",
-  visitRoutingNote: "Aucun moteur de routage n’est configuré. L’ordre suit la distance à vol d’oiseau. Aucun temps de trajet n’est affiché.",
-  openInScholar: "Comprendre cette vie dans Scholar",
-  openInVisit: "Découvrir les lieux dans Visit",
-  productLaneScholarTitle: "Scholar — comprendre l’histoire",
-  productLaneScholarBody: "Une vie datée, une carte, et les sources derrière chaque fait.",
-  productLaneVisitTitle: "Visit — découvrir les lieux",
-  productLaneVisitBody: "Maisons, monuments, musées et parcours liés à une personne.",
-  productLaneAgoraTitle: "Agora — explorer les interprétations",
-  productLaneAgoraBody: "Théories, arguments et controverses, séparés des faits de la vie.",
-  exploreLife: "Explorer sa vie",
-  discoverPlaces: "Découvrir ses lieux",
-  exploreDebates: "Explorer les débats",
-  tabOverview: "Aperçu",
-  tabTimeline: "Frise",
-  tabMap: "Carte",
-  tabSources: "Sources",
-  entityLead: "Une vie, ses lieux, et les preuves.",
-  unknownDate: "Date inconnue",
-  openEventDetail: "Ouvrir la fiche complète",
-  imageCredit: "Image : Wikimedia",
+  homeVisionsTitle: "Trois façons d’explorer",
+  homeVisionsHint:
+    "Scholar pour la vie sourcée, Visit pour musées et expositions, Agora pour théories et débat sur Intuition.",
+  visionScholarTitle: "Scholar",
+  visionScholarDesc:
+    "Frise, carte et sources — la vie documentée, avec preuves et précision des dates.",
+  visionScholarCta: "Ouvrir l’Explorer",
+  visionVisitTitle: "Visit",
+  visionVisitDesc:
+    "Musées, mémoriaux et expositions liés à une personne — quoi voir et quoi faire maintenant.",
+  visionVisitBadge: "Bientôt",
+  visionAgoraTitle: "Agora",
+  visionAgoraDesc:
+    "Théories, controverses et érudition — soutenir ou contester sur Intuition testnet.",
+  visionAgoraCta: "Ouvrir l’Agora",
+  walletConnect: "Connecter le wallet",
+  walletDisconnect: "Déconnecter",
+  walletConnecting: "Connexion…",
+  walletNoProvider: "Installez un wallet Web3 (ex. MetaMask) pour le testnet.",
+  walletConnectFailed: "Connexion au wallet impossible.",
+  walletConnectHint:
+    "Testnet — l’écriture des triples viendra ensuite ; la connexion prépare votre identité.",
+  walletConnectForStance:
+    "Connectez votre wallet pour enregistrer une position (simulation testnet).",
+  walletWrongNetwork: "Mauvais réseau",
+  walletSwitchNetwork: "Changer de réseau",
+  walletPanelKicker: "Intuition",
+  walletPanelTitle: "Votre wallet",
+  walletPanelLead: "Connectez votre wallet pour prendre position sur Intuition testnet.",
+  walletConnectModalTitle: "Connecter un wallet",
+  walletEduTitle: "Qu’est-ce qu’un wallet ?",
+  walletEduAssetsTitle: "Un lieu pour vos actifs numériques",
+  walletEduAssetsBody:
+    "Un wallet sert à envoyer, recevoir, stocker et afficher des actifs numériques.",
+  walletEduLoginTitle: "Une autre façon de se connecter",
+  walletEduLoginBody:
+    "Au lieu de créer un compte et un mot de passe sur chaque site, connectez simplement votre wallet.",
+  walletGetWallet: "Obtenir un wallet",
+  walletLearnMore: "En savoir plus",
+  walletConnectHintNetwork: (network) =>
+    `Connexion sur ${network}. Ajoutez le réseau dans votre wallet si demandé.`,
+  walletNetworkHub: "Hub réseau",
+  walletConnected: "Connecté",
+  walletWrongNetworkDetail: "Vous n’êtes pas sur le bon réseau. Changez de réseau pour continuer.",
+  talariaSignIn: "Connexion Talaria",
+  talariaSignInHint:
+    "Signez un message pour créer une session Talaria. Pas de gas, pas de transaction Intuition.",
+  intuitionTestnetPanel: "Intuition · testnet",
+  lensToggleLabel: "Mode d’exploration",
+  lensScholar: "Faits & anecdotes",
+  lensVisit: "Tourisme",
+  lensScholarHint: "Vie datée : événements et anecdotes, chacun avec ses sources.",
+  lensVisitHint: "Lieux à visiter : monuments, maisons, expositions.",
+  scholarOverviewTab: "Aperçu",
+  scholarTimelineTab: "Chronologie",
+  scholarMapTab: "Carte de vie",
+  scholarSourcesTab: "Sources",
+  visitMapTab: "Carte touristique",
+  visitHeritageTab: "Monuments",
+  visitHeritageEmpty:
+    "Aucun lieu visitable indexé pour cette personne — musées et mémoriaux apparaissent ici après ingest.",
+  visitNowTab: "En ce moment",
+  visitNowEmpty:
+    "Aucune expo ou événement près des lieux de cette personne sur la période — lancez visit-enrich ou élargissez les dates.",
+  visitNowEnds: "Fin",
+  visitNowOpenSource: "Source",
+  visionVisitCta: "Parcourir les vies",
 };
 
 export const messages: Record<AppLocale, AppMessages> = { en: EN, fr: FR };

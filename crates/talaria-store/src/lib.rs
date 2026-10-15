@@ -31,6 +31,7 @@ pub mod wiki_sections;
 pub use canonical_events::{
     find_existing_event, get_canonical_event, insert_canonical_event, insert_event_evidence,
     list_event_evidence, list_event_narrative_context, list_geojson_events, list_timeline_events,
+    list_tourism_events,
     refresh_event_source_refs, CanonicalEventInsert, CanonicalEventRow, EventEvidenceRow,
     NarrativeContextRow,
 };

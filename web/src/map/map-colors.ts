@@ -1,11 +1,14 @@
 // web/src/map/map-colors.ts
+export { MAP_LAYER_PALETTE, mapLayerPalette, type MapLayerPalette } from "./map-theme";
+
+/** @deprecated Use mapLayerPalette(isDark) — kept for existing imports */
 export const MAP_LAYER_COLORS_DARK = {
-  cluster: "#2d7a86",
+  cluster: "#45A6C4",
   eventLow: "#1a5560",
   eventMid: "#3a8f9a",
-  eventHigh: "#7ae8f5",
+  eventHigh: "#72c4da",
   anecdote: "#e8b84a",
-  marble: "#ffffff",
-  pointStroke: "#061016",
-  accentStrong: "#7ae8f5",
+  marble: "#F2EEE5",
+  pointStroke: "#08151C",
+  accentStrong: "#F07A45",
 } as const;

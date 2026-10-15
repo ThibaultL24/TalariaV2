@@ -29,65 +29,17 @@
 }
 
 .popup-apercu {
-  background: var(--map-panel-bg);
-  border: 1px solid var(--map-panel-border);
+  background: color-mix(in srgb, var(--color-bg-surface) 96%, transparent);
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-lg);
   padding: var(--space-16);
   box-shadow: var(--shadow-md);
   color: var(--color-text-primary);
 }
 
-.popup-apercu__title {
-  margin: 0;
-  font-family: var(--font-body);
-  font-size: 0.95rem;
-  font-weight: 600;
-}
-
-.popup-apercu__meta,
-.popup-apercu__summary {
-  margin: 0.25rem 0 0;
-  font-family: var(--font-body);
-  font-size: 0.75rem;
-  line-height: 1.4;
-}
-
-.map-preview-live {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-}
-
-.map-preview-sheet {
-  position: absolute;
-  z-index: 4;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 0.9rem 1rem 1rem;
-  background: var(--map-panel-bg, var(--color-bg-surface));
-  border-top: 1px solid var(--map-panel-border, var(--color-border-subtle));
-  font-family: var(--font-body);
-}
-
-.map-preview-sheet__actions {
-  display: flex;
-  gap: 0.75rem;
-  margin-top: 0.75rem;
-}
-
-.map-preview-sheet__actions button {
-  font: inherit;
-  min-height: 2.75rem;
-  padding: 0.4rem 0.8rem;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .maplibregl-popup {
-    transition: none;
-  }
+[data-theme="dark"] .popup-apercu {
+  background: color-mix(in srgb, var(--color-bg-surface) 94%, transparent);
+  border-color: var(--color-border-strong);
 }
 
 .popup-apercu__close:hover {
