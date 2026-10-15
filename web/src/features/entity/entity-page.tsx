@@ -106,7 +106,7 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
     if (!entityId || experience !== "istoria") return;
     const controller = new AbortController();
     void fetchSourcedLandmarks(entityId, controller.signal)
-      .then(result => { if (!controller.signal.aborted) setSourcedLandmarks(result.landmarks); })
+      .then(result => { if (!controller.signal.aborted) setSourcedLandmarks(Array.isArray(result?.landmarks) ? result.landmarks : []); })
       .catch(() => { if (!controller.signal.aborted) setSourcedLandmarks([]); });
     return () => controller.abort();
   }, [entityId, experience, revision]);
