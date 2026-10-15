@@ -102,6 +102,7 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/v1/visit/sites/{site_id}/refresh-osm", post(visit_wikidata::refresh_osm))
         .route("/api/v1/entities/{entity_id}/visit/sites", get(visit_wikidata::sites))
         .route("/api/v1/entities/{entity_id}/visit/sites/geojson", get(visit_wikidata::sites_geojson))
+        .route("/api/v1/entities/{entity_id}/visit/itinerary", get(visit_wikidata::itinerary))
         .route(
             "/api/v1/entities/{entity_id}/visit/anchors",
             get(visit::anchors),
