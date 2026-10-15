@@ -581,16 +581,23 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
             <h2>{t.chronPreviewTitle}</h2>
             <p className="v3-note">{sourcedLandmarks.length ? "Épisodes présents dans l’introduction Wikipédia et reliés à des preuves déjà ingérées." : "Sélection indicative selon les catégories historiques ; correspondance avec l’introduction Wikipédia non vérifiée."}</p>
             <ol className="v3-events v3-events--landmarks">
-              {(sourcedLandmarks.length ? sourcedLandmarks.map(landmark => events.find(e => e.id === landmark.event_id)).filter((e): e is TimelineEvent => Boolean(e)) : chronPreviewEvents).map((event) => (
+              {sourcedLandmarks.length ? sourcedLandmarks.map((landmark) => (
+                <li key={landmark.event_id}>
+                  <span>{landmark.time?.start ?? "Date non précisée"}</span>
+                  <button type="button" onClick={() => select(landmark.event_id)}>
+                    {landmark.title}
+                  </button>
+                  <small>{eventTypeLabel(landmark.event_type, locale)} · Wikipédia, introduction</small>
+                  <a className="istoria-landmark-source" href={landmark.lead_evidence.source_url}
+                     target="_blank" rel="noopener noreferrer">
+                     Consulter la source{landmark.lead_evidence.revision_id ? " (révision archivée)" : ""} ↗
+                  </a>
+                </li>
+              )) : chronPreviewEvents.map(event => (
                 <li key={event.id}>
                   <span>{eventDate(event)}</span>
-                  <button type="button" onClick={() => select(event.id)}>
-                    {event.title}
-                  </button>
-                  <small>
-                    {eventTypeLabel(event.event_type, locale)} ·{" "}
-                    {event.place_label ?? "Place not established"}
-                  </small>
+                  <button type="button" onClick={() => select(event.id)}>{event.title}</button>
+                  <small>{eventTypeLabel(event.event_type, locale)} · {event.place_label ?? "Lieu non établi"}</small>
                 </li>
               ))}
             </ol>
