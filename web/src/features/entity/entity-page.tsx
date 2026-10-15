@@ -15,17 +15,20 @@ import {
 import {
   fetchVisitHeritage,
   fetchVisitNow,
+  fetchVisitSites,
   getEntityView,
   eventDate,
   type EntityOverview,
   type Page,
   type VisitOpportunity,
+  type VisitSite,
 } from "@/lib/entity-views";
 import { EventMomentSearch } from "@/components/search/event-moment-search";
 import { HistoricalTimeline } from "@/components/timeline/historical-timeline";
 import { EntityVisitMap } from "@/features/visit/entity-visit-map";
 import { VisitHeritageList } from "@/features/visit/visit-heritage-list";
 import { VisitNowList } from "@/features/visit/visit-now-list";
+import { VisitSitesList } from "@/features/visit/visit-sites-list";
 import { VisitLensToggle, useExplorerLens } from "@/features/visit/visit-lens-toggle";
 import { selectChronologicalPreview } from "@/lib/chronological-preview";
 import { eventTypeLabel } from "@/lib/event-taxonomy";
@@ -84,7 +87,17 @@ export function EntityPage() {
   const scholarTabs = ["overview", "timeline", "map", "sources"] as const;
   const visitTabs = ["map", "heritage", "now"] as const;
   const [visitNow, setVisitNow] = useState<VisitOpportunity[]>([]);
+  const [visitSites, setVisitSites] = useState<VisitSite[]>([]);
+  const [visitRefresh, setVisitRefresh] = useState(0);
   const tabs = lens === "visit" ? visitTabs : scholarTabs;
+  useEffect(() => {
+    if (!entityId || lens !== "visit") return;
+    const controller = new AbortController();
+    void fetchVisitSites(entityId, { signal: controller.signal })
+      .then(result => { if (!controller.signal.aborted) setVisitSites(result.sites); })
+      .catch(() => { if (!controller.signal.aborted) setVisitSites([]); });
+    return () => controller.abort();
+  }, [entityId, lens, visitRefresh]);
   const filters = new URLSearchParams();
   const immersive =
     lens === "visit"
