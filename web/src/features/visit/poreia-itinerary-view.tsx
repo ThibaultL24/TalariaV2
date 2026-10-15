@@ -29,6 +29,7 @@ export function PoreiaItineraryView({
   return (
     <section className="poreia-route" aria-labelledby="poreia-route-title">
       <header className="poreia-route__header">
+        <div className="poreia-route__banner" role="img" aria-label="Colonnes classiques face à un paysage méditerranéen" />
         <p className="v3-eyebrow">POREIA · PARCOURS</p>
         <h2 id="poreia-route-title">Sur les traces de cette personnalité</h2>
         <p>Une proposition pour découvrir des sites réellement identifiés et liés à la personne.</p>
