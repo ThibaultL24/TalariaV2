@@ -327,7 +327,16 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
                     {overview?.entity.label ?? (entityId ? "Loading…" : "Overview")}
                   </span>
                 </h1>
-                <p>Explore a life through time, places and evidence.</p>
+                <p>{experience === "istoria"
+                  ? "L’enquête historique : faits, chronologie et sources."
+                  : "Le voyage culturel : lieux, monuments et parcours."}</p>
+                {entityId && (
+                  <div className="talaria-experience-links">
+                    <Link className="button button--ghost" to={experience === "istoria" ? `/poreia/${entityId}/map` : `/istoria/${entityId}/overview`}>
+                      {experience === "istoria" ? "Découvrir ses lieux dans Poreia →" : "Explorer sa vie dans Istoria →"}
+                    </Link>
+                  </div>
+                )}
               </div>
             </div>
             <section className="v3-search" aria-label="Search a person">
