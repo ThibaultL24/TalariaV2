@@ -49,6 +49,8 @@ test("the same Wikidata QID reinforces one place instead of creating a second ro
   expect(places[0].sources[0]?.url).toContain("Q123");
 });
 
-test("an empty catalog invents nothing", () => {
-  expect(buildHeritageCatalog([], [])).toEqual([]);
+test("verified hours are kept and missing hours are not invented", () => {
+  const places = buildHeritageCatalog([{ ...site, opening_hours: "Mo-Su 10:00-18:00" }], []);
+  expect(places[0].openingHours).toBe("Mo-Su 10:00-18:00");
+  expect(buildHeritageCatalog([site], [])[0].openingHours).toBeUndefined();
 });

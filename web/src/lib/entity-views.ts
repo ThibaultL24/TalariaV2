@@ -114,6 +114,8 @@ export interface VisitSite {
   relation_pid: "P547" | "P138" | "P119" | "P551";
   coordinates: { lat: number; lon: number };
   visitability: "unknown" | "verified_visitable" | "verified_closed" | "restricted";
+  opening_hours?: string | null;
+  association_source_url?: string | null;
 }
 
 export async function fetchVisitSites(

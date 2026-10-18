@@ -22,6 +22,7 @@ export interface HeritagePlace {
   origins: HeritageOrigin[];
   wikidataQid?: string;
   summary?: string | null;
+  openingHours?: string;
 }
 
 function sitePlace(site: VisitSite): HeritagePlace {
@@ -33,9 +34,10 @@ function sitePlace(site: VisitSite): HeritagePlace {
     coordinates: site.coordinates,
     visitability: site.visitability,
     wikidataQid: site.wikidata_qid,
+    openingHours: site.opening_hours?.trim() || undefined,
     sources: [{
       label: "Wikidata",
-      url: `https://www.wikidata.org/wiki/${site.wikidata_qid}`,
+      url: site.association_source_url || `https://www.wikidata.org/wiki/${site.wikidata_qid}`,
     }],
     origins: ["wikidata_site"],
   };
