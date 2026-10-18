@@ -1,8 +1,10 @@
+// web/src/features/visit/poreia-heritage-view.tsx
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { TimelineEvent } from "@/lib/api";
+import { PoreiaPlaceCard } from "@/features/poreia/components/poreia-place-card";
+import { buildHeritageCatalog, type HeritagePlace } from "@/features/poreia/heritage-catalog";
 import type { VisitSite } from "@/lib/entity-views";
-import { VisitSitesList } from "./visit-sites-list";
-import { VisitHeritageList } from "./visit-heritage-list";
 import { useI18n } from "@/lib/i18n";
 
 interface Props {
@@ -18,8 +20,26 @@ export function PoreiaHeritageView({
   entityId, sites, events, loading = false, onFocusSite, onFocusEvent,
 }: Props) {
   const { locale, t } = useI18n();
-  const hasSites = sites.length > 0;
-  const hasEvents = events.length > 0;
+  const places = buildHeritageCatalog(sites, events);
+  const [kind, setKind] = useState<string>("");
+  const visible = kind ? places.filter((place) => place.kind === kind) : places;
+  const kinds = [...new Set(places.map((place) => place.kind))];
+
+  const focus = (place: HeritagePlace) => {
+    if (place.origins.includes("wikidata_site") && place.relationPid && place.wikidataQid && place.coordinates) {
+      onFocusSite({
+        id: place.id,
+        wikidata_qid: place.wikidataQid,
+        label: place.title,
+        kind: place.kind as VisitSite["kind"],
+        relation_pid: place.relationPid,
+        coordinates: place.coordinates,
+        visitability: place.visitability,
+      });
+      return;
+    }
+    onFocusEvent(place.id);
+  };
 
   return (
     <section className="poreia-heritage" aria-labelledby="poreia-heritage-title">
@@ -30,21 +50,36 @@ export function PoreiaHeritageView({
           ? "Résidences, monuments et lieux de mémoire liés à cette personnalité. L’existence d’un site ne garantit pas son ouverture au public."
           : "Residences, monuments and places of memory linked to this person. A documented site is not necessarily open to visitors."}</p>
       </header>
-      {hasSites ? (
+      {places.length > 0 ? (
         <>
           <p className="poreia-heritage__count">
             {locale === "fr"
-              ? `${sites.length} lieu${sites.length > 1 ? "x" : ""} documenté${sites.length > 1 ? "s" : ""}`
-              : `${sites.length} documented ${sites.length === 1 ? "place" : "places"}`}
+              ? `${places.length} lieu${places.length > 1 ? "x" : ""} documenté${places.length > 1 ? "s" : ""}`
+              : `${places.length} documented ${places.length === 1 ? "place" : "places"}`}
           </p>
-          <VisitSitesList sites={sites} onFocus={onFocusSite} />
-        </>
-      ) : hasEvents ? (
-        <>
-          <p className="poreia-heritage__count">{locale === "fr"
-            ? "Lieux du catalogue historique"
-            : "Places from the historical catalog"}</p>
-          <VisitHeritageList events={events} loading={loading} onSelect={onFocusEvent} emptyLabel={t.visitHeritageEmpty} />
+          {kinds.length > 1 && (
+            <div className="poreia-filters" role="group" aria-label={locale === "fr" ? "Filtrer par type de lieu" : "Filter by place type"}>
+              <button type="button" aria-pressed={kind === ""} onClick={() => setKind("")}>
+                {locale === "fr" ? "Tous" : "All"}
+              </button>
+              {kinds.map((value) => (
+                <button key={value} type="button" aria-pressed={kind === value} onClick={() => setKind(value)}>
+                  {value.replaceAll("_", " ")}
+                </button>
+              ))}
+            </div>
+          )}
+          <ul className="visit-heritage-list">
+            {visible.map((place) => (
+              <li key={`${place.id}:${place.origins.join("-")}`}>
+                <button type="button" onClick={() => focus(place)}>
+                  <span className="visit-heritage-list__title">{place.title}</span>
+                  {place.city ? <span className="visit-heritage-list__place">{place.city}</span> : null}
+                </button>
+                <PoreiaPlaceCard place={place} heading={false} />
+              </li>
+            ))}
+          </ul>
         </>
       ) : loading ? (
         <p role="status" className="poreia-heritage__status">{t.loading}</p>

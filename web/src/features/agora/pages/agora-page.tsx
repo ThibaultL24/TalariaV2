@@ -7,7 +7,6 @@ import { ExperienceNavigation } from "@/components/layout/experience-navigation"
 import { ExperienceSubnav } from "@/components/layout/experience-subnav";
 import { Navbar } from "@/components/layout/navbar";
 import { TalariaSandalMark } from "@/components/brand/talaria-sandal-mark";
-import { IntuitionWalletPanel } from "@/components/wallet/intuition-wallet-panel";
 import { EntitySearchBox } from "@/components/search/entity-search-box";
 import { usePersonPicker } from "@/hooks/use-person-picker";
 import {
@@ -175,9 +174,11 @@ export function AgoraPage() {
               </span>
             </h1>
             <p className="hero__subtitle">{t.agoraHint}</p>
-            <div className="mt-4 max-w-lg">
-              <IntuitionWalletPanel />
-            </div>
+            <p className="hero__subtitle">
+              {locale === "fr"
+                ? "Ces propositions sont des interprétations, distinctes des faits. Une connexion n’est demandée que pour publier ou prendre position."
+                : "These propositions are interpretations, distinct from the facts. A connection is requested only to publish or take a stance."}
+            </p>
             {busy ? (
               <p className="mt-3 text-sm text-(--color-text-secondary)">{t.searchInProgress}</p>
             ) : null}

@@ -17,6 +17,7 @@ import { MapLayers } from "@/components/map/map-layers";
 import { MapInteractions } from "@/components/map/map-interactions";
 import type { GeoJsonFeatureCollection } from "@/lib/api";
 import type { TalariaFeatureCollection } from "@/lib/schemas/geojson";
+import { useI18n } from "@/lib/i18n";
 
 export function EntityVisitMap({
   id,
@@ -49,6 +50,8 @@ export function EntityVisitMap({
     [data, keys],
   );
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const { locale } = useI18n();
 
   useEffect(() => {
     setData(undefined);
@@ -72,6 +75,7 @@ export function EntityVisitMap({
         Math.min(90, b.getNorth()),
       ].join(",");
       setError("");
+      setLoading(true);
       void Promise.all([
         fetchVisitHeritageGeojson(id, { bbox, signal }),
         fetchVisitNowGeojson(id, { bbox, signal }),
@@ -86,9 +90,13 @@ export function EntityVisitMap({
           setData(
             spreadStackedMapPoints(attachLegendKeys(merged)) as TalariaFeatureCollection,
           );
+          setLoading(false);
         })
         .catch((e: unknown) => {
-          if (!signal.aborted) setError(String(e));
+          if (!signal.aborted) {
+            setError(String(e));
+            setLoading(false);
+          }
         });
     };
     const schedule = () => {
@@ -122,6 +130,33 @@ export function EntityVisitMap({
         <MapSourceManager map={map} data={visible} />
         <MapLayers map={map} data={visible} selectedEventId={selected} />
         <MapInteractions map={map} onSelectEvent={onSelect} />
+        <button
+          type="button"
+          className="poreia-recenter"
+          onClick={() => {
+            if (!map || !visible?.features.length) return;
+            const first = visible.features[0].geometry;
+            if (first.type !== "Point") return;
+            const bounds = visible.features.reduce((box, feature) => {
+              if (feature.geometry.type !== "Point") return box;
+              const [lon, lat] = feature.geometry.coordinates as [number, number];
+              return {
+                west: Math.min(box.west, lon),
+                south: Math.min(box.south, lat),
+                east: Math.max(box.east, lon),
+                north: Math.max(box.north, lat),
+              };
+            }, { west: Infinity, south: Infinity, east: -Infinity, north: -Infinity });
+            map.fitBounds([[bounds.west, bounds.south], [bounds.east, bounds.north]], {
+              padding: 48,
+              duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 600,
+              maxZoom: 12,
+            });
+          }}
+        >
+          {locale === "fr" ? "Recentrer" : "Recenter"}
+        </button>
+        {loading && <p role="status" className="v3-map-loading">{locale === "fr" ? "Chargement de la carte…" : "Loading the map…"}</p>}
         {error && (
           <p role="alert" className="v3-map-error">
             {error}

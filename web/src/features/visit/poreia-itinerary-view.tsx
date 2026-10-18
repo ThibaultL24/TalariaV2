@@ -80,19 +80,19 @@ export function PoreiaItineraryView({
       )}
       {selectedCity && (
         <p className="poreia-destination-selected">
-          Destination : <strong>{selectedCity.label}</strong> ·
-          <a href={selectedCity.source_url} target="_blank" rel="noopener noreferrer">source Wikidata ↗</a>
+          Destination : <strong>{selectedCity.label}</strong>
+          <a href={selectedCity.source_url} target="_blank" rel="noopener noreferrer">Source de l’association ↗</a>
           <button type="button" onClick={() => {setSelectedCity(undefined);setDestination(undefined);}}>Effacer</button>
         </p>
       )}
       <p className="v3-note">Seuls les sites historiquement associés à la personne sont proposés. La recherche ne crée aucun lieu.</p>
-      {result?.routing === "osrm" ? (
+      {result?.routing === "osrm" && result.travel_minutes != null ? (
         <p className="poreia-route__metrics">
           Trajet calculé : {result.route_distance_km?.toLocaleString("fr-FR",{maximumFractionDigits:1})} km
           · environ {result.travel_minutes} min
         </p>
       ) : result?.stops.length ? (
-        <p className="v3-note">Aucun itinéraire vérifié n'est disponible : seules les distances à vol d'oiseau sont affichées.</p>
+        <p className="v3-note">Séquence géographique indicative. Aucune durée de marche n’est calculée.</p>
       ) : null}
       {error && <p role="alert">{error}</p>}
       {!result && !error && <p role="status">Chargement du parcours…</p>}
@@ -104,7 +104,6 @@ export function PoreiaItineraryView({
               <span className="poreia-route__index">{String(index + 1).padStart(2, "0")}</span>
               <div>
                 <h3>{stop.label}</h3>
-                <p>Site documenté · {stop.wikidata_qid}</p>
                 {index > 0 && result.legs[index - 1] && (
                   <p>{result.legs[index - 1].straight_line_km.toLocaleString("fr-FR")} km à vol d’oiseau depuis le site précédent</p>
                 )}

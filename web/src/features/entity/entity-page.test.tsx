@@ -118,7 +118,7 @@ test("desktop timeline keeps the main navbar and desktop canvas mode", async () 
   open("/entities/person-1/timeline");
   await screen.findByRole("heading", { name: "Victor Hugo" });
   expect(screen.getByRole("navigation", { name: "Main" })).toBeTruthy();
-  expect(screen.getByText("Canvas surface desktop")).toBeTruthy();
+  expect(await screen.findByText("Canvas surface desktop")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Search and filters" })).toBeNull();
 });
 
@@ -128,7 +128,7 @@ test("mobile timeline is fullscreen without the desktop navbar", async () => {
   await screen.findByRole("heading", { name: "Victor Hugo" });
   expect(screen.queryByRole("navigation", { name: "Main" })).toBeNull();
   expect(screen.getByRole("link", { name: "Back" })).toBeTruthy();
-  expect(screen.getByText("Canvas surface fullscreen")).toBeTruthy();
+  expect(await screen.findByText("Canvas surface fullscreen")).toBeTruthy();
   expect(document.querySelector(".v3-shell--mobile-stage")).toBeTruthy();
 });
 
@@ -136,7 +136,7 @@ test("mobile map is fullscreen and tools open as a drawer", async () => {
   stubViewport(true);
   open("/entities/person-1/map");
   await screen.findByRole("heading", { name: "Victor Hugo" });
-  expect(screen.getByText("Map surface fullscreen")).toBeTruthy();
+  expect(await screen.findByText("Map surface fullscreen")).toBeTruthy();
   expect(screen.queryByRole("combobox")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Search and filters" }));
   expect(screen.getByRole("combobox")).toBeTruthy();
