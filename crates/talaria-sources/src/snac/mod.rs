@@ -10,6 +10,13 @@
 
 pub mod align;
 pub mod ark;
+pub mod assertion;
 
 pub use align::{decide_candidates, CandidateView, LinkDecision, LinkStatus, SubjectAuthorities};
-pub use ark::{canonical_ark, normalize_isni, normalize_qid, normalize_viaf, parse_same_as, SameAs};
+pub use ark::{
+    canonical_ark, normalize_isni, normalize_qid, normalize_viaf, parse_same_as, SameAs,
+};
+pub use assertion::{
+    assertion_content_hash, canonical_assertion_json, map_predicate, source_assertion_key,
+    AssertionParts, MappedPredicate, ASSERTION_KEY_VERSION,
+};
