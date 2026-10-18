@@ -189,7 +189,7 @@ export function AgoraPage() {
         <div className="mx-auto max-w-3xl px-4 pb-12">
           {subject ? (
             <LaneIngestBar lane="agora" busy={busy} onRun={() => void runAgora()} />
-          ) : (
+          ) : routeEntityId ? null : (
             <p className="py-8 text-center text-sm text-(--color-text-secondary)">{t.agoraEmpty}</p>
           )}
           {entityId ? (

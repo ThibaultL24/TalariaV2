@@ -2,7 +2,7 @@
 import type { TimelineEvent } from "@/lib/api";
 import type { VisitSite } from "@/lib/entity-views";
 
-export type HeritageOrigin = "wikidata_site" | "heritage_event";
+export type HeritageOrigin = "wikidata_site" | "heritage_event" | "current_activity";
 
 export interface HeritageSource {
   label: string;
@@ -23,6 +23,14 @@ export interface HeritagePlace {
   wikidataQid?: string;
   summary?: string | null;
   openingHours?: string;
+  hoursCheckedAt?: string;
+}
+
+function recordedHours(hours?: string | null, checkedAt?: string | null): { openingHours?: string; hoursCheckedAt?: string } {
+  const openingHours = hours?.trim();
+  const hoursCheckedAt = checkedAt?.trim();
+  if (!openingHours || !hoursCheckedAt) return {};
+  return { openingHours, hoursCheckedAt };
 }
 
 function sitePlace(site: VisitSite): HeritagePlace {
@@ -34,7 +42,7 @@ function sitePlace(site: VisitSite): HeritagePlace {
     coordinates: site.coordinates,
     visitability: site.visitability,
     wikidataQid: site.wikidata_qid,
-    openingHours: site.opening_hours?.trim() || undefined,
+    ...recordedHours(site.opening_hours, site.hours_checked_at),
     sources: [{
       label: "Wikidata",
       url: site.association_source_url || `https://www.wikidata.org/wiki/${site.wikidata_qid}`,
@@ -79,6 +87,66 @@ export function buildHeritageCatalog(sites: VisitSite[], events: TimelineEvent[]
     }
     places.push(eventPlace(event));
     seenIds.add(event.id);
+  }
+  return places;
+}
+
+interface MapReadingFeature {
+  id?: string | number;
+  geometry?: { type?: string; coordinates?: unknown };
+  properties?: Record<string, unknown>;
+}
+
+function textProp(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function pointCoordinates(feature: MapReadingFeature): { lat: number; lon: number } | undefined {
+  if (feature.geometry?.type !== "Point" || !Array.isArray(feature.geometry.coordinates)) return undefined;
+  const [lon, lat] = feature.geometry.coordinates;
+  if (typeof lat !== "number" || typeof lon !== "number" || !Number.isFinite(lat) || !Number.isFinite(lon)) return undefined;
+  return { lat, lon };
+}
+
+/**
+ * The map list reads the same features the map draws. Identity is the feature id.
+ * A second feature with the same id is ignored. Coordinates never create a match.
+ */
+export function placesFromMapFeatures(features: MapReadingFeature[]): HeritagePlace[] {
+  const places: HeritagePlace[] = [];
+  const seen = new Set<string>();
+  for (const feature of features) {
+    const props = feature.properties ?? {};
+    const id = textProp(props.id) ?? (feature.id == null ? undefined : String(feature.id));
+    const title = textProp(props.title);
+    if (!id || !title || seen.has(id)) continue;
+    seen.add(id);
+    const layer = textProp(props.visit_layer);
+    const origin: HeritageOrigin = layer === "heritage_site"
+      ? "wikidata_site"
+      : layer === "now"
+        ? "current_activity"
+        : "heritage_event";
+    const qid = textProp(props.wikidata_qid);
+    const relation = textProp(props.relation_pid);
+    const visitability = textProp(props.visitability);
+    const sourceUrl = textProp(props.association_source_url) ?? textProp(props.canonical_url);
+    places.push({
+      id,
+      title,
+      kind: textProp(props.kind) ?? textProp(props.event_type) ?? "place",
+      relationPid: relation === "P547" || relation === "P138" || relation === "P119" || relation === "P551" ? relation : undefined,
+      city: textProp(props.place_label) ?? textProp(props.venue_label),
+      coordinates: pointCoordinates(feature),
+      visitability: visitability === "verified_visitable" || visitability === "verified_closed" || visitability === "restricted"
+        ? visitability
+        : "unknown",
+      sources: sourceUrl ? [{ label: origin === "wikidata_site" ? "Wikidata" : "Source", url: sourceUrl }] : [],
+      origins: [origin],
+      wikidataQid: qid && /^Q\d+$/.test(qid) ? qid : undefined,
+      summary: textProp(props.summary),
+      ...recordedHours(textProp(props.opening_hours), textProp(props.hours_checked_at)),
+    });
   }
   return places;
 }

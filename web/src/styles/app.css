@@ -2903,7 +2903,7 @@ a {
   z-index: 2;
   margin: var(--space-12);
 }
-.poreia-recenter { top: 0; right: 0; min-height: 40px; }
+.poreia-recenter { top: var(--space-12); left: var(--space-12); right: auto; min-height: 40px; }
 .v3-map-loading { left: 0; bottom: 0; }
 .v3-map, .v3-map--visit { position: relative; }
 .map-preview {
@@ -2919,18 +2919,45 @@ a {
 }
 .map-preview p { margin: 4px 0 0; }
 @media (max-width: 768px) {
-  .poreia-workspace { grid-template-columns: 1fr; min-height: 0; }
-  .v3-map--visit { min-height: 52vh; }
+  .v3-shell--immersive:has(.poreia-workspace) {
+    overflow-y: auto;
+    height: auto;
+    max-height: none;
+    min-height: 100dvh;
+  }
+  .v3-shell--immersive:has(.poreia-workspace) .v3-main,
+  .v3-shell--immersive:has(.poreia-workspace) .v3-explorer-stage,
+  .poreia-workspace {
+    flex: none;
+    min-height: 0;
+    overflow: visible;
+  }
+  .poreia-workspace { display: flex; flex-direction: column; }
+  .v3-shell--immersive .poreia-workspace .v3-map-layout--visit {
+    height: auto;
+    min-height: 0;
+    flex: none;
+  }
+  .v3-shell--immersive .poreia-workspace .v3-map--visit {
+    height: 240px;
+    min-height: 240px;
+    flex: none;
+  }
   .poreia-sheet {
-    max-height: 46vh;
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    flex: none;
+    min-height: 180px;
+    max-height: none;
+    overflow: visible;
+    border-radius: var(--radius-lg);
   }
   .navbar__actions { flex-wrap: wrap; }
 }
 @media (max-width: 390px) {
   .poreia-entry__scene { max-height: 140px; }
-  .v3-map--visit { min-height: 48vh; }
-  .poreia-sheet { max-height: 42vh; }
+  .v3-shell--immersive .poreia-workspace .v3-map--visit {
+    height: 220px;
+    min-height: 220px;
+  }
   .experience-subnav { margin-inline: var(--space-8); }
 }
 @media (prefers-reduced-motion: reduce) {

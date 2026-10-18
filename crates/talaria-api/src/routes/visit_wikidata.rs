@@ -2,6 +2,7 @@
 use super::AppState;
 use axum::{extract::{Path, Query, State}, http::StatusCode, response::{IntoResponse, Response}, Json};
 use serde::Deserialize;
+use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
@@ -113,11 +114,13 @@ SELECT DISTINCT ?site ?siteLabel ?relation ?geo ?class WHERE {{
 fn valid_qid(q:&str)->bool {
     q.strip_prefix('Q').is_some_and(|rest| !rest.is_empty() && !rest.starts_with('0') && rest.bytes().all(|b|b.is_ascii_digit()))
 }
-/// Hours are shown only after an exact OpenStreetMap check. An unchecked or blank value stays hidden.
-pub fn published_opening_hours(checked: bool, hours: Option<&str>) -> Option<String> {
-    if !checked { return None; }
+/// Hours are published only with the timestamp of the OpenStreetMap check that recorded them.
+/// A check date does not mean the hours are still current or that the place is open today.
+pub fn published_opening_hours(checked_at: Option<&str>, hours: Option<&str>) -> Option<(String, String)> {
+    let stamp = checked_at?.trim();
     let trimmed = hours?.trim();
-    if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
+    if stamp.is_empty() || trimmed.is_empty() { return None; }
+    Some((trimmed.to_string(), stamp.to_string()))
 }
 
 fn parse_point(s:&str)->Option<(f64,f64)> {
@@ -132,10 +135,10 @@ fn parse_point(s:&str)->Option<(f64,f64)> {
 pub async fn sites(State(state): State<AppState>,Path(entity_id): Path<Uuid>,Query(query): Query<SitesQuery>)->Response {
     let bbox=match bbox(query.bbox.as_deref()){Ok(v)=>v,Err(_)=>return failure(StatusCode::BAD_REQUEST,"invalid_bbox")};
     let limit=query.limit.unwrap_or(100).clamp(1,500);
-    let rows=sqlx::query_as::<_,(Uuid,String,String,String,String,f64,f64,String,Option<String>,bool,String)>(r#"
+    let rows=sqlx::query_as::<_,(Uuid,String,String,String,String,f64,f64,String,Option<String>,Option<DateTime<Utc>>,String)>(r#"
         SELECT s.id,s.wikidata_qid,s.label,s.kind,p.relation_pid,
                ST_Y(s.geom::geometry),ST_X(s.geom::geometry),
-               s.visitability,s.osm_opening_hours,s.osm_checked_at IS NOT NULL,p.source_url
+               s.visitability,s.osm_opening_hours,s.osm_checked_at,p.source_url
         FROM visit_person_sites p JOIN visit_sites s ON s.id=p.site_id
         WHERE p.entity_id=$1 AND s.publication_status='published'
           AND ($2::float8 IS NULL OR ST_Intersects(s.geom,ST_MakeEnvelope($2,$3,$4,$5,4326)::geography))
@@ -145,12 +148,15 @@ pub async fn sites(State(state): State<AppState>,Path(entity_id): Path<Uuid>,Que
     .bind(bbox.map(|b|b[2])).bind(bbox.map(|b|b[3])).bind(limit)
     .fetch_all(&state.pool).await;
     match rows {
-        Ok(rows)=>Json(json!({"sites":rows.iter().map(|(id,qid,label,kind,pid,lat,lon,visitability,hours,checked,source)|json!({
+        Ok(rows)=>Json(json!({"sites":rows.iter().map(|(id,qid,label,kind,pid,lat,lon,visitability,hours,checked,source)| {
+            let published = published_opening_hours(checked.map(|stamp| stamp.to_rfc3339()).as_deref(), hours.as_deref());
+            json!({
             "id":id,"wikidata_qid":qid,"label":label,"kind":kind,"relation_pid":pid,
             "coordinates":{"lat":lat,"lon":lon},"visitability":visitability,
-            "opening_hours":published_opening_hours(*checked, hours.as_deref()),
+            "opening_hours":published.as_ref().map(|(value, _)| value.clone()),
+            "hours_checked_at":published.as_ref().map(|(_, stamp)| stamp.clone()),
             "association_source_url":source
-        })).collect::<Vec<_>>(),"count":rows.len()})).into_response(),
+        })}).collect::<Vec<_>>(),"count":rows.len()})).into_response(),
         Err(e)=>{tracing::error!(error=%e,"visit site query failed");failure(StatusCode::INTERNAL_SERVER_ERROR,"database_error")}
     }
 }
@@ -161,10 +167,13 @@ mod tests {
     #[test] fn rejects_non_qid(){assert!(!valid_qid("Q0"));assert!(!valid_qid("Q5 UNION"));assert!(valid_qid("Q535"));}
     #[test] fn parses_wkt(){assert_eq!(parse_point("Point(2.3 48.8)"),Some((48.8,2.3)));assert_eq!(parse_point("Point(400 50)"),None);}
     #[test] fn invalid_bboxes(){assert!(bbox(Some("2,48,1,49")).is_err());assert!(bbox(Some("a,b,c,d")).is_err());}
-    #[test] fn hours_require_a_completed_check(){
-        assert_eq!(published_opening_hours(false, Some("Mo-Su 10:00-18:00")), None);
-        assert_eq!(published_opening_hours(true, Some("  ")), None);
-        assert_eq!(published_opening_hours(true, Some("Mo-Su 10:00-18:00")).as_deref(), Some("Mo-Su 10:00-18:00"));
+    #[test] fn hours_require_the_check_timestamp(){
+        assert_eq!(published_opening_hours(None, Some("Mo-Su 10:00-18:00")), None);
+        assert_eq!(published_opening_hours(Some("2026-01-02T00:00:00Z"), Some("  ")), None);
+        assert_eq!(
+            published_opening_hours(Some("2026-01-02T00:00:00Z"), Some("Mo-Su 10:00-18:00")),
+            Some(("Mo-Su 10:00-18:00".to_string(), "2026-01-02T00:00:00Z".to_string())),
+        );
     }
 }
 
@@ -175,9 +184,10 @@ pub async fn sites_geojson(
 ) -> Response {
     let bbox=match bbox(query.bbox.as_deref()){Ok(v)=>v,Err(_)=>return failure(StatusCode::BAD_REQUEST,"invalid_bbox")};
     let limit=query.limit.unwrap_or(200).clamp(1,500);
-    let rows=sqlx::query_as::<_,(Uuid,String,String,String,String,f64,f64)>(r#"
+    let rows=sqlx::query_as::<_,(Uuid,String,String,String,String,f64,f64,String,Option<String>,Option<DateTime<Utc>>,String)>(r#"
         SELECT s.id,s.wikidata_qid,s.label,s.kind,p.relation_pid,
-               ST_Y(s.geom::geometry),ST_X(s.geom::geometry)
+               ST_Y(s.geom::geometry),ST_X(s.geom::geometry),
+               s.visitability,s.osm_opening_hours,s.osm_checked_at,p.source_url
         FROM visit_person_sites p JOIN visit_sites s ON s.id=p.site_id
         WHERE p.entity_id=$1 AND s.publication_status='published'
           AND ($2::float8 IS NULL OR ST_Intersects(s.geom,ST_MakeEnvelope($2,$3,$4,$5,4326)::geography))
@@ -188,12 +198,18 @@ pub async fn sites_geojson(
     .fetch_all(&state.pool).await;
     match rows {
         Ok(rows)=>{
-            let features:Vec<Value>=rows.iter().map(|(id,qid,label,kind,pid,lat,lon)| json!({
+            let features:Vec<Value>=rows.iter().map(|(id,qid,label,kind,pid,lat,lon,visitability,hours,checked,source)| {
+                let published = published_opening_hours(checked.map(|stamp| stamp.to_rfc3339()).as_deref(), hours.as_deref());
+                json!({
                 "type":"Feature","id":id,
                 "geometry":{"type":"Point","coordinates":[lon,lat]},
                 "properties":{"id":id,"title":label,"event_type": match kind.as_str() { "museum"=>"museum","monument"=>"statue","memorial"=>"memorial","burial_site"=>"burial",_=>"residence" },
-                  "visit_layer":"heritage_site","kind":kind,"wikidata_qid":qid,"relation_pid":pid}
-            })).collect();
+                  "visit_layer":"heritage_site","kind":kind,"wikidata_qid":qid,"relation_pid":pid,
+                  "visitability":visitability,
+                  "opening_hours":published.as_ref().map(|(value, _)| value.clone()),
+                  "hours_checked_at":published.as_ref().map(|(_, stamp)| stamp.clone()),
+                  "association_source_url":source}
+            })}).collect();
             Json(json!({"type":"FeatureCollection","features":features,"count":features.len()})).into_response()
         },
         Err(e)=>{tracing::error!(error=%e,"visit geojson query failed");failure(StatusCode::INTERNAL_SERVER_ERROR,"database_error")}

@@ -24,11 +24,13 @@ export function EntityVisitMap({
   selected,
   focus,
   onSelect,
+  onView,
 }: {
   id: string;
   selected?: string;
   focus?: { eventId: string; lat: number; lon: number };
   onSelect: (id: string) => void;
+  onView?: (view: { features: TalariaFeatureCollection["features"]; loading: boolean }) => void;
 }) {
   const [map, setMap] = useState<Map | null>(null);
   const [data, setData] = useState<TalariaFeatureCollection>();
@@ -122,6 +124,10 @@ export function EntityVisitMap({
       essential: true,
     });
   }, [map, focus?.eventId, focus?.lat, focus?.lon]);
+
+  useEffect(() => {
+    onView?.({ features: visible?.features ?? [], loading });
+  }, [visible, loading, onView]);
 
   return (
     <div className="v3-map-layout v3-map-layout--visit">

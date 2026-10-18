@@ -115,6 +115,7 @@ export interface VisitSite {
   coordinates: { lat: number; lon: number };
   visitability: "unknown" | "verified_visitable" | "verified_closed" | "restricted";
   opening_hours?: string | null;
+  hours_checked_at?: string | null;
   association_source_url?: string | null;
 }
 
