@@ -2810,3 +2810,58 @@ a {
   .experience-navigation__item { transition: none; }
   .experience-navigation__item:hover { transform: none; }
 }
+
+
+/* Curated entry when public search is deliberately disabled. */
+.experience-demo-figures {
+  max-width: 1100px;
+  margin: clamp(24px,4vw,54px) auto;
+}
+.experience-demo-figures__head { max-width: 670px; margin-bottom: 22px; }
+.experience-demo-figures__head h2 { margin: 0 0 9px; font: 500 clamp(24px,3vw,36px)/1.2 var(--font-display); }
+.experience-demo-figures__head p:last-child { margin: 0; color: var(--color-text-secondary); line-height: 1.6; }
+.experience-demo-figures__grid {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 12px;
+  padding: 0;
+  margin: 0;
+}
+.experience-demo-figures__grid li a {
+  display: grid;
+  grid-template-columns: 44px minmax(0,1fr) 18px;
+  gap: 13px;
+  align-items: center;
+  min-height: 86px;
+  padding: 12px 18px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-surface);
+  box-shadow: var(--shadow-sm);
+  transition: border-color 180ms ease, transform 180ms ease;
+}
+.experience-demo-figures__grid li a:hover { border-color: var(--color-primary); transform: translateY(-1px); }
+.experience-demo-figures__grid li a:focus-visible { outline: 3px solid var(--color-primary); outline-offset: 2px; }
+.experience-demo-figures__monogram {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  background: color-mix(in srgb,var(--color-primary) 10%,var(--color-bg-surface));
+  color: var(--color-primary);
+  font: 500 22px var(--font-display);
+}
+.experience-demo-figures__name { display: grid; gap: 5px; min-width: 0; font-weight: 600; line-height: 1.3; }
+.experience-demo-figures__name small { font-size: 11px; font-weight: 400; color: var(--color-text-secondary); }
+.experience-demo-figures__grid li a > span:last-child { color: var(--color-primary); }
+@media(max-width:620px) {
+  .experience-demo-figures__grid { grid-template-columns: 1fr; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .experience-demo-figures__grid li a { transition: none; }
+  .experience-demo-figures__grid li a:hover { transform: none; }
+}
