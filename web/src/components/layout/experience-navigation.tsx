@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 
 type Experience = "istoria" | "poreia" | "agora";
@@ -60,7 +60,7 @@ export function ExperienceNavigation({ entityId, compact = false }: ExperienceNa
         {EXPERIENCES.map((experience, index) => {
           const isActive = pathname === `/${experience.id}` || pathname.startsWith(`/${experience.id}/`);
           return (
-            <NavLink
+            <Link
               key={experience.id}
               to={href(experience.id)}
               end={false}
@@ -74,7 +74,7 @@ export function ExperienceNavigation({ entityId, compact = false }: ExperienceNa
                 {!compact && <small>{experience.promise[locale]}</small>}
               </span>
               <span className="experience-navigation__arrow" aria-hidden="true">↗</span>
-            </NavLink>
+            </Link>
           );
         })}
       </div>
