@@ -2668,3 +2668,145 @@ a {
   [data-theme="light"] .v3-overview-hero::before { background: linear-gradient(rgba(247,243,234,.88),rgba(247,243,234,.7)); }
   [data-theme="dark"] .v3-overview-hero::before { background: linear-gradient(rgba(7,18,29,.89),rgba(7,18,29,.68)); }
 }
+
+
+/* Experience architecture: editorial navigation is intentionally separate from
+   the per-entity view tabs. Site graphics are decorative, not evidence. */
+.experience-navigation {
+  width: min(100%, 1280px);
+  margin: 0 auto clamp(20px, 2.5vw, 34px);
+  padding: 0;
+}
+.agora-canvas > .experience-navigation { padding: clamp(18px, 2.5vw, 28px) clamp(16px, 3vw, 32px) 0; }
+.experience-navigation__heading {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 11px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.experience-navigation__eyebrow {
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .2em;
+  color: var(--color-primary);
+}
+.experience-navigation__items {
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  gap: clamp(8px,1.5vw,16px);
+}
+.experience-navigation__item {
+  min-width: 0;
+  min-height: 110px;
+  display: grid;
+  grid-template-columns: 25px minmax(0,1fr) 16px;
+  gap: 9px;
+  align-items: start;
+  padding: 18px 16px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  color: var(--color-text-primary);
+  background-position: right center;
+  background-size: cover;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+[data-theme="light"] .experience-navigation__item--istoria {
+  background-image: linear-gradient(90deg,rgba(247,243,234,.99) 0%,rgba(247,243,234,.95) 60%,rgba(247,243,234,.65) 100%),url("/brand/istoria-scene.webp");
+}
+[data-theme="light"] .experience-navigation__item--poreia {
+  background-image: linear-gradient(90deg,rgba(247,243,234,.99) 0%,rgba(247,243,234,.95) 60%,rgba(247,243,234,.65) 100%),url("/brand/poreia-scene.webp");
+}
+[data-theme="light"] .experience-navigation__item--agora {
+  background-image: linear-gradient(90deg,rgba(247,243,234,.99) 0%,rgba(247,243,234,.95) 60%,rgba(247,243,234,.65) 100%),url("/brand/agora-scene.webp");
+}
+[data-theme="dark"] .experience-navigation__item--istoria {
+  background-image: linear-gradient(90deg,rgba(12,27,37,.99) 0%,rgba(12,27,37,.96) 60%,rgba(12,27,37,.74) 100%),url("/brand/istoria-scene.webp");
+}
+[data-theme="dark"] .experience-navigation__item--poreia {
+  background-image: linear-gradient(90deg,rgba(12,27,37,.99) 0%,rgba(12,27,37,.96) 60%,rgba(12,27,37,.74) 100%),url("/brand/poreia-scene.webp");
+}
+[data-theme="dark"] .experience-navigation__item--agora {
+  background-image: linear-gradient(90deg,rgba(12,27,37,.99) 0%,rgba(12,27,37,.96) 60%,rgba(12,27,37,.74) 100%),url("/brand/agora-scene.webp");
+}
+.experience-navigation__item.is-current {
+  border-color: var(--color-primary);
+  box-shadow: inset 0 0 0 1px var(--color-primary),var(--shadow-sm);
+}
+.experience-navigation__item:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-md);
+}
+.experience-navigation__item:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 3px;
+}
+.experience-navigation__index { font-family: var(--font-display); font-size: 14px; color: var(--color-primary); }
+.experience-navigation__copy { display: flex; flex-direction: column; min-width: 0; gap: 3px; }
+.experience-navigation__copy strong { font-family: var(--font-display); font-size: clamp(19px,1.7vw,24px); font-weight: 500; line-height: 1.12; }
+.experience-navigation__meaning { font-size: 12px; line-height: 1.4; color: var(--color-text-secondary); }
+.experience-navigation__copy small { font-size: 11px; line-height: 1.4; color: var(--color-text-secondary); }
+.experience-navigation__arrow { color: var(--color-primary); justify-self: end; opacity: .65; }
+.experience-navigation--compact .experience-navigation__heading { margin-bottom: 8px; }
+.experience-navigation--compact .experience-navigation__item { min-height: 80px; padding: 12px 14px; }
+.experience-navigation--compact .experience-navigation__copy strong { font-size: 19px; }
+.v3-main > .experience-navigation + .v3-overview-hero {
+  margin: 0 0 28px;
+  border-radius: var(--radius-lg);
+}
+.v3-main:not(.v3-main--immersive) > .v3-tabs {
+  gap: 6px;
+  overflow-x: auto;
+  max-width: 100%;
+  margin: 24px 0;
+  padding: 6px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-surface);
+  scrollbar-width: thin;
+}
+.v3-main:not(.v3-main--immersive) > .v3-tabs a {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 9px 15px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  text-transform: none;
+}
+.v3-main:not(.v3-main--immersive) > .v3-tabs a.active {
+  color: var(--color-text-primary);
+  background: color-mix(in srgb,var(--color-primary) 14%,var(--color-bg-surface));
+  box-shadow: inset 0 -2px var(--color-primary);
+}
+.v3-main:not(.v3-main--immersive) > .v3-tabs a:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+.poreia-heritage { max-width: 1000px; margin: 22px auto 48px; padding: 0 clamp(8px,2vw,20px); }
+.poreia-heritage__header { max-width: 700px; margin-bottom: 24px; }
+.experience-section-kicker { margin: 0 0 7px; font-size: 11px; font-weight: 700; letter-spacing: .16em; color: var(--color-primary); }
+.poreia-heritage__header h2 { margin: 0 0 10px; font: 500 clamp(25px,3vw,36px)/1.16 var(--font-display); }
+.poreia-heritage__header p:last-child { margin: 0; color: var(--color-text-secondary); font-size: 14px; line-height: 1.65; }
+.poreia-heritage__count { color: var(--color-text-secondary); font-size: 12px; font-weight: 600; letter-spacing: .02em; }
+.poreia-heritage__empty { padding: clamp(22px,5vw,48px); border: 1px dashed var(--color-border-strong); border-radius: var(--radius-lg); background: var(--color-bg-surface); }
+.poreia-heritage__empty-icon { display: block; margin-bottom: 16px; font-size: 34px; color: var(--color-primary); }
+.poreia-heritage__empty h3 { margin: 0 0 9px; font: 500 24px/1.25 var(--font-display); }
+.poreia-heritage__empty p { margin: 0 0 20px; max-width: 58ch; color: var(--color-text-secondary); line-height: 1.65; }
+.poreia-heritage__status { padding: 22px; color: var(--color-text-secondary); }
+@media(max-width:720px) {
+  .experience-navigation__items { display: flex; overflow-x: auto; gap: 9px; scroll-snap-type: x proximity; padding-bottom: 4px; scrollbar-width: thin; }
+  .experience-navigation__item { flex: 0 0 min(78vw,270px); min-height: 96px; scroll-snap-align: start; }
+  .experience-navigation--compact .experience-navigation__item { flex-basis: min(70vw,230px); }
+  .experience-navigation__heading { font-size: 11px; }
+  .agora-canvas > .experience-navigation { padding: 15px 14px 0; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .experience-navigation__item { transition: none; }
+  .experience-navigation__item:hover { transform: none; }
+}
