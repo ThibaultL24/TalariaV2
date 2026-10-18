@@ -57,8 +57,12 @@ pub async fn persist_identity_links(
     decisions: &[PersistedDecision],
 ) -> anyhow::Result<()> {
     for decision in decisions {
-        let snapshot_id = if let Some(body) = decision.raw_body.as_deref() {
-            Some(insert_immutable_snapshot(tx, decision, body).await?)
+        let snapshot_id = if decision.record_status != "stub" {
+            if let Some(body) = decision.raw_body.as_deref() {
+                Some(insert_immutable_snapshot(tx, decision, body).await?)
+            } else {
+                None
+            }
         } else {
             None
         };
@@ -76,18 +80,105 @@ pub async fn write_snac_ark_shortcut<'c, E>(
 where
     E: PgExecutor<'c>,
 {
-    sqlx::query(
+    let updated = sqlx::query(
         r#"
-        UPDATE entities
+        UPDATE entities AS entity
         SET authority_ids = authority_ids || jsonb_build_object('snac_ark', $2::text)
-        WHERE id = $1
+        WHERE entity.id = $1
+          AND EXISTS (
+            SELECT 1
+            FROM entity_identity_links AS link
+            JOIN snac_constellations AS constellation
+              ON constellation.id = link.constellation_id
+            WHERE link.entity_id = entity.id
+              AND link.status = 'aligned'
+              AND constellation.ark = $2
+          )
         "#,
     )
     .bind(entity_id)
     .bind(ark)
     .execute(executor)
     .await?;
+    if updated.rows_affected() == 0 {
+        anyhow::bail!("snac_ark shortcut requires an aligned identity link for this ark");
+    }
     Ok(())
+}
+
+/// Opens one transaction, locks this person, refuses to steal an aligned
+/// constellation, then writes. Callers do not take the lock themselves.
+pub async fn persist_snac_identity(
+    pool: &sqlx::PgPool,
+    entity_id: Uuid,
+    decisions: &[PersistedDecision],
+) -> anyhow::Result<()> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("SELECT pg_advisory_xact_lock($1)")
+        .bind(advisory_key(&entity_id))
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("SAVEPOINT snac_identity")
+        .execute(&mut *tx)
+        .await?;
+    let guarded = guard_claimed_constellations(&mut tx, decisions).await?;
+    if let Err(err) = persist_identity_links(&mut tx, entity_id, &guarded).await {
+        if !unique_violation_in_anyhow(&err) {
+            return Err(err);
+        }
+        sqlx::query("ROLLBACK TO SAVEPOINT snac_identity")
+            .execute(&mut *tx)
+            .await?;
+        let guarded = guard_claimed_constellations(&mut tx, decisions).await?;
+        persist_identity_links(&mut tx, entity_id, &guarded).await?;
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
+async fn guard_claimed_constellations(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    decisions: &[PersistedDecision],
+) -> anyhow::Result<Vec<PersistedDecision>> {
+    let mut guarded = Vec::with_capacity(decisions.len());
+    for decision in decisions {
+        if decision.status != "aligned" {
+            guarded.push(decision.clone());
+            continue;
+        }
+        let taken: bool = sqlx::query_scalar(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM entity_identity_links AS link
+                JOIN snac_constellations AS constellation
+                  ON constellation.id = link.constellation_id
+                WHERE constellation.ark = $1
+                  AND link.status = 'aligned'
+            )
+            "#,
+        )
+        .bind(&decision.ark)
+        .fetch_one(&mut **tx)
+        .await?;
+        if taken {
+            let mut conflict = decision.clone();
+            conflict.status = "conflict".into();
+            conflict.method = "constellation_claimed".into();
+            guarded.push(conflict);
+        } else {
+            guarded.push(decision.clone());
+        }
+    }
+    Ok(guarded)
+}
+
+fn unique_violation_in_anyhow(err: &anyhow::Error) -> bool {
+    err.chain().any(|cause| {
+        cause
+            .downcast_ref::<sqlx::Error>()
+            .is_some_and(is_unique_violation)
+    })
 }
 
 async fn insert_immutable_snapshot(
@@ -154,10 +245,30 @@ async fn upsert_constellation(
                 THEN snac_constellations.record_status
                 ELSE EXCLUDED.record_status
             END,
-            same_as = EXCLUDED.same_as,
-            exist_dates = EXCLUDED.exist_dates,
-            snapshot_id = COALESCE(EXCLUDED.snapshot_id, snac_constellations.snapshot_id),
-            raw_json = EXCLUDED.raw_json,
+            same_as = CASE
+                WHEN snac_constellations.record_status = 'complete'
+                     AND EXCLUDED.record_status = 'stub'
+                THEN snac_constellations.same_as
+                ELSE EXCLUDED.same_as
+            END,
+            exist_dates = CASE
+                WHEN snac_constellations.record_status = 'complete'
+                     AND EXCLUDED.record_status = 'stub'
+                THEN snac_constellations.exist_dates
+                ELSE EXCLUDED.exist_dates
+            END,
+            snapshot_id = CASE
+                WHEN snac_constellations.record_status = 'complete'
+                     AND EXCLUDED.record_status = 'stub'
+                THEN snac_constellations.snapshot_id
+                ELSE COALESCE(EXCLUDED.snapshot_id, snac_constellations.snapshot_id)
+            END,
+            raw_json = CASE
+                WHEN snac_constellations.record_status = 'complete'
+                     AND EXCLUDED.record_status = 'stub'
+                THEN snac_constellations.raw_json
+                ELSE EXCLUDED.raw_json
+            END,
             source_url = EXCLUDED.source_url,
             retrieved_at = EXCLUDED.retrieved_at,
             updated_at = NOW()
@@ -275,7 +386,7 @@ pub fn is_unique_violation(err: &sqlx::Error) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        advisory_key, aligned_constellation_id, is_unique_violation, persist_identity_links,
+        aligned_constellation_id, is_unique_violation, persist_identity_links, persist_snac_identity,
         write_snac_ark_shortcut, PersistedDecision,
     };
     use chrono::Utc;
@@ -315,44 +426,47 @@ mod tests {
         .unwrap()
     }
 
-    async fn claim_aligned(pool: &sqlx::PgPool, entity_id: Uuid, ark: &str) -> anyhow::Result<()> {
-        let mut tx = pool.begin().await?;
-        sqlx::query("SELECT pg_advisory_xact_lock($1)")
-            .bind(advisory_key(&entity_id))
-            .execute(&mut *tx)
-            .await?;
-        sqlx::query("SAVEPOINT snac_claim")
-            .execute(&mut *tx)
-            .await?;
-        let aligned = decision(ark, "aligned", "qid_same_as");
-        if let Err(err) = persist_identity_links(&mut tx, entity_id, &[aligned]).await {
-            return Err(err);
-        }
-        if let Err(err) = tx.commit().await {
-            if is_unique_violation(&err) {
-                return write_claimed(pool, entity_id, ark).await;
-            }
-            return Err(err.into());
-        }
-        Ok(())
-    }
-
-    async fn write_claimed(pool: &sqlx::PgPool, entity_id: Uuid, ark: &str) -> anyhow::Result<()> {
-        let mut tx = pool.begin().await?;
-        let conflict = decision(ark, "conflict", "constellation_claimed");
-        persist_identity_links(&mut tx, entity_id, &[conflict]).await?;
-        tx.commit().await?;
-        Ok(())
-    }
-
     #[sqlx::test(migrations = "../../migrations")]
     async fn snac_ark_alone_is_not_alignment(pool: sqlx::PgPool) {
         let entity_id = insert_person(&pool, "Shortcut only").await;
-        write_snac_ark_shortcut(&pool, entity_id, "ark:/99166/w6example")
+        let err = write_snac_ark_shortcut(&pool, entity_id, "ark:/99166/w6example")
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("aligned identity link"));
+        let stored: serde_json::Value =
+            sqlx::query_scalar("SELECT authority_ids FROM entities WHERE id = $1")
+                .bind(entity_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert!(stored.get("snac_ark").is_none());
+        assert!(aligned_constellation_id(&pool, entity_id).await.unwrap().is_none());
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn snac_ark_shortcut_requires_the_same_aligned_ark(pool: sqlx::PgPool) {
+        let entity_id = insert_person(&pool, "Aligned shortcut").await;
+        persist_snac_identity(
+            &pool,
+            entity_id,
+            &[decision("ark:/99166/w6real", "aligned", "qid_same_as")],
+        )
+        .await
+        .unwrap();
+        let wrong = write_snac_ark_shortcut(&pool, entity_id, "ark:/99166/w6other")
+            .await
+            .unwrap_err();
+        assert!(wrong.to_string().contains("aligned identity link"));
+        write_snac_ark_shortcut(&pool, entity_id, "ark:/99166/w6real")
             .await
             .unwrap();
-        let aligned = aligned_constellation_id(&pool, entity_id).await.unwrap();
-        assert!(aligned.is_none());
+        let stored: serde_json::Value =
+            sqlx::query_scalar("SELECT authority_ids FROM entities WHERE id = $1")
+                .bind(entity_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(stored["snac_ark"], "ark:/99166/w6real");
     }
 
     #[sqlx::test(migrations = "../../migrations")]
@@ -378,32 +492,54 @@ mod tests {
     async fn one_constellation_cannot_align_two_entities(pool: sqlx::PgPool) {
         let first = insert_person(&pool, "Person A").await;
         let second = insert_person(&pool, "Person B").await;
-        claim_aligned(&pool, first, "ark:/99166/w6one").await.unwrap();
-        let err = claim_aligned(&pool, second, "ark:/99166/w6one")
-            .await
-            .unwrap_err();
-        assert!(
-            is_unique_violation(err.downcast_ref::<sqlx::Error>().unwrap_or(&sqlx::Error::RowNotFound)),
-            "expected a unique violation, got {err}"
-        );
+        persist_snac_identity(
+            &pool,
+            first,
+            &[decision("ark:/99166/w6one", "aligned", "qid_same_as")],
+        )
+        .await
+        .unwrap();
+        persist_snac_identity(
+            &pool,
+            second,
+            &[decision("ark:/99166/w6one", "aligned", "qid_same_as")],
+        )
+        .await
+        .unwrap();
         let aligned: i64 = sqlx::query_scalar(
             "SELECT count(*) FROM entity_identity_links WHERE status = 'aligned'",
         )
         .fetch_one(&pool)
         .await
         .unwrap();
+        let claimed: String = sqlx::query_scalar(
+            "SELECT method FROM entity_identity_links WHERE entity_id = $1",
+        )
+        .bind(second)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
         assert_eq!(aligned, 1);
+        assert_eq!(claimed, "constellation_claimed");
     }
 
     #[sqlx::test(migrations = "../../migrations")]
     async fn one_entity_cannot_align_two_constellations(pool: sqlx::PgPool) {
         let entity_id = insert_person(&pool, "Two constellations").await;
-        claim_aligned(&pool, entity_id, "ark:/99166/w6first")
-            .await
-            .unwrap();
-        let err = claim_aligned(&pool, entity_id, "ark:/99166/w6second")
-            .await
-            .unwrap_err();
+        persist_snac_identity(
+            &pool,
+            entity_id,
+            &[decision("ark:/99166/w6first", "aligned", "qid_same_as")],
+        )
+        .await
+        .unwrap();
+        let err = persist_snac_identity(
+            &pool,
+            entity_id,
+            &[decision("ark:/99166/w6second", "aligned", "qid_same_as")],
+        )
+        .await
+        .unwrap_err();
         assert!(err
             .downcast_ref::<sqlx::Error>()
             .is_some_and(is_unique_violation));
@@ -479,9 +615,11 @@ mod tests {
         let second = insert_person(&pool, "Concurrent B").await;
         let pool_a = pool.clone();
         let pool_b = pool.clone();
+        let left_decisions = [decision("ark:/99166/w6shared", "aligned", "qid_same_as")];
+        let right_decisions = [decision("ark:/99166/w6shared", "aligned", "qid_same_as")];
         let (left, right) = tokio::join!(
-            claim_or_conflict(pool_a, first, "ark:/99166/w6shared"),
-            claim_or_conflict(pool_b, second, "ark:/99166/w6shared"),
+            persist_snac_identity(&pool_a, first, &left_decisions),
+            persist_snac_identity(&pool_b, second, &right_decisions),
         );
         left.unwrap();
         right.unwrap();
@@ -494,40 +632,64 @@ mod tests {
         assert_eq!(aligned, 1);
     }
 
-    async fn claim_or_conflict(pool: sqlx::PgPool, entity_id: Uuid, ark: &str) -> anyhow::Result<()> {
-        let mut tx = pool.begin().await?;
-        sqlx::query("SELECT pg_advisory_xact_lock($1)")
-            .bind(advisory_key(&entity_id))
-            .execute(&mut *tx)
-            .await?;
-        sqlx::query("SAVEPOINT snac_claim")
-            .execute(&mut *tx)
-            .await?;
-        let inserted = persist_identity_links(
-            &mut tx,
-            entity_id,
-            &[decision(ark, "aligned", "qid_same_as")],
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn stub_does_not_degrade_a_complete_constellation(pool: sqlx::PgPool) {
+        let entity_id = insert_person(&pool, "Complete then stub").await;
+        let mut complete = decision("ark:/99166/w6full", "aligned", "qid_same_as");
+        complete.record_status = "complete".into();
+        complete.same_as = serde_json::json!({"values":{"wikidata":["Q517"]},"raw":[],"internal_conflict":false});
+        complete.exist_dates = serde_json::json!({"kind":"range","surface":"1769-1821"});
+        complete.raw_json = serde_json::json!({"kept":true});
+        complete.raw_body = Some("{\"constellation\":\"complete\"}".into());
+        persist_snac_identity(&pool, entity_id, &[complete.clone()])
+            .await
+            .unwrap();
+
+        let mut stub = decision("ark:/99166/w6full", "aligned", "qid_same_as");
+        stub.same_as = serde_json::json!({"values":{},"raw":[],"internal_conflict":false});
+        stub.exist_dates = serde_json::json!({"kind":"unknown"});
+        stub.raw_json = serde_json::json!({"stub":true});
+        stub.raw_body = Some("{\"constellation\":\"stub\"}".into());
+        persist_snac_identity(&pool, entity_id, &[stub]).await.unwrap();
+
+        let row: (String, serde_json::Value, serde_json::Value, serde_json::Value, String) = sqlx::query_as(
+            r#"
+            SELECT record_status, same_as, exist_dates, raw_json, snap.text
+            FROM snac_constellations AS constellation
+            JOIN document_snapshots AS snap ON snap.id = constellation.snapshot_id
+            WHERE constellation.ark = 'ark:/99166/w6full'
+            "#,
         )
-        .await;
-        match inserted {
-            Ok(()) => {
-                if let Err(err) = tx.commit().await {
-                    if is_unique_violation(&err) {
-                        return write_claimed(&pool, entity_id, ark).await;
-                    }
-                    return Err(err.into());
-                }
-                Ok(())
-            }
-            Err(err) => {
-                if err
-                    .downcast_ref::<sqlx::Error>()
-                    .is_some_and(is_unique_violation)
-                {
-                    return write_claimed(&pool, entity_id, ark).await;
-                }
-                Err(err)
-            }
-        }
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(row.0, "complete");
+        assert_eq!(row.1["values"]["wikidata"][0], "Q517");
+        assert_eq!(row.2["surface"], "1769-1821");
+        assert_eq!(row.3["kept"], true);
+        assert_eq!(row.4, "{\"constellation\":\"complete\"}");
+
+        let mut again = complete;
+        again.same_as = serde_json::json!({"values":{"wikidata":["Q517"]},"raw":["https://viaf.org/viaf/1"],"internal_conflict":false});
+        again.raw_body = Some("{\"constellation\":\"complete-2\"}".into());
+        persist_snac_identity(&pool, entity_id, &[again]).await.unwrap();
+        let surface: String = sqlx::query_scalar(
+            r#"
+            SELECT same_as->'raw'->>0
+            FROM snac_constellations
+            WHERE ark = 'ark:/99166/w6full'
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let texts: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM document_snapshots WHERE text LIKE '%complete%'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(surface, "https://viaf.org/viaf/1");
+        assert_eq!(texts, 2);
     }
 }

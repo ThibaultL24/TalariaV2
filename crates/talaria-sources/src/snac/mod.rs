@@ -5,6 +5,8 @@
 //! `constellation` is one object; `constellation.ark`, `id`, `version`;
 //! `constellation.sameAsRelations[].uri`; `constellation.relations`;
 //! `constellation.resourceRelations[].resource.documentType.term` and `.link`.
+//! The git fixtures are reduced extracts. Full-body SHA-256 values are in
+//! `tests/fixtures/snac/original-sha256.txt`.
 
 pub mod align;
 pub mod ark;
