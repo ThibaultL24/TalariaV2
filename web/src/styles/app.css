@@ -2758,7 +2758,8 @@ a {
   margin: 0 0 28px;
   border-radius: var(--radius-lg);
 }
-.v3-main:not(.v3-main--immersive) > .v3-tabs {
+.v3-main:not(.v3-main--immersive) > .experience-subnav,
+.agora-canvas .experience-subnav {
   gap: 6px;
   overflow-x: auto;
   max-width: 100%;
@@ -2769,7 +2770,8 @@ a {
   background: var(--color-bg-surface);
   scrollbar-width: thin;
 }
-.v3-main:not(.v3-main--immersive) > .v3-tabs a {
+.v3-main:not(.v3-main--immersive) > .experience-subnav a,
+.agora-canvas .experience-subnav a {
   flex: 0 0 auto;
   min-height: 38px;
   padding: 9px 15px;
@@ -2779,12 +2781,14 @@ a {
   font-size: 13px;
   text-transform: none;
 }
-.v3-main:not(.v3-main--immersive) > .v3-tabs a.active {
+.v3-main:not(.v3-main--immersive) > .experience-subnav a.active,
+.agora-canvas .experience-subnav a.active {
   color: var(--color-text-primary);
   background: color-mix(in srgb,var(--color-primary) 14%,var(--color-bg-surface));
   box-shadow: inset 0 -2px var(--color-primary);
 }
-.v3-main:not(.v3-main--immersive) > .v3-tabs a:focus-visible {
+.v3-main:not(.v3-main--immersive) > .experience-subnav a:focus-visible,
+.agora-canvas .experience-subnav a:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: -2px;
 }

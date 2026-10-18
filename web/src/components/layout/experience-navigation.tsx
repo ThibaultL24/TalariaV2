@@ -1,7 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
+import { experienceHref, type ExperienceId } from "@/lib/experiences";
 import { useI18n } from "@/lib/i18n";
-
-type Experience = "istoria" | "poreia" | "agora";
 
 interface ExperienceNavigationProps {
   entityId?: string;
@@ -9,7 +8,7 @@ interface ExperienceNavigationProps {
 }
 
 const EXPERIENCES: ReadonlyArray<{
-  id: Experience;
+  id: ExperienceId;
   name: string;
   greek: string;
   meaning: { fr: string; en: string };
@@ -41,11 +40,7 @@ const EXPERIENCES: ReadonlyArray<{
 export function ExperienceNavigation({ entityId, compact = false }: ExperienceNavigationProps) {
   const { locale } = useI18n();
   const { pathname } = useLocation();
-  const href = (id: Experience): string => {
-    if (id === "agora") return "/agora";
-    if (!entityId) return `/${id}`;
-    return id === "poreia" ? `/poreia/${entityId}/map` : `/istoria/${entityId}/overview`;
-  };
+  const href = (id: ExperienceId): string => experienceHref(id, entityId);
 
   return (
     <nav

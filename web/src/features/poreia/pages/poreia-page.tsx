@@ -1,0 +1,240 @@
+// web/src/features/poreia/pages/poreia-page.tsx
+import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { EventDetailCard } from "@/components/detail/event-detail-card";
+import { rememberEntity, useExperienceSubject } from "@/components/entity/entity-context";
+import { ExperienceLayout } from "@/components/layout/experience-layout";
+import { EntitySearchBox } from "@/components/search/entity-search-box";
+import { EventMomentSearch } from "@/components/search/event-moment-search";
+import { EntityVisitMap } from "@/features/visit/entity-visit-map";
+import { PoreiaHeritageView } from "@/features/visit/poreia-heritage-view";
+import { PoreiaItineraryView } from "@/features/visit/poreia-itinerary-view";
+import { VisitNowList } from "@/features/visit/visit-now-list";
+import { fetchEventDetail, type TimelineEvent } from "@/lib/api";
+import {
+  fetchVisitHeritage,
+  fetchVisitNow,
+  fetchVisitSites,
+  getEntityView,
+  type EntityOverview,
+  type VisitOpportunity,
+  type VisitSite,
+} from "@/lib/entity-views";
+import { useI18n } from "@/lib/i18n";
+
+export function PoreiaPage() {
+  const { t } = useI18n();
+  const {
+    entityId,
+    view,
+    params,
+    setParams,
+    navigate,
+    picker,
+    revision,
+    pendingSelection,
+    openPerson,
+  } = useExperienceSubject("poreia");
+  const overviewQuery = useQuery({
+    queryKey: ["entity", entityId, "overview", revision],
+    enabled: Boolean(entityId),
+    retry: false,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    queryFn: ({ signal }) => getEntityView<EntityOverview>(entityId, "overview", new URLSearchParams(), signal),
+  });
+  const sitesQuery = useQuery({
+    queryKey: ["entity", entityId, "visit-sites", revision],
+    enabled: Boolean(entityId) && (view === "map" || view === "heritage"),
+    retry: false,
+    refetchOnWindowFocus: false,
+    queryFn: ({ signal }) => fetchVisitSites(entityId, { signal }),
+  });
+  const heritageQuery = useQuery({
+    queryKey: ["entity", entityId, "visit-heritage", revision],
+    enabled: Boolean(entityId) && view === "heritage",
+    retry: false,
+    refetchOnWindowFocus: false,
+    queryFn: ({ signal }) => fetchVisitHeritage(entityId, { signal }),
+  });
+  const nowQuery = useQuery({
+    queryKey: ["entity", entityId, "visit-now", revision],
+    enabled: Boolean(entityId) && view === "now",
+    retry: false,
+    refetchOnWindowFocus: false,
+    queryFn: ({ signal }) => fetchVisitNow(entityId, { signal }),
+  });
+  const overview = overviewQuery.data;
+  const visitSites: VisitSite[] = sitesQuery.data?.sites ?? [];
+  const events: TimelineEvent[] = heritageQuery.data?.events ?? [];
+  const visitNow: VisitOpportunity[] = nowQuery.data?.opportunities ?? [];
+
+  useEffect(() => {
+    if (!entityId) return;
+    rememberEntity(entityId, overview?.entity.label, overview?.entity.qid);
+  }, [entityId, overview]);
+
+  const immersive = Boolean(entityId);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [mapFocus, setMapFocus] = useState<{ eventId: string; lat: number; lon: number } | undefined>();
+  const [selected, setSelected] = useState<TimelineEvent>();
+  const eventId = params.get("event");
+  const showTools = view === "map" || view === "heritage" || view === "now";
+
+  useEffect(() => {
+    let cancelled = false;
+    setSelected(undefined);
+    if (!eventId) return;
+    void fetchEventDetail(eventId)
+      .then((result) => {
+        if (!cancelled && result.event?.entity_id === entityId) setSelected(result.event);
+      })
+      .catch(() => {
+        if (!cancelled) setSelected(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [eventId, entityId]);
+
+  const select = (id?: string) => {
+    const copy = new URLSearchParams(params);
+    if (id) copy.set("event", id);
+    else copy.delete("event");
+    setParams(copy);
+  };
+  const loading = heritageQuery.isFetching || nowQuery.isFetching;
+  const error = heritageQuery.error
+    ? String(heritageQuery.error)
+    : nowQuery.error
+      ? String(nowQuery.error)
+      : overviewQuery.error
+        ? String(overviewQuery.error)
+        : "";
+
+  return (
+    <ExperienceLayout
+      experience="poreia"
+      entityId={entityId}
+      label={overview?.entity.label}
+      immersive={immersive}
+      mobileStage={false}
+      toolsOpen={toolsOpen}
+      onToggleTools={() => setToolsOpen((open) => !open)}
+      showHeroBand={!entityId}
+      search={
+        <>
+          <EntitySearchBox
+            suggestions={picker.suggestions}
+            onSubmitQuery={picker.setSearchQuery}
+            isLoading={picker.searchLoading}
+            onSelect={(item) => {
+              pendingSelection.current = true;
+              const selectedId = picker.selectPerson(item);
+              if (selectedId) openPerson(selectedId);
+            }}
+          />
+          {picker.ingestBusy && (
+            <p role="status">
+              Collecting sources · {picker.timelineEvents} events · {picker.mapPins} map points
+            </p>
+          )}
+          {picker.error && <p role="alert">{picker.error}</p>}
+          {!entityId && !picker.ingestBusy && (
+            <p className="v3-note">Rechercher une personnalité pour découvrir les lieux et parcours associés.</p>
+          )}
+        </>
+      }
+    >
+      {error && <p className="v3-inline-alert" role="alert">{error}</p>}
+      <div className={entityId && showTools ? "v3-explorer-stage" : undefined}>
+        {entityId && showTools && (
+          <div className="v3-moment-search-row">
+            <EventMomentSearch
+              events={view === "now" ? [] : events}
+              loading={loading}
+              onPick={(event) => {
+                select(event.id);
+                const coords = event.coordinates;
+                if (coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lon)) {
+                  setMapFocus({ eventId: event.id, lat: coords.lat, lon: coords.lon });
+                }
+                if (view !== "map") {
+                  const copy = new URLSearchParams(params);
+                  copy.set("event", event.id);
+                  navigate(`/poreia/${entityId}/map?${copy.toString()}`);
+                }
+              }}
+            />
+          </div>
+        )}
+        {view === "map" && entityId && (
+          <EntityVisitMap
+            id={entityId}
+            selected={eventId ?? undefined}
+            focus={mapFocus}
+            onSelect={(id) => {
+              const site = visitSites.find((row) => row.id === id);
+              if (site) setMapFocus({ eventId: id, lat: site.coordinates.lat, lon: site.coordinates.lon });
+              else select(id);
+            }}
+          />
+        )}
+        {view === "heritage" && entityId && (
+          <PoreiaHeritageView
+            entityId={entityId}
+            sites={visitSites}
+            events={events}
+            loading={heritageQuery.isFetching}
+            onFocusSite={(site) => {
+              setMapFocus({ eventId: site.id, lat: site.coordinates.lat, lon: site.coordinates.lon });
+              const copy = new URLSearchParams(params);
+              copy.delete("event");
+              navigate(`/poreia/${entityId}/map?${copy.toString()}`);
+            }}
+            onFocusEvent={(id) => {
+              const event = events.find((row) => row.id === id);
+              if (event?.coordinates) {
+                setMapFocus({ eventId: id, lat: event.coordinates.lat, lon: event.coordinates.lon });
+              }
+              const copy = new URLSearchParams(params);
+              copy.set("event", id);
+              navigate(`/poreia/${entityId}/map?${copy.toString()}`);
+            }}
+          />
+        )}
+        {view === "itinerary" && entityId && (
+          <PoreiaItineraryView
+            entityId={entityId}
+            onFocus={(point) => {
+              setMapFocus({ eventId: point.id, lat: point.lat, lon: point.lon });
+              navigate(`/poreia/${entityId}/map`);
+            }}
+          />
+        )}
+        {view === "now" && entityId && (
+          <VisitNowList
+            items={visitNow}
+            loading={nowQuery.isFetching}
+            emptyLabel={t.visitNowEmpty}
+            onSelect={(id) => {
+              const item = visitNow.find((row) => row.id === id);
+              if (item?.coordinates) {
+                setMapFocus({ eventId: item.id, lat: item.coordinates.lat, lon: item.coordinates.lon });
+              }
+              const copy = new URLSearchParams(params);
+              copy.set("event", id);
+              navigate(`/poreia/${entityId}/map?${copy.toString()}`);
+            }}
+          />
+        )}
+      </div>
+      {loading && <p role="status">Loading…</p>}
+      {selected && (
+        <aside className="v3-detail">
+          <EventDetailCard event={selected} onClose={() => select()} />
+        </aside>
+      )}
+    </ExperienceLayout>
+  );
+}

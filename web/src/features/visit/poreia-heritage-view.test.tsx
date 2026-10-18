@@ -79,7 +79,7 @@ test("experience navigation keeps three routes and preserves subject UUID", () =
   const links = [...nav.querySelectorAll("a")];
   expect(links).toHaveLength(3);
   expect(links.map(link => link.getAttribute("href"))).toEqual([
-    "/istoria/person-one/overview", "/poreia/person-one/map", "/agora",
+    "/istoria/person-one/overview", "/poreia/person-one/map", "/agora/person-one/discover",
   ]);
   expect(links[1].getAttribute("aria-current")).toBe("page");
   expect(links[0].getAttribute("aria-current")).toBeNull();

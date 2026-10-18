@@ -1,10 +1,12 @@
 // web/src/components/layout/navbar.tsx
 import type { ReactNode } from "react";
-import { Link, NavLink } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 import { useI18n } from "@/lib/i18n";
 import { TalariaNavbarBrand } from "@/components/brand/talaria-navbar-brand";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { IntuitionConnectButton } from "@/components/wallet/intuition-connect-button";
+import { entityIdFromPathname, type ExperienceId } from "@/lib/experiences";
+import { useExplorerStore } from "@/stores/explorer-store";
 
 interface NavbarProps {
   center?: ReactNode;
@@ -12,6 +14,9 @@ interface NavbarProps {
 
 export function Navbar({ center }: NavbarProps) {
   const { locale, setLocale, t } = useI18n();
+  const { pathname } = useLocation();
+  const storedId = useExplorerStore((state) => state.entityId);
+  const entityId = entityIdFromPathname(pathname) ?? storedId;
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     `rounded-full px-2.5 py-1 text-[11px] font-semibold ${
@@ -19,6 +24,15 @@ export function Navbar({ center }: NavbarProps) {
         ? "bg-(--color-bg-surface) text-(--color-text-primary)"
         : "text-(--navbar-chrome-muted) hover:text-(--navbar-chrome-text)"
     }`;
+
+  const experienceClass = (experience: ExperienceId) => {
+    const active = pathname === `/${experience}` || pathname.startsWith(`/${experience}/`);
+    return `rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+      active
+        ? "bg-(--color-bg-surface) text-(--color-text-primary)"
+        : "text-(--navbar-chrome-muted) hover:text-(--navbar-chrome-text)"
+    }`;
+  };
 
   return (
     <header className="navbar">
@@ -31,11 +45,27 @@ export function Navbar({ center }: NavbarProps) {
           <NavLink to="/" end className={linkClass}>
             {t.home}
           </NavLink>
-          <NavLink to="/istoria" className={linkClass}>Istoria</NavLink>
-          <NavLink to="/poreia" className={linkClass}>Poreia</NavLink>
-          <NavLink to="/agora" className={linkClass}>
+          <Link
+            to={entityId ? `/istoria/${encodeURIComponent(entityId)}` : "/istoria"}
+            className={experienceClass("istoria")}
+            aria-current={pathname === "/istoria" || pathname.startsWith("/istoria/") ? "page" : undefined}
+          >
+            Istoria
+          </Link>
+          <Link
+            to={entityId ? `/poreia/${encodeURIComponent(entityId)}` : "/poreia"}
+            className={experienceClass("poreia")}
+            aria-current={pathname === "/poreia" || pathname.startsWith("/poreia/") ? "page" : undefined}
+          >
+            Poreia
+          </Link>
+          <Link
+            to={entityId ? `/agora/${encodeURIComponent(entityId)}` : "/agora"}
+            className={experienceClass("agora")}
+            aria-current={pathname === "/agora" || pathname.startsWith("/agora/") ? "page" : undefined}
+          >
             {t.agora}
-          </NavLink>
+          </Link>
           <NavLink to="/about" className={linkClass}>
             {t.whitepaperNav}
           </NavLink>

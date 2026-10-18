@@ -19,6 +19,8 @@ interface AgoraPanelProps {
   onOpenEvent?: (eventId: string) => void;
   /** Hide bibliography block (e.g. event detail card). */
   claimsOnly?: boolean;
+  /** When set, the page section nav owns the view and this panel hides its own tabs. */
+  section?: "discover" | "theses" | "arguments" | "sources";
 }
 
 type AgoraTab = "theories" | "debates" | "bibliography";
@@ -217,6 +219,7 @@ export function AgoraPanel({
   bibliographyLoading,
   onOpenEvent,
   claimsOnly = false,
+  section,
 }: AgoraPanelProps) {
   const { t } = useI18n();
   const [tab, setTab] = useState<AgoraTab>("theories");
@@ -245,7 +248,7 @@ export function AgoraPanel({
   }, [tab]);
 
   useEffect(() => {
-    if (claimsOnly) return;
+    if (claimsOnly || section) return;
     if (tab === "theories" && theories.length === 0 && debates.length > 0) {
       setTab("debates");
     } else if (tab === "theories" && theories.length === 0 && bibliography.length > 0) {
@@ -253,7 +256,7 @@ export function AgoraPanel({
     } else if (tab === "debates" && debates.length === 0 && theories.length > 0) {
       setTab("theories");
     }
-  }, [claimsOnly, tab, theories.length, debates.length, bibliography.length]);
+  }, [claimsOnly, section, tab, theories.length, debates.length, bibliography.length]);
 
   if (isLoading && claims.length === 0 && (claimsOnly || bibliography.length === 0)) {
     return <p className="p-4 text-center text-sm text-(--color-text-muted)">{t.loadingAgora}</p>;
@@ -268,12 +271,21 @@ export function AgoraPanel({
     );
   }
 
-  const activeClaims = tab === "theories" ? theories : debates;
+  const mode = section === "discover"
+    ? "all"
+    : section === "theses"
+      ? "theories"
+      : section === "arguments"
+        ? "debates"
+        : section === "sources"
+          ? "bibliography"
+          : tab;
+  const activeClaims = mode === "all" ? claims : mode === "theories" ? theories : debates;
   const claimCounts = sourceCountsForClaims(activeClaims);
   const biblioCounts = sourceCountsForBibliography(bibliography);
   const filterSources =
-    tab === "bibliography" ? sortedSources(biblioCounts) : sortedSources(claimCounts);
-  const filterCounts = tab === "bibliography" ? biblioCounts : claimCounts;
+    mode === "bibliography" ? sortedSources(biblioCounts) : sortedSources(claimCounts);
+  const filterCounts = mode === "bibliography" ? biblioCounts : claimCounts;
 
   const filteredClaims = activeClaims.filter((c) => claimMatchesSource(c, sourceFilter));
   const filteredBiblio =
@@ -302,7 +314,7 @@ export function AgoraPanel({
         </div>
       ) : null}
 
-      <div className="agora-tablist" role="tablist" aria-label={t.agora}>
+      {!section && <div className="agora-tablist" role="tablist" aria-label={t.agora}>
         {tabs
           .filter((entry) => !entry.hidden)
           .map((entry) => {
@@ -321,14 +333,14 @@ export function AgoraPanel({
               </button>
             );
           })}
-      </div>
+      </div>}
 
-      {tab === "theories" ? (
+      {mode === "theories" || mode === "all" ? (
         <p className="text-[10px] leading-relaxed text-(--color-text-muted)">
           {t.intuitionTheoriesHint}
         </p>
       ) : null}
-      {tab === "bibliography" ? (
+      {mode === "bibliography" ? (
         <p className="text-[10px] leading-relaxed text-(--color-text-muted)">{t.bibliographyHint}</p>
       ) : null}
 
@@ -339,7 +351,7 @@ export function AgoraPanel({
         onChange={setSourceFilter}
       />
 
-      {tab === "bibliography" ? (
+      {mode === "bibliography" ? (
         bibliographyLoading && bibliography.length === 0 ? (
           <p className="text-xs text-(--color-text-muted)">{t.loadingSources}</p>
         ) : (
