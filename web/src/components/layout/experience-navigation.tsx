@@ -63,7 +63,6 @@ export function ExperienceNavigation({ entityId, compact = false }: ExperienceNa
             <Link
               key={experience.id}
               to={href(experience.id)}
-              end={false}
               className={`experience-navigation__item experience-navigation__item--${experience.id}${isActive ? " is-current" : ""}`}
               aria-current={isActive ? "page" : undefined}
             >
