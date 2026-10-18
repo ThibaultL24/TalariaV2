@@ -6,7 +6,7 @@ import { spreadStackedMapPoints } from "@/lib/geo";
 import { MapCanvas } from "@/components/map/map-canvas";
 import { MapSourceManager } from "@/components/map/map-source-manager";
 import { MapLayers } from "@/components/map/map-layers";
-import { MapInteractions } from "@/components/map/map-interactions";
+import { MapInteractions, type MapHoverPreview } from "@/components/map/map-interactions";
 import { getEntityView, type MapPage } from "@/lib/entity-views";
 import { useI18n } from "@/lib/i18n";
 import type { TalariaFeatureCollection } from "@/lib/schemas/geojson";
@@ -33,6 +33,7 @@ export function EntityMap({
   const presentKeys = useMemo(() => [...new Set((data?.features ?? []).map(f => legendKeyForEventType(String(f.properties.event_type))))], [data]);
   const visible = useMemo(() => data ? { ...data, features: data.features.filter(f => eventMatchesLegendFilter(String(f.properties.event_type), keys)) } : undefined, [data, keys]);
   const [error, setError] = useState("");
+  const [hover, setHover] = useState<MapHoverPreview | null>(null);
   useEffect(() => { setData(undefined); setKeys([]); }, [id]);
   useEffect(() => {
     if (!map) return;
@@ -119,7 +120,14 @@ export function EntityMap({
       <MapCanvas onReady={setMap} />
       <MapSourceManager map={map} data={visible} />
       <MapLayers map={map} data={visible} selectedEventId={selected} />
-      <MapInteractions map={map} onSelectEvent={onSelect} />
+      <MapInteractions map={map} onSelectEvent={onSelect} onPreview={setHover} />
+      {hover && (
+        <aside className="map-preview" aria-live="polite">
+          <strong>{hover.title}</strong>
+          {hover.when ? <p>{hover.when}</p> : null}
+          {hover.place ? <p>{hover.place}</p> : null}
+        </aside>
+      )}
 
       {error && (
         <p role="alert" className="v3-map-error">

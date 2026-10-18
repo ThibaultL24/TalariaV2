@@ -1,5 +1,5 @@
 // web/src/features/istoria/pages/istoria-page.tsx
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { EventDetailCard } from "@/components/detail/event-detail-card";
@@ -7,9 +7,7 @@ import { rememberEntity, useExperienceSubject } from "@/components/entity/entity
 import { ExperienceLayout } from "@/components/layout/experience-layout";
 import { EntitySearchBox } from "@/components/search/entity-search-box";
 import { EventMomentSearch } from "@/components/search/event-moment-search";
-import { HistoricalTimeline } from "@/components/timeline/historical-timeline";
 import { databaseTabs, providerLabel } from "@/features/entity/database-tabs";
-import { EntityMap } from "@/features/entity/entity-map";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import {
   fetchEntityBibliography,
@@ -20,6 +18,9 @@ import {
 import { COMPACT_VIEWPORT_MQ } from "@/lib/breakpoints";
 import { getEntityView, type EntityOverview, type Page } from "@/lib/entity-views";
 import { useI18n } from "@/lib/i18n";
+
+const EntityMap = lazy(() => import("@/features/entity/entity-map").then((mod) => ({ default: mod.EntityMap })));
+const HistoricalTimeline = lazy(() => import("@/components/timeline/historical-timeline").then((mod) => ({ default: mod.HistoricalTimeline })));
 
 function timelineFilters(params: URLSearchParams, view: string): string {
   const filters = new URLSearchParams();
@@ -70,6 +71,7 @@ export function IstoriaPage() {
   const [mapFocus, setMapFocus] = useState<{ eventId: string; lat: number; lon: number } | undefined>();
   const [timelineZoomToken, setTimelineZoomToken] = useState(0);
   const [timelineZoomEventId, setTimelineZoomEventId] = useState<string | undefined>();
+  const focusedEvent = useRef<string | undefined>(undefined);
   const provider = params.get("provider") ?? "";
   const filterString = timelineFilters(params, view);
   const activeRequest = useRef("");
@@ -142,6 +144,15 @@ export function IstoriaPage() {
       cancelled = true;
     };
   }, [eventId, entityId]);
+
+  useEffect(() => {
+    if (view !== "map" || !eventId || focusedEvent.current === eventId) return;
+    const event = events.find((item) => item.id === eventId);
+    const coords = event?.coordinates;
+    if (!coords || !Number.isFinite(coords.lat) || !Number.isFinite(coords.lon)) return;
+    focusedEvent.current = eventId;
+    setMapFocus({ eventId, lat: coords.lat, lon: coords.lon });
+  }, [view, eventId, events]);
 
   const select = (id?: string) => {
     const copy = new URLSearchParams(params);
@@ -289,6 +300,7 @@ export function IstoriaPage() {
           </>
         )}
         {view === "map" && entityId && (
+          <Suspense fallback={<p role="status">Loading…</p>}>
           <EntityMap
             id={entityId}
             filters={filterString}
@@ -297,9 +309,15 @@ export function IstoriaPage() {
             onSelect={select}
             mode={mobileStage ? "fullscreen" : "desktop"}
           />
+          </Suspense>
         )}
         {view === "timeline" && overview && (
-          <HistoricalTimeline
+          <Suspense fallback={<p role="status">Loading…</p>}>
+          <>
+            <p className="v3-note">
+              {`Période affichée : ${from || "?"} – ${to || "?"}`}
+            </p>
+            <HistoricalTimeline
             key={entityId}
             events={events}
             bounds={[overview.time_bounds.from ?? from, overview.time_bounds.to ?? to]}
@@ -316,7 +334,9 @@ export function IstoriaPage() {
               copy.set("to", String(end));
               setParams(copy, { replace: true });
             }}
-          />
+            />
+          </>
+          </Suspense>
         )}
         {view === "timeline" && next && (
           <button className="v3-load-more" type="button" disabled={loading} onClick={() => void loadMore()}>
