@@ -446,12 +446,12 @@ const EN: AppMessages = {
     "Theories are modeled (MetaSudo). Operators enable testnet with INTUITION_ALLOW_LIVE=1.",
   homeVisionsTitle: "Three ways to explore",
   homeVisionsHint:
-    "Scholar for the sourced life, Visit for museums and exhibitions, Agora for theories and debate on Intuition.",
-  visionScholarTitle: "Scholar",
+    "Istoria investigates documented lives, Poreia explores heritage places, and Agora hosts interpretations and debate.",
+  visionScholarTitle: "Istoria",
   visionScholarDesc:
     "Timeline, map and sources — the documented life, with evidence and precision on dates.",
-  visionScholarCta: "Open Explorer",
-  visionVisitTitle: "Visit",
+  visionScholarCta: "Explore Istoria",
+  visionVisitTitle: "Poreia",
   visionVisitDesc:
     "Museums, memorials and exhibitions linked to a person — what to see and what’s on now.",
   visionVisitBadge: "Preview soon",
@@ -491,13 +491,13 @@ const EN: AppMessages = {
   lensScholar: "Facts & anecdotes",
   lensVisit: "Tourism",
   visitHeritageTab: "Places",
-  visitHeritageEmpty: "No visit places indexed for this person yet — museums and memorials appear here after ingest.",
+  visitHeritageEmpty: "No heritage places are indexed for this person yet.",
   visitNowTab: "Now",
   visitNowEmpty:
-    "No exhibitions or events near this person’s places in the current window — run visit-enrich or widen dates.",
+    "No current exhibitions or cultural events are indexed for this person.",
   visitNowEnds: "Ends",
   visitNowOpenSource: "Source",
-  visionVisitCta: "Browse lives",
+  visionVisitCta: "Discover Poreia",
 };
 
 const FR: AppMessages = {
@@ -704,12 +704,12 @@ const FR: AppMessages = {
     "Théories modélisées (MetaSudo). Activer le testnet avec INTUITION_ALLOW_LIVE=1.",
   homeVisionsTitle: "Trois façons d’explorer",
   homeVisionsHint:
-    "Scholar pour la vie sourcée, Visit pour musées et expositions, Agora pour théories et débat sur Intuition.",
-  visionScholarTitle: "Scholar",
+    "Istoria retrace les vies documentées, Poreia explore les lieux de mémoire et Agora accueille les interprétations et les débats.",
+  visionScholarTitle: "Istoria",
   visionScholarDesc:
     "Frise, carte et sources — la vie documentée, avec preuves et précision des dates.",
-  visionScholarCta: "Ouvrir l’Explorer",
-  visionVisitTitle: "Visit",
+  visionScholarCta: "Explorer Istoria",
+  visionVisitTitle: "Poreia",
   visionVisitDesc:
     "Musées, mémoriaux et expositions liés à une personne — quoi voir et quoi faire maintenant.",
   visionVisitBadge: "Bientôt",
@@ -755,13 +755,13 @@ const FR: AppMessages = {
   lensVisit: "Tourisme",
   visitHeritageTab: "Lieux",
   visitHeritageEmpty:
-    "Aucun lieu visitable indexé pour cette personne — musées et mémoriaux apparaissent ici après ingest.",
+    "Aucun lieu patrimonial lié à cette personnalité n’est encore répertorié.",
   visitNowTab: "En ce moment",
   visitNowEmpty:
-    "Aucune expo ou événement près des lieux de cette personne sur la période — lancez visit-enrich ou élargissez les dates.",
+    "Aucune exposition ni activité culturelle en cours n’est encore répertoriée pour cette personnalité.",
   visitNowEnds: "Fin",
   visitNowOpenSource: "Source",
-  visionVisitCta: "Parcourir les vies",
+  visionVisitCta: "Découvrir Poreia",
 };
 
 export const messages: Record<AppLocale, AppMessages> = { en: EN, fr: FR };
