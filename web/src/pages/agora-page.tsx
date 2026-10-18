@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { AgoraPanel } from "@/components/explorer/agora-panel";
 import { LaneIngestBar } from "@/components/explorer/lane-ingest-bar";
 import { Navbar } from "@/components/layout/navbar";
+import { ExperienceNavigation } from "@/components/layout/experience-navigation";
 import { TalariaSandalMark } from "@/components/brand/talaria-sandal-mark";
 import { IntuitionWalletPanel } from "@/components/wallet/intuition-wallet-panel";
 import { EntitySearchBox } from "@/components/search/entity-search-box";
@@ -139,6 +140,7 @@ export function AgoraPage() {
         }
       />
       <main className="agora-canvas min-h-0 flex-1 overflow-y-auto">
+        <ExperienceNavigation entityId={entityId || undefined} compact={Boolean(entityId)} />
         <section className="hero hero--landing hero--home hero--agora hero--agora-photo px-4 py-8">
           <div className="mx-auto max-w-3xl">
             <p className="hero__eyebrow">{localizedPersonLabel(entityLabel, locale) || t.agora}</p>

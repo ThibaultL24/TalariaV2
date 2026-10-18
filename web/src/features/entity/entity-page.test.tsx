@@ -81,7 +81,7 @@ test("Explorer opens an overview search without requesting an empty entity", asy
   expect(screen.getByRole("searchbox")).toBeTruthy();
   expect(screen.queryByText("Map surface")).toBeNull();
   expect(
-    vi.mocked(fetch).mock.calls.every(([url]) => String(url).includes("/api/v1/auth/me")),
+    vi.mocked(fetch).mock.calls.every(([url]) => String(url).includes("/api/v1/auth/me") || String(url).includes("/api/v1/demo/roster")),
   ).toBe(true);
 });
 test("database tabs include empty databases and use the canonical OpenAlex key", () => {

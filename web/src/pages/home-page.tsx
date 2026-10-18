@@ -94,6 +94,9 @@ export function HomePage() {
                 <Link className="button button--primary hero__cta-primary" to="/istoria">
                   {t.startExploration}
                 </Link>
+                <Link className="button button--ghost hero__cta-secondary" to="/poreia">
+                  {locale === "fr" ? "Découvrir les lieux · Poreia" : "Discover places · Poreia"}
+                </Link>
                 <Link className="button button--ghost hero__cta-secondary" to="/agora">
                   {t.openAgora}
                 </Link>
@@ -110,14 +113,14 @@ export function HomePage() {
             </header>
             <ul className="home-visions__grid">
               <li className="home-visions__card home-visions__card--scholar">
-                <div className="home-visions__card-art home-visions__card-art--istoria" role="img" aria-label="Architecture gréco-romaine au bord de la Méditerranée" />
+                <div className="home-visions__card-art home-visions__card-art--istoria" role="img" aria-label={locale === "fr" ? "Bibliothèque antique, symbole d’enquête et de savoir" : "Ancient library, symbol of inquiry and knowledge"} />
                 <h3 className="home-visions__card-title">Istoria</h3>
                 <p className="experience-etymology">{locale === "fr" ? "ἱστορία · Enquête, recherche et connaissance de l’histoire" : "ἱστορία · Inquiry, research and historical understanding"}</p>
                 <p className="home-visions__card-text">{t.visionScholarDesc}</p>
                 <Link className="button button--primary" to="/istoria">{t.visionScholarCta}</Link>
               </li>
               <li className="home-visions__card home-visions__card--visit">
-                <div className="home-visions__card-art home-visions__card-art--poreia" role="img" aria-label="Paysage méditerranéen et vestiges antiques" />
+                <div className="home-visions__card-art home-visions__card-art--poreia" role="img" aria-label={locale === "fr" ? "Chemin ancien dans un paysage méditerranéen" : "Ancient path across a Mediterranean landscape"} />
                 <div className="home-visions__card-top">
                   <h3 className="home-visions__card-title">Poreia</h3>
                   <p className="experience-etymology">{locale === "fr" ? "πορεία · Voyage, cheminement et découverte des lieux" : "πορεία · Journey, exploration and discovery of places"}</p>
@@ -127,7 +130,7 @@ export function HomePage() {
                 <Link className="button button--ghost" to="/poreia">{t.visionVisitCta}</Link>
               </li>
               <li className="home-visions__card home-visions__card--agora">
-                <div className="home-visions__card-art home-visions__card-art--agora" role="img" aria-label="Forum antique inspirant le dialogue et le débat" />
+                <div className="home-visions__card-art home-visions__card-art--agora" role="img" aria-label={locale === "fr" ? "Agora grecque, place des échanges et des débats" : "Greek agora, a place for public debate"} />
                 <h3 className="home-visions__card-title">{t.visionAgoraTitle}</h3>
                 <p className="experience-etymology">{locale === "fr" ? "ἀγορά · Place publique, échange et débat des idées" : "ἀγορά · Public forum, exchange and debate"}</p>
                 <p className="home-visions__card-text">{t.visionAgoraDesc}</p>

@@ -4,6 +4,8 @@ import { EntitySearchBox } from "@/components/search/entity-search-box";
 import { usePersonPicker } from "@/hooks/use-person-picker";
 import { useExplorerStore } from "@/stores/explorer-store";
 import { Navbar } from "@/components/layout/navbar";
+import { ExperienceNavigation } from "@/components/layout/experience-navigation";
+import { ExperienceDemoFigures } from "@/components/layout/experience-demo-figures";
 import { TalariaSandalMark } from "@/components/brand/talaria-sandal-mark";
 import { EventDetailCard } from "@/components/detail/event-detail-card";
 import {
@@ -25,9 +27,8 @@ import {
 import { EventMomentSearch } from "@/components/search/event-moment-search";
 import { HistoricalTimeline } from "@/components/timeline/historical-timeline";
 import { EntityVisitMap } from "@/features/visit/entity-visit-map";
-import { VisitHeritageList } from "@/features/visit/visit-heritage-list";
+import { PoreiaHeritageView } from "@/features/visit/poreia-heritage-view";
 import { VisitNowList } from "@/features/visit/visit-now-list";
-import { VisitSitesList } from "@/features/visit/visit-sites-list";
 import { PoreiaItineraryView } from "@/features/visit/poreia-itinerary-view";
 
 import { useI18n } from "@/lib/i18n";
@@ -81,7 +82,7 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
   const mobileStage = scholarImmersive && compactViewport;
   const stageMode = mobileStage ? "fullscreen" : "desktop";
   const [toolsOpen, setToolsOpen] = useState(false);
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const scholarTabs = ["overview", "timeline", "map", "sources"] as const;
   const visitTabs = ["map", "heritage", "itinerary", "now"] as const;
   const [visitNow, setVisitNow] = useState<VisitOpportunity[]>([]);
@@ -306,6 +307,7 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
         <Navbar />
       )}
       <main className={`v3-main${immersive ? " v3-main--immersive" : ""}`}>
+        {!immersive && <ExperienceNavigation entityId={entityId || undefined} compact={Boolean(entityId)} />}
         {!immersive && (
           <section className={view === "overview" || !entityId ? "v3-overview-hero" : undefined}>
             <div className="v3-heading">
@@ -356,6 +358,7 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
             </section>
           </section>
         )}
+        {!entityId && <ExperienceDemoFigures experience={experience} />}
         {immersive && entityId && !mobileStage && (
           <div className="v3-immersive-bar">
             <h1 className="v3-immersive-title">
@@ -377,13 +380,15 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
                 to={`/${experience}/${entityId}/${tab}?${params}`}
                 className={({ isActive }) => (isActive ? "active" : "")}
               >
-                {tab === "itinerary"
-                  ? "Parcours"
-                  : tab === "heritage"
-                  ? t.visitHeritageTab
-                  : tab === "now"
-                    ? t.visitNowTab
-                    : tab}
+                {tab === "overview" ? (locale === "fr" ? "Aperçu" : "Overview")
+                  : tab === "timeline" ? (locale === "fr" ? "Chronologie" : "Timeline")
+                  : tab === "map" ? (experience === "istoria"
+                      ? (locale === "fr" ? "Carte de vie" : "Life map")
+                      : (locale === "fr" ? "Carte touristique" : "Tourist map"))
+                  : tab === "sources" ? (locale === "fr" ? "Sources" : "Sources")
+                  : tab === "itinerary" ? (locale === "fr" ? "Parcours" : "Itinerary")
+                  : tab === "heritage" ? t.visitHeritageTab
+                  : tab === "now" ? t.visitNowTab : tab}
               </NavLink>
             ))}
           </nav>
@@ -474,22 +479,18 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
             />
           )}
           {view === "heritage" && lens === "visit" && (
-            <VisitSitesList
+            <PoreiaHeritageView
+              entityId={entityId}
               sites={visitSites}
-              onFocus={(site) => {
+              events={events}
+              loading={loading}
+              onFocusSite={(site) => {
                 setMapFocus({ eventId: site.id, lat: site.coordinates.lat, lon: site.coordinates.lon });
                 const copy = new URLSearchParams(params);
                 copy.delete("event");
-                navigate(`/${experience}/${entityId}/map?${copy.toString()}`);
+                navigate(`/poreia/${entityId}/map?${copy.toString()}`);
               }}
-            />
-          )}
-          {view === "heritage" && lens === "visit" && (
-            <VisitHeritageList
-              events={events}
-              loading={loading}
-              emptyLabel={t.visitHeritageEmpty}
-              onSelect={(id) => {
+              onFocusEvent={(id) => {
                 const event = events.find((row) => row.id === id);
                 if (event) focusMoment(event);
                 else select(id);
