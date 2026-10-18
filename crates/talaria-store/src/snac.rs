@@ -121,7 +121,7 @@ pub async fn persist_snac_identity(
     sqlx::query("SAVEPOINT snac_identity")
         .execute(&mut *tx)
         .await?;
-    let guarded = guard_claimed_constellations(&mut tx, decisions).await?;
+    let guarded = guard_claimed_constellations(&mut tx, entity_id, decisions).await?;
     if let Err(err) = persist_identity_links(&mut tx, entity_id, &guarded).await {
         if !unique_violation_in_anyhow(&err) {
             return Err(err);
@@ -129,7 +129,7 @@ pub async fn persist_snac_identity(
         sqlx::query("ROLLBACK TO SAVEPOINT snac_identity")
             .execute(&mut *tx)
             .await?;
-        let guarded = guard_claimed_constellations(&mut tx, decisions).await?;
+        let guarded = guard_claimed_constellations(&mut tx, entity_id, decisions).await?;
         persist_identity_links(&mut tx, entity_id, &guarded).await?;
     }
     tx.commit().await?;
@@ -138,6 +138,7 @@ pub async fn persist_snac_identity(
 
 async fn guard_claimed_constellations(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    entity_id: Uuid,
     decisions: &[PersistedDecision],
 ) -> anyhow::Result<Vec<PersistedDecision>> {
     let mut guarded = Vec::with_capacity(decisions.len());
@@ -155,10 +156,12 @@ async fn guard_claimed_constellations(
                   ON constellation.id = link.constellation_id
                 WHERE constellation.ark = $1
                   AND link.status = 'aligned'
+                  AND link.entity_id <> $2
             )
             "#,
         )
         .bind(&decision.ark)
+        .bind(entity_id)
         .fetch_one(&mut **tx)
         .await?;
         if taken {
@@ -237,8 +240,18 @@ async fn upsert_constellation(
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         ON CONFLICT (ark) DO UPDATE SET
             snac_id = COALESCE(EXCLUDED.snac_id, snac_constellations.snac_id),
-            snac_version = COALESCE(EXCLUDED.snac_version, snac_constellations.snac_version),
-            label = EXCLUDED.label,
+            snac_version = CASE
+                WHEN snac_constellations.record_status = 'complete'
+                     AND EXCLUDED.record_status = 'stub'
+                THEN snac_constellations.snac_version
+                ELSE COALESCE(EXCLUDED.snac_version, snac_constellations.snac_version)
+            END,
+            label = CASE
+                WHEN snac_constellations.record_status = 'complete'
+                     AND EXCLUDED.record_status = 'stub'
+                THEN snac_constellations.label
+                ELSE EXCLUDED.label
+            END,
             record_status = CASE
                 WHEN snac_constellations.record_status = 'complete'
                      AND EXCLUDED.record_status = 'stub'
@@ -524,6 +537,25 @@ mod tests {
     }
 
     #[sqlx::test(migrations = "../../migrations")]
+    async fn reingest_keeps_the_same_aligned_link(pool: sqlx::PgPool) {
+        let entity_id = insert_person(&pool, "Reingest person").await;
+        let body = decision("ark:/99166/w69x15nw", "aligned", "qid_same_as");
+        persist_snac_identity(&pool, entity_id, &[body.clone()])
+            .await
+            .unwrap();
+        persist_snac_identity(&pool, entity_id, &[body]).await.unwrap();
+        let row: (String, String) = sqlx::query_as(
+            "SELECT status, method FROM entity_identity_links WHERE entity_id = $1",
+        )
+        .bind(entity_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(row.0, "aligned");
+        assert_eq!(row.1, "qid_same_as");
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
     async fn one_entity_cannot_align_two_constellations(pool: sqlx::PgPool) {
         let entity_id = insert_person(&pool, "Two constellations").await;
         persist_snac_identity(
@@ -636,6 +668,8 @@ mod tests {
     async fn stub_does_not_degrade_a_complete_constellation(pool: sqlx::PgPool) {
         let entity_id = insert_person(&pool, "Complete then stub").await;
         let mut complete = decision("ark:/99166/w6full", "aligned", "qid_same_as");
+        complete.snac_version = Some("11465101".into());
+        complete.label = "Napoléon I".into();
         complete.record_status = "complete".into();
         complete.same_as = serde_json::json!({"values":{"wikidata":["Q517"]},"raw":[],"internal_conflict":false});
         complete.exist_dates = serde_json::json!({"kind":"range","surface":"1769-1821"});
@@ -646,15 +680,25 @@ mod tests {
             .unwrap();
 
         let mut stub = decision("ark:/99166/w6full", "aligned", "qid_same_as");
+        stub.snac_version = Some("stub-version".into());
+        stub.label = "stub label".into();
         stub.same_as = serde_json::json!({"values":{},"raw":[],"internal_conflict":false});
         stub.exist_dates = serde_json::json!({"kind":"unknown"});
         stub.raw_json = serde_json::json!({"stub":true});
         stub.raw_body = Some("{\"constellation\":\"stub\"}".into());
         persist_snac_identity(&pool, entity_id, &[stub]).await.unwrap();
 
-        let row: (String, serde_json::Value, serde_json::Value, serde_json::Value, String) = sqlx::query_as(
+        let row: (
+            String,
+            String,
+            String,
+            serde_json::Value,
+            serde_json::Value,
+            serde_json::Value,
+            String,
+        ) = sqlx::query_as(
             r#"
-            SELECT record_status, same_as, exist_dates, raw_json, snap.text
+            SELECT record_status, snac_version, label, same_as, exist_dates, raw_json, snap.text
             FROM snac_constellations AS constellation
             JOIN document_snapshots AS snap ON snap.id = constellation.snapshot_id
             WHERE constellation.ark = 'ark:/99166/w6full'
@@ -664,10 +708,21 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(row.0, "complete");
-        assert_eq!(row.1["values"]["wikidata"][0], "Q517");
-        assert_eq!(row.2["surface"], "1769-1821");
-        assert_eq!(row.3["kept"], true);
-        assert_eq!(row.4, "{\"constellation\":\"complete\"}");
+        assert_eq!(row.1, "11465101");
+        assert_eq!(row.2, "Napoléon I");
+        assert_eq!(row.3["values"]["wikidata"][0], "Q517");
+        assert_eq!(row.4["surface"], "1769-1821");
+        assert_eq!(row.5["kept"], true);
+        assert_eq!(row.6, "{\"constellation\":\"complete\"}");
+        let link: (String, String) = sqlx::query_as(
+            "SELECT status, method FROM entity_identity_links WHERE entity_id = $1",
+        )
+        .bind(entity_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(link.0, "aligned");
+        assert_eq!(link.1, "qid_same_as");
 
         let mut again = complete;
         again.same_as = serde_json::json!({"values":{"wikidata":["Q517"]},"raw":["https://viaf.org/viaf/1"],"internal_conflict":false});
