@@ -20,6 +20,7 @@ mod places;
 mod plan;
 mod registry;
 mod seeds;
+pub mod snac;
 mod types;
 mod wiki_fragments;
 

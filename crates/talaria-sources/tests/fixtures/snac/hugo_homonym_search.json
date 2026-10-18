@@ -1,0 +1,224 @@
+{
+    "total": 46,
+    "results": [
+        {
+            "dataType": "Constellation",
+            "ark": "http:\/\/n2t.net\/ark:\/99166\/w6w380rt",
+            "entityType": {
+                "id": "700",
+                "term": "person",
+                "uri": "http:\/\/socialarchive.iath.virginia.edu\/control\/term#Person",
+                "type": "entity_type"
+            },
+            "nameEntries": [
+                {
+                    "dataType": "NameEntry",
+                    "original": "Paltsits, Victor Hugo, 1867-1952",
+                    "preferenceScore": "99",
+                    "id": "38331049",
+                    "version": "5594234"
+                }
+            ],
+            "biogHists": [
+                {
+                    "dataType": "BiogHist",
+                    "text": "<biogHist><p xmlns=\"urn:isbn:1-931666-33-4\">Manuscript curator, historian, bibliographer.<\/p>\n            <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Bibliographical papers, 1903-1944. (New York State Historical Documents). WorldCat record id: 155477427<\/citation>\n         <p xmlns=\"urn:isbn:1-931666-33-4\">Archivist and librarian.<\/p>\n            <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Paltsits Ulster County collection, 1643-1829. (New York University, Group Batchload). WorldCat record id: 58779526<\/citation>\n         <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Victor H. Paltsits manuscript collection, ca. 1903 - ca. 1928. (New York University, Group Batchload). WorldCat record id: 58779537<\/citation>\n         <\/biogHist>",
+                    "id": "38331000",
+                    "version": "5594234"
+                }
+            ],
+            "id": "38330999",
+            "version": "5594235",
+            "resource_count": "43"
+        },
+        {
+            "dataType": "Constellation",
+            "ark": "http:\/\/n2t.net\/ark:\/99166\/w6vb24k2",
+            "entityType": {
+                "id": "700",
+                "term": "person",
+                "uri": "http:\/\/socialarchive.iath.virginia.edu\/control\/term#Person",
+                "type": "entity_type"
+            },
+            "nameEntries": [
+                {
+                    "dataType": "NameEntry",
+                    "original": "Lane, Victor H. (Victor Hugo), 1852-1930",
+                    "preferenceScore": "99",
+                    "id": "32907645",
+                    "version": "4799345"
+                }
+            ],
+            "biogHists": [
+                {
+                    "dataType": "BiogHist",
+                    "text": "<biogHist><p xmlns=\"urn:isbn:1-931666-33-4\">Law professor at University of Michigan.<\/p>\n            <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Victor Hugo Lane papers, 1897-1929. (University of Michigan). WorldCat record id: 77613180<\/citation>\n         <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Victor Hugo Lane papers, 1897-1929. (University of Michigan). WorldCat record id: 34421565<\/citation>\n         <p xmlns=\"urn:isbn:1-931666-33-4\">University of Michigan law professor.<\/p>\n            <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Victor Hugo Lane photograph\/autograph album. 1897. (University of Michigan). WorldCat record id: 47800446<\/citation>\n         <\/biogHist>",
+                    "id": "32907624",
+                    "version": "4799345"
+                }
+            ],
+            "id": "32907623",
+            "version": "4799346",
+            "resource_count": "16"
+        },
+        {
+            "dataType": "Constellation",
+            "ark": "http:\/\/n2t.net\/ark:\/99166\/w6572nnx",
+            "entityType": {
+                "id": "700",
+                "term": "person",
+                "uri": "http:\/\/socialarchive.iath.virginia.edu\/control\/term#Person",
+                "type": "entity_type"
+            },
+            "nameEntries": [
+                {
+                    "dataType": "NameEntry",
+                    "original": "Hugo, Fran\u00e7ois-Victor, 1828-1873",
+                    "preferenceScore": "99",
+                    "id": "65274103",
+                    "version": "9542429"
+                }
+            ],
+            "id": "65274088",
+            "version": "9542430",
+            "resource_count": "10"
+        },
+        {
+            "dataType": "Constellation",
+            "ark": "http:\/\/n2t.net\/ark:\/99166\/w6fn1s9b",
+            "entityType": {
+                "id": "700",
+                "term": "person",
+                "uri": "http:\/\/socialarchive.iath.virginia.edu\/control\/term#Person",
+                "type": "entity_type"
+            },
+            "nameEntries": [
+                {
+                    "dataType": "NameEntry",
+                    "original": "Hugo, Jean, 1894-1984",
+                    "preferenceScore": "99",
+                    "id": "54015565",
+                    "version": "7897397"
+                }
+            ],
+            "id": "54015543",
+            "version": "7897398",
+            "resource_count": "16"
+        },
+        {
+            "dataType": "Constellation",
+            "ark": "http:\/\/n2t.net\/ark:\/99166\/w64j0kcj",
+            "entityType": {
+                "id": "700",
+                "term": "person",
+                "uri": "http:\/\/socialarchive.iath.virginia.edu\/control\/term#Person",
+                "type": "entity_type"
+            },
+            "nameEntries": [
+                {
+                    "dataType": "NameEntry",
+                    "original": "Hugo, Victor (Photographer)",
+                    "preferenceScore": "99",
+                    "id": "44325455",
+                    "version": "6474437"
+                }
+            ],
+            "id": "44325446",
+            "version": "6474438",
+            "resource_count": "6"
+        }
+    ],
+    "aggregations": {
+        "subject": [
+            {
+                "term": "Art--French (?)--Reproductions",
+                "count": 2
+            },
+            {
+                "term": "Arts, French",
+                "count": 2
+            },
+            {
+                "term": "Mayor",
+                "count": 2
+            },
+            {
+                "term": "Actors--France",
+                "count": 1
+            },
+            {
+                "term": "African American midwives",
+                "count": 1
+            },
+            {
+                "term": "American Red Cross",
+                "count": 1
+            },
+            {
+                "term": "Antarctica Discovery and exploration",
+                "count": 1
+            },
+            {
+                "term": "Arts and religion",
+                "count": 1
+            },
+            {
+                "term": "Authors, French",
+                "count": 1
+            },
+            {
+                "term": "Authors, French--19th century",
+                "count": 1
+            }
+        ],
+        "occupation": [
+            {
+                "term": "Photographers",
+                "count": 2
+            },
+            {
+                "term": "African American authors",
+                "count": 1
+            },
+            {
+                "term": "Author",
+                "count": 1
+            },
+            {
+                "term": "Authors",
+                "count": 1
+            },
+            {
+                "term": "Collector",
+                "count": 1
+            },
+            {
+                "term": "Explorers",
+                "count": 1
+            },
+            {
+                "term": "Inventors",
+                "count": 1
+            },
+            {
+                "term": "Novelists",
+                "count": 1
+            },
+            {
+                "term": "Soldiers",
+                "count": 1
+            },
+            {
+                "term": "Translator",
+                "count": 1
+            }
+        ],
+        "activity": []
+    },
+    "pagination": 10,
+    "page": 0,
+    "count": 5,
+    "term": "Victor Hugo",
+    "search_type": "default",
+    "timing": 87.52
+}
