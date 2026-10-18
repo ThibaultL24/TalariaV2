@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, NavLink, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { EntitySearchBox } from "@/components/search/entity-search-box";
 import { usePersonPicker } from "@/hooks/use-person-picker";
@@ -16,10 +16,7 @@ import {
   fetchVisitHeritage,
   fetchVisitNow,
   fetchVisitSites,
-  fetchSourcedLandmarks,
-  type SourcedLandmark,
   getEntityView,
-  eventDate,
   type EntityOverview,
   type Page,
   type VisitOpportunity,
@@ -33,8 +30,6 @@ import { VisitNowList } from "@/features/visit/visit-now-list";
 import { VisitSitesList } from "@/features/visit/visit-sites-list";
 import { PoreiaItineraryView } from "@/features/visit/poreia-itinerary-view";
 
-import { selectChronologicalPreview } from "@/lib/chronological-preview";
-import { eventTypeLabel } from "@/lib/event-taxonomy";
 import { useI18n } from "@/lib/i18n";
 import { EntityMap } from "./entity-map";
 import { useMediaQuery } from "@/hooks/use-media-query";
@@ -86,12 +81,11 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
   const mobileStage = scholarImmersive && compactViewport;
   const stageMode = mobileStage ? "fullscreen" : "desktop";
   const [toolsOpen, setToolsOpen] = useState(false);
-  const { locale, t } = useI18n();
+  const { t } = useI18n();
   const scholarTabs = ["overview", "timeline", "map", "sources"] as const;
   const visitTabs = ["map", "heritage", "itinerary", "now"] as const;
   const [visitNow, setVisitNow] = useState<VisitOpportunity[]>([]);
   const [visitSites, setVisitSites] = useState<VisitSite[]>([]);
-  const [sourcedLandmarks, setSourcedLandmarks] = useState<SourcedLandmark[]>([]);
   const tabs = lens === "visit" ? visitTabs : scholarTabs;
   useEffect(() => {
     if (!entityId || lens !== "visit") return;
@@ -101,15 +95,6 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
       .catch(() => { if (!controller.signal.aborted) setVisitSites([]); });
     return () => controller.abort();
   }, [entityId, lens]);
-  useEffect(() => {
-    setSourcedLandmarks([]);
-    if (!entityId || experience !== "istoria") return;
-    const controller = new AbortController();
-    void fetchSourcedLandmarks(entityId, controller.signal)
-      .then(result => { if (!controller.signal.aborted) setSourcedLandmarks(Array.isArray(result?.landmarks) ? result.landmarks : []); })
-      .catch(() => { if (!controller.signal.aborted) setSourcedLandmarks([]); });
-    return () => controller.abort();
-  }, [entityId, experience, revision]);
   const filters = new URLSearchParams();
   const immersive = Boolean(entityId) && (
     lens === "visit"
@@ -298,13 +283,6 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
       if (requestKey === activeRequest.current) setLoading(false);
     }
   };
-  const chronPreviewEvents = useMemo(
-    () =>
-      lens === "scholar" && view === "overview"
-        ? selectChronologicalPreview(events, 12)
-        : [],
-    [events, lens, view],
-  );
   return (
     <div
       className={`v3-shell v3-shell--${experience}${immersive ? " v3-shell--immersive" : ""}${scholarImmersive ? " v3-shell--scholar-stage" : ""}${mobileStage ? " v3-shell--mobile-stage" : ""}`}
@@ -576,36 +554,6 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
             </button>
           )}
         </div>
-        {lens === "scholar" && view === "overview" && (
-          <section className="v3-chron-preview">
-            <h2>{t.chronPreviewTitle}</h2>
-            <p className="v3-note">{sourcedLandmarks.length ? "Épisodes présents dans l’introduction Wikipédia et reliés à des preuves déjà ingérées." : "Sélection indicative selon les catégories historiques ; correspondance avec l’introduction Wikipédia non vérifiée."}</p>
-            <ol className="v3-events v3-events--landmarks">
-              {sourcedLandmarks.length ? sourcedLandmarks.map((landmark) => (
-                <li key={landmark.event_id}>
-                  <span>{landmark.time?.start ?? "Date non précisée"}</span>
-                  <button type="button" onClick={() => select(landmark.event_id)}>
-                    {landmark.title}
-                  </button>
-                  <small>{eventTypeLabel(landmark.event_type, locale)} · Wikipédia, introduction</small>
-                  <a className="istoria-landmark-source" href={landmark.lead_evidence.source_url}
-                     target="_blank" rel="noopener noreferrer">
-                     Consulter la source{landmark.lead_evidence.revision_id ? " (révision archivée)" : ""} ↗
-                  </a>
-                </li>
-              )) : chronPreviewEvents.map(event => (
-                <li key={event.id}>
-                  <span>{eventDate(event)}</span>
-                  <button type="button" onClick={() => select(event.id)}>{event.title}</button>
-                  <small>{eventTypeLabel(event.event_type, locale)} · {event.place_label ?? "Lieu non établi"}</small>
-                </li>
-              ))}
-            </ol>
-            {!chronPreviewEvents.length && !loading && (
-              <p>{t.emptyTimeline}</p>
-            )}
-          </section>
-        )}
         {lens === "scholar" && view === "sources" && (
           <section>
             <h2>Source documents</h2>

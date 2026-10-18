@@ -170,24 +170,6 @@ export async function fetchPoreiaItinerary(
   return response.json() as Promise<PoreiaItinerary>;
 }
 
-export interface SourcedLandmark {
-  event_id: string;
-  title: string;
-  event_type: string;
-  epistemic_status: string;
-  time: import("./api").EventTime;
-  importance_score: number;
-  lead_evidence: { quote: string; wikipedia_page: string; revision_id: number | null; source_url: string };
-}
-export async function fetchSourcedLandmarks(
-  entityId: string,
-  signal?: AbortSignal,
-): Promise<{ landmarks: SourcedLandmark[]; count: number; selection: string }> {
-  const response = await fetch(`/api/v1/entities/${encodeURIComponent(entityId)}/landmarks?limit=12`, { signal });
-  if (!response.ok) throw new Error(`Request failed (${response.status})`);
-  return response.json() as Promise<{ landmarks: SourcedLandmark[]; count: number; selection: string }>;
-}
-
 export interface PoreiaDestination {
   qid: string;
   label: string;

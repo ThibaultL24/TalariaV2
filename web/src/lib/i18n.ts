@@ -66,8 +66,6 @@ export interface AppMessages {
   whitepaperToc: string;
   agoraEmpty: string;
   emptyTimeline: string;
-  chronPreviewTitle: string;
-  chronPreviewHint: string;
   loadingTimeline: string;
   loadingAgora: string;
   loadingSources: string;
@@ -311,9 +309,6 @@ const EN: AppMessages = {
   whitepaperToc: "Contents",
   agoraEmpty: "Open a demo figure to load works, theories and controversies.",
   emptyTimeline: "No dated facts yet. Collect the life trace to fill the map and timeline.",
-  chronPreviewTitle: "Landmark moments",
-  chronPreviewHint:
-    "Birth, death, and the major turning points — not every dated mention in the sources.",
   loadingTimeline: "Loading timeline…",
   loadingAgora: "Loading agora…",
   loadingSources: "Loading sources…",
@@ -572,9 +567,6 @@ const FR: AppMessages = {
   whitepaperToc: "Sommaire",
   agoraEmpty: "Ouvrez une figure de la démo pour charger travaux, théories et controverses.",
   emptyTimeline: "Pas encore de faits datés. Lancez l’ingest pour remplir la carte et la frise.",
-  chronPreviewTitle: "Dates majeures",
-  chronPreviewHint:
-    "Naissance, mort et grands tournants — pas chaque mention datée dans les sources.",
   loadingTimeline: "Chargement de la frise…",
   loadingAgora: "Chargement de l’agora…",
   loadingSources: "Chargement des sources…",

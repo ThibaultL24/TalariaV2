@@ -11,8 +11,8 @@ use talaria_sources::{
 };
 use sha2::{Digest, Sha256};
 use talaria_store::{
-    find_entity_by_qid, find_entity_by_wikipedia_title, get_entity,
-    search_local_entities, upsert_visit_opportunity, VisitOpportunityInsert,
+    find_entity_by_qid, find_entity_by_wikipedia_title, get_entity, search_local_entities,
+    upsert_entity_from_wikidata, upsert_visit_opportunity, VisitOpportunityInsert,
 };
 
 const VISIT_HERITAGE_DEDUP_RADIUS_M: f64 = 80.0;
@@ -61,6 +61,9 @@ pub struct VisitEnrichOptions {
 }
 
 pub async fn run_visit_enrich(pool: &PgPool, options: &VisitEnrichOptions) -> anyhow::Result<u32> {
+    if options.fixture {
+        ensure_fixture_people(pool, options).await?;
+    }
     let (entity_id, label, entity_qid) = resolve_entity(pool, options).await?;
     let fixture_qid = entity_qid
         .or_else(|| options.qid.clone())
@@ -114,6 +117,7 @@ pub async fn run_visit_enrich(pool: &PgPool, options: &VisitEnrichOptions) -> an
                 "visit heritage fixture enrich"
             );
         }
+        written += seed_demo_sites(pool, entity_id, fixture_qid.as_deref(), &visit_dir).await?;
         tracing::info!(
             entity_id=%entity_id,
             path=%opp_path.display(),
@@ -272,6 +276,17 @@ pub async fn run_visit_enrich(pool: &PgPool, options: &VisitEnrichOptions) -> an
                 }
             }
         }
+        if !options.fixture {
+            written += seed_demo_sites(
+                pool,
+                entity_id,
+                fixture_qid.as_deref(),
+                heritage_path
+                    .parent()
+                    .unwrap_or(std::path::Path::new("fixtures/visit")),
+            )
+            .await?;
+        }
         if options.web_search {
             let n = crate::visit_live::enrich_from_serper(
                 pool,
@@ -332,6 +347,180 @@ async fn upsert_fixture(
     )
     .await?;
     Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+struct SitesDemoFile {
+    people: Vec<FixturePerson>,
+    sites: Vec<FixtureSite>,
+}
+
+#[derive(Debug, Deserialize)]
+struct FixturePerson {
+    qid: String,
+    label: String,
+    wiki_title: String,
+    wiki_lang: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct FixtureSite {
+    person_qid: String,
+    site_qid: String,
+    label: String,
+    kind: String,
+    relation_pid: String,
+    lat: f64,
+    lon: f64,
+}
+
+fn sites_demo_path(visit_dir: &std::path::Path) -> PathBuf {
+    let dir = if visit_dir.is_file() {
+        visit_dir.parent().unwrap_or(visit_dir)
+    } else {
+        visit_dir
+    };
+    let sibling = dir.join("sites_demo.json");
+    if sibling.is_file() {
+        return sibling;
+    }
+    crate::cli_helpers::resolve_repo_path(PathBuf::from("fixtures/visit/sites_demo.json"))
+}
+
+async fn ensure_fixture_people(pool: &PgPool, options: &VisitEnrichOptions) -> anyhow::Result<()> {
+    let path = sites_demo_path(&options.fixture_path);
+    if !path.is_file() {
+        return Ok(());
+    }
+    let file: SitesDemoFile = serde_json::from_str(&std::fs::read_to_string(&path)?)?;
+    for person in file.people {
+        if !fixture_person_selected(&person, options) {
+            continue;
+        }
+        if find_entity_by_qid(pool, &person.qid).await?.is_some() {
+            continue;
+        }
+        upsert_entity_from_wikidata(
+            pool,
+            &person.qid,
+            &person.label,
+            &person.wiki_lang,
+            &person.wiki_title,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+fn fixture_person_selected(person: &FixturePerson, options: &VisitEnrichOptions) -> bool {
+    if let Some(qid) = options
+        .qid
+        .as_deref()
+        .map(str::trim)
+        .filter(|qid| !qid.is_empty())
+    {
+        return person.qid == qid;
+    }
+    let Some(subject) = options
+        .subject
+        .as_deref()
+        .map(str::trim)
+        .filter(|subject| !subject.is_empty())
+    else {
+        return false;
+    };
+    person.label.eq_ignore_ascii_case(subject) || person.wiki_title.eq_ignore_ascii_case(subject)
+}
+
+async fn seed_demo_sites(
+    pool: &PgPool,
+    entity_id: Uuid,
+    person_qid: Option<&str>,
+    visit_dir: &std::path::Path,
+) -> anyhow::Result<u32> {
+    let path = sites_demo_path(visit_dir);
+    if !path.is_file() {
+        return Ok(0);
+    }
+    let file: SitesDemoFile = serde_json::from_str(&std::fs::read_to_string(&path)?)?;
+    let mut written = 0u32;
+    for site in file.sites {
+        if !fixture_matches_qid(Some(site.person_qid.as_str()), person_qid) {
+            continue;
+        }
+        if !valid_demo_site(&site) {
+            anyhow::bail!(
+                "invalid demo site {} for {}",
+                site.site_qid,
+                site.person_qid
+            );
+        }
+        let site_id: Uuid = sqlx::query_scalar(
+            r#"
+            INSERT INTO visit_sites(wikidata_qid, label, kind, geom, retrieved_at)
+            VALUES ($1, $2, $3, ST_SetSRID(ST_MakePoint($4, $5), 4326)::geography, NOW())
+            ON CONFLICT (wikidata_qid) DO UPDATE
+              SET label = EXCLUDED.label,
+                  kind = EXCLUDED.kind,
+                  geom = EXCLUDED.geom,
+                  updated_at = NOW(),
+                  retrieved_at = NOW()
+            RETURNING id
+            "#,
+        )
+        .bind(&site.site_qid)
+        .bind(site.label.trim())
+        .bind(&site.kind)
+        .bind(site.lon)
+        .bind(site.lat)
+        .fetch_one(pool)
+        .await?;
+        let source_url = format!("https://www.wikidata.org/wiki/{}", site.site_qid);
+        sqlx::query(
+            r#"
+            INSERT INTO visit_person_sites(entity_id, site_id, relation_pid, source_url, retrieved_at)
+            VALUES ($1, $2, $3, $4, NOW())
+            ON CONFLICT (entity_id, site_id, relation_pid)
+            DO UPDATE SET retrieved_at = NOW()
+            "#,
+        )
+        .bind(entity_id)
+        .bind(site_id)
+        .bind(&site.relation_pid)
+        .bind(&source_url)
+        .execute(pool)
+        .await?;
+        written += 1;
+    }
+    tracing::info!(entity_id = %entity_id, count = written, path = %path.display(), "visit demo sites");
+    Ok(written)
+}
+
+fn valid_demo_site(site: &FixtureSite) -> bool {
+    const KINDS: &[&str] = &[
+        "building",
+        "museum",
+        "monument",
+        "memorial",
+        "burial_site",
+        "residence",
+    ];
+    const PIDS: &[&str] = &["P547", "P138", "P119", "P551"];
+    valid_qid(&site.person_qid)
+        && valid_qid(&site.site_qid)
+        && KINDS.contains(&site.kind.as_str())
+        && PIDS.contains(&site.relation_pid.as_str())
+        && !site.label.trim().is_empty()
+        && site.lat.is_finite()
+        && site.lon.is_finite()
+        && (-90.0..=90.0).contains(&site.lat)
+        && (-180.0..=180.0).contains(&site.lon)
+}
+
+fn valid_qid(qid: &str) -> bool {
+    qid.strip_prefix('Q').is_some_and(|rest| {
+        !rest.is_empty() && !rest.starts_with('0') && rest.bytes().all(|byte| byte.is_ascii_digit())
+    })
 }
 
 fn fixture_matches_qid(row_qid: Option<&str>, entity_qid: Option<&str>) -> bool {
@@ -435,6 +624,27 @@ fn europeana_window(raw: &serde_json::Value) -> (Option<DateTime<Utc>>, Option<D
         .and_then(|d| d.and_hms_opt(23, 59, 59))
         .map(|ndt| Utc.from_utc_datetime(&ndt));
     (start, end)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn demo_sites_use_real_wikidata_links() {
+        let path = crate::cli_helpers::resolve_repo_path(PathBuf::from(
+            "fixtures/visit/sites_demo.json",
+        ));
+        let file: SitesDemoFile =
+            serde_json::from_str(&std::fs::read_to_string(path).expect("sites fixture")).unwrap();
+        assert!(file.sites.len() >= 20);
+        assert!(file.sites.iter().all(valid_demo_site));
+        assert!(file
+            .sites
+            .iter()
+            .any(|site| site.person_qid == "Q517" && site.kind == "monument"));
+        assert!(file.people.iter().any(|person| person.qid == "Q517"));
+    }
 }
 
 fn map_europeana_kind(raw: &serde_json::Value) -> String {

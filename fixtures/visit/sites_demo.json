@@ -1,0 +1,363 @@
+{
+  "people": [
+    {
+      "qid": "Q517",
+      "label": "Napoléon Bonaparte",
+      "wiki_title": "Napoleon Bonaparte",
+      "wiki_lang": "fr"
+    },
+    {
+      "qid": "Q535",
+      "label": "Victor Hugo",
+      "wiki_title": "Victor Hugo",
+      "wiki_lang": "fr"
+    },
+    {
+      "qid": "Q7186",
+      "label": "Marie Curie",
+      "wiki_title": "Marie Curie",
+      "wiki_lang": "fr"
+    },
+    {
+      "qid": "Q7226",
+      "label": "Jeanne d'Arc",
+      "wiki_title": "Joan of Arc",
+      "wiki_lang": "fr"
+    },
+    {
+      "qid": "Q7742",
+      "label": "Louis XIV",
+      "wiki_title": "Louis XIV",
+      "wiki_lang": "fr"
+    },
+    {
+      "qid": "Q687",
+      "label": "Molière",
+      "wiki_title": "Molière",
+      "wiki_lang": "fr"
+    },
+    {
+      "qid": "Q2042",
+      "label": "Charles de Gaulle",
+      "wiki_title": "Charles de Gaulle",
+      "wiki_lang": "fr"
+    }
+  ],
+  "sites": [
+    {
+      "person_qid": "Q517",
+      "site_qid": "Q11823356",
+      "label": "Monument Napoléon Bonaparte à Varsovie",
+      "kind": "monument",
+      "relation_pid": "P547",
+      "lat": 52.234444,
+      "lon": 21.013611
+    },
+    {
+      "person_qid": "Q517",
+      "site_qid": "Q110677833",
+      "label": "Napoleonstein",
+      "kind": "monument",
+      "relation_pid": "P547",
+      "lat": 51.05355,
+      "lon": 13.73811
+    },
+    {
+      "person_qid": "Q517",
+      "site_qid": "Q97119691",
+      "label": "Monument to the three emperors",
+      "kind": "memorial",
+      "relation_pid": "P547",
+      "lat": 49.141284,
+      "lon": 16.793832
+    },
+    {
+      "person_qid": "Q517",
+      "site_qid": "Q9394547",
+      "label": "Napoleon arch in Ślesin",
+      "kind": "monument",
+      "relation_pid": "P547",
+      "lat": 52.3702,
+      "lon": 18.3087
+    },
+    {
+      "person_qid": "Q517",
+      "site_qid": "Q4992220",
+      "label": "cathédrale Saint-Louis-des-Invalides",
+      "kind": "burial_site",
+      "relation_pid": "P119",
+      "lat": 48.85561,
+      "lon": 2.31262
+    },
+    {
+      "person_qid": "Q517",
+      "site_qid": "Q3554092",
+      "label": "Vallée du Tombeau",
+      "kind": "burial_site",
+      "relation_pid": "P119",
+      "lat": -15.9592,
+      "lon": -5.69821
+    },
+    {
+      "person_qid": "Q535",
+      "site_qid": "Q63170852",
+      "label": "Victor Hugo Etxea",
+      "kind": "monument",
+      "relation_pid": "P547",
+      "lat": 43.325849,
+      "lon": -1.919881
+    },
+    {
+      "person_qid": "Q535",
+      "site_qid": "Q132560152",
+      "label": "Bust of Victor Hugo",
+      "kind": "monument",
+      "relation_pid": "P547",
+      "lat": 49.969924,
+      "lon": 7.891367
+    },
+    {
+      "person_qid": "Q535",
+      "site_qid": "Q140840044",
+      "label": "statue de Victor Hugo à Saint-Pierre-Port",
+      "kind": "monument",
+      "relation_pid": "P547",
+      "lat": 49.4586,
+      "lon": -2.54
+    },
+    {
+      "person_qid": "Q535",
+      "site_qid": "Q188856",
+      "label": "Panthéon",
+      "kind": "burial_site",
+      "relation_pid": "P119",
+      "lat": 48.846198,
+      "lon": 2.346105
+    },
+    {
+      "person_qid": "Q7186",
+      "site_qid": "Q188856",
+      "label": "Panthéon",
+      "kind": "burial_site",
+      "relation_pid": "P119",
+      "lat": 48.846198,
+      "lon": 2.346105
+    },
+    {
+      "person_qid": "Q535",
+      "site_qid": "Q92817862",
+      "label": "Marine Terrace",
+      "kind": "residence",
+      "relation_pid": "P551",
+      "lat": 49.171,
+      "lon": -2.085
+    },
+    {
+      "person_qid": "Q535",
+      "site_qid": "Q1591410",
+      "label": "Hauteville House",
+      "kind": "residence",
+      "relation_pid": "P551",
+      "lat": 49.4513,
+      "lon": -2.5377
+    },
+    {
+      "person_qid": "Q535",
+      "site_qid": "Q3280244",
+      "label": "maison natale de Victor Hugo",
+      "kind": "residence",
+      "relation_pid": "P551",
+      "lat": 47.2348,
+      "lon": 6.02918
+    },
+    {
+      "person_qid": "Q535",
+      "site_qid": "Q3280046",
+      "label": "maison du Pigeon",
+      "kind": "residence",
+      "relation_pid": "P551",
+      "lat": 50.8467,
+      "lon": 4.35306
+    },
+    {
+      "person_qid": "Q535",
+      "site_qid": "Q3280031",
+      "label": "Maison du Moulin à vent",
+      "kind": "residence",
+      "relation_pid": "P551",
+      "lat": 50.8463,
+      "lon": 4.35317
+    },
+    {
+      "person_qid": "Q7186",
+      "site_qid": "Q23929389",
+      "label": "Pierre and Marie Curie memorial",
+      "kind": "monument",
+      "relation_pid": "P547",
+      "lat": 50.35964,
+      "lon": 12.934943
+    },
+    {
+      "person_qid": "Q7186",
+      "site_qid": "Q1300206",
+      "label": "Mémorial de Radiologie",
+      "kind": "monument",
+      "relation_pid": "P547",
+      "lat": 53.55903,
+      "lon": 10.01975
+    },
+    {
+      "person_qid": "Q7186",
+      "site_qid": "Q96391995",
+      "label": "Marie Curie Monument in Lublin",
+      "kind": "monument",
+      "relation_pid": "P547",
+      "lat": 51.24552,
+      "lon": 22.54164
+    },
+    {
+      "person_qid": "Q7186",
+      "site_qid": "Q20008671",
+      "label": "Maria",
+      "kind": "monument",
+      "relation_pid": "P547",
+      "lat": 52.215361,
+      "lon": 20.983739
+    },
+    {
+      "person_qid": "Q7186",
+      "site_qid": "Q132188977",
+      "label": "Maria Skłodowska-Curie",
+      "kind": "monument",
+      "relation_pid": "P547",
+      "lat": 50.30179,
+      "lon": 18.664666
+    },
+    {
+      "person_qid": "Q7186",
+      "site_qid": "Q130329264",
+      "label": "Maria Skłodowska-Curie Monument",
+      "kind": "monument",
+      "relation_pid": "P547",
+      "lat": 52.254127,
+      "lon": 21.009505
+    },
+    {
+      "person_qid": "Q7186",
+      "site_qid": "Q116233756",
+      "label": "Marie Curie monument in New Town",
+      "kind": "monument",
+      "relation_pid": "P547",
+      "lat": 52.254177,
+      "lon": 21.00955
+    },
+    {
+      "person_qid": "Q7186",
+      "site_qid": "Q2972561",
+      "label": "cimetière de Sceaux",
+      "kind": "burial_site",
+      "relation_pid": "P119",
+      "lat": 48.77973,
+      "lon": 2.2838
+    },
+    {
+      "person_qid": "Q7226",
+      "site_qid": "Q59361609",
+      "label": "Jeanne d’Arc écoutant les voix",
+      "kind": "monument",
+      "relation_pid": "P547",
+      "lat": 50.678686,
+      "lon": 3.166038
+    },
+    {
+      "person_qid": "Q7226",
+      "site_qid": "Q113509367",
+      "label": "L'Adieu au troupeau",
+      "kind": "monument",
+      "relation_pid": "P547",
+      "lat": 43.483682,
+      "lon": -1.543583
+    },
+    {
+      "person_qid": "Q7226",
+      "site_qid": "Q3280236",
+      "label": "maison natale de Jeanne d'Arc",
+      "kind": "residence",
+      "relation_pid": "P138",
+      "lat": 48.4421,
+      "lon": 5.6745
+    },
+    {
+      "person_qid": "Q7742",
+      "site_qid": "Q184407",
+      "label": "basilique Saint-Denis",
+      "kind": "burial_site",
+      "relation_pid": "P119",
+      "lat": 48.935556,
+      "lon": 2.359722
+    },
+    {
+      "person_qid": "Q7742",
+      "site_qid": "Q2946",
+      "label": "château de Versailles",
+      "kind": "residence",
+      "relation_pid": "P551",
+      "lat": 48.804722,
+      "lon": 2.120278
+    },
+    {
+      "person_qid": "Q687",
+      "site_qid": "Q311",
+      "label": "cimetière du Père-Lachaise",
+      "kind": "burial_site",
+      "relation_pid": "P119",
+      "lat": 48.861111,
+      "lon": 2.394167
+    },
+    {
+      "person_qid": "Q687",
+      "site_qid": "Q29376858",
+      "label": "cimetière Saint-Joseph",
+      "kind": "burial_site",
+      "relation_pid": "P119",
+      "lat": 48.86891,
+      "lon": 2.34359
+    },
+    {
+      "person_qid": "Q687",
+      "site_qid": "Q3330260",
+      "label": "musée des Monuments français",
+      "kind": "burial_site",
+      "relation_pid": "P119",
+      "lat": 48.8576,
+      "lon": 2.3345
+    },
+    {
+      "person_qid": "Q687",
+      "site_qid": "Q3323385",
+      "label": "monument funéraire de Molière",
+      "kind": "burial_site",
+      "relation_pid": "P119",
+      "lat": 48.861111,
+      "lon": 2.394889
+    },
+    {
+      "person_qid": "Q2042",
+      "site_qid": "Q16270971",
+      "label": "Statue of Charles de Gaulle in Moscow",
+      "kind": "monument",
+      "relation_pid": "P547",
+      "lat": 55.822533,
+      "lon": 37.646108
+    },
+    {
+      "person_qid": "Q2042",
+      "site_qid": "Q100998916",
+      "label": "tombe du Général de Gaulle",
+      "kind": "burial_site",
+      "relation_pid": "P119",
+      "lat": 48.22195,
+      "lon": 4.88499
+    }
+  ]
+}
