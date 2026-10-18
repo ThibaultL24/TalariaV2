@@ -1,0 +1,899 @@
+{
+  "result": "success",
+  "maybesame_count": 0,
+  "fixture": "reduced_from_snac_capture",
+  "original_sha256": "a4df9fe553262ccabc9f9037efc744cfbd8d8535edc2f41d7ffaae29714ecb6f",
+  "original_bytes": 18986456,
+  "constellation": {
+    "dataType": "Constellation",
+    "id": "83771443",
+    "version": "11289635",
+    "ark": "http://n2t.net/ark:/99166/w6r030zb",
+    "entityType": {
+      "id": "700",
+      "term": "person",
+      "uri": "http://socialarchive.iath.virginia.edu/control/term#Person",
+      "type": "entity_type"
+    },
+    "status": "editable",
+    "dates": [
+      {
+        "dataType": "SNACDate",
+        "fromDate": "1802-02-26",
+        "fromDateOriginal": "1802-02-26",
+        "fromType": {
+          "id": "689",
+          "term": "Birth",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#Birth",
+          "type": "date_type"
+        },
+        "toDate": "1885-05-22",
+        "toDateOriginal": "1885-05-22",
+        "toType": {
+          "id": "690",
+          "term": "Death",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#Death",
+          "type": "date_type"
+        },
+        "isRange": true,
+        "id": "83771446",
+        "version": "11289509"
+      }
+    ],
+    "nameEntries": [
+      {
+        "dataType": "NameEntry",
+        "original": "Hugo, Victor, 1802-1885",
+        "preferenceScore": "99",
+        "contributors": [
+          {
+            "dataType": "Contributor",
+            "type": {
+              "id": "7658",
+              "term": "authorizedForm",
+              "type": "name_type"
+            },
+            "rule": {
+              "id": "7661",
+              "term": "rda",
+              "type": "name_rule"
+            },
+            "id": "83773432",
+            "version": "11289632"
+          }
+        ],
+        "components": [
+          {
+            "dataType": "NameComponent",
+            "text": "Hugo",
+            "order": "1",
+            "type": {
+              "id": "400223",
+              "term": "Surname",
+              "type": "name_component"
+            },
+            "id": "83773609",
+            "version": "11289632"
+          },
+          {
+            "dataType": "NameComponent",
+            "text": "Victor",
+            "order": "2",
+            "type": {
+              "id": "400224",
+              "term": "Forename",
+              "type": "name_component"
+            },
+            "id": "83773369",
+            "version": "11289632"
+          },
+          {
+            "dataType": "NameComponent",
+            "text": "1802-1885",
+            "order": "3",
+            "type": {
+              "id": "400237",
+              "term": "Date",
+              "type": "name_component"
+            },
+            "id": "83773487",
+            "version": "11289632"
+          }
+        ],
+        "language": {
+          "dataType": "Language",
+          "language": {
+            "id": "130",
+            "term": "eng",
+            "type": "language_code",
+            "description": "English"
+          },
+          "script": {
+            "id": "586",
+            "term": "Latn",
+            "type": "script_code",
+            "description": "Latin"
+          },
+          "id": "83773372",
+          "version": "11289626"
+        },
+        "id": "83771459",
+        "version": "11289626",
+        "snacControlMetadata": [
+          {
+            "dataType": "SNACControlMetadata",
+            "sourceData": "[\n    {\n        \"contributor\": \"syru\",\n        \"form\": \"authorizedForm\"\n    },\n    {\n        \"contributor\": \"VIAF\",\n        \"form\": \"authorizedForm\"\n    },\n    {\n        \"contributor\": \"LC\",\n        \"form\": \"authorizedForm\"\n    },\n    {\n        \"contributor\": \"NLA\",\n        \"form\": \"authorizedForm\"\n    },\n    {\n        \"contributor\": \"WorldCat\",\n        \"form\": \"authorizedForm\"\n    },\n    {\n        \"contributor\": \"bnf\",\n        \"form\": \"authorizedForm\"\n    },\n    {\n        \"contributor\": \"harvard\",\n        \"form\": \"authorizedForm\"\n    },\n    {\n        \"contributor\": \"ahub\",\n        \"form\": \"authorizedForm\"\n    },\n    {\n        \"contributor\": \"lc\",\n        \"form\": \"authorizedForm\"\n    },\n    {\n        \"contributor\": \"LAC\",\n        \"form\": \"authorizedForm\"\n    },\n    {\n        \"contributor\": \"nypl\",\n        \"form\": \"authorizedForm\"\n    },\n    {\n        \"contributor\": \"yale\",\n        \"form\": \"authorizedForm\"\n    }\n]",
+            "note": "Contributors from initial SNAC EAC-CPF ingest",
+            "id": "83771460",
+            "version": "11289509"
+          }
+        ]
+      },
+      {
+        "dataType": "NameEntry",
+        "original": "Hugo, Victor Marie, comte, 1802-1885",
+        "preferenceScore": "0",
+        "contributors": [
+          {
+            "dataType": "Contributor",
+            "type": {
+              "id": "7657",
+              "term": "alternativeForm",
+              "type": "name_type"
+            },
+            "rule": {
+              "id": "7660",
+              "term": "aacr2",
+              "type": "name_rule"
+            },
+            "id": "83773560",
+            "version": "11289629"
+          }
+        ],
+        "components": [
+          {
+            "dataType": "NameComponent",
+            "text": "Hugo",
+            "order": "1",
+            "type": {
+              "id": "400223",
+              "term": "Surname",
+              "type": "name_component"
+            },
+            "id": "83773556",
+            "version": "11289629"
+          },
+          {
+            "dataType": "NameComponent",
+            "text": "Victor Marie",
+            "order": "2",
+            "type": {
+              "id": "400224",
+              "term": "Forename",
+              "type": "name_component"
+            },
+            "id": "83773557",
+            "version": "11289629"
+          },
+          {
+            "dataType": "NameComponent",
+            "text": "comte",
+            "order": "3",
+            "type": {
+              "id": "400236",
+              "term": "NameAddition",
+              "type": "name_component"
+            },
+            "id": "83773558",
+            "version": "11289629"
+          },
+          {
+            "dataType": "NameComponent",
+            "text": "1802-1885",
+            "order": "4",
+            "type": {
+              "id": "400237",
+              "term": "Date",
+              "type": "name_component"
+            },
+            "id": "83773559",
+            "version": "11289629"
+          }
+        ],
+        "language": {
+          "dataType": "Language",
+          "language": {
+            "id": "130",
+            "term": "eng",
+            "type": "language_code",
+            "description": "English"
+          },
+          "script": {
+            "id": "586",
+            "term": "Latn",
+            "type": "script_code",
+            "description": "Latin"
+          },
+          "id": "83773561",
+          "version": "11289629"
+        },
+        "id": "83771468",
+        "version": "11289629",
+        "snacControlMetadata": [
+          {
+            "dataType": "SNACControlMetadata",
+            "sourceData": "[\n    {\n        \"contributor\": \"VIAF\",\n        \"form\": \"authorizedForm\"\n    },\n    {\n        \"contributor\": \"WorldCat\",\n        \"form\": \"authorizedForm\"\n    },\n    {\n        \"contributor\": \"inu\",\n        \"form\": \"authorizedForm\"\n    }\n]",
+            "note": "Contributors from initial SNAC EAC-CPF ingest",
+            "id": "83771469",
+            "version": "11289509"
+          }
+        ]
+      },
+      {
+        "dataType": "NameEntry",
+        "original": "هوجو, فيكتور, 1802-1885",
+        "preferenceScore": "0",
+        "contributors": [
+          {
+            "dataType": "Contributor",
+            "type": {
+              "id": "7657",
+              "term": "alternativeForm",
+              "type": "name_type"
+            },
+            "rule": {
+              "id": "7661",
+              "term": "rda",
+              "type": "name_rule"
+            },
+            "id": "83773473",
+            "version": "11289628"
+          }
+        ],
+        "components": [
+          {
+            "dataType": "NameComponent",
+            "text": "هوجو",
+            "order": "1",
+            "type": {
+              "id": "400223",
+              "term": "Surname",
+              "type": "name_component"
+            },
+            "id": "83773470",
+            "version": "11289628"
+          },
+          {
+            "dataType": "NameComponent",
+            "text": "فيكتور",
+            "order": "2",
+            "type": {
+              "id": "400224",
+              "term": "Forename",
+              "type": "name_component"
+            },
+            "id": "83773471",
+            "version": "11289628"
+          },
+          {
+            "dataType": "NameComponent",
+            "text": "1802-1885",
+            "order": "3",
+            "type": {
+              "id": "400237",
+              "term": "Date",
+              "type": "name_component"
+            },
+            "id": "83773472",
+            "version": "11289628"
+          }
+        ],
+        "language": {
+          "dataType": "Language",
+          "language": {
+            "id": "22",
+            "term": "ara",
+            "type": "language_code",
+            "description": "Arabic"
+          },
+          "script": {
+            "id": "511",
+            "term": "Arab",
+            "type": "script_code",
+            "description": "Arabic"
+          },
+          "id": "83773474",
+          "version": "11289628"
+        },
+        "id": "83771486",
+        "version": "11289628",
+        "snacControlMetadata": [
+          {
+            "dataType": "SNACControlMetadata",
+            "sourceData": "[\n    {\n        \"contributor\": \"VIAF\",\n        \"form\": \"alternativeForm\"\n    },\n    {\n        \"contributor\": \"VIAF\",\n        \"form\": \"authorizedForm\"\n    }\n]",
+            "note": "Contributors from initial SNAC EAC-CPF ingest",
+            "id": "83771487",
+            "version": "11289509"
+          }
+        ]
+      }
+    ],
+    "sameAsRelations": [
+      {
+        "dataType": "SameAs",
+        "type": {
+          "id": "28225",
+          "term": "sameAs",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#sameAs",
+          "type": "record_type"
+        },
+        "text": "Hugo, Victor (1802-1885)",
+        "uri": "https://catalogue.bnf.fr/ark:/12148/cb11907966z/PUBLIC",
+        "id": "83771827",
+        "version": "11289509"
+      },
+      {
+        "dataType": "SameAs",
+        "type": {
+          "id": "28225",
+          "term": "sameAs",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#sameAs",
+          "type": "record_type"
+        },
+        "text": "Hugo, Victor, 1802-1885",
+        "uri": "https://viaf.org/viaf/9847974",
+        "id": "83771828",
+        "version": "11289509"
+      },
+      {
+        "dataType": "SameAs",
+        "type": {
+          "id": "28225",
+          "term": "sameAs",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#sameAs",
+          "type": "record_type"
+        },
+        "uri": "https://www.wikidata.org/entity/Q535",
+        "id": "83771829",
+        "version": "11289509"
+      },
+      {
+        "dataType": "SameAs",
+        "type": {
+          "id": "28225",
+          "term": "sameAs",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#sameAs",
+          "type": "record_type"
+        },
+        "uri": "https://www.worldcat.org/identities/lccn-n79091479",
+        "id": "83771830",
+        "version": "11289509"
+      },
+      {
+        "dataType": "SameAs",
+        "type": {
+          "id": "28225",
+          "term": "sameAs",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#sameAs",
+          "type": "record_type"
+        },
+        "uri": "https://id.loc.gov/authorities/n79091479",
+        "id": "83771831",
+        "version": "11289509"
+      }
+    ],
+    "places": [
+      {
+        "dataType": "Place",
+        "type": {
+          "id": "705",
+          "term": "AssociatedPlace",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#AssociatedPlace",
+          "type": "place_type"
+        },
+        "role": {
+          "id": "400238",
+          "term": "Birth",
+          "type": "place_role"
+        },
+        "geoplace": {
+          "id": "17660",
+          "uri": "https://www.geonames.org/3033123/besancon.html",
+          "name": "Besançon",
+          "latitude": "47.2487800",
+          "longitude": "6.0181500",
+          "administrationCode": "27",
+          "countryCode": "FR"
+        },
+        "confirmed": true,
+        "id": "83773671",
+        "version": "11289634"
+      },
+      {
+        "dataType": "Place",
+        "type": {
+          "id": "705",
+          "term": "AssociatedPlace",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#AssociatedPlace",
+          "type": "place_type"
+        },
+        "role": {
+          "id": "400239",
+          "term": "Death",
+          "type": "place_role"
+        },
+        "geoplace": {
+          "id": "9980",
+          "uri": "http://www.geonames.org/2988507",
+          "name": "Paris",
+          "latitude": "48.8534100",
+          "longitude": "2.3488000",
+          "administrationCode": "A8",
+          "countryCode": "FR"
+        },
+        "confirmed": true,
+        "id": "83773670",
+        "version": "11289634"
+      }
+    ],
+    "relations": [
+      {
+        "dataType": "ConstellationRelation",
+        "sourceConstellation": "83771443",
+        "targetConstellation": "74968201",
+        "sourceArkID": "http://n2t.net/ark:/99166/w6r030zb",
+        "targetArkID": "http://n2t.net/ark:/99166/w68g9fg6",
+        "targetEntityType": {
+          "id": "700",
+          "term": "person",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#Person",
+          "type": "entity_type"
+        },
+        "type": {
+          "id": "28234",
+          "term": "associatedWith",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#associatedWith",
+          "type": "relation_type"
+        },
+        "content": "Abrantès, Laure Junot, duchesse d', 1784-1838.",
+        "id": "83771885",
+        "version": "11289509"
+      },
+      {
+        "dataType": "ConstellationRelation",
+        "sourceConstellation": "83771443",
+        "targetConstellation": "36151899",
+        "sourceArkID": "http://n2t.net/ark:/99166/w6r030zb",
+        "targetArkID": "http://n2t.net/ark:/99166/w6284g3v",
+        "targetEntityType": {
+          "id": "700",
+          "term": "person",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#Person",
+          "type": "entity_type"
+        },
+        "type": {
+          "id": "28234",
+          "term": "associatedWith",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#associatedWith",
+          "type": "relation_type"
+        },
+        "content": "Achille, Mr,",
+        "id": "83771886",
+        "version": "11289509"
+      },
+      {
+        "dataType": "ConstellationRelation",
+        "sourceConstellation": "83771443",
+        "targetConstellation": "52566574",
+        "sourceArkID": "http://n2t.net/ark:/99166/w6r030zb",
+        "targetArkID": "http://n2t.net/ark:/99166/w6ww7q3j",
+        "targetEntityType": {
+          "id": "700",
+          "term": "person",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#Person",
+          "type": "entity_type"
+        },
+        "type": {
+          "id": "28234",
+          "term": "associatedWith",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#associatedWith",
+          "type": "relation_type"
+        },
+        "content": "Adalid, Marcial del 1826-1881",
+        "id": "83771887",
+        "version": "11289509"
+      }
+    ],
+    "resourceRelations": [
+      {
+        "dataType": "ResourceRelation",
+        "resource": {
+          "dataType": "Resource",
+          "documentType": {
+            "id": "696",
+            "term": "ArchivalResource",
+            "uri": "http://socialarchive.iath.virginia.edu/control/term#ArchivalResource",
+            "type": "document_type"
+          },
+          "link": "https://cpslo-primo.hosted.exlibrisgroup.com/primo-explore/fulldisplay?docid=01CALS_ALMA71430258700002901&context=L&vid=01CALS_PSU&search_scope=EVERYTHING&tab=everything&lang=en_US",
+          "title": "Little Leather Library Collection 1920-1924",
+          "abstract": "The Little Leather Library Collection consists of 101 books, 3-1/4\" x 4,\" published by the Little Leather Library Corporation of New York. The miniature books are brownish green in color, of imitation leather, and characteristic of the Redcroft edition published between 1920-1924. There were over 100 miniature book titles published in the various editions of the Little Leather Library, but it is not known if all of these titles were included in the Redcroft edition. The collection was donated in 2008.",
+          "extent": "The Little Leather Library Collection consists of 101 books, 3-1/4\" x 4,\" and is housed in two flat boxes.",
+          "displayEntry": "Little Leather Library Collection, 1920-1924",
+          "languages": [
+            {
+              "dataType": "Language",
+              "language": {
+                "id": "130",
+                "term": "eng",
+                "type": "language_code",
+                "description": "English"
+              },
+              "id": "11280592",
+              "version": "6651093"
+            }
+          ],
+          "repository": {
+            "dataType": "Constellation",
+            "ark": "http://n2t.net/ark:/99166/w667932n",
+            "entityType": {
+              "id": "698",
+              "term": "corporateBody",
+              "uri": "http://socialarchive.iath.virginia.edu/control/term#CorporateBody",
+              "type": "entity_type"
+            },
+            "nameEntries": [
+              {
+                "dataType": "NameEntry",
+                "original": "Special Collections, Robert E. Kennedy Library",
+                "preferenceScore": "99",
+                "id": "76796339",
+                "version": "11240181"
+              }
+            ],
+            "places": [
+              {
+                "dataType": "Place",
+                "original": "Special Collections, Robert E. Kennedy Library",
+                "type": {
+                  "id": "400242",
+                  "term": "Address",
+                  "uri": "http://socialarchive.iath.virginia.edu/control/term#Address",
+                  "type": "place_type"
+                },
+                "address": [
+                  {
+                    "dataType": "AddressLine",
+                    "text": "California Polytechnic State University San Luis Obispo, California 93407-0605 On deposit from: The Environmental Archives of San Luis Obispo County PO Box 8106 San Luis Obispo, CA 93403-8106",
+                    "order": "0",
+                    "type": {
+                      "id": "400243",
+                      "term": "Unspecified",
+                      "uri": "http://socialarchive.iath.virginia.edu/control/term#Unspecified",
+                      "type": "address_part"
+                    },
+                    "id": "76796342",
+                    "version": "11240181"
+                  }
+                ],
+                "id": "76796341",
+                "version": "11240181"
+              }
+            ],
+            "id": "76796338",
+            "version": "11240184"
+          },
+          "id": "6651093",
+          "version": "6651093"
+        },
+        "role": {
+          "id": "693",
+          "term": "referencedIn",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#referencedIn",
+          "type": "document_role"
+        },
+        "content": "Little Leather Library Collection, 1920-1924",
+        "id": "83772077",
+        "version": "11289509"
+      },
+      {
+        "dataType": "ResourceRelation",
+        "resource": {
+          "dataType": "Resource",
+          "documentType": {
+            "id": "696",
+            "term": "ArchivalResource",
+            "uri": "http://socialarchive.iath.virginia.edu/control/term#ArchivalResource",
+            "type": "document_type"
+          },
+          "link": "http://id.lib.harvard.edu/ead/hou00932/catalog",
+          "title": "John Jay Chapman papers",
+          "abstract": "Correspondence between American essayist John Jay Chapman and his family and friends, as well as compositions by him.",
+          "extent": "51 boxes (25.5 linear ft.)",
+          "date": "1841-1940",
+          "displayEntry": "John Jay Chapman papers",
+          "originationNames": [
+            {
+              "dataType": "OriginationName",
+              "name": "Chapman, John Jay, 1862-1933.                ",
+              "id": "11438211",
+              "version": "6384069"
+            }
+          ],
+          "repository": {
+            "dataType": "Constellation",
+            "ark": "http://n2t.net/ark:/99166/w67f3krh",
+            "entityType": {
+              "id": "698",
+              "term": "corporateBody",
+              "uri": "http://socialarchive.iath.virginia.edu/control/term#CorporateBody",
+              "type": "entity_type"
+            },
+            "nameEntries": [
+              {
+                "dataType": "NameEntry",
+                "original": "Houghton Library",
+                "preferenceScore": "99",
+                "id": "85628221",
+                "version": "11569123"
+              }
+            ],
+            "places": [
+              {
+                "dataType": "Place",
+                "original": "Harvard University, Houghton Library",
+                "type": {
+                  "id": "400242",
+                  "term": "Address",
+                  "uri": "http://socialarchive.iath.virginia.edu/control/term#Address",
+                  "type": "place_type"
+                },
+                "address": [
+                  {
+                    "dataType": "AddressLine",
+                    "text": "Harvard Yard",
+                    "order": "0",
+                    "type": {
+                      "id": "400243",
+                      "term": "Unspecified",
+                      "uri": "http://socialarchive.iath.virginia.edu/control/term#Unspecified",
+                      "type": "address_part"
+                    },
+                    "id": "85628239",
+                    "version": "11569123"
+                  },
+                  {
+                    "dataType": "AddressLine",
+                    "text": "Cambridge",
+                    "order": "1",
+                    "type": {
+                      "id": "400243",
+                      "term": "Unspecified",
+                      "uri": "http://socialarchive.iath.virginia.edu/control/term#Unspecified",
+                      "type": "address_part"
+                    },
+                    "id": "85628240",
+                    "version": "11569123"
+                  },
+                  {
+                    "dataType": "AddressLine",
+                    "text": "US-MA",
+                    "order": "2",
+                    "type": {
+                      "id": "400243",
+                      "term": "Unspecified",
+                      "uri": "http://socialarchive.iath.virginia.edu/control/term#Unspecified",
+                      "type": "address_part"
+                    },
+                    "id": "85628241",
+                    "version": "11569123"
+                  },
+                  {
+                    "dataType": "AddressLine",
+                    "text": "02138-6534",
+                    "order": "3",
+                    "type": {
+                      "id": "400243",
+                      "term": "Unspecified",
+                      "uri": "http://socialarchive.iath.virginia.edu/control/term#Unspecified",
+                      "type": "address_part"
+                    },
+                    "id": "85628242",
+                    "version": "11569123"
+                  },
+                  {
+                    "dataType": "AddressLine",
+                    "text": "US",
+                    "order": "4",
+                    "type": {
+                      "id": "400243",
+                      "term": "Unspecified",
+                      "uri": "http://socialarchive.iath.virginia.edu/control/term#Unspecified",
+                      "type": "address_part"
+                    },
+                    "id": "85628243",
+                    "version": "11569123"
+                  }
+                ],
+                "geoplace": {
+                  "id": "15160",
+                  "name": "Harvard University, Houghton Library",
+                  "latitude": "42.3731728",
+                  "longitude": "-71.1159515"
+                },
+                "confirmed": true,
+                "id": "85628238",
+                "version": "11569123"
+              },
+              {
+                "dataType": "Place",
+                "type": {
+                  "id": "705",
+                  "term": "AssociatedPlace",
+                  "uri": "http://socialarchive.iath.virginia.edu/control/term#AssociatedPlace",
+                  "type": "place_type"
+                },
+                "role": {
+                  "id": "400625",
+                  "term": "Work",
+                  "type": "place_role"
+                },
+                "geoplace": {
+                  "id": "1879",
+                  "uri": "http://www.geonames.org/4931972",
+                  "name": "Cambridge",
+                  "latitude": "42.3751000",
+                  "longitude": "-71.1056100",
+                  "administrationCode": "MA",
+                  "countryCode": "US"
+                },
+                "confirmed": true,
+                "id": "86616296",
+                "version": "11620491"
+              }
+            ],
+            "id": "85628215",
+            "version": "11620492"
+          },
+          "id": "6384069",
+          "version": "6384069"
+        },
+        "role": {
+          "id": "693",
+          "term": "referencedIn",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#referencedIn",
+          "type": "document_role"
+        },
+        "content": "John Jay Chapman papers, 1841-1940.",
+        "id": "83772078",
+        "version": "11289509"
+      },
+      {
+        "dataType": "ResourceRelation",
+        "resource": {
+          "dataType": "Resource",
+          "documentType": {
+            "id": "696",
+            "term": "ArchivalResource",
+            "uri": "http://socialarchive.iath.virginia.edu/control/term#ArchivalResource",
+            "type": "document_type"
+          },
+          "link": "http://library.duke.edu/rubenstein/findingaids/whitmaniana/",
+          "source": "<objectXMLWrap>\n               <did xmlns=\"urn:isbn:1-931666-22-9\">\n                  <unittitle>Trent Collection of Whitmaniana, <unitdate>1841-1992, bulk 1845-1849, 1854-1857, and 1864-1892</unitdate>\n                  </unittitle>\n                  <origination>\n                     <persname>Whitman, Walt, 1819-1892</persname>\n                  </origination>\n                  <physdesc>\n                     <extent>ca. 40 Linear Feet</extent>\n                     <extent>ca. 650 Items</extent>\n                  </physdesc>\n                  <repository>\n                     <corpname>David M. Rubenstein Rare Book &amp; Manuscript Library, Duke University</corpname>\n                  </repository>\n                  <physloc>For current information on the location of these materials, please consult the Library's online catalog.</physloc>\n                  <langmaterial>\n                     <language>English.</language>\n                  </langmaterial>\n               </did>\n            </objectXMLWrap>",
+          "title": "Trent Collection of Whitmaniana, 1841-1992, bulk 1845-1849, 1854-1857, and 1864-1892",
+          "extent": "ca. 40 Linear Feet; ca. 650 Items",
+          "displayEntry": "Trent Collection of Whitmaniana, 1841-1992, bulk 1845-1849, 1854-1857, and 1864-1892",
+          "originationNames": [
+            {
+              "dataType": "OriginationName",
+              "name": "Whitman, Walt, 1819-1892",
+              "id": "11399728",
+              "version": "6360933"
+            }
+          ],
+          "languages": [
+            {
+              "dataType": "Language",
+              "language": {
+                "id": "130",
+                "term": "eng",
+                "type": "language_code",
+                "description": "English"
+              },
+              "id": "11399729",
+              "version": "6360933"
+            }
+          ],
+          "repository": {
+            "dataType": "Constellation",
+            "ark": "http://n2t.net/ark:/99166/w6w48ndj",
+            "entityType": {
+              "id": "698",
+              "term": "corporateBody",
+              "uri": "http://socialarchive.iath.virginia.edu/control/term#CorporateBody",
+              "type": "entity_type"
+            },
+            "nameEntries": [
+              {
+                "dataType": "NameEntry",
+                "original": "David M. Rubenstein Rare Book & Manuscript Library",
+                "preferenceScore": "99",
+                "id": "87251747",
+                "version": "11979733"
+              }
+            ],
+            "places": [
+              {
+                "dataType": "Place",
+                "original": "Duke University. David M. Rubenstein Rare Book & Manuscript Library",
+                "type": {
+                  "id": "400242",
+                  "term": "Address",
+                  "uri": "http://socialarchive.iath.virginia.edu/control/term#Address",
+                  "type": "place_type"
+                },
+                "address": [
+                  {
+                    "dataType": "AddressLine",
+                    "text": "Durham, North Carolina 27708-0185",
+                    "order": "0",
+                    "type": {
+                      "id": "400243",
+                      "term": "Unspecified",
+                      "uri": "http://socialarchive.iath.virginia.edu/control/term#Unspecified",
+                      "type": "address_part"
+                    },
+                    "id": "87251766",
+                    "version": "11979733"
+                  }
+                ],
+                "id": "87251765",
+                "version": "11979733"
+              },
+              {
+                "dataType": "Place",
+                "original": "David M. Rubenstein Rare Book and Manuscript Library, Duke University",
+                "type": {
+                  "id": "400242",
+                  "term": "Address",
+                  "uri": "http://socialarchive.iath.virginia.edu/control/term#Address",
+                  "type": "place_type"
+                },
+                "address": [
+                  {
+                    "dataType": "AddressLine",
+                    "text": "David M. Rubenstein Rare Book & Manuscript Library, Duke University",
+                    "order": "0",
+                    "type": {
+                      "id": "400243",
+                      "term": "Unspecified",
+                      "uri": "http://socialarchive.iath.virginia.edu/control/term#Unspecified",
+                      "type": "address_part"
+                    },
+                    "id": "87251764",
+                    "version": "11979733"
+                  }
+                ],
+                "id": "87251763",
+                "version": "11979733"
+              }
+            ],
+            "id": "87251744",
+            "version": "11979740"
+          },
+          "id": "6360933",
+          "version": "6360933"
+        },
+        "role": {
+          "id": "693",
+          "term": "referencedIn",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#referencedIn",
+          "type": "document_role"
+        },
+        "content": "Trent Collection of Whitmaniana, 1841-1992, bulk 1845-1849, 1854-1857, and 1864-1892",
+        "id": "83772079",
+        "version": "11289509"
+      }
+    ]
+  }
+}

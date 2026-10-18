@@ -22,6 +22,7 @@ pub mod pool;
 pub mod profiles;
 pub mod quality;
 pub mod sentences;
+pub mod snac;
 pub mod wikibase;
 pub mod wiki_pages;
 pub mod wiki_sections;
