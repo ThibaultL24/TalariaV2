@@ -1,0 +1,118 @@
+{
+    "total": 2,
+    "results": [
+        {
+            "dataType": "Constellation",
+            "ark": "http:\/\/n2t.net\/ark:\/99166\/w6r030zb",
+            "entityType": {
+                "id": "700",
+                "term": "person",
+                "uri": "http:\/\/socialarchive.iath.virginia.edu\/control\/term#Person",
+                "type": "entity_type"
+            },
+            "nameEntries": [
+                {
+                    "dataType": "NameEntry",
+                    "original": "Hugo, Victor, 1802-1885",
+                    "preferenceScore": "99",
+                    "id": "83771459",
+                    "version": "11289626"
+                }
+            ],
+            "biogHists": [
+                {
+                    "dataType": "BiogHist",
+                    "text": "<biogHist><p xmlns=\"urn:isbn:1-931666-33-4\">Victor Hugo, French poet, novelist and playwright.<\/p>\n            <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Victor Hugo collection, 1816-1876. (Unknown). WorldCat record id: 702159680<\/citation>\n         <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Victor Hugo collection, 1816-1876. (Unknown). WorldCat record id: 84010646<\/citation>\n         <p xmlns=\"urn:isbn:1-931666-33-4\">French writer.<\/p>\n            <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Autograph letter signed : place not specified, to M. Cassin, 1831 Dec. 14. (Unknown). WorldCat record id: 759121359<\/citation>\n         <p xmlns=\"urn:isbn:1-931666-33-4\">French poet, novelist, dramatist.<\/p>\n            <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Autograph letter signed \"V.H.\", June 25. (Unknown). WorldCat record id: 269539428<\/citation>\n         <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Autograph letter signed : Marian Terrace, 1855 Mar. 11. (Unknown). WorldCat record id: 269530149<\/citation>\n         <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Autograph letter signed : Guernsey, to Emile Allix, [1867] Nov. 13. (Unknown). WorldCat record id: 269525036<\/citation>\n         <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Autograph signature and one line of writing : a\u0300 Jersey, to Madame Pianciani, 1855 Feb. 24. (Unknown). WorldCat record id: 269548300<\/citation>\n         <p xmlns=\"urn:isbn:1-931666-33-4\">French man of letters.<\/p>\n            <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Autograph letters signed (2), dated : Guernsey Feb. 8 and 16 April 1857, to the publisher Le Beau Aine\u0301 in Paris, 1857 Feb. 8. (Unknown). WorldCat record id: 270666501<\/citation>\n         <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Autograph letter signed : Paris, to Augustin Harel du Tancrel, editor of l'Avenir, [1831] Mar. 13. (Unknown). WorldCat record id: 269533814<\/citation>\n         <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Aux Allemands. Aux Franc\u0327ais : [Paris] : autograph drafts (3), heavily corrected, with title, of the addresses, 1870. (Unknown). WorldCat record id: 269550176<\/citation>\n         <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Autograph letter signed : [Paris], to Madame Laurent, the actress, [1843] June 7. (Unknown). WorldCat record id: 269532746<\/citation>\n         <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Autograph letter signed : [n.p.], to an unidentified recipient, \"Lundi.\" (Unknown). WorldCat record id: 269530369<\/citation>\n         <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Autograph ms. initialed, [1833?]. (Unknown). WorldCat record id: 122510731<\/citation>\n         <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Autograph letter signed, dated : [n.p., 1849 (in another hand)], to an unidentified recipient, [1849]. (Unknown). WorldCat record id: 270873438<\/citation>\n         <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Autograph letter signed : [Paris], to the Director of the Theatre de la Porte-Saint-Martin, 1845 Oct. 10. (Unknown). WorldCat record id: 270871076<\/citation>\n         <p xmlns=\"urn:isbn:1-931666-33-4\">French man-of-letters.<\/p>\n            <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Autograph manuscript signed : [n.p., n.d.]. (Unknown). WorldCat record id: 269546474<\/citation>\n         <p xmlns=\"urn:isbn:1-931666-33-4\">French author.<\/p>\n            <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Autograph letters signed (2) : to M. Le Beau, editor, 1857 Feb. 13-1857 Apr. 16. (Unknown). WorldCat record id: 269543228<\/citation>\n         <p xmlns=\"urn:isbn:1-931666-33-4\">Author.<\/p>\n            <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Letter of Victor Hugo, no year Nov. 23. (Unknown). WorldCat record id: 79451075<\/citation>\n         \n            <p xmlns=\"urn:isbn:1-931666-33-4\">Victor-Marie Hugo (1802-1885) was a French novelist, poet, and dramatist best known for his works the Notre-Dame de Paris ( The Hunchback of Notre-Dame ) (1831) and Les Mis\u00e9rables (1862).<\/p>\n            <p xmlns=\"urn:isbn:1-931666-33-4\">Hugo was born February 26, 1802 in Besan\u00e7on, France to L\u00e9opold and Sophie Hugo. His father was a high-ranking officer in Napoleon's army while his mother held strong royalist views. The result was a disjointed marriage. Hugo's father was sent to Spain in 1809, where he was named governor of two Spanish provinces, Ernani and Torquemada. His mother moved Hugo and his two brothers to his father's estate, but returned the family to Paris by 1812.<\/p>\n            <p xmlns=\"urn:isbn:1-931666-33-4\">Hugo wrote his first play in 1816. By 1819, Hugo and his two brothers, Abel and Eug\u00e8ne, began production of a royalist review titled Conservateur litt\u00e9raire . In 1822 Hugo married Ad\u00e8le Foucher with whom he had five children. Shortly after, Foucher began an affair with Charles-Augustin Sainte-Beuve while Hugo started a relationship with actress Juliette Drouet.<\/p>\n            <p xmlns=\"urn:isbn:1-931666-33-4\">Around mid-century Hugo became involved in politics. He was elected to the National Assembly in 1848 and to the Legislative Assembly in 1849. After his son, Charles, was imprisoned, Hugo opposed Napoleon III openly. As a result, when Napoleon III came to power in 1851 Hugo was forced to flee to Brussels. His family eventually settled on the island of Guernsey, with Drouet living next door. Hugo returned to France in 1870 where he continued his political involvement. He was elected to the National Assembly in 1870 and to the Senate in 1876.<\/p>\n            <p xmlns=\"urn:isbn:1-931666-33-4\">Hugo had a successful literary career, serving as a central figure in French romanticism. Hugo died on May 22, 1885. His body lay in state under the Arc de Triomphe and the government ordered a period of national morning.<\/p>\n            <chronList xmlns=\"urn:isbn:1-931666-33-4\">\n               <chronItem>\n                  <date standardDate=\"1823\">1823<\/date>\n                  <chronItemSet>\n                     <event>Odes<\/event>\n                     <event>Han d'Islande (\n\n\n\n              Han of Iceland)<\/event>\n                  <\/chronItemSet>\n               <\/chronItem>\n               <chronItem>\n                  <date standardDate=\"1826\">1826<\/date>\n                  <chronItemSet>\n                     <event>Bug-Jargal (\n\n\n\n              The Slave-King)<\/event>\n                     <event>Odes et Ballades<\/event>\n                  <\/chronItemSet>\n               <\/chronItem>\n               <chronItem>\n                  <date standardDate=\"1827\">1827<\/date>\n                  <event>Cromwell<\/event>\n               <\/chronItem>\n               <chronItem>\n                  <date standardDate=\"1830\">1830<\/date>\n                  <event>Hernani, ou l'Honneur castillan (\n\n\n\n            Hernani; or, The Honour of a Castilian)<\/event>\n               <\/chronItem>\n               <chronItem>\n                  <date standardDate=\"1831\">1831<\/date>\n                  <chronItemSet>\n                     <event>Les Feuilles d'automne<\/event>\n                     <event>Notre-Dame de Paris (\n\n\n\n              The Hunchback of Notre Dame)<\/event>\n                     <event>Marion Delorme<\/event>\n                  <\/chronItemSet>\n               <\/chronItem>\n               <chronItem>\n                  <date standardDate=\"1832\">1832<\/date>\n                  <event>Le Roi s'amuse (\n\n\n\n            The King's Fool)<\/event>\n               <\/chronItem>\n               <chronItem>\n                  <date standardDate=\"1833\">1833<\/date>\n                  <chronItemSet>\n                     <event>Lucr\u00e8ce Borgia (\n\n\n\n              Lucretia Borgia, a Dramatic Tale)<\/event>\n                     <event>Marie Tudor<\/event>\n                  <\/chronItemSet>\n               <\/chronItem>\n               <chronItem>\n                  <date standardDate=\"1835\">1835<\/date>\n                  <chronItemSet>\n                     <event>Angelo, Tyran de Padoue (\n\n\n\n              Angelo)<\/event>\n                     <event>Les Chants du cr\u00e9puscle (\n\n\n\n              Songs of Twilight)<\/event>\n                  <\/chronItemSet>\n               <\/chronItem>\n               <chronItem>\n                  <date standardDate=\"1837\">1837<\/date>\n                  <event>Les Voix int\u00e9rieures<\/event>\n               <\/chronItem>\n               <chronItem>\n                  <date standardDate=\"1838\">1838<\/date>\n                  <event>Ruy Blas (\n\n\n\n            Ruy Blas: A Romantic Drama)<\/event>\n               <\/chronItem>\n               <chronItem>\n                  <date standardDate=\"1842\">1842<\/date>\n                  <event>Les Rayons et les ombres<\/event>\n               <\/chronItem>\n               <chronItem>\n                  <date standardDate=\"1853\">1853<\/date>\n                  <event>Les Ch\u00e2timents<\/event>\n               <\/chronItem>\n               <chronItem>\n                  <date standardDate=\"1856\">1856<\/date>\n                  <event>Les Contemplations<\/event>\n               <\/chronItem>\n               <chronItem>\n                  <date standardDate=\"1859\">1859<\/date>\n                  <event>La L\u00e9gende des si\u00e8cles (\n\n\n\n            The Legend of the Centuries)<\/event>\n               <\/chronItem>\n               <chronItem>\n                  <date standardDate=\"1862\">1862<\/date>\n                  <event>Les Mis\u00e9rables<\/event>\n               <\/chronItem>\n               <chronItem>\n                  <date standardDate=\"1866\">1866<\/date>\n                  <event>Les Travailleurs de la mer (\n\n\n\n            The Toilers of the Sea)<\/event>\n               <\/chronItem>\n               <chronItem>\n                  <date standardDate=\"1872\">1872<\/date>\n                  <event>L'Ann\u00e9e terrible<\/event>\n               <\/chronItem>\n               <chronItem>\n                  <date standardDate=\"1878\">1878<\/date>\n                  <event>Le Pape<\/event>\n               <\/chronItem>\n               <chronItem>\n                  <date standardDate=\"1881\">1881<\/date>\n                  <event>Les Quatre Vents de l'esprit<\/event>\n               <\/chronItem>\n               <chronItem>\n                  <date standardDate=\"1882\">1882<\/date>\n                  <event>Torquemada<\/event>\n               <\/chronItem>\n            <\/chronList>\n            <citation xmlns=\"urn:isbn:1-931666-33-4\">From the guide to the Victor Hugo Collection, 1839-1878, (Special Collections Research Center, Syracuse University Libraries)<\/citation>\n         <\/biogHist><biogHist>\n            <p xmlns=\"urn:isbn:1-931666-33-4\">Epithet: Vicomte author<\/p>\n            <citation xmlns=\"urn:isbn:1-931666-33-4\">British Library Archives and Manuscripts Catalogue : Person : Description : ark:\/81055\/vdc_100000000975.0x0000f5<\/citation>\n         <\/biogHist><biogHist>\n            <p xmlns=\"urn:isbn:1-931666-33-4\">Epithet: writer of plays<\/p>\n            <citation xmlns=\"urn:isbn:1-931666-33-4\">British Library Archives and Manuscripts Catalogue : Person : Description : ark:\/81055\/vdc_100000000623.0x000313<\/citation>\n         <\/biogHist>",
+                    "id": "83771444",
+                    "version": "11289509"
+                }
+            ],
+            "id": "83771443",
+            "version": "11289635",
+            "resource_count": "326"
+        },
+        {
+            "dataType": "Constellation",
+            "ark": "http:\/\/n2t.net\/ark:\/99166\/w6r350pj",
+            "entityType": {
+                "id": "700",
+                "term": "person",
+                "uri": "http:\/\/socialarchive.iath.virginia.edu\/control\/term#Person",
+                "type": "entity_type"
+            },
+            "nameEntries": [
+                {
+                    "dataType": "NameEntry",
+                    "original": "Gillet, (bookseller's note) Hugo, Victor, 1802-1885",
+                    "preferenceScore": "1",
+                    "id": "9887031",
+                    "version": "1439516"
+                }
+            ],
+            "id": "9887028",
+            "version": "1439517",
+            "resource_count": "1"
+        }
+    ],
+    "aggregations": {
+        "subject": [
+            {
+                "term": "Actors--France",
+                "count": 1
+            },
+            {
+                "term": "Art--French (?)--Reproductions",
+                "count": 1
+            },
+            {
+                "term": "Arts, French",
+                "count": 1
+            },
+            {
+                "term": "Authors, French",
+                "count": 1
+            },
+            {
+                "term": "Authors, French--19th century",
+                "count": 1
+            },
+            {
+                "term": "Drama (French)",
+                "count": 1
+            },
+            {
+                "term": "Franco--Prussian War, 1870-1871",
+                "count": 1
+            },
+            {
+                "term": "French literature--19th century",
+                "count": 1
+            },
+            {
+                "term": "French poetry",
+                "count": 1
+            },
+            {
+                "term": "French poetry--19th century",
+                "count": 1
+            }
+        ],
+        "occupation": [
+            {
+                "term": "Authors",
+                "count": 1
+            },
+            {
+                "term": "Novelists",
+                "count": 1
+            }
+        ],
+        "activity": []
+    },
+    "pagination": 1,
+    "page": 0,
+    "count": 5,
+    "term": "Hugo, Victor, 1802-1885",
+    "search_type": "default",
+    "timing": 70.32
+}

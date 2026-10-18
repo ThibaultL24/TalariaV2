@@ -1,0 +1,6 @@
+# SHA-256 of the full SNAC read bodies captured on 2026-10-18.
+# The current tree stores reduced extracts, not these full bodies.
+# The reduced JSON files keep the observed keys.
+d01c38671a7cd7fbb26cb3ec1ebee349335602a26c0802893a20ebcb342c58e3  70117399  napoleon_read.json
+a4df9fe553262ccabc9f9037efc744cfbd8d8535edc2f41d7ffaae29714ecb6f  18986456  hugo_read.json
+dde1fc76caf619aa5923e4794cc77e134af306d34d0176d8c0914e5521e110d0  1393895  curie_read.json

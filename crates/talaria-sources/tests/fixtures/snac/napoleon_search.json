@@ -1,0 +1,216 @@
+{
+    "total": 42,
+    "results": [
+        {
+            "dataType": "Constellation",
+            "ark": "http:\/\/n2t.net\/ark:\/99166\/w6086d9v",
+            "entityType": {
+                "id": "700",
+                "term": "person",
+                "uri": "http:\/\/socialarchive.iath.virginia.edu\/control\/term#Person",
+                "type": "entity_type"
+            },
+            "nameEntries": [
+                {
+                    "dataType": "NameEntry",
+                    "original": "Buford, Napoleon Bonaparte, 1807-1883",
+                    "preferenceScore": "99",
+                    "id": "18813606",
+                    "version": "11508281"
+                }
+            ],
+            "biogHists": [
+                {
+                    "dataType": "BiogHist",
+                    "text": "<p>Buford was the son of John and Nancy Hickman Buford. He was born in Woodford County, Kentucky on his family's plantation, \"Rose Hill.\" At the time of his birth his namesake, Napoleon Bonaparte, Emperor of the French, was at the height of his power. Buford graduated from West Point in 1827 and served for eight years in the artillery and in 1835 resigned from the service to become an engineer. He thereafter engaged in iron manufacturing and banking at Rock Island, Illinois and became president of the Rock Island and Peoria Railroad, which went bankrupt when major Southern bonds were defaulted with the start of the Civil War.<\/p>\r\n\r\n<p>In the U.S. Civil War, he first served as colonel of the 27th Illinois Infantry, fighting at the Battle of Belmont. He then commanded the so-called \"Flotilla Brigade\" of the Army of the Mississippi during the Battle of Island Number Ten. This was a brigade of infantry which served on board the gunboats of the Western Flotilla.<\/p>\r\n\r\n<p>On April 16, 1862 President Abraham Lincoln appointed Buford Brigadier General of U.S. Volunteers, to rank from April 15, 1862. Buford commanded the 1st Brigade, 3rd Division, Army of the Mississippi during the siege and Battle of Corinth. In the final days of 1862, he served on the court-martial that convicted Major General Fitz John Porter of cowardice and disobedience. On November 29, 1862 he was appointed Major General of U.S. Volunteers but this appointment expired on March 4, 1863 and he reverted to brigadier general on that date. For the rest of the war, Buford served as commander of the District of East Arkansas. Buford was mustered out of the army on August 24, 1865. On July 5, 1867, President Andrew Johnson nominated Buford for appointment to the brevet grade of major general of volunteers, to rank from March 13, 1865, and the U.S. Senate confirmed the appointment on July 19, 1867.<\/p>\r\n\r\n<p>Buford's younger half brother, John Buford, was also a West Point graduate (Class of 1848) and a general in the Union Army during the Civil War, commanding the 1st Division, Cavalry Corps, Army of the Potomac. A cousin, Abraham Buford, was a general in the Confederate States Army.<\/p>\r\n\r\n<p>Buford was government inspector of the Union Pacific Railroad from 1867 to 1869 and a special commissioner of Indian affairs in 1867\u201368.<\/p>\r\n\r\n<p>He died in Chicago, Illinois, and is buried in Rock Island, Illinois.<\/p>\r\n",
+                    "id": "18813585",
+                    "version": "11508286"
+                }
+            ],
+            "id": "18813584",
+            "version": "11508472",
+            "resource_count": "42"
+        },
+        {
+            "dataType": "Constellation",
+            "ark": "http:\/\/n2t.net\/ark:\/99166\/w6679496",
+            "entityType": {
+                "id": "700",
+                "term": "person",
+                "uri": "http:\/\/socialarchive.iath.virginia.edu\/control\/term#Person",
+                "type": "entity_type"
+            },
+            "nameEntries": [
+                {
+                    "dataType": "NameEntry",
+                    "original": "Napoleon III, Emperor of the French, 1808-1873",
+                    "preferenceScore": "99",
+                    "id": "85117083",
+                    "version": "11465116"
+                }
+            ],
+            "biogHists": [
+                {
+                    "dataType": "BiogHist",
+                    "text": "Napoleon III (born Charles-Louis Napol\u00e9on Bonaparte, 20 April 1808, Paris, France \u2013 died 9 January 1873, Chislehurst, Kent, England), the nephew of Napoleon I and cousin of Napoleon II, was the first president of France, from 1848 to 1852, and the last French monarch, from 1852 to 1870. First elected president of the French Second Republic in 1848, he seized power in 1851, when he could not constitutionally be re-elected, and became the emperor of the French. He founded the Second French Empire and was its only emperor until the defeat of the French army and his capture by Prussia and its allies in the Franco-Prussian War in 1870. He worked to modernize the French economy, rebuilt the center of Paris, expanded the French overseas empire, and engaged in the Crimean War and the Second Italian War of Independence.",
+                    "id": "85116740",
+                    "version": "11465130"
+                }
+            ],
+            "id": "85116739",
+            "version": "11465134",
+            "resource_count": "177"
+        },
+        {
+            "dataType": "Constellation",
+            "ark": "http:\/\/n2t.net\/ark:\/99166\/w6057w1d",
+            "entityType": {
+                "id": "700",
+                "term": "person",
+                "uri": "http:\/\/socialarchive.iath.virginia.edu\/control\/term#Person",
+                "type": "entity_type"
+            },
+            "nameEntries": [
+                {
+                    "dataType": "NameEntry",
+                    "original": "Bonaparte, Lucien Louis Joseph Napoleon (cardinal)",
+                    "preferenceScore": "2",
+                    "id": "13124171",
+                    "version": "1908200"
+                }
+            ],
+            "id": "13124134",
+            "version": "1908201",
+            "resource_count": "33"
+        },
+        {
+            "dataType": "Constellation",
+            "ark": "http:\/\/n2t.net\/ark:\/99166\/w6jf5mvt",
+            "entityType": {
+                "id": "700",
+                "term": "person",
+                "uri": "http:\/\/socialarchive.iath.virginia.edu\/control\/term#Person",
+                "type": "entity_type"
+            },
+            "nameEntries": [
+                {
+                    "dataType": "NameEntry",
+                    "original": "Bonaparte, J\u00e9r\u00f4me Napol\u00e9on, 1830-1893",
+                    "preferenceScore": "99",
+                    "id": "85118840",
+                    "version": "11465193"
+                }
+            ],
+            "biogHists": [
+                {
+                    "dataType": "BiogHist",
+                    "text": "<biogHist><p xmlns=\"urn:isbn:1-931666-33-4\">Officer in the U.S. and French armies; grand-nephew of Napoleon I (Bonaparte); b. at Baltimore, Md.; d. at Pride's Crossing, Mass.<\/p>\n            <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Account book, 1845-1850. (Unknown). WorldCat record id: 70971864<\/citation>\n         <\/biogHist>",
+                    "id": "85118836",
+                    "version": "11465187"
+                }
+            ],
+            "id": "85118835",
+            "version": "11465197",
+            "resource_count": "9"
+        },
+        {
+            "dataType": "Constellation",
+            "ark": "http:\/\/n2t.net\/ark:\/99166\/w69x15nw",
+            "entityType": {
+                "id": "700",
+                "term": "person",
+                "uri": "http:\/\/socialarchive.iath.virginia.edu\/control\/term#Person",
+                "type": "entity_type"
+            },
+            "nameEntries": [
+                {
+                    "dataType": "NameEntry",
+                    "original": "Napol\u00e9on I, Emperor of the French, 1769-1821",
+                    "preferenceScore": "99",
+                    "id": "85115171",
+                    "version": "11465091"
+                }
+            ],
+            "biogHists": [
+                {
+                    "dataType": "BiogHist",
+                    "text": "<biogHist><p xmlns=\"urn:isbn:1-931666-33-4\">Napoleon Bonaparte was a general of the French Revolution (1789-1799); the ruler of France as First Consul of the French Republic from November 11, 1799, to May 18, 1804; Emperor of the French and King of Italy under the name Napoleon I from May 18,1804, to April 6,1814; and briefly restored as Emperor from March 20 to June 22, 1815. He conquered much of Europe but lost two-thirds of his army in a disastrous invasion of Russia in 1812. After his final loss to Britain and Prussia at the Battle of Waterloo (1815), he was exiled to the island of St. Helena in the South Atlantic Ocean, where he died six years later of an unidentified ailment. Francesco Antommarchi, Napoleon's personal physician at St. Helena, gave stomach cancer as a reason for Napoleon's death in his death certificate. However, because traces of arsenic were later found in locks of his hair, some have suggested he may have been fatally poisoned. In 1796 Napoleon married Jose\u0301phine de Beauharnais, and, after the dissolution of that marriage, he married the Archduchess Marie Louise of Austria in 1810. Napoleon appointed several members of the Bonaparte family and close friends as monarchs of countries he conquered and as important government figures. Although their reigns did not survive his downfall, a nephew, Napoleon III, ruled France later in the nineteenth century.<\/p>\r\n            <citation xmlns=\"urn:isbn:1-931666-33-4\">From the description of Napoleon I, Emperor of the French collection, 1796-1840 (Peking University Library). WorldCat record id: 74216609<\/citation>\r\n         <\/biogHist>",
+                    "id": "85115162",
+                    "version": "11465100"
+                }
+            ],
+            "id": "85115161",
+            "version": "11465101",
+            "resource_count": "880"
+        }
+    ],
+    "aggregations": {
+        "subject": [
+            {
+                "term": "Manuscripts, French",
+                "count": 3
+            },
+            {
+                "term": "Napoleonic Wars, 1800-1815",
+                "count": 2
+            },
+            {
+                "term": "American Indians--Portraits",
+                "count": 1
+            },
+            {
+                "term": "Amphibious warfare",
+                "count": 1
+            },
+            {
+                "term": "Anthropologists--History--19th century",
+                "count": 1
+            },
+            {
+                "term": "Anthropology--History--19th century--Sources",
+                "count": 1
+            },
+            {
+                "term": "Baltimore (Md.)--History--19th century",
+                "count": 1
+            },
+            {
+                "term": "Banks and banking",
+                "count": 1
+            },
+            {
+                "term": "Belmont, Battle of, Belmont, Mo., 1861",
+                "count": 1
+            },
+            {
+                "term": "Budget--19th century",
+                "count": 1
+            }
+        ],
+        "occupation": [
+            {
+                "term": "Bankers--Illinois",
+                "count": 1
+            },
+            {
+                "term": "Corporate Executive",
+                "count": 1
+            },
+            {
+                "term": "Engineers--19th century.--United States",
+                "count": 1
+            },
+            {
+                "term": "Soldiers--19 century.--United States",
+                "count": 1
+            }
+        ],
+        "activity": []
+    },
+    "pagination": 9,
+    "page": 0,
+    "count": 5,
+    "term": "Napoleon Bonaparte",
+    "search_type": "default",
+    "timing": 93.2
+}

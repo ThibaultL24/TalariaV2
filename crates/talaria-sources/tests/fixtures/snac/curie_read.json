@@ -1,0 +1,780 @@
+{
+  "result": "success",
+  "maybesame_count": 0,
+  "fixture": "reduced_from_snac_capture",
+  "original_sha256": "dde1fc76caf619aa5923e4794cc77e134af306d34d0176d8c0914e5521e110d0",
+  "original_bytes": 1393895,
+  "constellation": {
+    "dataType": "Constellation",
+    "id": "87847534",
+    "version": "12136353",
+    "ark": "http://n2t.net/ark:/99166/w6bh3fxq",
+    "entityType": {
+      "id": "700",
+      "term": "person",
+      "uri": "http://socialarchive.iath.virginia.edu/control/term#Person",
+      "type": "entity_type"
+    },
+    "status": "editable",
+    "dates": [
+      {
+        "dataType": "SNACDate",
+        "fromDate": "1867-11-07",
+        "fromDateOriginal": "1867-11-07",
+        "fromType": {
+          "id": "689",
+          "term": "Birth",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#Birth",
+          "type": "date_type"
+        },
+        "toDate": "1934-07-04",
+        "toDateOriginal": "1934-07-04",
+        "toType": {
+          "id": "690",
+          "term": "Death",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#Death",
+          "type": "date_type"
+        },
+        "isRange": true,
+        "id": "87847537",
+        "version": "12136329"
+      }
+    ],
+    "nameEntries": [
+      {
+        "dataType": "NameEntry",
+        "original": "Curie, Marie, 1867-1934",
+        "preferenceScore": "99",
+        "contributors": [
+          {
+            "dataType": "Contributor",
+            "type": {
+              "id": "7658",
+              "term": "authorizedForm",
+              "type": "name_type"
+            },
+            "rule": {
+              "id": "7661",
+              "term": "rda",
+              "type": "name_rule"
+            },
+            "id": "87847549",
+            "version": "12136329"
+          }
+        ],
+        "components": [
+          {
+            "dataType": "NameComponent",
+            "text": "1867-1934",
+            "order": "2",
+            "type": {
+              "id": "400237",
+              "term": "Date",
+              "type": "name_component"
+            },
+            "id": "87847548",
+            "version": "12136351"
+          }
+        ],
+        "language": {
+          "dataType": "Language",
+          "language": {
+            "id": "130",
+            "term": "eng",
+            "type": "language_code",
+            "description": "English"
+          },
+          "script": {
+            "id": "586",
+            "term": "Latn",
+            "type": "script_code",
+            "description": "Latin"
+          },
+          "id": "87847550",
+          "version": "12136329"
+        },
+        "id": "87847544",
+        "version": "12136329",
+        "snacControlMetadata": [
+          {
+            "dataType": "SNACControlMetadata",
+            "sourceData": "[\n    {\n        \"contributor\": \"VIAF\",\n        \"form\": \"authorizedForm\"\n    },\n    {\n        \"contributor\": \"aps\",\n        \"form\": \"authorizedForm\"\n    },\n    {\n        \"contributor\": \"uchic\",\n        \"form\": \"authorizedForm\"\n    },\n    {\n        \"contributor\": \"WorldCat\",\n        \"form\": \"authorizedForm\"\n    },\n    {\n        \"contributor\": \"oac\",\n        \"form\": \"authorizedForm\"\n    },\n    {\n        \"contributor\": \"LC\",\n        \"form\": \"authorizedForm\"\n    },\n    {\n        \"contributor\": \"NLA\",\n        \"form\": \"authorizedForm\"\n    },\n    {\n        \"contributor\": \"umn\",\n        \"form\": \"authorizedForm\"\n    },\n    {\n        \"contributor\": \"nara\",\n        \"form\": \"authorizedForm\"\n    },\n    {\n        \"contributor\": \"nypl\",\n        \"form\": \"authorizedForm\"\n    },\n    {\n        \"contributor\": \"ahub\",\n        \"form\": \"authorizedForm\"\n    },\n    {\n        \"contributor\": \"LAC\",\n        \"form\": \"authorizedForm\"\n    },\n    {\n        \"contributor\": \"pacscl\",\n        \"form\": \"authorizedForm\"\n    }\n]",
+            "note": "Contributors from initial SNAC EAC-CPF ingest",
+            "id": "87847545",
+            "version": "12136329"
+          }
+        ]
+      },
+      {
+        "dataType": "NameEntry",
+        "original": "קירי, מרי, 1867-1934",
+        "preferenceScore": "0",
+        "contributors": [
+          {
+            "dataType": "Contributor",
+            "type": {
+              "id": "7657",
+              "term": "alternativeForm",
+              "type": "name_type"
+            },
+            "rule": {
+              "id": "7661",
+              "term": "rda",
+              "type": "name_rule"
+            },
+            "id": "87847555",
+            "version": "12136351"
+          }
+        ],
+        "components": [
+          {
+            "dataType": "NameComponent",
+            "text": "קירי",
+            "order": "0",
+            "type": {
+              "id": "400223",
+              "term": "Surname",
+              "type": "name_component"
+            },
+            "id": "87848161",
+            "version": "12136351"
+          },
+          {
+            "dataType": "NameComponent",
+            "text": "מרי",
+            "order": "1",
+            "type": {
+              "id": "400224",
+              "term": "Forename",
+              "type": "name_component"
+            },
+            "id": "87847553",
+            "version": "12136351"
+          },
+          {
+            "dataType": "NameComponent",
+            "text": "1867-1934",
+            "order": "2",
+            "type": {
+              "id": "400237",
+              "term": "Date",
+              "type": "name_component"
+            },
+            "id": "87847554",
+            "version": "12136351"
+          }
+        ],
+        "language": {
+          "dataType": "Language",
+          "language": {
+            "id": "184",
+            "term": "heb",
+            "type": "language_code",
+            "description": "Hebrew"
+          },
+          "script": {
+            "id": "560",
+            "term": "Hebr",
+            "type": "script_code",
+            "description": "Hebrew"
+          },
+          "id": "87847556",
+          "version": "12136351"
+        },
+        "id": "87847551",
+        "version": "12136351",
+        "snacControlMetadata": [
+          {
+            "dataType": "SNACControlMetadata",
+            "sourceData": "[\n    {\n        \"contributor\": \"VIAF\",\n        \"form\": \"authorizedForm\"\n    }\n]",
+            "note": "Contributors from initial SNAC EAC-CPF ingest",
+            "id": "87847552",
+            "version": "12136329"
+          }
+        ]
+      },
+      {
+        "dataType": "NameEntry",
+        "original": "Kiyūri, Mēri, 1867-1934",
+        "preferenceScore": "0",
+        "contributors": [
+          {
+            "dataType": "Contributor",
+            "type": {
+              "id": "7657",
+              "term": "alternativeForm",
+              "type": "name_type"
+            },
+            "rule": {
+              "id": "7661",
+              "term": "rda",
+              "type": "name_rule"
+            },
+            "id": "87847562",
+            "version": "12136329"
+          }
+        ],
+        "components": [
+          {
+            "dataType": "NameComponent",
+            "text": "Kiyūri",
+            "order": "0",
+            "type": {
+              "id": "400223",
+              "term": "Surname",
+              "type": "name_component"
+            },
+            "id": "87847559",
+            "version": "12136329"
+          },
+          {
+            "dataType": "NameComponent",
+            "text": "Mēri",
+            "order": "1",
+            "type": {
+              "id": "400224",
+              "term": "Forename",
+              "type": "name_component"
+            },
+            "id": "87847560",
+            "version": "12136329"
+          },
+          {
+            "dataType": "NameComponent",
+            "text": "1867-1934",
+            "order": "2",
+            "type": {
+              "id": "400237",
+              "term": "Date",
+              "type": "name_component"
+            },
+            "id": "87847561",
+            "version": "12136329"
+          }
+        ],
+        "language": {
+          "dataType": "Language",
+          "language": {
+            "id": "130",
+            "term": "eng",
+            "type": "language_code",
+            "description": "English"
+          },
+          "script": {
+            "id": "586",
+            "term": "Latn",
+            "type": "script_code",
+            "description": "Latin"
+          },
+          "id": "87847563",
+          "version": "12136329"
+        },
+        "id": "87847557",
+        "version": "12136329",
+        "snacControlMetadata": [
+          {
+            "dataType": "SNACControlMetadata",
+            "sourceData": "[\n    {\n        \"contributor\": \"VIAF\",\n        \"form\": \"alternativeForm\"\n    }\n]",
+            "note": "Contributors from initial SNAC EAC-CPF ingest",
+            "id": "87847558",
+            "version": "12136329"
+          }
+        ]
+      }
+    ],
+    "sameAsRelations": [
+      {
+        "dataType": "SameAs",
+        "type": {
+          "id": "28225",
+          "term": "sameAs",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#sameAs",
+          "type": "record_type"
+        },
+        "text": "Curie, Marie, 1867-1934",
+        "uri": "https://id.loc.gov/authorities/n80155913",
+        "id": "87847698",
+        "version": "12136329"
+      },
+      {
+        "dataType": "SameAs",
+        "type": {
+          "id": "28225",
+          "term": "sameAs",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#sameAs",
+          "type": "record_type"
+        },
+        "text": "National Archives Catalog",
+        "uri": "https://catalog.archives.gov/id/10568903",
+        "id": "87847699",
+        "version": "12136329"
+      },
+      {
+        "dataType": "SameAs",
+        "type": {
+          "id": "28225",
+          "term": "sameAs",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#sameAs",
+          "type": "record_type"
+        },
+        "text": "Curie, Marie, 1867-1934",
+        "uri": "https://viaf.org/viaf/76353174",
+        "id": "87847700",
+        "version": "12136329"
+      },
+      {
+        "dataType": "SameAs",
+        "type": {
+          "id": "28225",
+          "term": "sameAs",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#sameAs",
+          "type": "record_type"
+        },
+        "uri": "https://www.wikidata.org/entity/Q7186",
+        "id": "87847701",
+        "version": "12136329"
+      },
+      {
+        "dataType": "SameAs",
+        "type": {
+          "id": "28225",
+          "term": "sameAs",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#sameAs",
+          "type": "record_type"
+        },
+        "uri": "https://www.worldcat.org/identities/lccn-n80155913",
+        "id": "87847702",
+        "version": "12136329"
+      }
+    ],
+    "places": [
+      {
+        "dataType": "Place",
+        "type": {
+          "id": "705",
+          "term": "AssociatedPlace",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#AssociatedPlace",
+          "type": "place_type"
+        },
+        "role": {
+          "id": "400239",
+          "term": "Death",
+          "type": "place_role"
+        },
+        "geoplace": {
+          "id": "20244",
+          "uri": "https://www.geonames.org/2988393/passy.html",
+          "name": "Passy",
+          "latitude": "45.9234100",
+          "longitude": "6.6956200",
+          "administrationCode": "84",
+          "countryCode": "FR"
+        },
+        "confirmed": true,
+        "id": "87848162",
+        "version": "12136352"
+      },
+      {
+        "dataType": "Place",
+        "type": {
+          "id": "705",
+          "term": "AssociatedPlace",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#AssociatedPlace",
+          "type": "place_type"
+        },
+        "geoplace": {
+          "id": "9980",
+          "uri": "http://www.geonames.org/2988507",
+          "name": "Paris",
+          "latitude": "48.8534100",
+          "longitude": "2.3488000",
+          "administrationCode": "A8",
+          "countryCode": "FR"
+        },
+        "confirmed": true,
+        "id": "87847704",
+        "version": "12136329"
+      },
+      {
+        "dataType": "Place",
+        "type": {
+          "id": "705",
+          "term": "AssociatedPlace",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#AssociatedPlace",
+          "type": "place_type"
+        },
+        "role": {
+          "id": "400238",
+          "term": "Birth",
+          "type": "place_role"
+        },
+        "geoplace": {
+          "id": "14039",
+          "uri": "http://www.geonames.org/756135",
+          "name": "Warsaw",
+          "latitude": "52.2297700",
+          "longitude": "21.0117800",
+          "administrationCode": "78",
+          "countryCode": "PL"
+        },
+        "confirmed": true,
+        "id": "87847703",
+        "version": "12136329"
+      }
+    ],
+    "relations": [
+      {
+        "dataType": "ConstellationRelation",
+        "sourceConstellation": "87847534",
+        "targetConstellation": "55691529",
+        "sourceArkID": "http://n2t.net/ark:/99166/w6bh3fxq",
+        "targetArkID": "http://n2t.net/ark:/99166/w6qz3184",
+        "targetEntityType": {
+          "id": "700",
+          "term": "person",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#Person",
+          "type": "entity_type"
+        },
+        "type": {
+          "id": "28234",
+          "term": "associatedWith",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#associatedWith",
+          "type": "relation_type"
+        },
+        "content": "Abbe, Robert, 1851-1928.",
+        "id": "87847716",
+        "version": "12136329"
+      },
+      {
+        "dataType": "ConstellationRelation",
+        "sourceConstellation": "87847534",
+        "targetConstellation": "17657191",
+        "sourceArkID": "http://n2t.net/ark:/99166/w6bh3fxq",
+        "targetArkID": "http://n2t.net/ark:/99166/w6j97c20",
+        "targetEntityType": {
+          "id": "700",
+          "term": "person",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#Person",
+          "type": "entity_type"
+        },
+        "type": {
+          "id": "28234",
+          "term": "associatedWith",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#associatedWith",
+          "type": "relation_type"
+        },
+        "content": "Abraham, Max, 1875-1922",
+        "id": "87847717",
+        "version": "12136329"
+      },
+      {
+        "dataType": "ConstellationRelation",
+        "sourceConstellation": "87847534",
+        "targetConstellation": "27364125",
+        "sourceArkID": "http://n2t.net/ark:/99166/w6bh3fxq",
+        "targetArkID": "http://n2t.net/ark:/99166/w68k786t",
+        "targetEntityType": {
+          "id": "700",
+          "term": "person",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#Person",
+          "type": "entity_type"
+        },
+        "type": {
+          "id": "28234",
+          "term": "associatedWith",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#associatedWith",
+          "type": "relation_type"
+        },
+        "content": "Agassiz, Louis, 1807-1873",
+        "id": "87847718",
+        "version": "12136329"
+      }
+    ],
+    "resourceRelations": [
+      {
+        "dataType": "ResourceRelation",
+        "resource": {
+          "dataType": "Resource",
+          "documentType": {
+            "id": "696",
+            "term": "ArchivalResource",
+            "uri": "http://socialarchive.iath.virginia.edu/control/term#ArchivalResource",
+            "type": "document_type"
+          },
+          "link": "https://n2t.net/ark:/65665/ep8de134ba2-27ee-4591-ad74-83d2832f5943",
+          "title": "Mildred Moore Collection",
+          "abstract": "Collection includes over 200 replies (160 of which comprise the book) to Mrs. Moore's letter requesting a quotation or a bit of poetry important to the recipient; a copy of her book, \"Famous Personalities and Their Philosophies,\" and materials relating to the speeches both Mrs. Moore and her daughter gave about this collection of letters, such as notes, clippings, etc.",
+          "extent": "0.6 Cubic feet (3 boxes)",
+          "date": "1925-1975",
+          "displayEntry": "Mildred Moore Collection",
+          "repository": {
+            "dataType": "Constellation",
+            "ark": "http://n2t.net/ark:/99166/w6z6714f",
+            "entityType": {
+              "id": "698",
+              "term": "corporateBody",
+              "uri": "http://socialarchive.iath.virginia.edu/control/term#CorporateBody",
+              "type": "entity_type"
+            },
+            "nameEntries": [
+              {
+                "dataType": "NameEntry",
+                "original": "National Museum of American History (U.S.). Archives Center",
+                "preferenceScore": "99",
+                "id": "10917925",
+                "version": "11982104"
+              }
+            ],
+            "places": [
+              {
+                "dataType": "Place",
+                "original": "United States",
+                "type": {
+                  "id": "705",
+                  "term": "AssociatedPlace",
+                  "uri": "http://socialarchive.iath.virginia.edu/control/term#AssociatedPlace",
+                  "type": "place_type"
+                },
+                "geoplace": {
+                  "id": "3512",
+                  "uri": "http://www.geonames.org/4138106",
+                  "name": "District of Columbia",
+                  "latitude": "38.9170600",
+                  "longitude": "-77.0002500",
+                  "administrationCode": "DC",
+                  "countryCode": "US"
+                },
+                "confirmed": true,
+                "id": "10917948",
+                "version": "11982104"
+              }
+            ],
+            "id": "10917915",
+            "version": "12107035"
+          },
+          "id": "11662610",
+          "version": "8405481"
+        },
+        "role": {
+          "id": "692",
+          "term": "creatorOf",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#creatorOf",
+          "type": "document_role"
+        },
+        "id": "87847880",
+        "version": "12136329"
+      },
+      {
+        "dataType": "ResourceRelation",
+        "resource": {
+          "dataType": "Resource",
+          "documentType": {
+            "id": "696",
+            "term": "ArchivalResource",
+            "uri": "http://socialarchive.iath.virginia.edu/control/term#ArchivalResource",
+            "type": "document_type"
+          },
+          "link": "https://catalog.archives.gov/id/558577",
+          "title": "Photographs of Construction, Facilities, and Community Life at Oak Ridge and Other Manhattan Project Sites, 1943 - 1946",
+          "displayEntry": "Photographs of Construction, Facilities, and Community Life at Oak Ridge and Other Manhattan Project Sites, 1943 - 1946",
+          "repository": {
+            "dataType": "Constellation",
+            "ark": "http://n2t.net/ark:/99166/w6cp7t7v",
+            "entityType": {
+              "id": "698",
+              "term": "corporateBody",
+              "uri": "http://socialarchive.iath.virginia.edu/control/term#CorporateBody",
+              "type": "entity_type"
+            },
+            "nameEntries": [
+              {
+                "dataType": "NameEntry",
+                "original": "National Archives at College Park",
+                "preferenceScore": "99",
+                "id": "84287196",
+                "version": "11339586"
+              }
+            ],
+            "places": [
+              {
+                "dataType": "Place",
+                "type": {
+                  "id": "400242",
+                  "term": "Address",
+                  "uri": "http://socialarchive.iath.virginia.edu/control/term#Address",
+                  "type": "place_type"
+                },
+                "address": [
+                  {
+                    "dataType": "AddressLine",
+                    "text": "8601 Adelphi Rd",
+                    "order": "0",
+                    "type": {
+                      "id": "400244",
+                      "term": "Street",
+                      "uri": "http://socialarchive.iath.virginia.edu/control/term#Street",
+                      "type": "address_part"
+                    },
+                    "id": "84287201",
+                    "version": "11339586"
+                  },
+                  {
+                    "dataType": "AddressLine",
+                    "text": "College Park",
+                    "order": "1",
+                    "type": {
+                      "id": "400245",
+                      "term": "City",
+                      "uri": "http://socialarchive.iath.virginia.edu/control/term#City",
+                      "type": "address_part"
+                    },
+                    "id": "84287202",
+                    "version": "11339586"
+                  },
+                  {
+                    "dataType": "AddressLine",
+                    "text": "MD",
+                    "order": "2",
+                    "type": {
+                      "id": "400246",
+                      "term": "State",
+                      "uri": "http://socialarchive.iath.virginia.edu/control/term#State",
+                      "type": "address_part"
+                    },
+                    "id": "84287203",
+                    "version": "11339586"
+                  },
+                  {
+                    "dataType": "AddressLine",
+                    "text": "20740",
+                    "order": "3",
+                    "type": {
+                      "id": "400247",
+                      "term": "PostalCode",
+                      "uri": "http://socialarchive.iath.virginia.edu/control/term#PostalCode",
+                      "type": "address_part"
+                    },
+                    "id": "84287204",
+                    "version": "11339586"
+                  }
+                ],
+                "geoplace": {
+                  "id": "2754",
+                  "uri": "http://www.geonames.org/4351977",
+                  "name": "College Park",
+                  "latitude": "38.9806700",
+                  "longitude": "-76.9369200",
+                  "administrationCode": "MD",
+                  "countryCode": "US"
+                },
+                "confirmed": true,
+                "id": "84287200",
+                "version": "11339586"
+              }
+            ],
+            "id": "84287195",
+            "version": "11933290"
+          },
+          "id": "11613841",
+          "version": "8360768"
+        },
+        "role": {
+          "id": "693",
+          "term": "referencedIn",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#referencedIn",
+          "type": "document_role"
+        },
+        "content": "  Photographs of Construction, Facilities, and Community Life at Oak Ridge and Other Manhattan Project Sites, 1943 - 1946",
+        "id": "87847881",
+        "version": "12136329"
+      },
+      {
+        "dataType": "ResourceRelation",
+        "resource": {
+          "dataType": "Resource",
+          "documentType": {
+            "id": "696",
+            "term": "ArchivalResource",
+            "uri": "http://socialarchive.iath.virginia.edu/control/term#ArchivalResource",
+            "type": "document_type"
+          },
+          "link": "http://www.worldcat.org/oclc/79057434",
+          "source": "<objectXMLWrap>\n               <mods xmlns=\"http://www.loc.gov/mods/v3\">\n                  <recordInfo>\n                     <recordOrigin>WorldCat:79057434</recordOrigin>\n                     <recordContentSource>ISIL:MdCpAIP</recordContentSource>\n                  </recordInfo>\n                  <name>\n                     <namePart>Hansen, W. W. (William Webster), 1909-1949.</namePart>\n                     <role>\n                        <roleTerm valueURI=\"http://id.loc.gov/vocabulary/relators/cre\">Creator</roleTerm>\n                     </role>\n                  </name>\n                  <titleInfo>\n                     <title>Miscellaneous materials, 1899-1931.</title>\n                  </titleInfo>\n                  <abstract>Notebook kept by Marie Curie; incomplete manuscript of a paper read to the Congrès International d'Electricitè, miscellaneous paper, three notes from Antoine Henri Becquerel to Sir William Crookes, and one letter from Lord Rutherford to Strasser. </abstract>\n                  <name>\n                     <namePart>Unknown</namePart>\n                     <role>\n                        <roleTerm valueURI=\"http://id.loc.gov/vocabulary/relators/rps\">Repository</roleTerm>\n                     </role>\n                  </name>\n               </mods>\n            </objectXMLWrap>",
+          "title": "Miscellaneous materials, 1899-1931.",
+          "abstract": "Notebook kept by Marie Curie; incomplete manuscript of a paper read to the Congrès International d'Electricitè, miscellaneous paper, three notes from Antoine Henri Becquerel to Sir William Crookes, and one letter from Lord Rutherford to Strasser. ",
+          "extent": "7 items.",
+          "displayEntry": "Hansen, W. W. (William Webster), 1909-1949. Miscellaneous materials, 1899-1931.",
+          "originationNames": [
+            {
+              "dataType": "OriginationName",
+              "name": "Hansen, W. W. (William Webster), 1909-1949.",
+              "id": "11057828",
+              "version": "8223979"
+            }
+          ],
+          "repository": {
+            "dataType": "Constellation",
+            "ark": "http://n2t.net/ark:/99166/w6r0308c",
+            "entityType": {
+              "id": "698",
+              "term": "corporateBody",
+              "uri": "http://socialarchive.iath.virginia.edu/control/term#CorporateBody",
+              "type": "entity_type"
+            },
+            "nameEntries": [
+              {
+                "dataType": "NameEntry",
+                "original": "American Institute of Physics, Niels Bohr Library",
+                "preferenceScore": "99",
+                "id": "76760058",
+                "version": "11224025"
+              }
+            ],
+            "places": [
+              {
+                "dataType": "Place",
+                "original": "American Institute of Physics, Niels Bohr Library",
+                "type": {
+                  "id": "400242",
+                  "term": "Address",
+                  "uri": "http://socialarchive.iath.virginia.edu/control/term#Address",
+                  "type": "place_type"
+                },
+                "address": [
+                  {
+                    "dataType": "AddressLine",
+                    "text": "1 Physics Ellipse  College Park, Maryland 20740  United States",
+                    "order": "0",
+                    "type": {
+                      "id": "400243",
+                      "term": "Unspecified",
+                      "uri": "http://socialarchive.iath.virginia.edu/control/term#Unspecified",
+                      "type": "address_part"
+                    },
+                    "id": "76760062",
+                    "version": "11224025"
+                  }
+                ],
+                "id": "76760061",
+                "version": "11224025"
+              }
+            ],
+            "id": "76760057",
+            "version": "11224028"
+          },
+          "id": "8223979",
+          "version": "8223979"
+        },
+        "role": {
+          "id": "693",
+          "term": "referencedIn",
+          "uri": "http://socialarchive.iath.virginia.edu/control/term#referencedIn",
+          "type": "document_role"
+        },
+        "content": "Hansen, W. W. (William Webster), 1909-1949. Miscellaneous materials, 1899-1931.",
+        "id": "87847882",
+        "version": "12136329"
+      }
+    ]
+  }
+}
