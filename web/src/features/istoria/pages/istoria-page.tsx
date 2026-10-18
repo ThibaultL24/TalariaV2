@@ -42,7 +42,7 @@ export function IstoriaPage() {
     pendingSelection,
     openPerson,
   } = useExperienceSubject("istoria");
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const overviewQuery = useQuery({
     queryKey: ["entity", entityId, "overview", revision],
     enabled: Boolean(entityId),
@@ -108,6 +108,7 @@ export function IstoriaPage() {
       const query = new URLSearchParams(filterString);
       query.set("limit", "200");
       query.set("resolution", "detail");
+      query.set("lang", locale);
       const collected: TimelineEvent[] = [];
       do {
         const result = await getEntityView<Page>(entityId, "timeline", query, controller.signal);
@@ -127,13 +128,13 @@ export function IstoriaPage() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [entityId, view, filterString, provider, revision, needsTimeline]);
+  }, [entityId, view, filterString, provider, revision, needsTimeline, locale]);
 
   useEffect(() => {
     let cancelled = false;
     setSelected(undefined);
     if (!eventId) return;
-    void fetchEventDetail(eventId)
+    void fetchEventDetail(eventId, locale)
       .then((result) => {
         if (!cancelled && result.event?.entity_id === entityId) setSelected(result.event);
       })
@@ -143,7 +144,7 @@ export function IstoriaPage() {
     return () => {
       cancelled = true;
     };
-  }, [eventId, entityId]);
+  }, [eventId, entityId, locale]);
 
   useEffect(() => {
     if (view !== "map" || !eventId || focusedEvent.current === eventId) return;
@@ -300,7 +301,7 @@ export function IstoriaPage() {
           </>
         )}
         {view === "map" && entityId && (
-          <Suspense fallback={<p role="status">Loading…</p>}>
+          <Suspense fallback={<p role="status">{t.loading}</p>}>
           <EntityMap
             id={entityId}
             filters={filterString}
@@ -312,10 +313,10 @@ export function IstoriaPage() {
           </Suspense>
         )}
         {view === "timeline" && overview && (
-          <Suspense fallback={<p role="status">Loading…</p>}>
+          <Suspense fallback={<p role="status">{t.loading}</p>}>
           <>
             <p className="v3-note">
-              {`Période affichée : ${from || "?"} – ${to || "?"}`}
+              {t.visiblePeriod(String(from || "?"), String(to || "?"))}
             </p>
             <HistoricalTimeline
             key={entityId}
@@ -340,25 +341,24 @@ export function IstoriaPage() {
         )}
         {view === "timeline" && next && (
           <button className="v3-load-more" type="button" disabled={loading} onClick={() => void loadMore()}>
-            Load more moments
+            {t.loadMoreMoments}
           </button>
         )}
       </div>
       {view === "sources" && (
         <section>
-          <h2>Source documents</h2>
-          <p className="v3-note">
-            Catalog matches are not proof of an event. Open an event to inspect its supporting evidence.
-          </p>
-          <div className="v3-provider-tabs" role="group" aria-label="Filter by database">
-            {[{ name: "", count: providers.reduce((sum, item) => sum + item.count, 0) }, ...databaseTabs(providers)].map((item) => (
+          <h2>{t.sourceDocuments}</h2>
+          <p className="v3-note">{t.sourceDocumentsNote}</p>
+          <div className="v3-provider-tabs" role="group" aria-label={t.filterByPlaceKind}>
+            {[{ name: "", count: providers.reduce((sum, item) => sum + item.count, 0) }, ...databaseTabs(providers)]
+              .map((item) => (
               <button key={item.name || "all"} aria-pressed={provider === item.name} onClick={() => update("provider", item.name)}>
-                {item.name ? providerLabel(item.name) : "All databases"} <span>{item.count}</span>
+                {item.name ? providerLabel(item.name) : t.allDatabases} <span>{item.count}</span>
               </button>
             ))}
           </div>
           <div className="v3-sources">
-            {sources.map((source) => (
+            {[...sources].sort((left, right) => Number(right.language?.toLowerCase().startsWith(locale)) - Number(left.language?.toLowerCase().startsWith(locale))).map((source) => (
               <article key={source.id}>
                 <span>
                   {providerLabel(source.source_kind)} · {source.document_type.replaceAll("_", " ")}
@@ -366,20 +366,20 @@ export function IstoriaPage() {
                 <h3>{source.title}</h3>
                 <p>{source.language?.toUpperCase() ?? ""} {source.academic_status.replaceAll("_", " ")}</p>
                 {source.canonical_url && (
-                  <a href={source.canonical_url} target="_blank" rel="noreferrer">Open source ↗</a>
+                  <a href={source.canonical_url} target="_blank" rel="noreferrer">{t.openSource} ↗</a>
                 )}
               </article>
             ))}
           </div>
           {!sources.length && !loading && (
-            <p>No bibliographic documents indexed for this database and person yet. Event evidence remains available in each event’s details.</p>
+            <p>{t.bibliographyEmpty}</p>
           )}
           {next && (
-            <button disabled={loading} onClick={() => void loadMore()}>Load more sources</button>
+            <button disabled={loading} onClick={() => void loadMore()}>{t.loadMoreSources}</button>
           )}
         </section>
       )}
-      {loading && <p role="status">Loading…</p>}
+      {loading && <p role="status">{t.loading}</p>}
       {selected && (
         <aside className="v3-detail">
           <div className="v3-detail-links">

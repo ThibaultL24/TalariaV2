@@ -2,6 +2,7 @@
 import { Link } from "react-router-dom";
 import { TalariaSandalMark } from "@/components/brand/talaria-sandal-mark";
 import { experienceHref, type LifeExperience } from "@/lib/experiences";
+import { useI18n } from "@/lib/i18n";
 
 interface EntityHeaderProps {
   experience: LifeExperience;
@@ -10,8 +11,9 @@ interface EntityHeaderProps {
 }
 
 export function EntityHeader({ experience, entityId, label }: EntityHeaderProps) {
+  const { t } = useI18n();
   const isPoreia = experience === "poreia";
-  const title = label ?? (entityId ? "Loading…" : isPoreia ? "Poreia" : "Istoria");
+  const title = label ?? (entityId ? t.loading : isPoreia ? "Poreia" : "Istoria");
   const other = isPoreia ? "istoria" : "poreia";
 
   return (
@@ -24,15 +26,11 @@ export function EntityHeader({ experience, entityId, label }: EntityHeaderProps)
             {title}
           </span>
         </h1>
-        <p>
-          {isPoreia
-            ? "Le voyage culturel : lieux, monuments et parcours."
-            : "L’enquête historique : faits, chronologie et sources."}
-        </p>
+        <p>{isPoreia ? t.poreiaPromise : t.istoriaPromise}</p>
         {entityId ? (
           <div className="talaria-experience-links">
             <Link className="button button--ghost" to={experienceHref(other, entityId)}>
-              {isPoreia ? "Explorer sa vie dans Istoria →" : "Découvrir ses lieux dans Poreia →"}
+              {isPoreia ? t.openIstoria : t.openPoreia}
             </Link>
           </div>
         ) : null}

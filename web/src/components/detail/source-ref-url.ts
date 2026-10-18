@@ -27,40 +27,53 @@ export function buildWikipediaSourceUrl(
   const wikiLang = ref.language ?? defaultLang;
   const slug = title.replace(/\s+/g, "_");
   const oldid = ref.oldid ?? ref.revision_id;
+  const host = `${wikiLang}.wikipedia.org`;
   if (oldid != null) {
-    return `https://${wikiLang}.wikipedia.org/w/index.php?title=${encodeURIComponent(slug)}&oldid=${oldid}`;
+    return `https://${host}/w/index.php?title=${encodeURIComponent(slug)}&oldid=${oldid}`;
   }
-  return `https://${wikiLang}.wikipedia.org/wiki/${encodeURIComponent(slug)}`;
+  return `https://${host}/wiki/${encodeURIComponent(slug)}`;
 }
 
 function wikipediaSectionSlug(section: string): string {
   return section.trim().replace(/\s+/g, "_");
 }
 
+/** Labels stored for our own evidence rows. They are not headings on the source page. */
+function isInternalSection(section: string): boolean {
+  const value = section.trim().toLowerCase();
+  return value === "evidence" || /^sentence \d+$/.test(value) || /^adjacent\b/.test(value);
+}
+
 function textFragmentFromQuote(quote: string): string | null {
+  if ((quote.match(/\|/g) ?? []).length >= 2) return null;
   const words = quote
     .replace(/\s+/g, " ")
     .trim()
     .split(" ")
     .filter((word) => word.length > 0)
     .slice(0, 8);
-  if (words.join(" ").length < 12) return null;
+  if (words.join(" ").length < 20) return null;
   return encodeURIComponent(words.join(" "));
 }
 
-/** Prefer the cited paragraph: section hash + browser text fragment when a quote exists. */
+function wikipediaInLanguage(href: string, lang: string | undefined): string {
+  if (!lang) return href;
+  return href.replace(/^(https?:\/\/)(?:[a-z-]+\.)?wikipedia\.org/i, `$1${lang}.wikipedia.org`);
+}
 export function resolveSourceParagraphHref(
   ref: EventSourceRef,
   defaultLang = "en",
 ): string | null {
-  const base = resolveSourceRefHref(ref, defaultLang);
-  if (!base) return null;
+  const spoken = ref.language?.slice(0, 2).toLowerCase();
+  const resolved = resolveSourceRefHref(ref, spoken || defaultLang);
+  if (!resolved) return null;
+  const base = spoken === "fr" || spoken === "en" ? wikipediaInLanguage(resolved, spoken) : resolved;
   const section = ref.section_title?.trim();
+  const articleSection = section && !isInternalSection(section) ? wikipediaSectionSlug(section) : "";
   const fragment = textFragmentFromQuote(ref.snippet ?? ref.quote ?? "");
-  const hashParts: string[] = [];
-  if (section) hashParts.push(wikipediaSectionSlug(section));
-  if (fragment) hashParts.push(`:~:text=${fragment}`);
-  if (hashParts.length === 0) return base;
+  if (!articleSection && !fragment) return base.split("#")[0];
   const withoutHash = base.split("#")[0];
-  return `${withoutHash}#${hashParts.join("")}`;
+  if (articleSection && fragment) return `${withoutHash}#${articleSection}:~:text=${fragment}`;
+  if (fragment) return `${withoutHash}#:~:text=${fragment}`;
+  return `${withoutHash}#${articleSection}`;
 }

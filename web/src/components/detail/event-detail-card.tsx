@@ -56,13 +56,18 @@ export function EventDetailCard({ event, onClose, offlineOnly: _offlineOnly = fa
   const mappedPlace = localizedPlaceLabel(resolved.place_label, locale);
   const placeLabel = mappedPlace && !/^Q\d+$/i.test(mappedPlace) ? mappedPlace : null;
   const sourceRefs = collectSourceRefs(detail);
-  const wikiLang =
-    sourceRefs.find((ref) => ref.language)?.language ??
-    detail?.evidence?.find((item) => item.wiki_lang)?.wiki_lang ??
-    "en";
-  const passage = sourceRefs
-    .map((ref) => resolveSourceParagraphHref(ref, wikiLang))
-    .find((href): href is string => Boolean(href));
+  const orderedRefs = [...sourceRefs].sort((left, right) => {
+    const rank = (language?: string | null) => (language?.toLowerCase().startsWith(locale) ? 0 : 1);
+    return rank(left.language) - rank(right.language);
+  });
+  const passageRef = orderedRefs.find((ref) => resolveSourceParagraphHref(ref, locale)?.includes(":~:text="))
+    ?? orderedRefs[0];
+  const passage = passageRef ? resolveSourceParagraphHref(passageRef, locale) : undefined;
+  const passageLanguage = passageRef?.language?.slice(0, 2).toLowerCase()
+    ?? passage?.match(/https?:\/\/([a-z]{2})\.wikipedia\.org/i)?.[1];
+  const passageLabel = passageLanguage && passageLanguage !== locale
+    ? t.readPassageIn(passageLanguage === "fr" ? (locale === "fr" ? "français" : "French") : (locale === "fr" ? "anglais" : "English"))
+    : t.readPassage;
   const dateLabel = resolved.time ? eventDate(resolved) : formatDateLabel(resolved.start_time);
   const datePlace = [dateLabel, placeLabel].filter(Boolean).join(" · ");
 
@@ -111,7 +116,7 @@ export function EventDetailCard({ event, onClose, offlineOnly: _offlineOnly = fa
             rel="noopener noreferrer"
             className="inline-block text-sm font-medium text-(--color-accent-strong) hover:underline"
           >
-            {t.readPassage}
+            {passageLabel}
           </a>
         ) : null}
       </div>

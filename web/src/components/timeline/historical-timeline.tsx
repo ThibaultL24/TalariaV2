@@ -577,7 +577,7 @@ export function HistoricalTimeline({
             <span className="historical-timeline__header-label">
               {filterEventsByLod(datedEvents, domain).length < datedEvents.length
                 ? `${filterEventsByLod(datedEvents, domain).length}/${datedEvents.length}`
-                : "LIFE IN TIME"}
+                : t.lifeInTime}
             </span>
             <span>{Math.round(domain.end)}</span>
           </div>

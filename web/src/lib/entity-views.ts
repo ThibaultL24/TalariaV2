@@ -15,9 +15,11 @@ export type MapPage = GeoJsonFeatureCollection & {
 };
 export async function fetchVisitHeritage(
   id: string,
-  options?: { signal?: AbortSignal },
+  options?: { signal?: AbortSignal; lang?: string },
 ): Promise<{ events: TimelineEvent[]; count: number }> {
-  const response = await fetch(`/api/v1/entities/${encodeURIComponent(id)}/visit/heritage`, {
+  const params = new URLSearchParams();
+  if (options?.lang) params.set("lang", options.lang);
+  const response = await fetch(`/api/v1/entities/${encodeURIComponent(id)}/visit/heritage?${params}`, {
     signal: options?.signal,
   });
   if (!response.ok) throw new Error(`Request failed (${response.status})`);
@@ -72,10 +74,11 @@ export async function fetchVisitNowGeojson(
 
 export async function fetchVisitHeritageGeojson(
   id: string,
-  options?: { bbox?: string; signal?: AbortSignal },
+  options?: { bbox?: string; signal?: AbortSignal; lang?: string },
 ): Promise<GeoJsonFeatureCollection> {
   const params = new URLSearchParams();
   if (options?.bbox) params.set("bbox", options.bbox);
+  if (options?.lang) params.set("lang", options.lang);
   params.set("limit", "500");
   const response = await fetch(
     `/api/v1/entities/${encodeURIComponent(id)}/visit/heritage/geojson?${params}`,

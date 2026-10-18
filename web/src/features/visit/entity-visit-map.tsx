@@ -53,7 +53,7 @@ export function EntityVisitMap({
   );
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
 
   useEffect(() => {
     setData(undefined);
@@ -79,7 +79,7 @@ export function EntityVisitMap({
       setError("");
       setLoading(true);
       void Promise.all([
-        fetchVisitHeritageGeojson(id, { bbox, signal }),
+        fetchVisitHeritageGeojson(id, { bbox, signal, lang: locale }),
         fetchVisitNowGeojson(id, { bbox, signal }),
         fetchVisitSitesGeojson(id, { bbox, signal }),
       ])
@@ -112,7 +112,7 @@ export function EntityVisitMap({
       controller?.abort();
       map.off("moveend", schedule);
     };
-  }, [id, map]);
+  }, [id, map, locale]);
 
   useEffect(() => {
     if (!map || !focus) return;
@@ -160,9 +160,9 @@ export function EntityVisitMap({
             });
           }}
         >
-          {locale === "fr" ? "Recentrer" : "Recenter"}
+          {t.mapRecenter}
         </button>
-        {loading && <p role="status" className="v3-map-loading">{locale === "fr" ? "Chargement de la carte…" : "Loading the map…"}</p>}
+        {loading && <p role="status" className="v3-map-loading">{t.mapLoading}</p>}
         {error && (
           <p role="alert" className="v3-map-error">
             {error}

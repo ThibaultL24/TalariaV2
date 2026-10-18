@@ -28,7 +28,7 @@ import { useI18n } from "@/lib/i18n";
 const EntityVisitMap = lazy(() => import("@/features/visit/entity-visit-map").then((mod) => ({ default: mod.EntityVisitMap })));
 
 export function PoreiaPage() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const {
     entityId,
     view,
@@ -56,11 +56,11 @@ export function PoreiaPage() {
     queryFn: ({ signal }) => fetchVisitSites(entityId, { signal }),
   });
   const heritageQuery = useQuery({
-    queryKey: ["entity", entityId, "visit-heritage", revision],
+    queryKey: ["entity", entityId, "visit-heritage", revision, locale],
     enabled: Boolean(entityId) && view === "heritage",
     retry: false,
     refetchOnWindowFocus: false,
-    queryFn: ({ signal }) => fetchVisitHeritage(entityId, { signal }),
+    queryFn: ({ signal }) => fetchVisitHeritage(entityId, { signal, lang: locale }),
   });
   const nowQuery = useQuery({
     queryKey: ["entity", entityId, "visit-now", revision],
@@ -96,7 +96,7 @@ export function PoreiaPage() {
     let cancelled = false;
     setSelected(undefined);
     if (!eventId) return;
-    void fetchEventDetail(eventId)
+    void fetchEventDetail(eventId, locale)
       .then((result) => {
         if (!cancelled && result.event?.entity_id === entityId) setSelected(result.event);
       })
@@ -106,7 +106,7 @@ export function PoreiaPage() {
     return () => {
       cancelled = true;
     };
-  }, [eventId, entityId]);
+  }, [eventId, entityId, locale]);
 
   const select = (id?: string) => {
     const copy = new URLSearchParams(params);
@@ -153,8 +153,8 @@ export function PoreiaPage() {
           {picker.error && <p role="alert">{picker.error}</p>}
           {!entityId && !picker.ingestBusy && (
             <>
-              <img className="poreia-entry__scene" src="/brand/poreia-scene.webp" alt="Illustration d’un chemin et de colonnes méditerranéennes" />
-              <p className="v3-note">Choisissez une personnalité, puis une ville, pour voir les lieux qui lui sont réellement associés.</p>
+              <img className="poreia-entry__scene" src="/brand/poreia-scene.webp" alt={t.itineraryBanner} />
+              <p className="v3-note">{t.poreiaChoosePerson}</p>
             </>
           )}
         </>
@@ -184,7 +184,7 @@ export function PoreiaPage() {
         )}
         {view === "map" && entityId && (
           <div className="poreia-workspace">
-            <Suspense fallback={<p role="status">Loading…</p>}>
+            <Suspense fallback={<p role="status">{t.loading}</p>}>
             <EntityVisitMap
               id={entityId}
               selected={mapFocus?.eventId ?? eventId ?? undefined}
@@ -219,12 +219,12 @@ export function PoreiaPage() {
                 ))}
               </ul>
               {mapPlaces.length === 0 && !mapView.loading && (
-                <p role="status">Aucun lieu dans la vue actuelle de la carte.</p>
+                <p role="status">{t.noPlacesInView}</p>
               )}
               {mapPlaces.filter((place) => place.id === (mapFocus?.eventId ?? eventId)).map((place) => (
                 <PoreiaPlaceCard key={place.id} place={place} />
               ))}
-              <Link className="button button--ghost" to={`/poreia/${entityId}/itinerary`}>Voir le parcours</Link>
+              <Link className="button button--ghost" to={`/poreia/${entityId}/itinerary`}>{t.seeItinerary}</Link>
             </aside>
           </div>
         )}
@@ -277,7 +277,7 @@ export function PoreiaPage() {
           />
         )}
       </div>
-      {loading && <p role="status">Loading…</p>}
+      {loading && <p role="status">{t.loading}</p>}
       {selected && (
         <aside className="v3-detail">
           <EventDetailCard event={selected} onClose={() => select()} />
@@ -296,11 +296,12 @@ function PlaceFilters({
   kind: string;
   onKind: (kind: string) => void;
 }) {
+  const { t } = useI18n();
   const kinds = [...new Set(places.map((place) => place.kind))];
   if (kinds.length < 2) return null;
   return (
-    <div className="poreia-filters" role="group" aria-label="Filtrer par type de lieu">
-      <button type="button" aria-pressed={kind === ""} onClick={() => onKind("")}>Tous</button>
+    <div className="poreia-filters" role="group" aria-label={t.filterByPlaceKind}>
+      <button type="button" aria-pressed={kind === ""} onClick={() => onKind("")}>{t.allKinds}</button>
       {kinds.map((value) => (
         <button key={value} type="button" aria-pressed={kind === value} onClick={() => onKind(value)}>
           {value.replaceAll("_", " ")}
