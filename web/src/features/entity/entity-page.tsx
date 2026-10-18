@@ -5,6 +5,7 @@ import { usePersonPicker } from "@/hooks/use-person-picker";
 import { useExplorerStore } from "@/stores/explorer-store";
 import { Navbar } from "@/components/layout/navbar";
 import { ExperienceNavigation } from "@/components/layout/experience-navigation";
+import { ExperienceDemoFigures } from "@/components/layout/experience-demo-figures";
 import { TalariaSandalMark } from "@/components/brand/talaria-sandal-mark";
 import { EventDetailCard } from "@/components/detail/event-detail-card";
 import {
@@ -357,6 +358,7 @@ export function EntityPage({ experience = "istoria" }: { experience?: "istoria" 
             </section>
           </section>
         )}
+        {!entityId && <ExperienceDemoFigures experience={experience} />}
         {immersive && entityId && !mobileStage && (
           <div className="v3-immersive-bar">
             <h1 className="v3-immersive-title">
