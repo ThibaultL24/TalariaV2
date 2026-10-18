@@ -2,7 +2,7 @@
 import { expect, test } from "vitest";
 import type { TimelineEvent } from "@/lib/api";
 import type { VisitSite } from "@/lib/entity-views";
-import { buildHeritageCatalog } from "./heritage-catalog";
+import { buildHeritageCatalog, placesFromMapFeatures } from "./heritage-catalog";
 
 const site: VisitSite = {
   id: "site-one",
@@ -49,6 +49,35 @@ test("the same Wikidata QID reinforces one place instead of creating a second ro
   expect(places[0].sources[0]?.url).toContain("Q123");
 });
 
-test("an empty catalog invents nothing", () => {
-  expect(buildHeritageCatalog([], [])).toEqual([]);
+test("hours stay hidden unless the OpenStreetMap check date is present", () => {
+  const dated = buildHeritageCatalog([{
+    ...site,
+    opening_hours: "Mo-Su 10:00-18:00",
+    hours_checked_at: "2026-01-02T00:00:00Z",
+  }], []);
+  expect(dated[0].openingHours).toBe("Mo-Su 10:00-18:00");
+  expect(dated[0].hoursCheckedAt).toBe("2026-01-02T00:00:00Z");
+  expect(buildHeritageCatalog([{ ...site, opening_hours: "Mo-Su 10:00-18:00" }], [])[0].openingHours).toBeUndefined();
+});
+
+test("the map list uses the drawn features and keeps their ids", () => {
+  const places = placesFromMapFeatures([
+    {
+      id: "site-1",
+      geometry: { type: "Point", coordinates: [2.3, 48.8] },
+      properties: { id: "site-1", title: "Maison", visit_layer: "heritage_site", kind: "residence" },
+    },
+    {
+      id: "event-1",
+      geometry: { type: "Point", coordinates: [2.3, 48.8] },
+      properties: { id: "event-1", title: "Bataille", event_type: "battle", place_label: "Paris" },
+    },
+    {
+      id: "site-1",
+      geometry: { type: "Point", coordinates: [2.3, 48.8] },
+      properties: { id: "site-1", title: "Maison doublon" },
+    },
+  ]);
+  expect(places.map((place) => place.id)).toEqual(["site-1", "event-1"]);
+  expect(places[1].city).toBe("Paris");
 });

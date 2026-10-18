@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchPoreiaItinerary, findPoreiaDestinations, type PoreiaDestination, type PoreiaItinerary } from "@/lib/entity-views";
+import { useI18n } from "@/lib/i18n";
 
 export function PoreiaItineraryView({
   entityId,
@@ -16,6 +17,7 @@ export function PoreiaItineraryView({
   const [searching, setSearching] = useState(false);
   const [selectedCity, setSelectedCity] = useState<PoreiaDestination>();
   const [radiusKm, setRadiusKm] = useState(25);
+  const { t, locale } = useI18n();
   useEffect(() => {
     const controller = new AbortController();
     setResult(undefined);
@@ -29,30 +31,30 @@ export function PoreiaItineraryView({
   return (
     <section className="poreia-route" aria-labelledby="poreia-route-title">
       <header className="poreia-route__header">
-        <div className="poreia-route__banner" role="img" aria-label="Colonnes classiques face à un paysage méditerranéen" />
-        <p className="v3-eyebrow">POREIA · PARCOURS</p>
-        <h2 id="poreia-route-title">Sur les traces de cette personnalité</h2>
-        <p>Une proposition pour découvrir des sites réellement identifiés et liés à la personne.</p>
+        <div className="poreia-route__banner" role="img" aria-label={t.itineraryBanner} />
+        <p className="v3-eyebrow">{t.itineraryKicker}</p>
+        <h2 id="poreia-route-title">{t.itineraryTitle}</h2>
+        <p>{t.itineraryIntro}</p>
       </header>
       <form className="poreia-destination-form" onSubmit={(event) => {
         event.preventDefault();
-        if (query.trim().length < 3) {setError("Saisissez au moins trois caractères.");return;}
+        if (query.trim().length < 3) {setError(t.needThreeCharacters);return;}
         const controller = new AbortController();
         setSearching(true);setError("");setMatches([]);
-        void findPoreiaDestinations(query,"fr",controller.signal)
+        void findPoreiaDestinations(query, locale, controller.signal)
           .then(setMatches)
-          .catch(() => setError("Recherche indisponible. Réessayez ultérieurement."))
+          .catch(() => setError(t.searchUnavailableLater))
           .finally(() => setSearching(false));
       }}>
-        <label>Destination
+        <label>{t.destination}
           <input type="search" value={query} maxLength={80}
             onChange={event => {setQuery(event.target.value);setMatches([]);}}
-            placeholder="Paris, Avignon, Florence…" aria-label="Rechercher une ville" />
+            placeholder={t.cityPlaceholder} aria-label={t.searchCity} />
         </label>
         <button type="submit" className="button button--primary" disabled={searching}>
-          {searching ? "Recherche…" : "Rechercher"}
+          {searching ? t.searching : t.search}
         </button>
-        <label>Rayon
+        <label>{t.radius}
           <select value={radiusKm} onChange={event => {
             const value=Number(event.target.value);
             setRadiusKm(value);
@@ -66,7 +68,7 @@ export function PoreiaItineraryView({
         </label>
       </form>
       {matches.length>0 && (
-        <ul className="poreia-destination-results" aria-label="Villes trouvées">
+        <ul className="poreia-destination-results" aria-label={t.citiesFound}>
           {matches.map(city => <li key={city.qid}>
             <button type="button" onClick={() => {
               setSelectedCity(city);
@@ -80,22 +82,21 @@ export function PoreiaItineraryView({
       )}
       {selectedCity && (
         <p className="poreia-destination-selected">
-          Destination : <strong>{selectedCity.label}</strong>
-          <a href={selectedCity.source_url} target="_blank" rel="noopener noreferrer">Source de l’association ↗</a>
-          <button type="button" onClick={() => {setSelectedCity(undefined);setDestination(undefined);}}>Effacer</button>
+          {t.destination} : <strong>{selectedCity.label}</strong>
+          <a href={selectedCity.source_url} target="_blank" rel="noopener noreferrer">{t.associationSource}</a>
+          <button type="button" onClick={() => {setSelectedCity(undefined);setDestination(undefined);}}>{t.clearDestination}</button>
         </p>
       )}
-      <p className="v3-note">Seuls les sites historiquement associés à la personne sont proposés. La recherche ne crée aucun lieu.</p>
+      <p className="v3-note">{t.onlyAssociatedSites}</p>
       {result?.routing === "osrm" && result.travel_minutes != null ? (
         <p className="poreia-route__metrics">
-          Trajet calculé : {result.route_distance_km?.toLocaleString("fr-FR",{maximumFractionDigits:1})} km
-          · environ {result.travel_minutes} min
+          {t.calculatedRoute(result.route_distance_km?.toLocaleString(locale === "fr" ? "fr-FR" : "en-GB", { maximumFractionDigits: 1 }) ?? "", result.travel_minutes)}
         </p>
       ) : result?.stops.length ? (
-        <p className="v3-note">Séquence géographique indicative. Aucune durée de marche n’est calculée.</p>
+        <p className="v3-note">{t.geoSequence}</p>
       ) : null}
       {error && <p role="alert">{error}</p>}
-      {!result && !error && <p role="status">Chargement du parcours…</p>}
+      {!result && !error && <p role="status">{t.loadingItinerary}</p>}
       {result?.message && <p>{result.message}</p>}
       {result?.stops.length ? (
         <ol className="poreia-route__stops">
@@ -105,12 +106,12 @@ export function PoreiaItineraryView({
               <div>
                 <h3>{stop.label}</h3>
                 {index > 0 && result.legs[index - 1] && (
-                  <p>{result.legs[index - 1].straight_line_km.toLocaleString("fr-FR")} km à vol d’oiseau depuis le site précédent</p>
+                  <p>{t.straightLineFromPrevious(result.legs[index - 1].straight_line_km.toLocaleString(locale === "fr" ? "fr-FR" : "en-GB"))}</p>
                 )}
               </div>
               <button type="button" className="button button--ghost"
                 onClick={() => onFocus({ id: stop.id, lat: stop.coordinates.lat, lon: stop.coordinates.lon })}>
-                Voir sur la carte
+                {t.seeOnMap}
               </button>
             </li>
           ))}
@@ -118,7 +119,7 @@ export function PoreiaItineraryView({
       ) : null}
       {result?.stops.length ? (
         <p className="poreia-route__disclaimer">
-          {result.warning ?? "Parcours indicatif : les déplacements, l’ouverture et les horaires sont à vérifier."}
+          {result.warning ?? t.indicativeRoute}
         </p>
       ) : null}
     </section>

@@ -98,7 +98,7 @@ test("Istoria keeps the same person when opening Poreia", async () => {
   const poreia = screen.getAllByRole("link").find((link) => link.getAttribute("href") === "/poreia/person-1/map"
     || link.getAttribute("href") === "/poreia/person-1");
   expect(poreia).toBeTruthy();
-  expect(screen.getByRole("link", { name: "Découvrir ses lieux dans Poreia →" }).getAttribute("href")).toBe(
+  expect(screen.getByRole("link", { name: "Discover their places in Poreia →" }).getAttribute("href")).toBe(
     "/poreia/person-1/map",
   );
 });

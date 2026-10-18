@@ -24,11 +24,13 @@ export function EntityVisitMap({
   selected,
   focus,
   onSelect,
+  onView,
 }: {
   id: string;
   selected?: string;
   focus?: { eventId: string; lat: number; lon: number };
   onSelect: (id: string) => void;
+  onView?: (view: { features: TalariaFeatureCollection["features"]; loading: boolean }) => void;
 }) {
   const [map, setMap] = useState<Map | null>(null);
   const [data, setData] = useState<TalariaFeatureCollection>();
@@ -51,7 +53,7 @@ export function EntityVisitMap({
   );
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
 
   useEffect(() => {
     setData(undefined);
@@ -77,7 +79,7 @@ export function EntityVisitMap({
       setError("");
       setLoading(true);
       void Promise.all([
-        fetchVisitHeritageGeojson(id, { bbox, signal }),
+        fetchVisitHeritageGeojson(id, { bbox, signal, lang: locale }),
         fetchVisitNowGeojson(id, { bbox, signal }),
         fetchVisitSitesGeojson(id, { bbox, signal }),
       ])
@@ -110,7 +112,7 @@ export function EntityVisitMap({
       controller?.abort();
       map.off("moveend", schedule);
     };
-  }, [id, map]);
+  }, [id, map, locale]);
 
   useEffect(() => {
     if (!map || !focus) return;
@@ -122,6 +124,10 @@ export function EntityVisitMap({
       essential: true,
     });
   }, [map, focus?.eventId, focus?.lat, focus?.lon]);
+
+  useEffect(() => {
+    onView?.({ features: visible?.features ?? [], loading });
+  }, [visible, loading, onView]);
 
   return (
     <div className="v3-map-layout v3-map-layout--visit">
@@ -154,9 +160,9 @@ export function EntityVisitMap({
             });
           }}
         >
-          {locale === "fr" ? "Recentrer" : "Recenter"}
+          {t.mapRecenter}
         </button>
-        {loading && <p role="status" className="v3-map-loading">{locale === "fr" ? "Chargement de la carte…" : "Loading the map…"}</p>}
+        {loading && <p role="status" className="v3-map-loading">{t.mapLoading}</p>}
         {error && (
           <p role="alert" className="v3-map-error">
             {error}

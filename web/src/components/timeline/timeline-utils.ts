@@ -128,7 +128,22 @@ export function zoomWindow(
   return clampWindow([pivot - span * anchor, pivot + span * (1 - anchor)], bounds);
 }
 
-/** Vertical stacking for same-year events (DOM fallback / tests). */
+export function separateStackedPoints<T extends { x: number; y: number }>(points: T[], minGap = 18): T[] {
+  const placed: T[] = [];
+  for (const point of points) {
+    let y = point.y;
+    let guard = 0;
+    while (
+      placed.some((other) => Math.abs(other.x - point.x) < 14 && Math.abs(other.y - y) < minGap)
+      && guard < 8
+    ) {
+      y += minGap;
+      guard += 1;
+    }
+    placed.push({ ...point, y });
+  }
+  return placed;
+}
 export function layoutDots(
   events: TimelineEvent[],
   from: number,

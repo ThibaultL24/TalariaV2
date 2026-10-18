@@ -11,7 +11,7 @@ use chrono::{Duration, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use talaria_store::{
-    list_visit_heritage, list_visit_now, CanonicalEventRow, VisitOpportunityRow,
+    list_visit_heritage, list_visit_now, VisitOpportunityRow,
 };
 use uuid::Uuid;
 
@@ -113,10 +113,22 @@ pub async fn heritage_geojson(
             return error(StatusCode::INTERNAL_SERVER_ERROR, "database_error");
         }
     };
+    let mut properties: Vec<Value> = events.iter().map(event_to_json_list).collect();
+    if let Some(lang) = crate::display_i18n::normalize_ui_lang(query.lang.as_deref()) {
+        crate::display_i18n::localize_event_list_items(&mut properties, lang);
+    }
     let features: Vec<Value> = events
         .iter()
-        .map(geojson_feature)
-        .filter_map(Result::ok)
+        .zip(properties)
+        .filter_map(|(event, props)| {
+            let (lat, lon) = (event.lat?, event.lon?);
+            Some(json!({
+                "type": "Feature",
+                "id": event.id,
+                "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                "properties": props,
+            }))
+        })
         .collect();
     Json(json!({
         "type": "FeatureCollection",
@@ -124,16 +136,6 @@ pub async fn heritage_geojson(
         "count": features.len(),
     }))
         .into_response()
-}
-
-fn geojson_feature(event: &CanonicalEventRow) -> Result<Value, ()> {
-    let (lat, lon) = (event.lat.ok_or(())?, event.lon.ok_or(())?);
-    Ok(json!({
-        "type": "Feature",
-        "id": event.id,
-        "geometry": {"type": "Point", "coordinates": [lon, lat]},
-        "properties": event_to_json_list(event),
-    }))
 }
 
 fn opportunity_to_json(row: &VisitOpportunityRow) -> Value {

@@ -18,23 +18,24 @@ const ACCESS: Record<VisitSite["visitability"], { fr: string; en: string }> = {
 };
 
 export function PoreiaPlaceCard({ place, heading = true }: { place: HeritagePlace; heading?: boolean }) {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const relation = place.relationPid ? RELATIONS[place.relationPid][locale] : null;
 
   return (
     <article className="poreia-place-card">
       <figure className="poreia-place-card__figure">
         <img src="/brand/poreia-scene.webp" alt="" />
-        <figcaption>
-          {locale === "fr"
-            ? "Illustration générique. Ce n’est pas une photographie du lieu."
-            : "Generic illustration. This is not a photograph of the place."}
-        </figcaption>
+        <figcaption>{t.genericIllustration}</figcaption>
       </figure>
       {heading ? <h3>{place.title}</h3> : null}
       <p>{relation ? `${relation} · ${place.kind.replaceAll("_", " ")}` : place.kind.replaceAll("_", " ")}</p>
       {place.city ? <p>{place.city}</p> : null}
       <p>{ACCESS[place.visitability][locale]}</p>
+      {place.openingHours && place.hoursCheckedAt ? (
+        <p>
+          {t.hoursRecorded(place.hoursCheckedAt.slice(0, 10), place.openingHours)}
+        </p>
+      ) : null}
       {place.summary ? <p>{place.summary}</p> : null}
       {place.sources.map((source) => source.url ? (
         <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer">

@@ -175,9 +175,7 @@ export function AgoraPage() {
             </h1>
             <p className="hero__subtitle">{t.agoraHint}</p>
             <p className="hero__subtitle">
-              {locale === "fr"
-                ? "Ces propositions sont des interprétations, distinctes des faits. Une connexion n’est demandée que pour publier ou prendre position."
-                : "These propositions are interpretations, distinct from the facts. A connection is requested only to publish or take a stance."}
+              {t.agoraStanceNote}
             </p>
             {busy ? (
               <p className="mt-3 text-sm text-(--color-text-secondary)">{t.searchInProgress}</p>
@@ -189,7 +187,7 @@ export function AgoraPage() {
         <div className="mx-auto max-w-3xl px-4 pb-12">
           {subject ? (
             <LaneIngestBar lane="agora" busy={busy} onRun={() => void runAgora()} />
-          ) : (
+          ) : routeEntityId ? null : (
             <p className="py-8 text-center text-sm text-(--color-text-secondary)">{t.agoraEmpty}</p>
           )}
           {entityId ? (

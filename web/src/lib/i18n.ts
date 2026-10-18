@@ -29,6 +29,50 @@ export interface AppMessages {
   openSource: string;
   openParagraph: string;
   readPassage: string;
+  readPassageIn: (language: string) => string;
+  visiblePeriod: (from: string, to: string) => string;
+  lifeInTime: string;
+  istoriaPromise: string;
+  poreiaPromise: string;
+  openPoreia: string;
+  openIstoria: string;
+  poreiaChoosePerson: string;
+  noPlacesInView: string;
+  seeItinerary: string;
+  allKinds: string;
+  filterByPlaceKind: string;
+  mapRecenter: string;
+  mapLoading: string;
+  agoraStanceNote: string;
+  loadMoreMoments: string;
+  sourceDocuments: string;
+  sourceDocumentsNote: string;
+  allDatabases: string;
+  genericIllustration: string;
+  hoursRecorded: (date: string, hours: string) => string;
+  itineraryKicker: string;
+  itineraryTitle: string;
+  itineraryIntro: string;
+  itineraryBanner: string;
+  destination: string;
+  cityPlaceholder: string;
+  searchCity: string;
+  searching: string;
+  radius: string;
+  citiesFound: string;
+  clearDestination: string;
+  associationSource: string;
+  onlyAssociatedSites: string;
+  geoSequence: string;
+  loadingItinerary: string;
+  seeOnMap: string;
+  indicativeRoute: string;
+  needThreeCharacters: string;
+  searchUnavailableLater: string;
+  calculatedRoute: (km: string, minutes: number) => string;
+  straightLineFromPrevious: (km: string) => string;
+  bibliographyEmpty: string;
+  loadMoreSources: string;
   untilYear: string;
   eventsVisible: (visible: number, total: number) => string;
   factsTitle: string;
@@ -268,6 +312,50 @@ const EN: AppMessages = {
   openSource: "Open source",
   openParagraph: "Open the paragraph",
   readPassage: "Read the passage",
+  readPassageIn: (language) => `Read the passage · ${language}`,
+  visiblePeriod: (from, to) => `Visible period: ${from} – ${to}`,
+  lifeInTime: "LIFE IN TIME",
+  istoriaPromise: "Historical inquiry: facts, timeline and sources.",
+  poreiaPromise: "The cultural journey: places, monuments and routes.",
+  openPoreia: "Discover their places in Poreia →",
+  openIstoria: "Explore their life in Istoria →",
+  poreiaChoosePerson: "Choose a person, then a city, to see places that are actually associated with them.",
+  noPlacesInView: "No places in the current map view.",
+  seeItinerary: "See the route",
+  allKinds: "All",
+  filterByPlaceKind: "Filter by place type",
+  mapRecenter: "Recenter",
+  mapLoading: "Loading the map…",
+  agoraStanceNote: "These propositions are interpretations, distinct from the facts. A connection is requested only to publish or take a stance.",
+  loadMoreMoments: "Load more moments",
+  sourceDocuments: "Source documents",
+  sourceDocumentsNote: "Catalog matches are not proof of an event. Open an event to inspect its supporting evidence.",
+  allDatabases: "All databases",
+  genericIllustration: "Generic illustration. This is not a photograph of the place.",
+  hoursRecorded: (date, hours) => `Hours recorded by OSM on ${date}: ${hours}`,
+  itineraryKicker: "POREIA · ROUTE",
+  itineraryTitle: "On this person’s trail",
+  itineraryIntro: "A suggestion for visiting sites that are identified and linked to the person.",
+  itineraryBanner: "Classical columns facing a Mediterranean landscape",
+  destination: "Destination",
+  cityPlaceholder: "Paris, Avignon, Florence…",
+  searchCity: "Search for a city",
+  searching: "Searching…",
+  radius: "Radius",
+  citiesFound: "Cities found",
+  clearDestination: "Clear",
+  associationSource: "Association source ↗",
+  onlyAssociatedSites: "Only sites historically associated with the person are offered. The search does not create places.",
+  geoSequence: "Indicative geographic sequence. No walking time is calculated.",
+  loadingItinerary: "Loading the route…",
+  seeOnMap: "See on the map",
+  indicativeRoute: "Indicative route: travel, opening and hours still need to be checked.",
+  needThreeCharacters: "Enter at least three characters.",
+  searchUnavailableLater: "Search is unavailable. Try again later.",
+  calculatedRoute: (km, minutes) => `Calculated route: ${km} km · about ${minutes} min`,
+  straightLineFromPrevious: (km) => `${km} km as the crow flies from the previous stop`,
+  bibliographyEmpty: "No bibliographic documents are indexed for this database and person yet. Evidence stays available in each event.",
+  loadMoreSources: "Load more sources",
   untilYear: "Up to",
   eventsVisible: (visible, total) => `${visible} / ${total} facts`,
   factsTitle: "Facts",
@@ -526,6 +614,50 @@ const FR: AppMessages = {
   openSource: "Ouvrir la source",
   openParagraph: "Ouvrir le paragraphe",
   readPassage: "Lire le passage",
+  readPassageIn: (language) => `Lire le passage · ${language}`,
+  visiblePeriod: (from, to) => `Période affichée : ${from} – ${to}`,
+  lifeInTime: "UNE VIE DANS LE TEMPS",
+  istoriaPromise: "L’enquête historique : faits, chronologie et sources.",
+  poreiaPromise: "Le voyage culturel : lieux, monuments et parcours.",
+  openPoreia: "Découvrir ses lieux dans Poreia →",
+  openIstoria: "Explorer sa vie dans Istoria →",
+  poreiaChoosePerson: "Choisissez une personnalité, puis une ville, pour voir les lieux qui lui sont réellement associés.",
+  noPlacesInView: "Aucun lieu dans la vue actuelle de la carte.",
+  seeItinerary: "Voir le parcours",
+  allKinds: "Tous",
+  filterByPlaceKind: "Filtrer par type de lieu",
+  mapRecenter: "Recentrer",
+  mapLoading: "Chargement de la carte…",
+  agoraStanceNote: "Ces propositions sont des interprétations, distinctes des faits. Une connexion n’est demandée que pour publier ou prendre position.",
+  loadMoreMoments: "Charger d’autres moments",
+  sourceDocuments: "Documents sources",
+  sourceDocumentsNote: "Une notice de catalogue n’est pas la preuve d’un événement. Ouvrez un événement pour lire les passages qui le soutiennent.",
+  allDatabases: "Toutes les bases",
+  genericIllustration: "Illustration générique. Ce n’est pas une photographie du lieu.",
+  hoursRecorded: (date, hours) => `Horaires renseignés par OSM le ${date} : ${hours}`,
+  itineraryKicker: "POREIA · PARCOURS",
+  itineraryTitle: "Sur les traces de cette personnalité",
+  itineraryIntro: "Une proposition pour découvrir des sites réellement identifiés et liés à la personne.",
+  itineraryBanner: "Colonnes classiques face à un paysage méditerranéen",
+  destination: "Destination",
+  cityPlaceholder: "Paris, Avignon, Florence…",
+  searchCity: "Rechercher une ville",
+  searching: "Recherche…",
+  radius: "Rayon",
+  citiesFound: "Villes trouvées",
+  clearDestination: "Effacer",
+  associationSource: "Source de l’association ↗",
+  onlyAssociatedSites: "Seuls les sites historiquement associés à la personne sont proposés. La recherche ne crée aucun lieu.",
+  geoSequence: "Séquence géographique indicative. Aucune durée de marche n’est calculée.",
+  loadingItinerary: "Chargement du parcours…",
+  seeOnMap: "Voir sur la carte",
+  indicativeRoute: "Parcours indicatif : les déplacements, l’ouverture et les horaires sont à vérifier.",
+  needThreeCharacters: "Saisissez au moins trois caractères.",
+  searchUnavailableLater: "Recherche indisponible. Réessayez ultérieurement.",
+  calculatedRoute: (km, minutes) => `Trajet calculé : ${km} km · environ ${minutes} min`,
+  straightLineFromPrevious: (km) => `${km} km à vol d’oiseau depuis le site précédent`,
+  bibliographyEmpty: "Aucun document bibliographique n’est encore indexé pour cette base et cette personne. Les passages restent disponibles dans chaque événement.",
+  loadMoreSources: "Charger d’autres sources",
   untilYear: "Jusqu’en",
   eventsVisible: (visible, total) => `${visible} / ${total} faits`,
   factsTitle: "Faits",

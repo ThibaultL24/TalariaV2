@@ -25,7 +25,7 @@ export function EntityMap({
   onSelect: (id: string) => void;
   mode?: "desktop" | "fullscreen";
 }) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const [map, setMap] = useState<Map | null>(null);
   const [legendOpen, setLegendOpen] = useState(false);
   const [data, setData] = useState<TalariaFeatureCollection>();
@@ -57,6 +57,7 @@ export function EntityMap({
         ].join(","),
       );
       params.set("limit", "500");
+      params.set("lang", locale);
       params.delete("cursor");
       setError("");
 
@@ -93,7 +94,7 @@ export function EntityMap({
       controller?.abort();
       map.off("moveend", schedule);
     };
-  }, [id, filters, map]);
+  }, [id, filters, map, locale]);
 
   useEffect(() => {
     if (!map) return;

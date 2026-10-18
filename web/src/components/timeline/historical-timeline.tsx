@@ -21,6 +21,7 @@ import {
   filterEventsByLod,
   lifePhasePresets,
   randomLaneFromId,
+  separateStackedPoints,
   type TimeDomain,
   yearToX,
   yearWindowToDomain,
@@ -195,7 +196,7 @@ export function HistoricalTimeline({
       const usable = Math.max(120, height - top - bottom);
       const visible = filterEventsByLod(datedEvents, domainRef.current);
 
-      points = visible
+      points = separateStackedPoints(visible
         .map((event) => {
           const year = eventYear(event)!;
           const x = yearToX(year, domainRef.current, width);
@@ -218,7 +219,7 @@ export function HistoricalTimeline({
         .filter(
           (point) =>
             point.year >= domainRef.current.start && point.year <= domainRef.current.end,
-        );
+        )).map((point) => ({ ...point, baseY: point.y, targetY: point.y }));
       rebuildBuckets();
     };
 
@@ -371,8 +372,18 @@ export function HistoricalTimeline({
 
     const tick = () => {
       if (!ready || destroyed) return;
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       let moving = false;
       for (const point of points) {
+        if (reduceMotion) {
+          if (point.x !== point.targetX || point.y !== point.baseY) {
+            point.x = point.targetX;
+            point.y = point.baseY;
+            point.targetY = point.baseY;
+            moving = true;
+          }
+          continue;
+        }
         const dx = pointerX - point.x;
         const dy = pointerY - point.y;
         const distance = Math.hypot(dx, dy);
@@ -563,7 +574,11 @@ export function HistoricalTimeline({
         <div className="historical-timeline__canvas-host" ref={canvasHostRef}>
           <div className="historical-timeline__header">
             <span>{Math.round(domain.start)}</span>
-            <span className="historical-timeline__header-label">LIFE IN TIME</span>
+            <span className="historical-timeline__header-label">
+              {filterEventsByLod(datedEvents, domain).length < datedEvents.length
+                ? `${filterEventsByLod(datedEvents, domain).length}/${datedEvents.length}`
+                : t.lifeInTime}
+            </span>
             <span>{Math.round(domain.end)}</span>
           </div>
           {hovered && (
