@@ -555,21 +555,24 @@ async fn run_agora_lane(
     subject: &str,
     qid: Option<&str>,
     corpus_limits: corpus_ingest::CorpusIngestLimits,
+    resume: corpus_ingest::CorpusResume,
 ) -> anyhow::Result<Value> {
     let providers = live_corpus_providers();
-    let corpus_report = corpus_ingest::run_corpus_ingest(
-        config,
-        subject,
-        qid,
-        &providers,
-        corpus_limits,
-        false,
-        None,
-        true,
-    )
-    .await?;
+    let corpus_report = corpus_ingest::run_corpus_ingest_for_job(
+        config,subject,qid,&providers,corpus_limits,resume,
+    ).await?;
     let corpus_json: Value =
         serde_json::from_str(&corpus_report).unwrap_or_else(|_| json!({ "raw": corpus_report }));
+
+    // Only promote the full collection to historiography once every available
+    // provider has completed or has been explicitly marked not configured.
+    // A partial external source is retried without redoing completed providers.
+    if let Some(incomplete) = corpus_json.get("incomplete_providers").and_then(Value::as_array) {
+        if !incomplete.is_empty() {
+            let sources = incomplete.iter().filter_map(Value::as_str).collect::<Vec<_>>();
+            anyhow::bail!("retryable_corpus_provider_failure: {}", sources.join(","));
+        }
+    }
 
     let hist_report =
         historiography::run_historiography_extract(config, subject, None, qid).await?;
@@ -793,7 +796,9 @@ async fn execute_claimed_job(
                 minimum_per_provider: body.minimum_per_provider.unwrap_or(3),
                 provider_timeout: Duration::from_secs(30),
             };
-            run_agora_lane(&config,subject,claimed.qid.as_deref(),limits).await
+            run_agora_lane(&config,subject,claimed.qid.as_deref(),limits,
+                corpus_ingest::CorpusResume { job_id:id,owner_token },
+            ).await
         } else {
             anyhow::bail!("unsupported persisted ingest lane")
         }
@@ -846,6 +851,21 @@ async fn execute_claimed_job(
         }
     };
     let entity_id = report.as_ref().and_then(parse_entity_id_from_report).or(entity_id);
+    if claimed.lane == LANE_AGORA &&
+        error.as_deref().is_some_and(|text|text.starts_with("retryable_corpus_provider_failure:"))
+    {
+        match ingest_jobs::retry_incomplete_providers(
+            &pool,id,owner_token,error.as_deref().unwrap_or(""),claimed.attempts,
+        ).await {
+            Ok(true) => {
+                tracing::info!(%id,attempt=claimed.attempts,"requeued incomplete Agora providers");
+                jobs.lock().await.remove(&id);
+                return;
+            }
+            Ok(false) => {}
+            Err(err) => tracing::error!(%id,%err,"could not requeue incomplete providers"),
+        }
+    }
     let progress_json = serde_json::to_value(progress).unwrap_or_else(|_|json!({"phase":"failed"}));
     match ingest_jobs::finish(
         &pool,id,owner_token,entity_id,&progress_json,

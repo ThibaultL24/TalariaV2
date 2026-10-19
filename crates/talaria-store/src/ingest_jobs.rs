@@ -233,6 +233,23 @@ mod tests {
     }
 
     #[sqlx::test(migrations = "../../migrations")]
+    async fn requeue_incomplete_provider_obeys_backoff_and_lease_owner(pool: PgPool) {
+        let request=serde_json::json!({"subject":"Victor Hugo","live":true});
+        let (job,_)=admit(&pool,"agora","Victor Hugo",Some("Q535"),None,&request).await.unwrap();
+        let first=claim_next(&pool).await.unwrap().unwrap();
+        let token=first.owner_token.unwrap();
+        assert!(!retry_incomplete_providers(&pool,job.id,Uuid::new_v4(),"provider 429",1).await.unwrap());
+        assert!(retry_incomplete_providers(&pool,job.id,token,"provider 429",1).await.unwrap());
+        assert!(claim_next(&pool).await.unwrap().is_none());
+        sqlx::query("UPDATE ingest_jobs SET next_retry_at=now()-interval '1 second' WHERE id=$1")
+            .bind(job.id).execute(&pool).await.unwrap();
+        let second=claim_next(&pool).await.unwrap().unwrap();
+        assert_eq!(second.attempts,2);
+        assert_ne!(second.owner_token,Some(token));
+        assert!(!retry_incomplete_providers(&pool,job.id,second.owner_token.unwrap(),"failed",3).await.unwrap());
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
     async fn homonyms_are_isolated_across_lanes_and_qids(pool: PgPool) {
         let data=serde_json::json!({"subject":"Alexandre Dumas"});
         for (lane,qid) in [("explorer","Q187608"),("explorer","Q193129"),("agora","Q187608")] {

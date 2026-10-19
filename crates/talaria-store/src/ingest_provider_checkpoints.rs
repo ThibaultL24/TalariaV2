@@ -76,7 +76,10 @@ pub async fn complete_provider(
            (job_id,source_kind,connector_version,metrics_json)
          SELECT j.id,$3,$4,$5 FROM ingest_jobs j
          WHERE j.id=$1 AND j.owner_token=$2 AND j.status='running' AND j.lease_until>now()
-         ON CONFLICT (job_id,source_kind) DO NOTHING
+         ON CONFLICT (job_id,source_kind)
+         DO UPDATE SET connector_version=excluded.connector_version,
+                       metrics_json=excluded.metrics_json,
+                       completed_at=now()
          RETURNING job_id"
     ).bind(job_id).bind(owner).bind(source).bind(version)
       .bind(metrics).fetch_optional(pool).await?;
@@ -115,6 +118,17 @@ mod tests {
         complete_provider(&pool,job,owner,source,"hal:v1",&metrics).await.unwrap();
         assert_eq!(completed_documents(&pool,job).await.unwrap().len(),1);
         assert_eq!(completed_providers(&pool,job).await.unwrap().len(),1);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn completed_provider_can_refresh_connector_version(pool: PgPool) {
+        let (job,owner)=claimed(&pool).await;
+        complete_provider(&pool,job,owner,"hal","hal:v1",&serde_json::json!({"status":"healthy"})).await.unwrap();
+        complete_provider(&pool,job,owner,"hal","hal:v2",&serde_json::json!({"status":"healthy","documents_persisted":2})).await.unwrap();
+        let data=completed_providers(&pool,job).await.unwrap();
+        assert_eq!(data.len(),1);
+        assert_eq!(data[0].connector_version,"hal:v2");
+        assert_eq!(data[0].metrics_json["documents_persisted"],2);
     }
 
     #[sqlx::test(migrations = "../../migrations")]
