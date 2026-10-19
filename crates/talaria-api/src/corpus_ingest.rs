@@ -102,6 +102,7 @@ pub struct CorpusIngestMetrics {
 }
 
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct ProviderIngestMetrics {
     pub status: String,
     pub connector_version: Option<String>,
