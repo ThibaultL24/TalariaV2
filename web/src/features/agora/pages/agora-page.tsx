@@ -41,6 +41,7 @@ export function AgoraPage() {
   const [bibliography, setBibliography] = useState<BibliographyItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [resultsRevision, setResultsRevision] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const subject = entityLabel ?? personFilter;
 
@@ -114,7 +115,7 @@ export function AgoraPage() {
     return () => {
       cancelled = true;
     };
-  }, [entityId]);
+  }, [entityId, resultsRevision]);
 
   const runAgora = useCallback(async () => {
     if (!subject) return;
@@ -131,7 +132,11 @@ export function AgoraPage() {
       bind(job.entity_id);
       const result = await pollIngestJob(job.job_id, (tick) => bind(tick.entity_id));
       bind(result.entity_id);
-      if (result.status === "failed") setError(result.error ?? t.loading);
+      if (result.status === "failed") {
+        setError(result.error ?? t.loading);
+      } else if (result.status === "done") {
+        setResultsRevision((revision) => revision + 1);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : t.loading);
     } finally {
@@ -139,11 +144,6 @@ export function AgoraPage() {
       agoraLock.current = null;
     }
   }, [entityQid, setEntity, subject, t.loading]);
-
-  useEffect(() => {
-    if (!subject) return;
-    void runAgora();
-  }, [runAgora, subject]);
 
   const activeEntityId = routeEntityId ?? entityId;
 

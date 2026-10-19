@@ -1,19 +1,12 @@
 // crates/talaria-api/src/person_ingest/corpus_evidence.rs
-//! Corpus evidence enrichment for person_ingest.
+//! Candidate corpus references for existing person events.
 //!
-//! Queries live corpus connectors (HAL, Gallica, BnF, Persée, theses.fr, OpenAlex)
-//! and matches discovered documents to existing canonical events. Evidence is added
-//! idempotently via occurrence_key matching — this NEVER creates new pins.
-//!
-//! Product rules (AGENTS.md):
-//! - Extra sources reinforce same occurrence_key via idempotent evidence
-//! - Never auto-create a new pin from a catalogue hit alone
-//! - Never lower gates; evidence only adds to already-gated events
+//! Bibliographic metadata is not historical evidence. Candidate matches are
+//! quarantined in event_document_candidates and never appear in event_evidence.
+//! Verified quoted fragments must be added by a separate evidence-grounded path.
 
-use chrono::Datelike;
 use serde_json::json;
 use sqlx::PgPool;
-use std::collections::HashMap;
 use tracing::{debug, warn};
 use uuid::Uuid;
 
@@ -25,7 +18,7 @@ use talaria_sources::{
     DiscoveryPage, ResolvedSubject, SourceConnector, SourceKind,
 };
 use talaria_store::{
-    find_active_person_events_for_entity, insert_person_quote_evidence, upsert_raw_corpus_document,
+    find_active_person_events_for_entity, upsert_raw_corpus_document,
     PersonEvent,
 };
 
@@ -61,6 +54,7 @@ pub struct CorpusEnrichmentStats {
     pub documents_discovered: u32,
     pub documents_matched: u32,
     pub evidence_added: u32,
+    pub candidate_links_added: u32,
     pub errors: u32,
 }
 
@@ -79,20 +73,7 @@ pub async fn enrich_with_corpus_evidence(
         return Ok(stats);
     }
 
-    // Build occurrence_key → event_id index for matching
-    let event_index: HashMap<String, Uuid> = existing_events
-        .iter()
-        .filter_map(|e| e.occurrence_key.as_ref().map(|k| (k.clone(), e.id)))
-        .collect();
-
-    debug!(
-        entity_id = %entity_id,
-        events = existing_events.len(),
-        indexed = event_index.len(),
-        "Corpus enrichment: loaded {} events, {} with occurrence_key",
-        existing_events.len(),
-        event_index.len()
-    );
+    debug!(entity_id = %entity_id, events = existing_events.len(), "Catalog candidate discovery");
 
     // Query each enabled source
     for source_kind in &config.enabled_sources {
@@ -101,23 +82,16 @@ pub async fn enrich_with_corpus_evidence(
                 stats.sources_queried += 1;
                 stats.documents_discovered += page.documents.len() as u32;
 
-                for doc in &page.documents {
+                for doc in page.documents.iter().take(config.max_documents_per_source as usize) {
                     // Try to match document to existing events
                     if let Some(matched) = match_document_to_events(&doc, &existing_events) {
                         stats.documents_matched += 1;
 
-                        // Persist document and add evidence
-                        let result = persist_corpus_evidence(
-                            pool,
-                            entity_id,
-                            source_kind,
-                            doc,
-                            &matched,
-                        )
-                        .await;
+                        // Never turn a catalog title or publication year into fact evidence.
+                        let result = persist_corpus_candidates(pool, source_kind, doc, &matched).await;
 
                         match result {
-                            Ok(added) => stats.evidence_added += added,
+                            Ok(added) => stats.candidate_links_added += added,
                             Err(e) => {
                                 warn!(
                                     source = source_kind.as_str(),
@@ -196,9 +170,17 @@ struct DocumentMatch {
 
 #[derive(Debug, Clone)]
 enum MatchType {
-    YearAndType,
-    PlaceAndYear,
+    PlaceMention,
     TitleMention,
+}
+
+impl MatchType {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::PlaceMention => "place_mention",
+            Self::TitleMention => "title_mention",
+        }
+    }
 }
 
 fn match_document_to_events(
@@ -207,12 +189,6 @@ fn match_document_to_events(
 ) -> Option<Vec<DocumentMatch>> {
     let mut matches = Vec::new();
 
-    // Extract year from document publication time
-    let doc_year = match &doc.publication_time {
-        Some(talaria_sources::TypedTimeLite::Exact { year, .. }) => Some(*year),
-        _ => None,
-    };
-
     let title_lower = doc.title.to_lowercase();
 
     for event in events {
@@ -220,23 +196,12 @@ fn match_document_to_events(
         let mut match_type = MatchType::TitleMention;
         let mut confidence = 0.5f32;
 
-        // Year matching
-        if let (Some(dy), Some(ey)) = (doc_year, event.start_time) {
-            let event_year = ey.year();
-            // Document publication year within 10 years of event (for scholarly works about events)
-            if (dy - event_year).abs() <= 10 {
-                matched = true;
-                match_type = MatchType::YearAndType;
-                confidence = 0.6;
-            }
-        }
-
         // Place matching in title
         if let Some(ref place) = event.place_label {
             let place_lower = place.to_lowercase();
-            if title_lower.contains(&place_lower) {
+            if place_lower.chars().count() >= 4 && title_lower.contains(&place_lower) {
                 matched = true;
-                match_type = MatchType::PlaceAndYear;
+                match_type = MatchType::PlaceMention;
                 confidence = 0.65;
             }
         }
@@ -283,9 +248,8 @@ fn match_document_to_events(
     }
 }
 
-async fn persist_corpus_evidence(
+async fn persist_corpus_candidates(
     pool: &PgPool,
-    entity_id: Uuid,
     source_kind: &SourceKind,
     doc: &talaria_sources::DiscoveredDocument,
     matches: &[DocumentMatch],
@@ -309,37 +273,28 @@ async fn persist_corpus_evidence(
     )
     .await?;
 
-    let source_locator = format!(
-        "corpus:{}:{}",
-        source_kind.as_str(),
-        doc.external_id
-    );
-
-    let mut evidence_added = 0u32;
-
-    // Add evidence to each matched event
+    let mut candidates_added = 0u32;
     for m in matches {
-        let quote = format!(
-            "[{}] {} ({})",
-            source_kind.as_str().to_uppercase(),
-            doc.title,
-            canonical_url
-        );
-
-        insert_person_quote_evidence(
-            pool,
-            m.event_id,
-            &quote,
-            Some(raw_doc_id),
-            m.confidence as f64,
-            &source_locator,
+        let result = sqlx::query(
+            r#"
+            INSERT INTO event_document_candidates (
+                canonical_event_id, raw_document_id, match_rule, match_version, relevance_score
+            )
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (canonical_event_id, raw_document_id, match_rule, match_version)
+            DO NOTHING
+            "#,
         )
+        .bind(m.event_id)
+        .bind(raw_doc_id)
+        .bind(m.match_type.as_str())
+        .bind(ENRICHMENT_VERSION)
+        .bind(m.confidence as f64)
+        .execute(pool)
         .await?;
-
-        evidence_added += 1;
+        candidates_added += result.rows_affected() as u32;
     }
-
-    Ok(evidence_added)
+    Ok(candidates_added)
 }
 
 #[cfg(test)]
@@ -373,4 +328,32 @@ mod tests {
         assert!(config.enabled_sources.contains(&SourceKind::Hal));
         assert!(config.enabled_sources.contains(&SourceKind::OpenAlex));
     }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn catalog_metadata_never_creates_event_evidence(pool: sqlx::PgPool) {
+        let entity_id: Uuid = sqlx::query_scalar(
+            "INSERT INTO entities (wikipedia_title) VALUES ('Candidate fixture') RETURNING id",
+        ).fetch_one(&pool).await.unwrap();
+        let event_id: Uuid = sqlx::query_scalar(
+            "INSERT INTO canonical_events (entity_id, event_type, title, pipeline) VALUES ($1,'battle','Austerlitz','person') RETURNING id",
+        ).bind(entity_id).fetch_one(&pool).await.unwrap();
+        let doc = make_doc("Battle of Austerlitz", Some(1805));
+        let matches = [DocumentMatch {
+            event_id,
+            match_type: MatchType::TitleMention,
+            confidence: 0.7,
+        }];
+        let first = persist_corpus_candidates(&pool, &SourceKind::Hal, &doc, &matches).await.unwrap();
+        let duplicate = persist_corpus_candidates(&pool, &SourceKind::Hal, &doc, &matches).await.unwrap();
+        assert_eq!((first, duplicate), (1, 0));
+        let candidate_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM event_document_candidates WHERE canonical_event_id=$1",
+        ).bind(event_id).fetch_one(&pool).await.unwrap();
+        let evidence_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM event_evidence WHERE canonical_event_id=$1 OR event_id=$1",
+        ).bind(event_id).fetch_one(&pool).await.unwrap();
+        assert_eq!(candidate_count, 1);
+        assert_eq!(evidence_count, 0);
+    }
 }
+

@@ -312,7 +312,10 @@ pub async fn itinerary(
           AND EXISTS(SELECT 1 FROM visit_person_sites p WHERE p.entity_id=$1 AND p.site_id=s.id)
           AND ($2::float8 IS NULL OR ST_DWithin(
                 s.geom,ST_SetSRID(ST_MakePoint($3,$2),4326)::geography,$4))
-        ORDER BY s.label LIMIT 250
+        ORDER BY CASE WHEN $2::float8 IS NOT NULL THEN
+            ST_Distance(s.geom,ST_SetSRID(ST_MakePoint($3,$2),4326)::geography)
+          END ASC NULLS LAST, s.label, s.wikidata_qid
+        LIMIT 250
     "#).bind(entity_id).bind(origin.map(|v|v.0)).bind(origin.map(|v|v.1))
        .bind(radius*1000.0).fetch_all(&state.pool).await;
     let Ok(mut pending)=rows else {return failure(StatusCode::INTERNAL_SERVER_ERROR,"database_error")};
@@ -405,4 +408,11 @@ mod itinerary_tests {
     use super::*;
     #[test] fn zero_distance(){assert!(straight_line_km((48.8,2.3),(48.8,2.3))<0.001);}
     #[test] fn geographic_distance_is_positive(){assert!(straight_line_km((48.8,2.3),(48.9,2.4))>10.0);}
+    #[test] fn nearest_candidate_precedes_alphabetical_listing() {
+        let paris=(48.8566,2.3522);
+        let near=(48.8570,2.3510);
+        let far=(43.2965,5.3698);
+        assert!(straight_line_km(paris,near) < straight_line_km(paris,far));
+        // The SQL ordering must apply this distance before LIMIT 250.
+    }
 }

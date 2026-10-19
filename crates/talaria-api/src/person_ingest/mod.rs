@@ -481,6 +481,7 @@ async fn run_person_ingest_inner(
             "documents_discovered": s.documents_discovered,
             "documents_matched": s.documents_matched,
             "evidence_added": s.evidence_added,
+            "candidate_links_added": s.candidate_links_added,
             "errors": s.errors,
         })),
     }))
