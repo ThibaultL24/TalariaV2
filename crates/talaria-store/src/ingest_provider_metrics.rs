@@ -187,5 +187,22 @@ mod tests {
         assert_eq!(rows.len(),1);
         assert_eq!(rows[0].persisted_unique,1);
         assert_eq!(rows[0].matched_unique,0);
+
+        let entity_id=crate::upsert_entity_with_kind(&pool,"en","Victor Hugo","person")
+            .await.unwrap();
+        sqlx::query("UPDATE ingest_jobs SET entity_id=$1 WHERE id=$2")
+            .bind(entity_id).bind(job).execute(&pool).await.unwrap();
+        // Several relation rows must not inflate the number of matched docs.
+        for relation in ["about","mentioned_in"] {
+            sqlx::query(
+                "INSERT INTO entity_document_links
+                  (entity_id,corpus_document_id,relation,match_version,score)
+                 VALUES ($1,$2,$3,'test:v1',0.95)"
+            ).bind(entity_id).bind(corpus_id).bind(relation)
+             .execute(&pool).await.unwrap();
+        }
+        let updated=document_coverage(&pool,job).await.unwrap();
+        assert_eq!(updated[0].persisted_unique,1);
+        assert_eq!(updated[0].matched_unique,1);
     }
 }

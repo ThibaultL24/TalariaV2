@@ -1157,6 +1157,36 @@ mod tests {
     }
 
     #[test]
+    fn diagnostics_report_unique_document_coverage_without_raw_errors() {
+        let now=chrono::Utc::now();
+        let job=DurableIngestJob {
+            id:Uuid::new_v4(),lane:"agora".into(),subject:"Victor Hugo".into(),
+            qid:Some("Q535".into()),identity_key:"qid:Q535".into(),
+            entity_id:None,request_json:json!({}),progress_json:json!({}),
+            report_json:None,error:Some("private upstream trace".into()),
+            status:"failed".into(),attempts:2,owner_token:None,lease_until:None,
+            created_at:now,started_at:Some(now),finished_at:Some(now),updated_at:now,
+        };
+        let attempt=provider_observability::ProviderAttempt {
+            source_kind:"hal".into(),attempt:1,status:"rate_limited".into(),
+            error_kind:Some("rate_limit".into()),discover_calls:1,fetch_calls:2,
+            discovered:3,persisted:1,skipped:1,matched:1,timeouts:0,errors:1,
+            elapsed_ms:125,started_at:now,finished_at:Some(now),
+        };
+        let report=build_ingest_metrics_response(
+            &job,vec![attempt],vec![provider_observability::DocumentCoverage {
+                source_kind:"hal".into(),persisted_unique:4,matched_unique:3,
+            }],1,50,0
+        );
+        assert_eq!(report["coverage"]["match_rate_percent"],75.0);
+        assert_eq!(report["provider_attempts"][0]["fetch_calls"],2);
+        assert_eq!(report["provider_attempts"][0]["error_kind"],"rate_limit");
+        assert_eq!(report["provider_attempts"][0]["interrupted"],false);
+        assert!(report.to_string().find("private upstream trace").is_none());
+        assert_eq!(report["pagination"]["next_offset"],serde_json::Value::Null);
+    }
+
+    #[test]
     fn explorer_and_agora_purposes_stay_separated() {
         let explorer = lane_purpose(LANE_EXPLORER).to_lowercase();
         let agora = lane_purpose(LANE_AGORA).to_lowercase();
