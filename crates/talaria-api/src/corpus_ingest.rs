@@ -972,6 +972,140 @@ mod tests {
         assert_eq!(provider_budget(limits, 3, 2, 4), 1);
     }
 
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use talaria_sources::{
+        ConnectorError, ConnectorHealth, DiscoveryMethod, DiscoveryPage,
+        DocumentType, SourceMetadata,
+    };
+
+    struct TimedFixtureConnector {
+        active: Arc<AtomicUsize>,
+        peak: Arc<AtomicUsize>,
+        delay: Duration,
+    }
+
+    #[async_trait::async_trait]
+    impl SourceConnector for TimedFixtureConnector {
+        fn source_kind(&self) -> SourceKind {
+            SourceKind::Fixture
+        }
+
+        fn connector_version(&self) -> &str {
+            "timed-fixture:v1"
+        }
+
+        async fn discover(
+            &self,
+            _subject: &ResolvedSubject,
+            _cursor: Option<DiscoveryCursor>,
+        ) -> Result<DiscoveryPage, ConnectorError> {
+            Ok(DiscoveryPage { documents: vec![], next_cursor: None })
+        }
+
+        async fn fetch(
+            &self,
+            document: &DiscoveredDocument,
+        ) -> Result<FetchedDocument, ConnectorError> {
+            let active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+            self.peak.fetch_max(active, Ordering::SeqCst);
+            tokio::time::sleep(self.delay).await;
+            self.active.fetch_sub(1, Ordering::SeqCst);
+            if document.external_id == "429" {
+                return Err(ConnectorError::RateLimited);
+            }
+            Ok(FetchedDocument {
+                discovered: document.clone(),
+                revision_id: Some("fixture-r1".into()),
+                content_type: "application/json".into(),
+                text: String::new(),
+                raw_metadata: serde_json::json!({}),
+                license: None,
+                content_bytes: 0,
+            })
+        }
+
+        async fn healthcheck(&self) -> Result<ConnectorHealth, ConnectorError> {
+            Ok(ConnectorHealth { ok: true, detail: "fixture".into() })
+        }
+    }
+
+    fn test_document(id: &str) -> DiscoveredDocument {
+        DiscoveredDocument {
+            source_kind: SourceKind::Fixture,
+            external_id: id.into(),
+            canonical_url: None,
+            title: format!("Document {id}"),
+            language: Some("en".into()),
+            document_type: DocumentType::Article,
+            subject_links: vec![],
+            publication_time: None,
+            discovery_method: DiscoveryMethod::Fixture,
+            relevance_score: 1.0,
+            source_metadata: SourceMetadata::default(),
+        }
+    }
+
+    #[tokio::test]
+    async fn bounded_fetches_preserve_discovery_order() {
+        let active = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let connector: Arc<dyn SourceConnector> = Arc::new(TimedFixtureConnector {
+            active: Arc::clone(&active),
+            peak: Arc::clone(&peak),
+            delay: Duration::from_millis(35),
+        });
+        let docs = (0..3)
+            .map(|i| (Uuid::new_v4(), test_document(&i.to_string())))
+            .collect();
+        let result = fetch_document_batch(connector, docs, Duration::from_secs(2)).await.unwrap();
+        assert_eq!(result.len(), 3);
+        assert_eq!(peak.load(Ordering::SeqCst), 3);
+        assert_eq!(result.iter().map(|(_, doc, _)| doc.external_id.as_str()).collect::<Vec<_>>(),
+                   vec!["0", "1", "2"]);
+        assert!(result.iter().all(|(_, _, value)| value.is_ok()));
+    }
+
+    #[tokio::test]
+    async fn fetch_timeout_and_rate_limit_are_distinguishable() {
+        let connector: Arc<dyn SourceConnector> = Arc::new(TimedFixtureConnector {
+            active: Arc::new(AtomicUsize::new(0)),
+            peak: Arc::new(AtomicUsize::new(0)),
+            delay: Duration::from_millis(40),
+        });
+        let timed = fetch_document_batch(
+            Arc::clone(&connector),
+            vec![(Uuid::new_v4(), test_document("slow"))],
+            Duration::from_millis(2),
+        ).await.unwrap();
+        assert!(timed[0].2.as_ref().unwrap_err().contains("timed out"));
+
+        let limited = fetch_document_batch(
+            connector,
+            vec![(Uuid::new_v4(), test_document("429"))],
+            Duration::from_secs(1),
+        ).await.unwrap();
+        assert_eq!(connector_failure_status(limited[0].2.as_ref().unwrap_err()), "rate_limited");
+    }
+
+    #[test]
+    fn concurrency_is_bounded_and_defaults_to_two() {
+        assert_eq!(resolved_fetch_concurrency(None), 2);
+        assert_eq!(resolved_fetch_concurrency(Some("0")), 1);
+        assert_eq!(resolved_fetch_concurrency(Some("99")), 4);
+        assert_eq!(resolved_fetch_concurrency(Some("3")), 3);
+        assert_eq!(resolved_fetch_concurrency(Some("invalid")), 2);
+    }
+
+    #[test]
+    fn detects_stalled_discovery_cursor() {
+        let cursor = Some(DiscoveryCursor { token: Some("page".into()), offset: 20 });
+        assert!(cursor_stalled(&cursor, &cursor));
+        assert!(!cursor_stalled(
+            &cursor, &Some(DiscoveryCursor { token: Some("next".into()), offset: 40 }),
+        ));
+        assert!(!cursor_stalled(&None, &None));
+    }
+
     #[test]
     fn provider_status_distinguishes_rate_limits() {
         assert_eq!(connector_failure_status("HTTP 429 Too Many Requests"), "rate_limited");
