@@ -329,6 +329,21 @@ mod tests {
         assert!(config.enabled_sources.contains(&SourceKind::OpenAlex));
     }
 
+    #[test]
+    fn publication_year_alone_is_not_a_candidate() {
+        let event = PersonEvent {
+            id: Uuid::new_v4(),
+            entity_id: Uuid::new_v4(),
+            event_type: "battle".into(),
+            title: Some("Battle of Austerlitz".into()),
+            place_label: Some("Austerlitz".into()),
+            start_time: Some("1805-12-02T00:00:00Z".parse().unwrap()),
+            occurrence_key: None,
+        };
+        let unrelated = make_doc("Research on unrelated subjects", Some(1805));
+        assert!(match_document_to_events(&unrelated, &[event]).is_none());
+    }
+
     #[sqlx::test(migrations = "../../migrations")]
     async fn catalog_metadata_never_creates_event_evidence(pool: sqlx::PgPool) {
         let entity_id: Uuid = sqlx::query_scalar(

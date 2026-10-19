@@ -413,6 +413,64 @@ mod itinerary_tests {
         let near=(48.8570,2.3510);
         let far=(43.2965,5.3698);
         assert!(straight_line_km(paris,near) < straight_line_km(paris,far));
-        // The SQL ordering must apply this distance before LIMIT 250.
+    }
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn itinerary_shortlist_uses_distance_before_limit(pool: sqlx::PgPool) {
+        let entity: Uuid = sqlx::query_scalar(
+            "INSERT INTO entities (wikipedia_title) VALUES ('Itinerary fixture') RETURNING id",
+        ).fetch_one(&pool).await.unwrap();
+        let inserted = sqlx::query(
+            r#"
+            INSERT INTO visit_sites(wikidata_qid,label,kind,geom,retrieved_at)
+            SELECT 'Q' || (900000 + g)::text,
+                   'A' || lpad(g::text,4,'0'), 'building',
+                   ST_SetSRID(ST_MakePoint(2.35,47.5),4326)::geography, NOW()
+            FROM generate_series(1,250) AS g
+            "#,
+        ).execute(&pool).await.unwrap();
+        assert_eq!(inserted.rows_affected(), 250);
+        let site: Uuid = sqlx::query_scalar(
+            r#"INSERT INTO visit_sites(wikidata_qid,label,kind,geom,retrieved_at)
+               VALUES('Q999999','Z nearest','building',
+               ST_SetSRID(ST_MakePoint(2.3522,48.8566),4326)::geography,NOW())
+               RETURNING id"#,
+        ).fetch_one(&pool).await.unwrap();
+        sqlx::query(
+            r#"INSERT INTO visit_person_sites(entity_id,site_id,relation_pid,source_url,retrieved_at)
+               SELECT $1,id,'P551','https://www.wikidata.org/wiki/' || wikidata_qid,NOW()
+               FROM visit_sites"#,
+        ).bind(entity).execute(&pool).await.unwrap();
+        let state = AppState {
+            pool,
+            offline_only: true,
+            config: talaria_core::AppConfig {
+                database_url: "postgres://unused".into(),
+                data_root: ".".into(),
+                bind_addr: "127.0.0.1:0".into(),
+                wiki_lang: "en".into(),
+                cosmos_python: "python3".into(),
+                cosmos_script: ".".into(),
+                cosmos_batch_script: ".".into(),
+                offline_only: true,
+            },
+            ingest_jobs: std::sync::Arc::new(tokio::sync::Mutex::new(
+                std::collections::HashMap::new(),
+            )),
+        };
+        let response = itinerary(
+            State(state),
+            Path(entity),
+            Query(ItineraryQuery {
+                max_stops: Some(1),
+                lat: Some(48.8566),
+                lon: Some(2.3522),
+                radius_km: Some(200.0),
+                mode: None,
+            }),
+        ).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), 1_000_000).await.unwrap();
+        let payload: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(payload["stops"][0]["id"], site.to_string());
     }
 }

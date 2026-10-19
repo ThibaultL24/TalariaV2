@@ -26,3 +26,18 @@ CREATE INDEX IF NOT EXISTS idx_entities_wikipedia_title_trgm
     ON entities USING GIN (wikipedia_title gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_entity_aliases_surface_trgm
     ON entity_aliases USING GIN (surface gin_trgm_ops);
+
+-- Match the exact accent-fold expressions in person_match_sql, which otherwise
+-- cannot use the plain-column trigram indexes above.
+CREATE INDEX IF NOT EXISTS idx_entities_name_folded_trgm
+    ON entities USING GIN (
+        (translate(lower(coalesce(canonical_name, '')), 'àáâäãåāèéêëēìíîïīòóôöõøōùúüūýÿñçłśźż', 'aaaaaaaeeeeeiiiiioooooouuuuuyynclszz')) gin_trgm_ops
+    );
+CREATE INDEX IF NOT EXISTS idx_entities_title_folded_trgm
+    ON entities USING GIN (
+        (translate(lower(wikipedia_title), 'àáâäãåāèéêëēìíîïīòóôöõøōùúüūýÿñçłśźż', 'aaaaaaaeeeeeiiiiioooooouuuuuyynclszz')) gin_trgm_ops
+    );
+CREATE INDEX IF NOT EXISTS idx_entity_aliases_surface_folded_trgm
+    ON entity_aliases USING GIN (
+        (translate(lower(surface), 'àáâäãåāèéêëēìíîïīòóôöõøōùúüūýÿñçłśźż', 'aaaaaaaeeeeeiiiiioooooouuuuuyynclszz')) gin_trgm_ops
+    );
