@@ -496,7 +496,7 @@ async fn run_corpus_ingest_inner(
             completed_docs.insert((doc.source_kind,doc.external_id));
         }
         for provider in checkpoints::completed_providers(&pool,ctx.job_id).await? {
-            completed_providers.insert(provider.source_kind,provider);
+            completed_providers.insert(provider.source_kind.clone(),provider);
         }
         metrics.documents_persisted = completed_docs.len() as u64;
     }
