@@ -85,25 +85,14 @@ pub async fn search(
         })
         .collect();
 
-    // Demo/local-first: if Postgres already has a dense person match, skip the
-    // live Wikidata round-trip — it dominates search latency for the roster.
-    let has_dense_local = items.iter().any(|item| {
-        item.get("known_locally")
-            .and_then(|value| value.as_bool())
-            .unwrap_or(false)
-            && item
-                .get("event_count")
-                .and_then(|value| value.as_i64())
-                .unwrap_or(0)
-                > 0
-    });
-
-    if !state.offline_only && !has_dense_local && items.len() < limit as usize {
+    // A dense local match does not exclude homonyms with different QIDs.
+    // A bounded remote lookup complements the fast local result set.
+    if !state.offline_only && items.len() < limit.min(5) as usize {
         if let Ok(client) = WikidataClient::new() {
-            if let Ok(hits) = client
-                .search_entities(trimmed, lang, limit.max(10) as u32)
-                .await
-            {
+            if let Ok(Ok(hits)) = tokio::time::timeout(
+                std::time::Duration::from_millis(900),
+                client.search_entities(trimmed, lang, limit.max(10) as u32),
+            ).await {
                 let known: Vec<String> = local_qids.iter().cloned().collect();
                 let hits = sort_person_search_hits(hits, &known);
                 for hit in hits {
