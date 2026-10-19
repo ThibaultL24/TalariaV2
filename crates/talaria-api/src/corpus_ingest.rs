@@ -4,7 +4,10 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+use tokio::task::JoinSet;
 
 use talaria_core::AppConfig;
 use talaria_sources::connectors::{
@@ -16,8 +19,8 @@ use talaria_sources::connectors::{
 use talaria_sources::{
     match_resolved_subject_to_document, normalize_bnf_notice, normalize_europeana_item,
     normalize_ia_item, normalize_openalex_work, normalize_these_detail, normalize_wikisource,
-    AccessLevel, DiscoveredDocument, NormalizedCorpusDocument, ResolvedSubject, SourceKind,
-    TypedTimeLite,
+    AccessLevel, DiscoveredDocument, DiscoveryCursor, FetchedDocument,
+    NormalizedCorpusDocument, ResolvedSubject, SourceConnector, SourceKind, TypedTimeLite,
 };
 use talaria_store::{
     connect, finish_discovery_run, insert_document_snapshot, link_corpus_snapshot,
@@ -92,6 +95,7 @@ pub struct CorpusIngestMetrics {
     pub snapshots_reused: u64,
     pub entity_links: u64,
     pub connector_errors: u64,
+    pub fetch_timeouts: u64,
     pub providers: BTreeMap<String, ProviderIngestMetrics>,
 }
 
@@ -104,6 +108,8 @@ pub struct ProviderIngestMetrics {
     pub documents_persisted: u64,
     pub documents_skipped: u64,
     pub connector_errors: u64,
+    pub fetch_calls: u64,
+    pub fetch_timeouts: u64,
     pub elapsed_ms: u64,
     pub last_error: Option<String>,
 }
@@ -153,6 +159,56 @@ fn connector_failure_status(error: &str) -> &'static str {
     } else {
         "failed"
     }
+}
+
+// Fetch only metadata in bounded groups. Database writes remain sequential and
+// source-ordered, keeping unique-document caps and attribution deterministic.
+const DEFAULT_FETCH_CONCURRENCY: usize = 2;
+const MAX_FETCH_CONCURRENCY: usize = 4;
+
+fn resolved_fetch_concurrency(configured: Option<&str>) -> usize {
+    configured
+        .and_then(|value| value.parse::<usize>().ok())
+        .unwrap_or(DEFAULT_FETCH_CONCURRENCY)
+        .clamp(1, MAX_FETCH_CONCURRENCY)
+}
+
+fn cursor_stalled(previous: &Option<DiscoveryCursor>, next: &Option<DiscoveryCursor>) -> bool {
+    match (previous, next) {
+        (Some(previous), Some(next)) => {
+            previous.token == next.token && previous.offset == next.offset
+        }
+        _ => false,
+    }
+}
+
+type FetchResult = (Uuid, DiscoveredDocument, Result<FetchedDocument, String>);
+
+async fn fetch_document_batch(
+    connector: Arc<dyn SourceConnector>,
+    documents: Vec<(Uuid, DiscoveredDocument)>,
+    timeout: Duration,
+) -> anyhow::Result<Vec<FetchResult>> {
+    let mut tasks = JoinSet::new();
+    for (index, (discovered_id, document)) in documents.into_iter().enumerate() {
+        let connector = Arc::clone(&connector);
+        tasks.spawn(async move {
+            let fetched = match tokio::time::timeout(timeout, connector.fetch(&document)).await {
+                Ok(Ok(fetched)) => Ok(fetched),
+                Ok(Err(error)) => Err(error.to_string()),
+                Err(_) => Err(format!("fetch timed out after {}ms", timeout.as_millis())),
+            };
+            (index, discovered_id, document, fetched)
+        });
+    }
+    let mut fetched = Vec::with_capacity(tasks.len());
+    while let Some(result) = tasks.join_next().await {
+        fetched.push(result.map_err(|error| anyhow::anyhow!("fetch worker failed: {error}"))?);
+    }
+    fetched.sort_by_key(|(index, _, _, _)| *index);
+    Ok(fetched.into_iter()
+        .map(|(_, id, document, fetched)| (id, document, fetched))
+        .collect())
 }
 
 pub async fn run_corpus_ingest(
@@ -349,6 +405,10 @@ pub async fn run_corpus_ingest(
                 "limit_per_provider": limits.per_provider,
                 "limit_total": limits.total,
                 "minimum_per_provider": limits.minimum_per_provider,
+                "fetch_concurrency": resolved_fetch_concurrency(
+                    std::env::var("TALARIA_CORPUS_FETCH_CONCURRENCY").ok().as_deref()
+                ),
+                "fetch_timeout_ms": limits.provider_timeout.as_millis(),
                 "fixture": use_fixture,
             }),
             budgets_json: serde_json::json!({
@@ -380,6 +440,9 @@ pub async fn run_corpus_ingest(
     let mut persisted_ids = HashSet::new();
 
     let provider_count = kinds.len();
+    let fetch_concurrency = resolved_fetch_concurrency(
+        std::env::var("TALARIA_CORPUS_FETCH_CONCURRENCY").ok().as_deref(),
+    );
     for (provider_index, kind) in kinds.into_iter().enumerate() {
         let started = Instant::now();
         let source = kind.as_str().to_string();
@@ -445,34 +508,77 @@ pub async fn run_corpus_ingest(
                 }
             };
 
-            for doc in page.documents {
-                if provider_remaining == 0
-                    || limits
-                        .total
-                        .is_some_and(|cap| persisted_ids.len() >= cap as usize)
-                {
+            let mut documents = page.documents.into_iter();
+            let mut stop_provider = false;
+            loop {
+                // Do not fetch beyond this provider's budget or the global unique cap.
+                // When a fetch fails we can try subsequent discovered documents.
+                let global_remaining = limits
+                    .total
+                    .map(|total| total.saturating_sub(persisted_ids.len() as u32))
+                    .unwrap_or(u32::MAX);
+                let batch_size = (provider_remaining.min(global_remaining) as usize)
+                    .min(fetch_concurrency);
+                if batch_size == 0 {
                     break;
                 }
-                metrics.documents_discovered += 1;
-                provider_metrics.documents_discovered += 1;
-                let (discovered_id, _) =
-                    upsert_discovered_document(&pool, &to_discovered_insert(run_id, &doc)).await?;
+                let mut batch = Vec::with_capacity(batch_size);
+                for doc in documents.by_ref().take(batch_size) {
+                    metrics.documents_discovered += 1;
+                    provider_metrics.documents_discovered += 1;
+                    let (discovered_id, _) =
+                        upsert_discovered_document(&pool, &to_discovered_insert(run_id, &doc)).await?;
+                    batch.push((discovered_id, doc));
+                }
+                if batch.is_empty() {
+                    break;
+                }
 
-                let fetched = match connector.fetch(&doc).await {
-                    Ok(f) => f,
-                    Err(e) => {
-                        tracing::warn!(error = %e, id = %doc.external_id, "fetch failed");
-                        metrics.connector_errors += 1;
-                        provider_metrics.connector_errors += 1;
-                        provider_metrics.status = "partial".into();
-                        provider_metrics.last_error = Some(e.to_string());
-                        mark_discovered_skipped(&pool, discovered_id, "fetch_failed").await?;
-                        metrics.documents_skipped += 1;
-                        provider_metrics.documents_skipped += 1;
-                        continue;
-                    }
-                };
-
+                // Connector requests are concurrent only within the bounded batch;
+                // their database writes are applied in original discovery order.
+                let fetched_batch = fetch_document_batch(
+                    Arc::clone(connector),
+                    batch,
+                    limits.provider_timeout,
+                ).await?;
+                for (discovered_id, doc, fetched) in fetched_batch {
+                    provider_metrics.fetch_calls += 1;
+                    let fetched = match fetched {
+                        Ok(fetched) => fetched,
+                        Err(error) => {
+                            tracing::warn!(
+                                source = kind.as_str(),
+                                id = %doc.external_id,
+                                %error,
+                                "corpus fetch failed"
+                            );
+                            metrics.connector_errors += 1;
+                            provider_metrics.connector_errors += 1;
+                            provider_metrics.last_error = Some(error.clone());
+                            let timed_out = error.starts_with("fetch timed out");
+                            if timed_out {
+                                metrics.fetch_timeouts += 1;
+                                provider_metrics.fetch_timeouts += 1;
+                            }
+                            let rate_limited = connector_failure_status(&error) == "rate_limited";
+                            provider_metrics.status = if rate_limited {
+                                "rate_limited".into()
+                            } else {
+                                "partial".into()
+                            };
+                            mark_discovered_skipped(
+                                &pool,
+                                discovered_id,
+                                if timed_out { "fetch_timeout" } else { "fetch_failed" },
+                            ).await?;
+                            metrics.documents_skipped += 1;
+                            provider_metrics.documents_skipped += 1;
+                            if rate_limited {
+                                stop_provider = true;
+                            }
+                            continue;
+                        }
+                    };
                 let Some(normalized) = extract_normalized(&kind, &fetched.raw_metadata)? else {
                     tracing::warn!(
                         source = kind.as_str(),
@@ -526,10 +632,23 @@ pub async fn run_corpus_ingest(
                 }
 
                 provider_remaining = provider_remaining.saturating_sub(1);
+                }
+                // Never continue hammering a provider after HTTP 429.
+                if stop_provider {
+                    break;
+                }
             }
 
-            cursor = page.next_cursor;
-            if cursor.is_none() {
+            let next_cursor = page.next_cursor;
+            if cursor_stalled(&cursor, &next_cursor) {
+                provider_metrics.status = "partial".into();
+                provider_metrics.connector_errors += 1;
+                provider_metrics.last_error = Some("discovery cursor did not advance".into());
+                metrics.connector_errors += 1;
+                break;
+            }
+            cursor = next_cursor;
+            if cursor.is_none() || stop_provider {
                 break;
             }
         }
