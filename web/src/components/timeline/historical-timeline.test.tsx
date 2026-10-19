@@ -1,6 +1,8 @@
 // web/src/components/timeline/historical-timeline.test.tsx
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi, waitFor } from "vitest";
+
+const pixiLifecycle = vi.hoisted(() => ({ init: vi.fn(), destroy: vi.fn() }));
 import type { TimelineEvent } from "@/lib/api";
 import { HistoricalTimeline } from "./historical-timeline";
 
@@ -10,8 +12,8 @@ vi.mock("pixi.js", () => {
     stage = { addChild() {}, on() {}, eventMode: "", hitArea: null };
     screen = { width: 320, height: 240 };
     ticker = { add() {}, remove() {} };
-    init = async () => {};
-    destroy() {}
+    init = async () => { pixiLifecycle.init(); };
+    destroy() { pixiLifecycle.destroy(); }
   }
   class Container {
     addChild() {}
@@ -55,6 +57,8 @@ const event: TimelineEvent = {
 };
 
 beforeEach(() => {
+  pixiLifecycle.init.mockClear();
+  pixiLifecycle.destroy.mockClear();
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -106,4 +110,24 @@ test("fullscreen timeline opens and closes the category drawer", () => {
   expect(drawer.hidden).toBe(false);
   fireEvent.click(screen.getByRole("button", { name: "Close" }));
   expect(drawer.hidden).toBe(true);
+});
+
+test("incremental data and changing callbacks reuse one Pixi application", async () => {
+  const firstSelect = vi.fn();
+  const secondSelect = vi.fn();
+  const props = {
+    events: [event],
+    bounds: [1802, 1885] as [number, number],
+    from: 1802,
+    to: 1885,
+    onSelect: firstSelect,
+    onZoom: vi.fn(),
+  };
+  const { rerender, unmount } = render(<HistoricalTimeline {...props}/>);
+  await waitFor(() => expect(pixiLifecycle.init).toHaveBeenCalledTimes(1));
+  rerender(<HistoricalTimeline {...props} events={[event, { ...event, id: "event-2" }]} onSelect={secondSelect}/>);
+  expect(pixiLifecycle.init).toHaveBeenCalledTimes(1);
+  expect(pixiLifecycle.destroy).not.toHaveBeenCalled();
+  unmount();
+  await waitFor(() => expect(pixiLifecycle.destroy).toHaveBeenCalledTimes(1));
 });

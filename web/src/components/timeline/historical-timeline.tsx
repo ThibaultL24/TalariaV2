@@ -83,6 +83,11 @@ export function HistoricalTimeline({
   const recalcSceneRef = useRef<() => void>(() => {});
   const pixiReadyRef = useRef(false);
   const spotlightRef = useRef<string | undefined>(spotlightEventId);
+  const onSelectRef = useRef(onSelect);
+  const applyDomainRef = useRef<(next: TimeDomain, commit: boolean) => void>(() => {});
+  const absoluteDomainRef = useRef(absoluteDomain);
+  onSelectRef.current = onSelect;
+  absoluteDomainRef.current = absoluteDomain;
   spotlightRef.current = spotlightEventId;
   domainRef.current = domain;
 
@@ -127,6 +132,8 @@ export function HistoricalTimeline({
     [events, activeLegend],
   );
 
+  const datedEventsRef = useRef(datedEvents);
+  datedEventsRef.current = datedEvents;
   const phases = useMemo(() => lifePhasePresets(bounds), [bounds[0], bounds[1]]);
 
   function applyDomain(next: TimeDomain, commit: boolean) {
@@ -143,6 +150,8 @@ export function HistoricalTimeline({
       onZoom(Math.floor(a), Math.ceil(b));
     }
   }
+
+  applyDomainRef.current = applyDomain;
 
   function toggleLegend(key: LegendKey) {
     setActiveLegend((current) => {
@@ -194,7 +203,7 @@ export function HistoricalTimeline({
       const top = 72;
       const bottom = 88;
       const usable = Math.max(120, height - top - bottom);
-      const visible = filterEventsByLod(datedEvents, domainRef.current);
+      const visible = filterEventsByLod(datedEventsRef.current, domainRef.current);
 
       points = separateStackedPoints(visible
         .map((event) => {
@@ -326,7 +335,7 @@ export function HistoricalTimeline({
       if (!ready || destroyed) return;
       const nearest = findNearest(event.global.x, event.global.y);
       if (nearest) {
-        onSelect(nearest.event.id);
+        onSelectRef.current(nearest.event.id);
         return;
       }
       dragging = true;
@@ -338,7 +347,7 @@ export function HistoricalTimeline({
     const onPointerUp = () => {
       if (!ready || destroyed) return;
       if (dragging) {
-        applyDomain(domainRef.current, true);
+        applyDomainRef.current(domainRef.current, true);
       }
       dragging = false;
       dragDomain = null;
@@ -357,17 +366,17 @@ export function HistoricalTimeline({
       const factor = event.deltaY > 0 ? 1.18 : 0.84;
       let nextDuration = duration * factor;
       const minDuration = 1;
-      const maxDuration = absoluteDomain.end - absoluteDomain.start;
+      const maxDuration = absoluteDomainRef.current.end - absoluteDomainRef.current.start;
       nextDuration = clamp(nextDuration, minDuration, maxDuration);
       const ratio = localX / width;
       const nextStart = anchorYear - nextDuration * ratio;
       const nextEnd = nextStart + nextDuration;
       domainRef.current = {
-        start: clamp(nextStart, absoluteDomain.start, absoluteDomain.end - minDuration),
-        end: clamp(nextEnd, absoluteDomain.start + minDuration, absoluteDomain.end),
+        start: clamp(nextStart, absoluteDomainRef.current.start, absoluteDomainRef.current.end - minDuration),
+        end: clamp(nextEnd, absoluteDomainRef.current.start + minDuration, absoluteDomainRef.current.end),
       };
       calculatePoints();
-      applyDomain(domainRef.current, true);
+      applyDomainRef.current(domainRef.current, true);
     };
 
     const tick = () => {
@@ -417,7 +426,7 @@ export function HistoricalTimeline({
       if (tornDown) return;
       tornDown = true;
       ready = false;
-      pixiAppRef.current = null;
+      if (pixiAppRef.current === app) pixiAppRef.current = null;
       app.ticker?.remove(tick);
       canvasEl?.removeEventListener("wheel", onWheel);
       canvasEl = undefined;
@@ -487,7 +496,12 @@ export function HistoricalTimeline({
       resizeObserver.disconnect();
       void initPromise.then(teardown);
     };
-  }, [datedEvents, absoluteDomain.start, absoluteDomain.end, onSelect]);
+  }, []);
+
+  // Recalculate the active scene, not the WebGL application, when data or bounds change.
+  useEffect(() => {
+    recalcSceneRef.current();
+  }, [datedEvents, absoluteDomain.start, absoluteDomain.end]);
 
   useEffect(() => {
     domainRef.current = domain;
