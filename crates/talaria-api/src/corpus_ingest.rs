@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 use tokio::task::JoinSet;
 
 use talaria_core::AppConfig;
+use talaria_store::ingest_provider_checkpoints as checkpoints;
 use talaria_sources::connectors::{
     default_registry_with_corpus, normalize_hal_doc, BnfConfig, BnfConnector, CorpusConnectors,
     EuropeanaConfig, EuropeanaConnector, HalConnector, InternetArchiveConfig,
@@ -86,7 +87,7 @@ fn wants(kinds: &[SourceKind], kind: SourceKind) -> bool {
     kinds.iter().any(|candidate| candidate == &kind)
 }
 
-#[derive(Debug, Default, Clone, serde::Serialize)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CorpusIngestMetrics {
     pub documents_discovered: u64,
     pub documents_persisted: u64,
@@ -99,7 +100,7 @@ pub struct CorpusIngestMetrics {
     pub providers: BTreeMap<String, ProviderIngestMetrics>,
 }
 
-#[derive(Debug, Default, Clone, serde::Serialize)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ProviderIngestMetrics {
     pub status: String,
     pub connector_version: Option<String>,
@@ -150,6 +151,23 @@ fn provider_budget(
     let globally_remaining = total.saturating_sub(globally_persisted as u32);
     globally_remaining
         .saturating_sub(fair_minimum.saturating_mul(providers_after))
+        .min(limits.per_provider)
+}
+
+/// On resume, future providers already checkpointed (or unavailable)
+/// must not receive a second budget reservation.
+fn provider_budget_with_pending(
+    limits: CorpusIngestLimits,
+    provider_count: usize,
+    future_pending: usize,
+    globally_persisted: usize,
+) -> u32 {
+    let Some(total) = limits.total else { return limits.per_provider };
+    let fair_minimum = limits.minimum_per_provider
+        .min(limits.per_provider)
+        .min(total / provider_count.max(1) as u32);
+    total.saturating_sub(globally_persisted as u32)
+        .saturating_sub(fair_minimum.saturating_mul(future_pending as u32))
         .min(limits.per_provider)
 }
 
@@ -211,6 +229,19 @@ async fn fetch_document_batch(
         .collect())
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct CorpusResume {
+    pub job_id: Uuid,
+    pub owner_token: Uuid,
+}
+
+/// Legacy CLI/test callers remain independent from job checkpoint state.
+fn should_skip_completed_provider(
+    saved: Option<&checkpoints::CompletedProvider>, connector_version: &str,
+) -> bool {
+    saved.is_some_and(|provider| provider.connector_version == connector_version)
+}
+
 pub async fn run_corpus_ingest(
     config: &AppConfig,
     subject_label: &str,
@@ -220,6 +251,33 @@ pub async fn run_corpus_ingest(
     use_fixture: bool,
     fixture_dir: Option<PathBuf>,
     live: bool,
+) -> anyhow::Result<String> {
+    run_corpus_ingest_inner(config,subject_label,qid,providers,limits,
+        use_fixture,fixture_dir,live,None).await
+}
+
+pub async fn run_corpus_ingest_for_job(
+    config: &AppConfig,
+    subject_label: &str,
+    qid: Option<&str>,
+    providers: &[String],
+    limits: CorpusIngestLimits,
+    resume: CorpusResume,
+) -> anyhow::Result<String> {
+    run_corpus_ingest_inner(config,subject_label,qid,providers,limits,
+        false,None,true,Some(resume)).await
+}
+
+async fn run_corpus_ingest_inner(
+    config: &AppConfig,
+    subject_label: &str,
+    qid: Option<&str>,
+    providers: &[String],
+    limits: CorpusIngestLimits,
+    use_fixture: bool,
+    fixture_dir: Option<PathBuf>,
+    live: bool,
+    resume: Option<CorpusResume>,
 ) -> anyhow::Result<String> {
     let use_fixture = use_fixture && !live;
     let pool = connect(config).await?;
@@ -438,12 +496,33 @@ pub async fn run_corpus_ingest(
 
     let mut metrics = CorpusIngestMetrics::default();
     let mut persisted_ids = HashSet::new();
+    // A successful document is remembered before acknowledging its provider.
+    // On retry, completed providers are skipped and unfinished providers can
+    // skip already-persisted external IDs, without counting them twice.
+    let mut completed_docs: HashSet<(String,String)> = HashSet::new();
+    let mut prior_counts: BTreeMap<String,u64> = BTreeMap::new();
+    let mut completed_providers = BTreeMap::new();
+    if let Some(ctx) = resume {
+        anyhow::ensure!(
+            checkpoints::ensure_lease(&pool,ctx.job_id,ctx.owner_token).await?,
+            "corpus_lease_lost"
+        );
+        for doc in checkpoints::completed_documents(&pool,ctx.job_id).await? {
+            persisted_ids.insert(doc.corpus_document_id);
+            *prior_counts.entry(doc.source_kind.clone()).or_default() += 1;
+            completed_docs.insert((doc.source_kind,doc.external_id));
+        }
+        for provider in checkpoints::completed_providers(&pool,ctx.job_id).await? {
+            completed_providers.insert(provider.source_kind.clone(),provider);
+        }
+        metrics.documents_persisted = completed_docs.len() as u64;
+    }
 
     let provider_count = kinds.len();
     let fetch_concurrency = resolved_fetch_concurrency(
         std::env::var("TALARIA_CORPUS_FETCH_CONCURRENCY").ok().as_deref(),
     );
-    for (provider_index, kind) in kinds.into_iter().enumerate() {
+    for (provider_index, kind) in kinds.iter().cloned().enumerate() {
         let started = Instant::now();
         let source = kind.as_str().to_string();
         let mut provider_metrics = ProviderIngestMetrics {
@@ -465,12 +544,52 @@ pub async fn run_corpus_ingest(
             continue;
         }
 
+        if let Some(saved) = completed_providers.get(&source) {
+            if should_skip_completed_provider(Some(saved),connector.connector_version()) {
+                let prior: ProviderIngestMetrics = serde_json::from_value(
+                    saved.metrics_json.clone()
+                )?;
+                metrics.documents_discovered += prior.documents_discovered;
+                metrics.documents_skipped += prior.documents_skipped;
+                metrics.providers.insert(source, prior);
+                continue;
+            }
+        }
+        // A previously interrupted provider retains only successful documents
+        // in its ledger; the rest of its discovery is repeated.
+        provider_metrics.documents_persisted = *prior_counts.get(&source).unwrap_or(&0);
+        if let Some(ctx) = resume {
+            anyhow::ensure!(
+                checkpoints::ensure_lease(&pool,ctx.job_id,ctx.owner_token).await?,
+                "corpus_lease_lost"
+            );
+        }
+
         let mut cursor = None;
         // Let earlier providers use surplus capacity, but reserve the requested first
         // sample for every provider that has not run yet. If the total is smaller than
         // the requested aggregate minimum, divide it as evenly as possible.
-        let mut provider_remaining =
-            provider_budget(limits, provider_count, provider_index, persisted_ids.len());
+        let budget = if resume.is_some() {
+            let pending_later = kinds.iter().skip(provider_index+1)
+                .filter(|future_kind| {
+                    let Some(registered) = registry.get(future_kind) else { return false };
+                    if !registered.implemented { return false }
+                    let Some(connector) = registered.connector.as_ref() else { return false };
+                    !should_skip_completed_provider(
+                        completed_providers.get(future_kind.as_str()),
+                        connector.connector_version(),
+                    )
+                }).count();
+            provider_budget_with_pending(
+                limits,provider_count,pending_later,persisted_ids.len(),
+            )
+        } else {
+            provider_budget(limits,provider_count,provider_index,persisted_ids.len())
+        };
+        let previously_saved = *prior_counts.get(&source).unwrap_or(&0) as u32;
+        let mut provider_remaining = budget.min(
+            limits.per_provider.saturating_sub(previously_saved),
+        );
         provider_metrics.status = "healthy".into();
         loop {
             // Make one discovery call even when the persistence budget is exhausted,
@@ -523,7 +642,11 @@ pub async fn run_corpus_ingest(
                     break;
                 }
                 let mut batch = Vec::with_capacity(batch_size);
-                for doc in documents.by_ref().take(batch_size) {
+                while batch.len() < batch_size {
+                    let Some(doc) = documents.next() else { break };
+                    if completed_docs.contains(&(source.clone(),doc.external_id.clone())) {
+                        continue;
+                    }
                     metrics.documents_discovered += 1;
                     provider_metrics.documents_discovered += 1;
                     let (discovered_id, _) =
@@ -604,9 +727,6 @@ pub async fn run_corpus_ingest(
 
                 mark_discovered_corpus_document(&pool, discovered_id, corpus_id).await?;
                 mark_discovered_snapshotted(&pool, discovered_id, snapshot_id).await?;
-                metrics.documents_persisted += 1;
-                provider_metrics.documents_persisted += 1;
-                persisted_ids.insert(corpus_id);
                 if snapshot_new {
                     metrics.snapshots_created += 1;
                 } else {
@@ -631,6 +751,20 @@ pub async fn run_corpus_ingest(
                     metrics.entity_links += 1;
                 }
 
+                // Checkpoint only after the snapshot and entity link are in
+                // storage. A crash before ledger insertion may replay this one
+                // idempotent document, never a completed provider.
+                let recorded = if let Some(ctx) = resume {
+                    checkpoints::record_document(
+                        &pool,ctx.job_id,ctx.owner_token,&source,&doc.external_id,corpus_id,
+                    ).await?
+                } else { true };
+                if recorded {
+                    metrics.documents_persisted += 1;
+                    provider_metrics.documents_persisted += 1;
+                }
+                completed_docs.insert((source.clone(),doc.external_id.clone()));
+                persisted_ids.insert(corpus_id);
                 provider_remaining = provider_remaining.saturating_sub(1);
                 }
                 // Never continue hammering a provider after HTTP 429.
@@ -654,13 +788,28 @@ pub async fn run_corpus_ingest(
         }
         provider_metrics.elapsed_ms =
             started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
+        if provider_metrics.status == "healthy" {
+            if let Some(ctx) = resume {
+                checkpoints::complete_provider(
+                    &pool,ctx.job_id,ctx.owner_token,&source,
+                    connector.connector_version(),&serde_json::to_value(&provider_metrics)?,
+                ).await?;
+            }
+        }
         metrics.providers.insert(source, provider_metrics);
     }
 
+    let incomplete: Vec<String> = metrics.providers.iter()
+        .filter(|(_,p)| matches!(p.status.as_str(),"failed"|"partial"|"rate_limited"))
+        .map(|(source,_)|source.clone()).collect();
     let metrics_json = serde_json::to_value(&metrics)?;
-    finish_discovery_run(&pool, run_id, "completed", &metrics_json, None).await?;
+    finish_discovery_run(&pool, run_id,
+        if incomplete.is_empty(){"completed"}else{"partial"},
+        &metrics_json,None).await?;
 
     let report = serde_json::json!({
+        "incomplete_providers": incomplete,
+        "resumable_job_id": resume.map(|ctx|ctx.job_id),
         "run_id": run_id,
         "subject_entity_id": subject_id,
         "subject": subject_label,
@@ -960,6 +1109,26 @@ mod tests {
     }
 
     #[test]
+    fn resumed_provider_reuses_budget_reserved_for_completed_later_providers() {
+        let limits = CorpusIngestLimits {
+            per_provider: 15,
+            total: Some(20),
+            minimum_per_provider: 3,
+            provider_timeout: Duration::from_secs(1),
+        };
+        // Previously: with 17 saved docs and two later providers already
+        // finished, the original reservation logic would leave zero slots.
+        assert_eq!(provider_budget(limits,3,0,17),0);
+        assert_eq!(provider_budget_with_pending(limits,3,0,17),3);
+        // A previously persisted document counts against the provider's 15
+        // cap, not a second time against its remaining global budget.
+        let previous_count = 1u32;
+        let remaining = provider_budget_with_pending(limits,3,0,17)
+            .min(limits.per_provider.saturating_sub(previous_count));
+        assert_eq!(remaining,3);
+    }
+
+    #[test]
     fn provider_budget_divides_a_too_small_total_fairly() {
         let limits = CorpusIngestLimits {
             per_provider: 15,
@@ -1104,6 +1273,25 @@ mod tests {
             &cursor, &Some(DiscoveryCursor { token: Some("next".into()), offset: 40 }),
         ));
         assert!(!cursor_stalled(&None, &None));
+    }
+
+    #[test]
+    fn partial_provider_is_never_a_completed_checkpoint() {
+        for status in ["partial","failed","rate_limited"] {
+            assert_ne!(status,"healthy");
+        }
+    }
+
+    #[test]
+    fn skips_only_a_completed_provider_with_matching_version() {
+        let saved = checkpoints::CompletedProvider {
+            source_kind: "hal".into(),
+            connector_version: "hal:v1".into(),
+            metrics_json: serde_json::json!({"status":"healthy","documents_persisted":2}),
+        };
+        assert!(should_skip_completed_provider(Some(&saved),"hal:v1"));
+        assert!(!should_skip_completed_provider(Some(&saved),"hal:v2"));
+        assert!(!should_skip_completed_provider(None,"hal:v1"));
     }
 
     #[test]

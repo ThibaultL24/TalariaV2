@@ -20,6 +20,7 @@ pub mod places;
 pub mod migrate_repair;
 pub mod pool;
 pub mod ingest_jobs;
+pub mod ingest_provider_checkpoints;
 pub mod profiles;
 pub mod quality;
 pub mod sentences;
