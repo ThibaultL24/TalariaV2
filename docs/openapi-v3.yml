@@ -61,7 +61,7 @@ paths:
                         provider: {type: string}
                         attempt: {type: integer}
                         status: {type: string, enum: [running, healthy, partial, failed, rate_limited, not_configured]}
-                        error_kind: {type: [string, 'null'], enum: [timeout, rate_limit, cursor_stall, upstream, none, 'null']}
+                        error_kind: {type: [string, 'null'], enum: [timeout, rate_limit, cursor_stall, upstream, none, null]}
                         discover_calls: {type: integer}
                         fetch_calls: {type: integer}
                         documents_discovered: {type: integer}
