@@ -3,33 +3,30 @@ import { useCallback, useEffect, useState } from "react";
 import { searchEntities } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import type { SearchSuggestion } from "@/lib/schemas/entity";
-import { collapseToSinglePersonSuggestion } from "@/lib/search-suggestions";
+import { rankPersonSuggestions } from "@/lib/search-suggestions";
 import { useExplorerStore } from "@/stores/explorer-store";
 import { useProgressiveIngest } from "./use-progressive-ingest";
 
-function namesOverlap(left: string, right: string): boolean {
-  const fold = (value: string) =>
-    value.normalize("NFD").replace(/\p{M}/gu, "").trim().toLowerCase();
-  const a = fold(left);
-  const b = fold(right);
-  return a.includes(b) || b.includes(a);
+const SEARCH_DELAY_MS = 180;
+const SEARCH_TTL_MS = 30_000;
+const CACHE_LIMIT = 100;
+const suggestionCache = new Map<string, { expiry: number; items: SearchSuggestion[] }>();
+
+function getCached(query: string, locale: string): SearchSuggestion[] | undefined {
+  const key = `${locale}:${query.toLowerCase()}`;
+  const hit = suggestionCache.get(key);
+  if (hit && hit.expiry > Date.now()) return hit.items;
+  suggestionCache.delete(key);
+  return undefined;
 }
 
-function preferDenseLocalAlias(
-  item: SearchSuggestion,
-  items: SearchSuggestion[],
-): SearchSuggestion {
-  const denser = items
-    .filter(
-      (row) =>
-        row.known_locally &&
-        row.entity_id &&
-        row.label &&
-        (item.qid ? row.qid === item.qid : namesOverlap(row.label, item.label ?? "")) &&
-        (row.event_count ?? 0) >= (item.event_count ?? 0),
-    )
-    .sort((a, b) => (b.event_count ?? 0) - (a.event_count ?? 0))[0];
-  return denser ?? item;
+function cacheSuggestions(query: string, locale: string, items: SearchSuggestion[]) {
+  const key = `${locale}:${query.toLowerCase()}`;
+  suggestionCache.delete(key);
+  suggestionCache.set(key, { expiry: Date.now() + SEARCH_TTL_MS, items });
+  if (suggestionCache.size > CACHE_LIMIT) {
+    suggestionCache.delete(suggestionCache.keys().next().value!);
+  }
 }
 
 export interface UsePersonPickerOptions {
@@ -55,34 +52,44 @@ export function usePersonPicker(opts: UsePersonPickerOptions = {}) {
 
   useEffect(() => {
     const q = searchQuery.trim();
-    if (!q) {
+    if (q.length < 2) {
       setSuggestions([]);
       setSearchLoading(false);
       return;
     }
-    let cancelled = false;
+    const controller = new AbortController();
+    const cached = getCached(q, locale);
+    if (cached) {
+      setSuggestions(cached);
+      setSearchLoading(false);
+      return () => controller.abort();
+    }
     setSearchLoading(true);
     const timer = window.setTimeout(() => {
-      searchEntities(q, locale)
+      void searchEntities(q, locale, controller.signal)
         .then((items) => {
-          if (!cancelled) setSuggestions(collapseToSinglePersonSuggestion(q, items));
+          if (controller.signal.aborted) return;
+          const ranked = rankPersonSuggestions(q, items);
+          cacheSuggestions(q, locale, ranked);
+          setSuggestions(ranked);
         })
         .catch(() => {
-          if (!cancelled) setSuggestions([]);
+          if (!controller.signal.aborted) setSuggestions([]);
         })
         .finally(() => {
-          if (!cancelled) setSearchLoading(false);
+          if (!controller.signal.aborted) setSearchLoading(false);
         });
-    }, 220);
+    }, SEARCH_DELAY_MS);
     return () => {
-      cancelled = true;
       window.clearTimeout(timer);
+      controller.abort();
     };
   }, [searchQuery, locale]);
 
   const selectPerson = useCallback(
     (item: SearchSuggestion): string | null => {
-      const chosen = preferDenseLocalAlias(item, suggestions);
+      // Preserve the exact identity selected by the user, including homonyms.
+      const chosen = item;
       const localId =
         chosen.known_locally && chosen.entity_id ? chosen.entity_id : null;
 
@@ -107,7 +114,7 @@ export function usePersonPicker(opts: UsePersonPickerOptions = {}) {
       }
       return localId;
     },
-    [locale, setEntity, setPersonFilter, startLifeIngest, suggestions, progressiveIngest],
+    [locale, setEntity, setPersonFilter, startLifeIngest, progressiveIngest],
   );
 
   return {
