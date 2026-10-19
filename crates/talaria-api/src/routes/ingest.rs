@@ -221,21 +221,55 @@ fn parse_entity_id_from_report(report: &Value) -> Option<Uuid> {
         .and_then(|s| Uuid::parse_str(s).ok())
 }
 
+// Once a QID exists it is the identity. Identical labels are not sufficient
+// to deduplicate different people (e.g. Dumas père and Dumas fils).
+fn same_ingest_subject(existing: &IngestJob, subject: &str, qid: Option<&str>) -> bool {
+    match (existing.qid.as_deref(), qid) {
+        (Some(existing_qid), Some(qid)) => {
+            existing_qid.trim().eq_ignore_ascii_case(qid.trim())
+        }
+        (None, None) => existing.subject.trim().eq_ignore_ascii_case(subject.trim()),
+        _ => false,
+    }
+}
+
+fn active_job<'a>(
+    jobs: &'a HashMap<Uuid, IngestJob>,
+    lane: &str,
+    subject: &str,
+    qid: Option<&str>,
+) -> Option<&'a IngestJob> {
+    jobs.values().find(|job| {
+        job.lane == lane
+            && matches!(job.status.as_str(), "queued" | "running")
+            && same_ingest_subject(job, subject, qid)
+    })
+}
+
 async fn find_running_job(
     jobs: &IngestJobMap,
     lane: &str,
     subject: &str,
     qid: Option<&str>,
 ) -> Option<IngestJob> {
-    let jobs = jobs.lock().await;
-    jobs.values()
-        .find(|job| {
-            job.lane == lane
-                && matches!(job.status.as_str(), "queued" | "running")
-                && (qid.is_some_and(|q| job.qid.as_deref() == Some(q))
-                    || job.subject.eq_ignore_ascii_case(subject))
-        })
-        .cloned()
+    let guard = jobs.lock().await;
+    active_job(&guard, lane, subject, qid).cloned()
+}
+
+/// Final admission check and insertion are atomic under the same mutex.
+/// Early lookups before QID resolution remain an optional fast path only.
+async fn admit_ingest_job(jobs: &IngestJobMap, proposed: IngestJob) -> (IngestJob, bool) {
+    let mut guard = jobs.lock().await;
+    if let Some(existing) = active_job(
+        &guard,
+        &proposed.lane,
+        &proposed.subject,
+        proposed.qid.as_deref(),
+    ) {
+        return (existing.clone(), false);
+    }
+    guard.insert(proposed.id, proposed.clone());
+    (proposed, true)
 }
 
 fn job_started_response(job: &IngestJob, deduped: bool, extra: Value) -> Json<Value> {
@@ -375,7 +409,17 @@ async fn start_lane_ingest(
         },
         started_at: None,
     };
-    state.ingest_jobs.lock().await.insert(job_id, job);
+    let (admitted, created) = admit_ingest_job(&state.ingest_jobs, job).await;
+    if !created {
+        return Ok(job_started_response(
+            &admitted,
+            true,
+            json!({
+                "mode": lane,
+                "purpose": lane_purpose(lane),
+            }),
+        ));
+    }
 
     let config = state.config.clone();
     let jobs = state.ingest_jobs.clone();
@@ -746,6 +790,59 @@ mod tests {
             current_page: None,
             priority_counts: [0; 4],
         }
+    }
+
+    fn fixture_job(lane: &str, subject: &str, qid: Option<&str>) -> IngestJob {
+        IngestJob {
+            id: Uuid::new_v4(),
+            lane: lane.to_string(),
+            subject: subject.to_string(),
+            qid: qid.map(str::to_string),
+            status: "queued".into(),
+            entity_id: None,
+            report: None,
+            error: None,
+            progress: default_progress(),
+            started_at: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn concurrent_requests_admit_only_one_job_per_identity_and_lane() {
+        let jobs: IngestJobMap = Arc::new(Mutex::new(HashMap::new()));
+        let first = fixture_job(LANE_AGORA, "Alexandre Dumas", Some("Q1"));
+        let second = fixture_job(LANE_AGORA, "Alexandre Dumas", Some("Q1"));
+        let (a, b) = tokio::join!(
+            admit_ingest_job(&jobs, first),
+            admit_ingest_job(&jobs, second),
+        );
+        assert_ne!(a.1, b.1);
+        assert_eq!(a.0.id, b.0.id);
+        assert_eq!(jobs.lock().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn homonyms_and_separate_lanes_remain_distinct_jobs() {
+        let jobs: IngestJobMap = Arc::new(Mutex::new(HashMap::new()));
+        let father = admit_ingest_job(&jobs, fixture_job(LANE_EXPLORER, "Alexandre Dumas", Some("Q1"))).await;
+        let son = admit_ingest_job(&jobs, fixture_job(LANE_EXPLORER, "Alexandre Dumas", Some("Q2"))).await;
+        let agora = admit_ingest_job(&jobs, fixture_job(LANE_AGORA, "Alexandre Dumas", Some("Q1"))).await;
+        let no_qid = admit_ingest_job(&jobs, fixture_job(LANE_EXPLORER, "Alexandre Dumas", None)).await;
+        assert!(father.1 && son.1 && agora.1 && no_qid.1);
+        assert_eq!(jobs.lock().await.len(), 4);
+        assert_ne!(father.0.id, son.0.id);
+        assert_ne!(father.0.id, agora.0.id);
+    }
+
+    #[test]
+    fn unlabeled_qid_and_finished_jobs_do_not_dedupe() {
+        let queued = fixture_job(LANE_EXPLORER, "Alexandre Dumas", None);
+        assert!(same_ingest_subject(&queued, "  alexandre DUMAS  ", None));
+        assert!(!same_ingest_subject(&queued, "Alexandre Dumas", Some("Q1")));
+        let mut finished = fixture_job(LANE_AGORA, "Victor Hugo", Some("Q535"));
+        finished.status = "done".into();
+        let jobs = HashMap::from([(finished.id, finished)]);
+        assert!(active_job(&jobs, LANE_AGORA, "Victor Hugo", Some("Q535")).is_none());
     }
 
     #[test]
