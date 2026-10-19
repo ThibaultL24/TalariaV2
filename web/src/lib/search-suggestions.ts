@@ -1,65 +1,56 @@
-// web/src/lib/search-suggestions.ts
 import type { SearchSuggestion } from "@/lib/schemas/entity";
 
-const UUID_RE =
-  /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+const MAX_SUGGESTIONS = 5;
 
-/** Dev/test ingest rows — not a person the user should pick. */
 export function isPersonSearchNoise(label: string): boolean {
   const trimmed = label.trim();
-  if (trimmed.length < 2) return true;
-  if (/LotD/i.test(trimmed)) return true;
-  if (UUID_RE.test(trimmed)) return true;
-  return false;
+  return trimmed.length < 2 || /LotD/i.test(trimmed) || UUID_RE.test(trimmed);
 }
 
-function foldAccents(value: string): string {
-  return value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+function fold(value: string): string {
+  return value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim().replace(/\s+/g, " ");
 }
 
-function namesOverlap(query: string, label: string): boolean {
-  const q = foldAccents(query).trim();
-  const l = foldAccents(label).trim();
-  if (!q || !l) return false;
-  return l.includes(q) || q.includes(l);
+function relevance(query: string, label: string): number {
+  const name = fold(label);
+  if (name === query) return 0;
+  if (name.startsWith(query)) return 1;
+  if (name.includes(query)) return 2;
+  if (query.includes(name)) return 3;
+  return 4;
 }
 
-/** One row: locale-aware label, backed by the densest matching entity when we have one. */
-export function collapseToSinglePersonSuggestion(
+/** Preserve distinct Wikidata identities; never merge on label or event density. */
+export function rankPersonSuggestions(
   query: string,
   items: SearchSuggestion[],
+  limit = MAX_SUGGESTIONS,
 ): SearchSuggestion[] {
-  const label = query.trim();
-  if (label.length < 2) return [];
-
-  const usable = items.filter((item) => !isPersonSearchNoise(item.label));
-  const localMatches = usable
-    .filter((item) => item.known_locally && item.entity_id)
-    .sort((a, b) => (b.event_count ?? 0) - (a.event_count ?? 0));
-
-  const bestLocal =
-    localMatches.find((item) => namesOverlap(label, item.label)) ?? localMatches[0];
-
-  if (bestLocal) {
-    return [bestLocal];
+  const q = fold(query);
+  if (q.length < 2) return [];
+  const candidates = items
+    .filter((item) => !isPersonSearchNoise(item.label))
+    .sort((a, b) =>
+      relevance(q, a.label) - relevance(q, b.label) ||
+      Number(Boolean(b.known_locally)) - Number(Boolean(a.known_locally)) ||
+      (b.event_count ?? 0) - (a.event_count ?? 0) ||
+      a.label.localeCompare(b.label),
+    );
+  const seenQids = new Set<string>();
+  const seenIds = new Set<string>();
+  const out: SearchSuggestion[] = [];
+  for (const item of candidates) {
+    if ((item.qid && seenQids.has(item.qid)) ||
+        (item.entity_id && seenIds.has(item.entity_id))) continue;
+    if (item.qid) seenQids.add(item.qid);
+    if (item.entity_id) seenIds.add(item.entity_id);
+    out.push(item);
+    if (out.length >= Math.max(1, Math.min(MAX_SUGGESTIONS, limit))) break;
   }
-
-  const remote =
-    usable.find((item) => !item.known_locally && namesOverlap(label, item.label)) ??
-    usable.find((item) => !item.known_locally);
-
-  if (remote) {
-    return [remote];
-  }
-
-  return [
-    {
-      label,
-      known_locally: false,
-      entity_id: null,
-      qid: null,
-      description: null,
-      event_count: 0,
-    },
-  ];
+  // Retain the existing manual ingest path when neither database has the person.
+  return out.length ? out : [{
+    label: query.trim(), known_locally: false, entity_id: null,
+    qid: null, description: null, event_count: 0,
+  }];
 }

@@ -1,5 +1,5 @@
 // web/src/components/map/map-interactions.tsx
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { Map, MapMouseEvent } from "maplibre-gl";
 import { pickBestFeatureIdForEventDetail } from "@/lib/geo/feature-ids";
 import type { TalariaFeature } from "@/lib/schemas/geojson";
@@ -29,6 +29,8 @@ function existingHitLayers(map: Map): string[] {
 }
 
 export function MapInteractions({ map, onSelectEvent, onPreview }: MapInteractionsProps) {
+  const callbacks = useRef({ onSelectEvent, onPreview });
+  callbacks.current = { onSelectEvent, onPreview };
   useEffect(() => {
     if (!map) return;
 
@@ -40,30 +42,44 @@ export function MapInteractions({ map, onSelectEvent, onPreview }: MapInteractio
       const id = pickBestFeatureIdForEventDetail(
         hits.map((hit) => hit as unknown as TalariaFeature),
       );
-      if (id) onSelectEvent(id);
+      if (id) callbacks.current.onSelectEvent(id);
     };
 
     let frame = 0;
-    const publishPreview = (e: MapMouseEvent) => {
-      if (!onPreview) return;
+    let latestMove: MapMouseEvent | null = null;
+    let lastPreview: MapHoverPreview | null = null;
+
+    const publishPreview = (preview: MapHoverPreview | null) => {
+      if (
+        lastPreview?.id === preview?.id &&
+        lastPreview?.title === preview?.title &&
+        lastPreview?.when === preview?.when &&
+        lastPreview?.place === preview?.place
+      ) return;
+      lastPreview = preview;
+      callbacks.current.onPreview?.(preview);
+    };
+
+    const flushMove = () => {
+      frame = 0;
+      const move = latestMove;
+      latestMove = null;
+      if (!move) return;
       const layers = existingHitLayers(map);
-      if (layers.length === 0) {
-        onPreview(null);
-        return;
-      }
-      const hits = map.queryRenderedFeatures(e.point, { layers });
+      const hits = layers.length ? map.queryRenderedFeatures(move.point, { layers }) : [];
+      map.getCanvas().style.cursor = hits.length ? "pointer" : "";
       const feature = hits[0];
       if (!feature) {
-        onPreview(null);
+        publishPreview(null);
         return;
       }
       const properties = feature.properties ?? {};
       const title = typeof properties.title === "string" ? properties.title : "";
       if (!title) {
-        onPreview(null);
+        publishPreview(null);
         return;
       }
-      onPreview({
+      publishPreview({
         id: String(properties.id ?? feature.id ?? title),
         title,
         when: typedTimeLabel(properties.time),
@@ -71,37 +87,32 @@ export function MapInteractions({ map, onSelectEvent, onPreview }: MapInteractio
       });
     };
 
-    const setPointerCursor = (e: MapMouseEvent) => {
-      const layers = existingHitLayers(map);
-      if (layers.length === 0) {
-        map.getCanvas().style.cursor = "";
-        onPreview?.(null);
-        return;
-      }
-      const hits = map.queryRenderedFeatures(e.point, { layers });
-      map.getCanvas().style.cursor = hits.length ? "pointer" : "";
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => publishPreview(e));
+    const handleMove = (e: MapMouseEvent) => {
+      latestMove = e;
+      if (!frame) frame = requestAnimationFrame(flushMove);
     };
 
     const clearCursor = () => {
+      if (frame) cancelAnimationFrame(frame);
+      frame = 0;
+      latestMove = null;
       map.getCanvas().style.cursor = "";
-      onPreview?.(null);
+      publishPreview(null);
     };
 
     map.on("click", handleClick);
-    map.on("mousemove", setPointerCursor);
+    map.on("mousemove", handleMove);
     map.on("mouseout", clearCursor);
 
     return () => {
-      cancelAnimationFrame(frame);
+      if (frame) cancelAnimationFrame(frame);
       map.off("click", handleClick);
-      map.off("mousemove", setPointerCursor);
+      map.off("mousemove", handleMove);
       map.off("mouseout", clearCursor);
       map.getCanvas().style.cursor = "";
-      onPreview?.(null);
+      publishPreview(null);
     };
-  }, [map, onSelectEvent, onPreview]);
+  }, [map]);
 
   return null;
 }

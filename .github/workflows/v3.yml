@@ -30,6 +30,9 @@ jobs:
       - run: cargo test -p talaria-api routes::entities
       - run: cargo test -p talaria-api person_ingest::corpus_evidence
       - run: cargo test -p talaria-api routes::visit_wikidata
+      - run: cargo test -p talaria-store ingest_jobs
+      - run: cargo test -p talaria-api routes::ingest
+      - run: cargo test -p talaria-api corpus_ingest::tests
       - run: cargo test -p talaria-quality
       - run: cargo clippy -p talaria-ai -p talaria-api --all-targets
   web:

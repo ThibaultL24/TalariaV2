@@ -11,7 +11,17 @@ vi.mock("@/components/timeline/historical-timeline", () => ({
   ),
 }));
 vi.mock("./entity-map", () => ({
-  EntityMap: ({ mode = "desktop" }: { mode?: string }) => <div>Map surface {mode}</div>,
+  EntityMap: ({ mode = "desktop", selected, focus }: {
+    mode?: string;
+    selected?: string;
+    focus?: { eventId: string; lat: number; lon: number };
+  }) => (
+    <div>
+      Map surface {mode}
+      {selected ? <span>Selected marker {selected}</span> : null}
+      {focus ? <span>Map focus {focus.eventId}</span> : null}
+    </div>
+  ),
 }));
 vi.mock("@/components/detail/event-detail-card", () => ({
   EventDetailCard: ({ event }: { event: { title: string } }) => <div>{event.title}</div>,
@@ -78,7 +88,7 @@ test("timeline view uses the histography canvas without numeric filter fields", 
 test("Explorer opens an overview search without requesting an empty entity", async () => {
   open("/explorer");
   expect(screen.getByRole("heading", { name: "Istoria" })).toBeTruthy();
-  expect(screen.getByRole("searchbox")).toBeTruthy();
+  expect(screen.getByRole("combobox")).toBeTruthy();
   expect(screen.queryByText("Map surface")).toBeNull();
   expect(
     vi.mocked(fetch).mock.calls.every(([url]) => String(url).includes("/api/v1/auth/me") || String(url).includes("/api/v1/demo/roster")),
@@ -176,4 +186,27 @@ test("mobile timeline shell marks overflow-x hidden fullscreen stage", async () 
   open("/entities/person-1/timeline");
   await screen.findByText("Canvas surface fullscreen");
   expect(document.querySelector(".v3-shell--mobile-stage")).toBeTruthy();
+});
+
+test("deep-linked event focuses the map even when it is absent from the first timeline page", async () => {
+  vi.mocked(fetch).mockImplementation(async (input) => {
+    const url = String(input);
+    const value = url.includes("/overview?")
+      ? { entity: { id: "person-1", label: "Victor Hugo" }, stats: {}, time_bounds: { from: 1802, to: 1885 } }
+      : url.includes("/events/event-deep-link")
+        ? { event: { ...event, id: "event-deep-link", coordinates: { lat: 49.46, lon: -2.54 } } }
+        : { events: [], count: 0, pagination: { next_cursor: null } };
+    return { ok: true, json: async () => value } as Response;
+  });
+  open("/entities/person-1/map?event=event-deep-link");
+  await screen.findByText("Selected marker event-deep-link");
+  expect(await screen.findByText("Map focus event-deep-link")).toBeTruthy();
+  expect(await screen.findByText("A sourced occurrence")).toBeTruthy();
+});
+
+test("changing map date filters preserves the selected canonical event", async () => {
+  open("/entities/person-1/map?event=event-1");
+  await screen.findByText("A sourced occurrence");
+  fireEvent.change(screen.getByLabelText("From"), { target: { value: "1840" } });
+  expect(screen.getByRole("link", { name: "View in timeline" }).getAttribute("href")).toContain("event=event-1");
 });
