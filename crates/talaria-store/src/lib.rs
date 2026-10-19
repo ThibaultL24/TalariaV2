@@ -19,6 +19,7 @@ pub mod person_events;
 pub mod places;
 pub mod migrate_repair;
 pub mod pool;
+pub mod ingest_jobs;
 pub mod profiles;
 pub mod quality;
 pub mod sentences;

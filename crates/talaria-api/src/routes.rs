@@ -79,6 +79,7 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
     let ingest_jobs: IngestJobMap = Arc::new(Mutex::new(HashMap::new()));
 
     let offline_only = config.offline_only;
+    ingest::spawn_ingest_workers(pool.clone(), config.clone(), ingest_jobs.clone());
     let addr: SocketAddr = config.bind_addr.parse()?;
 
     let app = Router::new()
