@@ -154,6 +154,23 @@ fn provider_budget(
         .min(limits.per_provider)
 }
 
+/// On resume, future providers already checkpointed (or unavailable)
+/// must not receive a second budget reservation.
+fn provider_budget_with_pending(
+    limits: CorpusIngestLimits,
+    provider_count: usize,
+    future_pending: usize,
+    globally_persisted: usize,
+) -> u32 {
+    let Some(total) = limits.total else { return limits.per_provider };
+    let fair_minimum = limits.minimum_per_provider
+        .min(limits.per_provider)
+        .min(total / provider_count.max(1) as u32);
+    total.saturating_sub(globally_persisted as u32)
+        .saturating_sub(fair_minimum.saturating_mul(future_pending as u32))
+        .min(limits.per_provider)
+}
+
 fn connector_failure_status(error: &str) -> &'static str {
     if error.contains("429") || error.to_ascii_lowercase().contains("rate limit") {
         "rate_limited"
@@ -505,7 +522,7 @@ async fn run_corpus_ingest_inner(
     let fetch_concurrency = resolved_fetch_concurrency(
         std::env::var("TALARIA_CORPUS_FETCH_CONCURRENCY").ok().as_deref(),
     );
-    for (provider_index, kind) in kinds.into_iter().enumerate() {
+    for (provider_index, kind) in kinds.iter().cloned().enumerate() {
         let started = Instant::now();
         let source = kind.as_str().to_string();
         let mut provider_metrics = ProviderIngestMetrics {
@@ -552,9 +569,27 @@ async fn run_corpus_ingest_inner(
         // Let earlier providers use surplus capacity, but reserve the requested first
         // sample for every provider that has not run yet. If the total is smaller than
         // the requested aggregate minimum, divide it as evenly as possible.
-        let mut provider_remaining = provider_budget(
-            limits, provider_count, provider_index, persisted_ids.len(),
-        ).saturating_sub(*prior_counts.get(&source).unwrap_or(&0) as u32);
+        let budget = if resume.is_some() {
+            let pending_later = kinds.iter().skip(provider_index+1)
+                .filter(|future_kind| {
+                    let Some(registered) = registry.get(future_kind) else { return false };
+                    if !registered.implemented { return false }
+                    let Some(connector) = registered.connector.as_ref() else { return false };
+                    !should_skip_completed_provider(
+                        completed_providers.get(future_kind.as_str()),
+                        connector.connector_version(),
+                    )
+                }).count();
+            provider_budget_with_pending(
+                limits,provider_count,pending_later,persisted_ids.len(),
+            )
+        } else {
+            provider_budget(limits,provider_count,provider_index,persisted_ids.len())
+        };
+        let previously_saved = *prior_counts.get(&source).unwrap_or(&0) as u32;
+        let mut provider_remaining = budget.min(
+            limits.per_provider.saturating_sub(previously_saved),
+        );
         provider_metrics.status = "healthy".into();
         loop {
             // Make one discovery call even when the persistence budget is exhausted,
@@ -1071,6 +1106,26 @@ mod tests {
         assert_eq!(provider_budget(limits, 3, 0, 0), 14);
         assert_eq!(provider_budget(limits, 3, 1, 14), 3);
         assert_eq!(provider_budget(limits, 3, 2, 17), 3);
+    }
+
+    #[test]
+    fn resumed_provider_reuses_budget_reserved_for_completed_later_providers() {
+        let limits = CorpusIngestLimits {
+            per_provider: 15,
+            total: Some(20),
+            minimum_per_provider: 3,
+            provider_timeout: Duration::from_secs(1),
+        };
+        // Previously: with 17 saved docs and two later providers already
+        // finished, the original reservation logic would leave zero slots.
+        assert_eq!(provider_budget(limits,3,0,17),0);
+        assert_eq!(provider_budget_with_pending(limits,3,0,17),3);
+        // A previously persisted document counts against the provider's 15
+        // cap, not a second time against its remaining global budget.
+        let previous_count = 1u32;
+        let remaining = provider_budget_with_pending(limits,3,0,17)
+            .min(limits.per_provider.saturating_sub(previous_count));
+        assert_eq!(remaining,3);
     }
 
     #[test]
