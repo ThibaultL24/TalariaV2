@@ -100,6 +100,12 @@ pub async fn exhaust_stale(pool: &PgPool) -> Result<u64, sqlx::Error> {
 /// Claim one queued or expired-lease job with SKIP LOCKED for multi-replica safety.
 pub async fn claim_next(pool: &PgPool) -> Result<Option<DurableIngestJob>, sqlx::Error> {
     let token = Uuid::new_v4();
+    // UPDATE .. FROM exposes columns from both tables in RETURNING.
+    // Qualify every projected field with the updated-row alias.
+    let returning = JOB_COLUMNS.split(',')
+        .map(|column| format!("j.{column}"))
+        .collect::<Vec<_>>()
+        .join(",");
     let sql = format!(
         "WITH next AS (
            SELECT id FROM ingest_jobs
@@ -115,7 +121,7 @@ pub async fn claim_next(pool: &PgPool) -> Result<Option<DurableIngestJob>, sqlx:
            progress_json=CASE WHEN j.status='queued' THEN jsonb_build_object('phase','starting')
                               ELSE jsonb_build_object('phase','restarting') END
          FROM next WHERE j.id=next.id
-         RETURNING {JOB_COLUMNS}"
+         RETURNING {returning}"
     );
     sqlx::query_as::<_, DurableIngestJob>(&sql)
         .bind(MAX_INGEST_ATTEMPTS).bind(token).bind(LEASE_SECONDS)
