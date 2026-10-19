@@ -8,7 +8,7 @@ interface HistographyBrushProps {
   window: YearWindow;
   histogram: number[];
   onChange: (next: YearWindow) => void;
-  onCommit: () => void;
+  onCommit: (next: YearWindow) => void;
 }
 
 function clampWindow(window: YearWindow, bounds: YearWindow): YearWindow {
@@ -20,6 +20,8 @@ function clampWindow(window: YearWindow, bounds: YearWindow): YearWindow {
 
 export function HistographyBrush({ bounds, window, histogram, onChange, onCommit }: HistographyBrushProps) {
   const trackRef = useRef<HTMLDivElement>(null);
+  const latestWindow = useRef(window);
+  latestWindow.current = window;
   const drag = useRef<
     | { mode: "move" | "start" | "end"; originX: number; originWindow: YearWindow }
     | undefined
@@ -41,7 +43,7 @@ export function HistographyBrush({ bounds, window, histogram, onChange, onCommit
     event.preventDefault();
     event.stopPropagation();
     drag.current = { mode, originX: event.clientX, originWindow: window };
-    event.currentTarget.setPointerCapture(event.pointerId);
+    trackRef.current?.setPointerCapture(event.pointerId);
   }
 
   function onPointerMove(event: ReactPointerEvent<HTMLElement>) {
@@ -52,30 +54,32 @@ export function HistographyBrush({ bounds, window, histogram, onChange, onCommit
     const rect = track.getBoundingClientRect();
     const deltaYears = ((event.clientX - gesture.originX) / rect.width) * fullSpan;
     const [from, to] = gesture.originWindow;
-    if (gesture.mode === "move") {
-      onChange(clampWindow([from + deltaYears, to + deltaYears], bounds));
-      return;
-    }
-    if (gesture.mode === "start") {
-      onChange(clampWindow([from + deltaYears, to], bounds));
-      return;
-    }
-    onChange(clampWindow([from, to + deltaYears], bounds));
+    const next = gesture.mode === "move"
+      ? clampWindow([from + deltaYears, to + deltaYears], bounds)
+      : gesture.mode === "start"
+        ? clampWindow([Math.min(from + deltaYears, to - 1), to], bounds)
+        : clampWindow([from, Math.max(to + deltaYears, from + 1)], bounds);
+    latestWindow.current = next;
+    onChange(next);
   }
 
   function onPointerUp(event: ReactPointerEvent<HTMLElement>) {
     if (!drag.current) return;
     drag.current = undefined;
-    event.currentTarget.releasePointerCapture(event.pointerId);
-    onCommit();
+    if (trackRef.current?.hasPointerCapture(event.pointerId)) {
+      trackRef.current.releasePointerCapture(event.pointerId);
+    }
+    onCommit(latestWindow.current);
   }
 
   function jumpTo(event: ReactPointerEvent<HTMLDivElement>) {
-    if (drag.current) return;
+    if ((event.target as HTMLElement).closest(".v3-histo-window")) return;
     const center = yearsFromClientX(event.clientX);
     const span = window[1] - window[0];
-    onChange(clampWindow([center - span / 2, center + span / 2], bounds));
-    onCommit();
+    const next = clampWindow([center - span / 2, center + span / 2], bounds);
+    latestWindow.current = next;
+    onChange(next);
+    onCommit(next);
   }
 
   const leftPct = ((window[0] - bounds[0]) / fullSpan) * 100;
@@ -83,7 +87,15 @@ export function HistographyBrush({ bounds, window, histogram, onChange, onCommit
   const maxBin = Math.max(1, ...histogram);
 
   return (
-    <div className="v3-histo-brush" ref={trackRef} onClick={jumpTo} role="presentation">
+    <div
+      className="v3-histo-brush"
+      ref={trackRef}
+      onPointerDown={jumpTo}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      role="presentation"
+    >
       <div className="v3-histo-density" aria-hidden="true">
         {histogram.map((count, index) => (
           <span key={index} style={{ height: `${Math.max(4, (count / maxBin) * 100)}%` }} />
@@ -93,9 +105,6 @@ export function HistographyBrush({ bounds, window, histogram, onChange, onCommit
         className="v3-histo-window"
         style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
         onPointerDown={(e) => onPointerDown("move", e)}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
         role="slider"
         aria-label="Visible period"
         aria-valuemin={bounds[0]}

@@ -170,7 +170,7 @@ html:not([data-theme="dark"]) .historical-timeline {
 }
 
 .historical-timeline__footer {
-  padding: 12px 20px 20px;
+  padding: 8px 16px 12px;
   border-top: 1px solid var(--ht-border);
   background: var(--ht-footer-bg);
   z-index: 2;
@@ -373,6 +373,93 @@ html:not([data-theme="dark"]) .historical-timeline {
   outline-offset: 2px;
 }
 .historical-timeline__canvas-host canvas:active { cursor: grabbing; }
+.historical-timeline__axis {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 6px;
+  height: 18px;
+  pointer-events: none;
+  z-index: 3;
+}
+.historical-timeline__axis span {
+  position: absolute;
+  transform: translateX(-50%);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ht-fg-muted);
+}
+.historical-timeline__tooltip.is-below {
+  transform: translate(-50%, 16px);
+}
+.historical-timeline__tooltip-meta {
+  padding: 0 14px 12px;
+  font-size: 11px;
+  color: var(--ht-fg-muted);
+}
+.historical-timeline__card {
+  position: absolute;
+  top: 52px;
+  right: 18px;
+  width: min(260px, calc(100% - 36px));
+  padding: 14px 16px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--ht-tooltip-border);
+  background: var(--ht-tooltip-bg);
+  box-shadow: 0 18px 36px color-mix(in srgb, #000 16%, transparent);
+  z-index: 8;
+  animation: historical-timeline-card-in 240ms ease;
+}
+.historical-timeline__card h3 {
+  margin: 4px 0 6px;
+  font-family: var(--font-display);
+  font-size: 18px;
+  line-height: 1.25;
+}
+.historical-timeline__card p {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--ht-fg-muted);
+}
+.historical-timeline__card-year {
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+.historical-timeline__card button {
+  margin-top: 8px;
+  border: 1px solid var(--ht-control-border);
+  background: var(--ht-control-bg);
+  color: var(--ht-fg);
+  border-radius: var(--radius-pill);
+  padding: 6px 12px;
+  font-size: 12px;
+}
+.historical-timeline__period {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--ht-fg-muted);
+}
+.v3-histo-handle {
+  touch-action: none;
+}
+.v3-histo-handle::after {
+  content: "";
+  position: absolute;
+  top: 16px;
+  bottom: 16px;
+  left: 4px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--ht-brush-window);
+}
+@keyframes historical-timeline-card-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .historical-timeline__card { animation: none; }
+}
 @media (prefers-reduced-motion: reduce) {
   .historical-timeline__categories button,
   .historical-timeline__phases button { transition: none; }

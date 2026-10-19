@@ -1,5 +1,6 @@
 // web/src/components/timeline/historical-timeline.test.tsx
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { TimelineEvent } from "@/lib/api";
 import { HistoricalTimeline } from "./historical-timeline";
@@ -10,7 +11,9 @@ vi.mock("pixi.js", () => {
     stage = { addChild() {}, on() {}, eventMode: "", hitArea: null };
     screen = { width: 320, height: 240 };
     ticker = { add() {}, remove() {} };
-    init = async () => {};
+    init = async () => {
+      await Promise.resolve();
+    };
     destroy() {}
   }
   class Container {
@@ -85,6 +88,49 @@ test("desktop timeline keeps the category list in the layout", () => {
   expect(document.querySelector(".historical-timeline")?.getAttribute("data-mode")).toBe("desktop");
   expect(screen.queryByRole("button", { name: "Categories" })).toBeNull();
   expect(screen.getByRole("complementary", { name: "Event categories" })).toBeTruthy();
+});
+
+test("opening third publishes the narrowed window", async () => {
+  const onZoom = vi.fn();
+  render(
+    <HistoricalTimeline
+      events={[event]}
+      bounds={[1800, 1830]}
+      from={1800}
+      to={1830}
+      mode="desktop"
+      onSelect={() => {}}
+      onZoom={onZoom}
+    />,
+  );
+  await Promise.resolve();
+  await Promise.resolve();
+  fireEvent.click(screen.getByRole("button", { name: "Opening third" }));
+  expect(onZoom).toHaveBeenCalledWith(1800, 1810);
+});
+
+test("a category click still lays out after StrictMode remounts Pixi", async () => {
+  const battle: TimelineEvent = { ...event, id: "battle-1", event_type: "battle", title: "A battle" };
+  render(
+    <StrictMode>
+      <HistoricalTimeline
+        events={[event, battle]}
+        bounds={[1802, 1885]}
+        from={1802}
+        to={1885}
+        mode="desktop"
+        onSelect={() => {}}
+        onZoom={() => {}}
+      />
+    </StrictMode>,
+  );
+  await Promise.resolve();
+  await Promise.resolve();
+  const host = document.querySelector(".historical-timeline__canvas-host") as HTMLElement;
+  const before = host.dataset.placed;
+  fireEvent.click(screen.getByRole("button", { name: /Battles/ }));
+  expect(host.dataset.placed).not.toBe(before);
+  expect(screen.getByRole("button", { name: /Battles/ }).className).toContain("is-active");
 });
 
 test("fullscreen timeline opens and closes the category drawer", () => {

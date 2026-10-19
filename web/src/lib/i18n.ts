@@ -32,6 +32,14 @@ export interface AppMessages {
   readPassageIn: (language: string) => string;
   visiblePeriod: (from: string, to: string) => string;
   lifeInTime: string;
+  timelinePhaseFull: string;
+  timelinePhaseOpening: string;
+  timelinePhaseMiddle: string;
+  timelinePhaseClosing: string;
+  timelineOpenDetail: string;
+  timelineApproximate: string;
+  timelineAllMoments: string;
+  timelinePhases: string;
   istoriaPromise: string;
   poreiaPromise: string;
   openPoreia: string;
@@ -315,6 +323,14 @@ const EN: AppMessages = {
   readPassageIn: (language) => `Read the passage · ${language}`,
   visiblePeriod: (from, to) => `Visible period: ${from} – ${to}`,
   lifeInTime: "LIFE IN TIME",
+  timelinePhaseFull: "Full span",
+  timelinePhaseOpening: "Opening third",
+  timelinePhaseMiddle: "Middle third",
+  timelinePhaseClosing: "Closing third",
+  timelineOpenDetail: "Open the record",
+  timelineApproximate: "Approximate or uncertain date",
+  timelineAllMoments: "All moments",
+  timelinePhases: "Time spans",
   istoriaPromise: "Historical inquiry: facts, timeline and sources.",
   poreiaPromise: "The cultural journey: places, monuments and routes.",
   openPoreia: "Discover their places in Poreia →",
@@ -617,6 +633,14 @@ const FR: AppMessages = {
   readPassageIn: (language) => `Lire le passage · ${language}`,
   visiblePeriod: (from, to) => `Période affichée : ${from} – ${to}`,
   lifeInTime: "UNE VIE DANS LE TEMPS",
+  timelinePhaseFull: "Toute la période",
+  timelinePhaseOpening: "Premier tiers",
+  timelinePhaseMiddle: "Tiers médian",
+  timelinePhaseClosing: "Dernier tiers",
+  timelineOpenDetail: "Ouvrir la fiche",
+  timelineApproximate: "Date approximative ou incertaine",
+  timelineAllMoments: "Tous les moments",
+  timelinePhases: "Périodes",
   istoriaPromise: "L’enquête historique : faits, chronologie et sources.",
   poreiaPromise: "Le voyage culturel : lieux, monuments et parcours.",
   openPoreia: "Découvrir ses lieux dans Poreia →",

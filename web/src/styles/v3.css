@@ -210,8 +210,11 @@
 .v3-shell--immersive .historical-timeline__body {
   flex: 1;
   min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
 }
 .v3-shell--immersive .historical-timeline__canvas-host {
+  flex: 1;
+  height: 100%;
   min-height: 0;
 }
 .v3-load-more {
