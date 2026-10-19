@@ -1,6 +1,6 @@
 // web/src/components/timeline/historical-timeline.test.tsx
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, expect, test, vi, waitFor } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 const pixiLifecycle = vi.hoisted(() => ({ init: vi.fn(), destroy: vi.fn() }));
 import type { TimelineEvent } from "@/lib/api";

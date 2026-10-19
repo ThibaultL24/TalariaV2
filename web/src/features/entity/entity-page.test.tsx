@@ -78,7 +78,7 @@ test("timeline view uses the histography canvas without numeric filter fields", 
 test("Explorer opens an overview search without requesting an empty entity", async () => {
   open("/explorer");
   expect(screen.getByRole("heading", { name: "Istoria" })).toBeTruthy();
-  expect(screen.getByRole("searchbox")).toBeTruthy();
+  expect(screen.getByRole("combobox")).toBeTruthy();
   expect(screen.queryByText("Map surface")).toBeNull();
   expect(
     vi.mocked(fetch).mock.calls.every(([url]) => String(url).includes("/api/v1/auth/me") || String(url).includes("/api/v1/demo/roster")),
