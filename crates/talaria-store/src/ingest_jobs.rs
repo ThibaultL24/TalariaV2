@@ -109,7 +109,8 @@ pub async fn claim_next(pool: &PgPool) -> Result<Option<DurableIngestJob>, sqlx:
     let sql = format!(
         "WITH next AS (
            SELECT id FROM ingest_jobs
-           WHERE (status='queued' OR (status='running' AND lease_until < now()))
+           WHERE ((status='queued' AND (next_retry_at IS NULL OR next_retry_at<=now()))
+                  OR (status='running' AND lease_until < now()))
              AND attempts < $1
            ORDER BY created_at,id
            FOR UPDATE SKIP LOCKED LIMIT 1
@@ -117,6 +118,7 @@ pub async fn claim_next(pool: &PgPool) -> Result<Option<DurableIngestJob>, sqlx:
          UPDATE ingest_jobs AS j SET
            status='running', owner_token=$2,
            lease_until=now()+($3 * interval '1 second'), attempts=j.attempts+1,
+           next_retry_at=NULL,
            started_at=coalesce(j.started_at,now()), updated_at=now(),
            progress_json=CASE WHEN j.status='queued' THEN jsonb_build_object('phase','starting')
                               ELSE jsonb_build_object('phase','restarting') END
@@ -158,6 +160,25 @@ pub async fn finish(
            AND lease_until > now()"
     ).bind(id).bind(token).bind(status).bind(entity_id).bind(progress)
       .bind(report).bind(error).execute(pool).await?;
+    Ok(result.rows_affected()==1)
+}
+
+/// Retry an incomplete corpus collection after a bounded backoff, preserving
+/// the same job ID and its per-provider checkpoints. The current owner alone
+/// may requeue. The third attempt ends terminally through regular finish().
+pub async fn retry_incomplete_providers(
+    pool: &PgPool, id: Uuid, token: Uuid, error: &str, attempts: i32,
+) -> Result<bool, sqlx::Error> {
+    if attempts >= MAX_INGEST_ATTEMPTS { return Ok(false); }
+    let delay_seconds = 30_i32.saturating_mul(2_i32.pow((attempts - 1).clamp(0,2) as u32));
+    let result=sqlx::query(
+        "UPDATE ingest_jobs SET status='queued',owner_token=NULL,lease_until=NULL,
+           next_retry_at=now()+($4 * interval '1 second'),
+           error=$3,updated_at=now(),
+           progress_json=jsonb_build_object('phase','waiting_provider_retry')
+         WHERE id=$1 AND owner_token=$2 AND status='running' AND lease_until>now()"
+    ).bind(id).bind(token).bind(error).bind(delay_seconds)
+      .execute(pool).await?;
     Ok(result.rows_affected()==1)
 }
 
