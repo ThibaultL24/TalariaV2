@@ -1,7 +1,7 @@
 name: Talaria V3
 on:
   push:
-    branches: [V3]
+    branches: [V3, main]
   pull_request:
     branches: [main]
 jobs:
@@ -28,6 +28,8 @@ jobs:
       - run: cargo test -p talaria-api routes::documents
       - run: cargo test -p talaria-api routes::entity_views
       - run: cargo test -p talaria-api routes::entities
+      - run: cargo test -p talaria-api person_ingest::corpus_evidence
+      - run: cargo test -p talaria-api routes::visit_wikidata
       - run: cargo test -p talaria-quality
       - run: cargo clippy -p talaria-ai -p talaria-api --all-targets
   web:
