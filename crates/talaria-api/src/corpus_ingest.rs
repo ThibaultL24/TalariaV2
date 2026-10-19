@@ -11,6 +11,7 @@ use tokio::task::JoinSet;
 
 use talaria_core::AppConfig;
 use talaria_store::ingest_provider_checkpoints as checkpoints;
+use talaria_store::ingest_provider_metrics as observability;
 use talaria_sources::connectors::{
     default_registry_with_corpus, normalize_hal_doc, BnfConfig, BnfConnector, CorpusConnectors,
     EuropeanaConfig, EuropeanaConnector, HalConnector, InternetArchiveConfig,
@@ -111,6 +112,7 @@ pub struct ProviderIngestMetrics {
     pub connector_errors: u64,
     pub fetch_calls: u64,
     pub fetch_timeouts: u64,
+    pub entity_links: u64,
     pub elapsed_ms: u64,
     pub last_error: Option<String>,
 }
@@ -233,6 +235,7 @@ async fn fetch_document_batch(
 pub struct CorpusResume {
     pub job_id: Uuid,
     pub owner_token: Uuid,
+    pub attempt: i32,
 }
 
 /// Legacy CLI/test callers remain independent from job checkpoint state.
@@ -240,6 +243,54 @@ fn should_skip_completed_provider(
     saved: Option<&checkpoints::CompletedProvider>, connector_version: &str,
 ) -> bool {
     saved.is_some_and(|provider| provider.connector_version == connector_version)
+}
+
+fn safe_provider_error_kind(metrics: &ProviderIngestMetrics) -> Option<&'static str> {
+    match metrics.status.as_str() {
+        "rate_limited" => Some("rate_limit"),
+        "failed" | "partial" if metrics.fetch_timeouts > 0
+            || metrics.last_error.as_deref().is_some_and(|text|text.contains("timed out")) =>
+            Some("timeout"),
+        "failed" | "partial" if metrics.last_error.as_deref()
+            .is_some_and(|text|text.contains("cursor did not advance")) =>
+            Some("cursor_stall"),
+        "failed" | "partial" => Some("upstream"),
+        _ => None,
+    }
+}
+
+async fn finish_provider_observation(
+    pool: &sqlx::PgPool, ctx: Option<CorpusResume>,
+    source: &str, provider: &ProviderIngestMetrics,
+) -> anyhow::Result<()> {
+    let Some(ctx) = ctx else { return Ok(()) };
+    observability::finish_attempt(
+        pool, ctx.job_id,ctx.owner_token,ctx.attempt,source,
+        &provider.status,safe_provider_error_kind(provider),
+        &observability::AttemptCounts {
+            discover_calls:provider.discover_calls as i64,
+            fetch_calls:provider.fetch_calls as i64,
+            discovered:provider.documents_discovered as i64,
+            persisted:provider.documents_persisted as i64,
+            skipped:provider.documents_skipped as i64,
+            matched:provider.entity_links as i64,
+            timeouts:provider.fetch_timeouts as i64,
+            errors:provider.connector_errors as i64,
+            elapsed_ms:provider.elapsed_ms as i64,
+        },
+    ).await?;
+    Ok(())
+}
+
+async fn begin_provider_observation(
+    pool: &sqlx::PgPool, ctx: Option<CorpusResume>, source: &str,
+) -> anyhow::Result<()> {
+    if let Some(ctx) = ctx {
+        observability::begin_attempt(
+            pool,ctx.job_id,ctx.owner_token,ctx.attempt,source
+        ).await?;
+    }
+    Ok(())
 }
 
 pub async fn run_corpus_ingest(
@@ -530,16 +581,22 @@ async fn run_corpus_ingest_inner(
             ..ProviderIngestMetrics::default()
         };
         let Some(reg) = registry.get(&kind) else {
+            begin_provider_observation(&pool,resume,&source).await?;
+            finish_provider_observation(&pool,resume,&source,&provider_metrics).await?;
             metrics.providers.insert(source, provider_metrics);
             continue;
         };
         let Some(connector) = &reg.connector else {
+            begin_provider_observation(&pool,resume,&source).await?;
+            finish_provider_observation(&pool,resume,&source,&provider_metrics).await?;
             metrics.providers.insert(source, provider_metrics);
             continue;
         };
         provider_metrics.connector_version = Some(connector.connector_version().to_string());
         if !reg.implemented {
             tracing::warn!(source = kind.as_str(), "connector not implemented; skip");
+            begin_provider_observation(&pool,resume,&source).await?;
+            finish_provider_observation(&pool,resume,&source,&provider_metrics).await?;
             metrics.providers.insert(source, provider_metrics);
             continue;
         }
@@ -555,6 +612,8 @@ async fn run_corpus_ingest_inner(
                 continue;
             }
         }
+        // Do not create a new attempt row for a checkpointed, unchanged provider.
+        begin_provider_observation(&pool,resume,&source).await?;
         // A previously interrupted provider retains only successful documents
         // in its ledger; the rest of its discovery is repeated.
         provider_metrics.documents_persisted = *prior_counts.get(&source).unwrap_or(&0);
@@ -749,6 +808,7 @@ async fn run_corpus_ingest_inner(
                     )
                     .await?;
                     metrics.entity_links += 1;
+                    provider_metrics.entity_links += 1;
                 }
 
                 // Checkpoint only after the snapshot and entity link are in
@@ -796,6 +856,7 @@ async fn run_corpus_ingest_inner(
                 ).await?;
             }
         }
+        finish_provider_observation(&pool,resume,&source,&provider_metrics).await?;
         metrics.providers.insert(source, provider_metrics);
     }
 
@@ -1292,6 +1353,21 @@ mod tests {
         assert!(should_skip_completed_provider(Some(&saved),"hal:v1"));
         assert!(!should_skip_completed_provider(Some(&saved),"hal:v2"));
         assert!(!should_skip_completed_provider(None,"hal:v1"));
+    }
+
+    #[test]
+    fn provider_observation_classifies_errors_without_persisting_raw_upstream_text() {
+        let mut metric=ProviderIngestMetrics { status:"rate_limited".into(),
+            last_error:Some("HTTP 429 secret-token".into()),..Default::default() };
+        assert_eq!(safe_provider_error_kind(&metric),Some("rate_limit"));
+        metric.status="partial".into();
+        metric.fetch_timeouts=1;
+        assert_eq!(safe_provider_error_kind(&metric),Some("timeout"));
+        metric.fetch_timeouts=0;
+        metric.last_error=Some("discovery cursor did not advance".into());
+        assert_eq!(safe_provider_error_kind(&metric),Some("cursor_stall"));
+        metric.status="healthy".into();
+        assert_eq!(safe_provider_error_kind(&metric),None);
     }
 
     #[test]
