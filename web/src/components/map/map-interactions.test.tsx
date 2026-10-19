@@ -5,7 +5,7 @@ import { MapInteractions } from "./map-interactions";
 
 describe("MapInteractions", () => {
   it("queries features only once per animation frame and avoids repeat preview renders", () => {
-    const handlers = new Map<string, (e: MapMouseEvent) => void>();
+    const handlers = new globalThis.Map<string, (e: MapMouseEvent) => void>();
     const callbacks: FrameRequestCallback[] = [];
     vi.stubGlobal("requestAnimationFrame", (fn: FrameRequestCallback) => {
       callbacks.push(fn);
