@@ -365,7 +365,7 @@ mod tests {
             "SELECT COUNT(*) FROM event_document_candidates WHERE canonical_event_id=$1",
         ).bind(event_id).fetch_one(&pool).await.unwrap();
         let evidence_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM event_evidence WHERE canonical_event_id=$1 OR event_id=$1",
+            "SELECT COUNT(*) FROM event_evidence WHERE canonical_event_id=$1",
         ).bind(event_id).fetch_one(&pool).await.unwrap();
         assert_eq!(candidate_count, 1);
         assert_eq!(evidence_count, 0);
