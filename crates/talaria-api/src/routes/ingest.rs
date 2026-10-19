@@ -352,6 +352,40 @@ async fn start_lane_ingest(
             Json(json!({ "error": "subject_too_short" })),
         ));
     }
+    if subject.chars().count() > 240 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "subject_too_long" })),
+        ));
+    }
+    // Persist effective limits and locale rather than environment-dependent
+    // defaults so an interrupted job can be replayed deterministically.
+    let mut body = body;
+    body.subject = subject.clone();
+    body.qid = body.qid.as_deref().map(str::trim)
+        .filter(|qid| !qid.is_empty())
+        .map(str::to_ascii_uppercase);
+    if let Some(qid) = &body.qid {
+        if qid.len() > 24 || !qid.starts_with('Q')
+            || !qid[1..].chars().all(|ch| ch.is_ascii_digit())
+            || qid.len() < 2
+        {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "invalid_wikidata_qid" })),
+            ));
+        }
+    }
+    body.wiki_lang = Some(resolve_wiki_lang(body.wiki_lang.as_deref(), &state.config.wiki_lang));
+    body.max_documents = Some(resolve_max_documents(body.max_documents));
+    body.corpus_limit_per_provider = Some(
+        body.corpus_limit_per_provider.or(body.corpus_limit)
+            .filter(|value| *value > 0).unwrap_or(15).min(250),
+    );
+    body.corpus_limit_total = Some(
+        body.corpus_limit_total.filter(|value| *value > 0).unwrap_or(120).min(1500),
+    );
+    body.minimum_per_provider = Some(body.minimum_per_provider.unwrap_or(3).min(30));
     if body.live && state.offline_only {
         return Err((
             StatusCode::FORBIDDEN,
