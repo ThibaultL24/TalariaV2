@@ -67,6 +67,7 @@ export function IstoriaPage() {
   const [sourceNext, setSourceNext] = useState<string | null>(null);
   const [sourceLoading, setSourceLoading] = useState(false);
   const [sourceError, setSourceError] = useState("");
+  const sourceEntityRef = useRef<string | null>(null);
   const [timelineZoomToken, setTimelineZoomToken] = useState(0);
   const [timelineZoomEventId, setTimelineZoomEventId] = useState<string | undefined>();
   const provider = params.get("provider") ?? "";
@@ -106,8 +107,12 @@ export function IstoriaPage() {
   useEffect(() => {
     if (!entityId || view !== "sources") return;
     const controller = new AbortController();
+    if (sourceEntityRef.current !== entityId) {
+      // Reset only when changing personality, not when filtering providers.
+      sourceEntityRef.current = entityId;
+      setProviders([]);
+    }
     setSources([]);
-    setProviders([]);
     setSourceNext(null);
     setSourceLoading(true);
     setSourceError("");

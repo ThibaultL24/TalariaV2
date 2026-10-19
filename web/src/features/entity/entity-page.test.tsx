@@ -193,14 +193,14 @@ test("deep-linked event focuses the map even when it is absent from the first ti
     const url = String(input);
     const value = url.includes("/overview?")
       ? { entity: { id: "person-1", label: "Victor Hugo" }, stats: {}, time_bounds: { from: 1802, to: 1885 } }
-      : url.includes("/events/event-1")
-        ? { event: { ...event, coordinates: { lat: 49.46, lon: -2.54 } } }
+      : url.includes("/events/event-deep-link")
+        ? { event: { ...event, id: "event-deep-link", coordinates: { lat: 49.46, lon: -2.54 } } }
         : { events: [], count: 0, pagination: { next_cursor: null } };
     return { ok: true, json: async () => value } as Response;
   });
-  open("/entities/person-1/map?event=event-1");
-  await screen.findByText("Selected marker event-1");
-  expect(await screen.findByText("Map focus event-1")).toBeTruthy();
+  open("/entities/person-1/map?event=event-deep-link");
+  await screen.findByText("Selected marker event-deep-link");
+  expect(await screen.findByText("Map focus event-deep-link")).toBeTruthy();
   expect(await screen.findByText("A sourced occurrence")).toBeTruthy();
 });
 

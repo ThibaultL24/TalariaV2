@@ -35,7 +35,7 @@ describe("useEntityTimeline", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(result.current.hasMore).toBe(true);
     await act(async () => { await result.current.loadMore(); });
-    expect(result.current.events.map((event) => event.id)).toEqual(["first", "second", "third"]);
+    await waitFor(() => expect(result.current.events.map((event) => event.id)).toEqual(["first", "second", "third"]));
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
