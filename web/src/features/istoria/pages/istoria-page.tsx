@@ -1,5 +1,5 @@
 // web/src/features/istoria/pages/istoria-page.tsx
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { EventDetailCard } from "@/components/detail/event-detail-card";
@@ -9,6 +9,7 @@ import { EntitySearchBox } from "@/components/search/entity-search-box";
 import { EventMomentSearch } from "@/components/search/event-moment-search";
 import { databaseTabs, providerLabel } from "@/features/entity/database-tabs";
 import { useMediaQuery } from "@/hooks/use-media-query";
+import { useEntityTimeline } from "@/hooks/use-entity-timeline";
 import {
   fetchEntityBibliography,
   fetchEventDetail,
@@ -16,7 +17,7 @@ import {
   type TimelineEvent,
 } from "@/lib/api";
 import { COMPACT_VIEWPORT_MQ } from "@/lib/breakpoints";
-import { getEntityView, type EntityOverview, type Page } from "@/lib/entity-views";
+import { getEntityView, type EntityOverview } from "@/lib/entity-views";
 import { useI18n } from "@/lib/i18n";
 
 const EntityMap = lazy(() => import("@/features/entity/entity-map").then((mod) => ({ default: mod.EntityMap })));
@@ -61,17 +62,14 @@ export function IstoriaPage() {
   const immersive = Boolean(entityId) && (view === "timeline" || view === "map");
   const mobileStage = immersive && compactViewport;
   const [toolsOpen, setToolsOpen] = useState(false);
-  const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [sources, setSources] = useState<BibliographyItem[]>([]);
   const [providers, setProviders] = useState<{ name: string; count: number }[]>([]);
-  const [next, setNext] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [selected, setSelected] = useState<TimelineEvent>();
-  const [mapFocus, setMapFocus] = useState<{ eventId: string; lat: number; lon: number } | undefined>();
+  const [sourceNext, setSourceNext] = useState<string | null>(null);
+  const [sourceLoading, setSourceLoading] = useState(false);
+  const [sourceError, setSourceError] = useState("");
+  const sourceEntityRef = useRef<string | null>(null);
   const [timelineZoomToken, setTimelineZoomToken] = useState(0);
   const [timelineZoomEventId, setTimelineZoomEventId] = useState<string | undefined>();
-  const focusedEvent = useRef<string | undefined>(undefined);
   const provider = params.get("provider") ?? "";
   const filterString = timelineFilters(params, view);
   const activeRequest = useRef("");
@@ -81,141 +79,116 @@ export function IstoriaPage() {
   const from = Number(params.get("from") ?? overview?.time_bounds.from ?? 0);
   const to = Number(params.get("to") ?? overview?.time_bounds.to ?? from + 1);
 
+  const timeline = useEntityTimeline(entityId, filterString, locale, needsTimeline, revision);
+  const events = timeline.events;
+  const next = view === "sources" ? sourceNext : (timeline.hasMore ? "next" : null);
+  const loading = view === "sources" ? sourceLoading : (needsTimeline && timeline.loading);
+  const eventDetailQuery = useQuery({
+    queryKey: ["istoria", "event", entityId, eventId, locale],
+    enabled: Boolean(entityId && eventId),
+    retry: false,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    queryFn: ({ signal }) => fetchEventDetail(eventId!, locale, signal),
+  });
+  const selected = eventDetailQuery.data?.event?.entity_id === entityId
+    ? eventDetailQuery.data.event
+    : undefined;
+
+  // The URL event ID is the shared selection across timeline, map and details.
+  // The detail API can resolve deep links absent from the current timeline page.
+  const mapFocus = useMemo(() => {
+    if (view !== "map" || !eventId) return undefined;
+    const coords = selected?.coordinates ?? events.find((item) => item.id === eventId)?.coordinates;
+    if (!coords || !Number.isFinite(coords.lat) || !Number.isFinite(coords.lon)) return undefined;
+    return { eventId, lat: coords.lat, lon: coords.lon };
+  }, [view, eventId, selected, events]);
+
   useEffect(() => {
+    if (!entityId || view !== "sources") return;
     const controller = new AbortController();
-    setEvents([]);
-    setSources([]);
-    setNext(null);
-    setLoading(Boolean(entityId) && (needsTimeline || view === "sources"));
-    setError("");
-    if (!entityId || (!needsTimeline && view !== "sources")) {
-      setLoading(false);
-      return;
+    if (sourceEntityRef.current !== entityId) {
+      // Reset only when changing personality, not when filtering providers.
+      sourceEntityRef.current = entityId;
+      setProviders([]);
     }
-    const request = async () => {
-      if (view === "sources") {
-        const result = await fetchEntityBibliography(entityId, {
-          limit: 100,
-          providers: provider,
-          signal: controller.signal,
-        });
+    setSources([]);
+    setSourceNext(null);
+    setSourceLoading(true);
+    setSourceError("");
+    void fetchEntityBibliography(entityId, {
+      limit: 100,
+      providers: provider,
+      signal: controller.signal,
+    })
+      .then((result) => {
         if (controller.signal.aborted) return;
         setProviders(result.providers ?? []);
         setSources(result.items);
-        setNext(result.next_cursor ?? null);
-        return;
-      }
-      const query = new URLSearchParams(filterString);
-      query.set("limit", "200");
-      query.set("resolution", "detail");
-      query.set("lang", locale);
-      const collected: TimelineEvent[] = [];
-      do {
-        const result = await getEntityView<Page>(entityId, "timeline", query, controller.signal);
-        if (controller.signal.aborted) return;
-        collected.push(...result.events);
-        setEvents([...collected]);
-        setNext(result.pagination.next_cursor);
-        if (!result.pagination.next_cursor) break;
-        query.set("cursor", result.pagination.next_cursor);
-      } while (!controller.signal.aborted);
-    };
-    void request()
+        setSourceNext(result.next_cursor ?? null);
+      })
       .catch((reason: unknown) => {
-        if (!controller.signal.aborted) setError(String(reason));
+        if (!controller.signal.aborted) setSourceError(String(reason));
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        if (!controller.signal.aborted) setSourceLoading(false);
       });
     return () => controller.abort();
-  }, [entityId, view, filterString, provider, revision, needsTimeline, locale]);
+  }, [entityId, view, provider, revision]);
 
-  useEffect(() => {
-    let cancelled = false;
-    setSelected(undefined);
-    if (!eventId) return;
-    void fetchEventDetail(eventId, locale)
-      .then((result) => {
-        if (!cancelled && result.event?.entity_id === entityId) setSelected(result.event);
-      })
-      .catch((reason: unknown) => {
-        if (!cancelled) setError(String(reason));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [eventId, entityId, locale]);
-
-  useEffect(() => {
-    if (view !== "map" || !eventId || focusedEvent.current === eventId) return;
-    const event = events.find((item) => item.id === eventId);
-    const coords = event?.coordinates;
-    if (!coords || !Number.isFinite(coords.lat) || !Number.isFinite(coords.lon)) return;
-    focusedEvent.current = eventId;
-    setMapFocus({ eventId, lat: coords.lat, lon: coords.lon });
-  }, [view, eventId, events]);
-
-  const select = (id?: string) => {
+  const select = useCallback((id?: string) => {
     const copy = new URLSearchParams(params);
     if (id) copy.set("event", id);
     else copy.delete("event");
     setParams(copy);
-  };
+  }, [params, setParams]);
+
   const update = (key: string, value: string) => {
     const copy = new URLSearchParams(params);
     if (value) copy.set(key, value);
     else copy.delete(key);
-    copy.delete("event");
+    // Preserve the selected event when navigating or changing the visible period.
     setParams(copy);
   };
+
   const focusMoment = (event: TimelineEvent) => {
     select(event.id);
-    if (view === "map") {
-      const coords = event.coordinates;
-      if (coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lon)) {
-        setMapFocus({ eventId: event.id, lat: coords.lat, lon: coords.lon });
-      } else {
-        setMapFocus(undefined);
-      }
-      return;
-    }
     if (view === "timeline") {
       setTimelineZoomEventId(event.id);
       setTimelineZoomToken((token) => token + 1);
     }
   };
+
   const loadMore = async () => {
-    if (!next || loading) return;
-    setLoading(true);
+    if (loading) return;
+    if (view !== "sources") {
+      if (timeline.hasMore) await timeline.loadMore();
+      return;
+    }
+    if (!sourceNext) return;
+    setSourceLoading(true);
     const requestKey = activeRequest.current;
     try {
-      if (view === "sources") {
-        const result = await fetchEntityBibliography(entityId, {
-          limit: 100,
-          providers: provider,
-          cursor: next,
-        });
-        if (requestKey !== activeRequest.current) return;
-        setSources((old) => [...old, ...result.items]);
-        setNext(result.next_cursor ?? null);
-      } else {
-        const query = new URLSearchParams(filterString);
-        query.set("cursor", next);
-        query.set("resolution", "detail");
-        const result = await getEntityView<Page>(entityId, "timeline", query);
-        if (requestKey !== activeRequest.current) return;
-        setEvents((old) => [...old, ...result.events]);
-        setNext(result.pagination.next_cursor);
-      }
+      const result = await fetchEntityBibliography(entityId, {
+        limit: 100,
+        providers: provider,
+        cursor: sourceNext,
+      });
+      if (requestKey !== activeRequest.current) return;
+      setSources((old) => [...old, ...result.items]);
+      setSourceNext(result.next_cursor ?? null);
     } catch (reason) {
-      if (requestKey === activeRequest.current) setError(String(reason));
+      if (requestKey === activeRequest.current) setSourceError(String(reason));
     } finally {
-      if (requestKey === activeRequest.current) setLoading(false);
+      if (requestKey === activeRequest.current) setSourceLoading(false);
     }
   };
 
   const label = overview?.entity.label;
-  const pageError = error || (overviewQuery.error ? String(overviewQuery.error) : "");
+  const pageError = sourceError
+    || (timeline.error && needsTimeline ? String(timeline.error) : "")
+    || (eventDetailQuery.error ? String(eventDetailQuery.error) : "")
+    || (overviewQuery.error ? String(overviewQuery.error) : "");
 
   return (
     <ExperienceLayout

@@ -215,9 +215,10 @@ export async function fetchEventEvidence(eventId: string): Promise<EventEvidence
 export async function fetchEventDetail(
   eventId: string,
   lang?: string,
+  signal?: AbortSignal,
 ): Promise<EventDetailResponse> {
   const query = lang ? `?lang=${encodeURIComponent(lang)}` : "";
-  const response = await fetch(`/api/v1/events/${eventId}${query}`);
+  const response = await fetch(`/api/v1/events/${eventId}${query}`, { signal });
   if (!response.ok) throw new Error("event detail fetch failed");
   return response.json();
 }
