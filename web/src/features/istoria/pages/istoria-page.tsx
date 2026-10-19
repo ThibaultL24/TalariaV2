@@ -17,7 +17,7 @@ import {
   type TimelineEvent,
 } from "@/lib/api";
 import { COMPACT_VIEWPORT_MQ } from "@/lib/breakpoints";
-import { getEntityView, type EntityOverview, type Page } from "@/lib/entity-views";
+import { getEntityView, type EntityOverview } from "@/lib/entity-views";
 import { useI18n } from "@/lib/i18n";
 
 const EntityMap = lazy(() => import("@/features/entity/entity-map").then((mod) => ({ default: mod.EntityMap })));
