@@ -219,6 +219,12 @@ pub struct CorpusResume {
 }
 
 /// Legacy CLI/test callers remain independent from job checkpoint state.
+fn should_skip_completed_provider(
+    saved: Option<&checkpoints::CompletedProvider>, connector_version: &str,
+) -> bool {
+    saved.is_some_and(|provider| provider.connector_version == connector_version)
+}
+
 pub async fn run_corpus_ingest(
     config: &AppConfig,
     subject_label: &str,
@@ -522,7 +528,7 @@ async fn run_corpus_ingest_inner(
         }
 
         if let Some(saved) = completed_providers.get(&source) {
-            if saved.connector_version == connector.connector_version() {
+            if should_skip_completed_provider(Some(saved),connector.connector_version()) {
                 let prior: ProviderIngestMetrics = serde_json::from_value(
                     saved.metrics_json.clone()
                 )?;
@@ -1219,6 +1225,18 @@ mod tests {
         for status in ["partial","failed","rate_limited"] {
             assert_ne!(status,"healthy");
         }
+    }
+
+    #[test]
+    fn skips_only_a_completed_provider_with_matching_version() {
+        let saved = checkpoints::CompletedProvider {
+            source_kind: "hal".into(),
+            connector_version: "hal:v1".into(),
+            metrics_json: serde_json::json!({"status":"healthy","documents_persisted":2}),
+        };
+        assert!(should_skip_completed_provider(Some(&saved),"hal:v1"));
+        assert!(!should_skip_completed_provider(Some(&saved),"hal:v2"));
+        assert!(!should_skip_completed_provider(None,"hal:v1"));
     }
 
     #[test]
