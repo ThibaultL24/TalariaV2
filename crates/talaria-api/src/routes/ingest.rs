@@ -653,6 +653,180 @@ pub async fn get_explorer_status(
     })))
 }
 
+/// Polls the durable queue on each API process. PostgreSQL SKIP LOCKED and
+/// owner tokens coordinate work across replicas; in-memory progress is only a
+/// fast local view and is never used for admission or recovery.
+pub fn spawn_ingest_workers(
+    pool: sqlx::PgPool,
+    config: talaria_core::AppConfig,
+    jobs: IngestJobMap,
+) {
+    if config.offline_only {
+        tracing::info!("persistent ingest worker disabled by offline_only");
+        return;
+    }
+    let concurrency = std::env::var("TALARIA_INGEST_WORKERS")
+        .ok()
+        .and_then(|raw| raw.parse::<usize>().ok())
+        .unwrap_or(1)
+        .clamp(1, 3);
+    tokio::spawn(async move {
+        let permits = Arc::new(Semaphore::new(concurrency));
+        loop {
+            let permit = match permits.clone().acquire_owned().await {
+                Ok(permit) => permit,
+                Err(_) => break,
+            };
+            if let Err(error) = ingest_jobs::exhaust_stale(&pool).await {
+                tracing::error!(%error,"failed to expire abandoned jobs");
+                drop(permit);
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                continue;
+            }
+            match ingest_jobs::claim_next(&pool).await {
+                Ok(Some(job)) => {
+                    let pool = pool.clone();
+                    let config = config.clone();
+                    let jobs = jobs.clone();
+                    tokio::spawn(async move {
+                        let _permit = permit;
+                        execute_claimed_job(pool,config,jobs,job).await;
+                    });
+                }
+                Ok(None) => {
+                    drop(permit);
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                }
+                Err(error) => {
+                    tracing::error!(%error,"failed to claim persistent ingest job");
+                    drop(permit);
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                }
+            }
+        }
+    });
+}
+
+async fn execute_claimed_job(
+    pool: sqlx::PgPool,
+    config: talaria_core::AppConfig,
+    jobs: IngestJobMap,
+    claimed: DurableIngestJob,
+) {
+    let id = claimed.id;
+    let Some(owner_token) = claimed.owner_token else {
+        tracing::error!(%id,"claimed job has no owner token");
+        return;
+    };
+    jobs.lock().await.insert(id,IngestJob {
+        id,
+        lane: claimed.lane.clone(),
+        subject: claimed.subject.clone(),
+        qid: claimed.qid.clone(),
+        status: "running".into(),
+        entity_id: claimed.entity_id,
+        report: None,
+        error: None,
+        progress: IngestProgress {
+            phase: if claimed.attempts > 1 { "restarting" } else { "starting" }.into(),
+            ..Default::default()
+        },
+        started_at: Some(std::time::Instant::now()),
+    });
+
+    let operation = async {
+        let body: StartIngestBody = serde_json::from_value(claimed.request_json.clone())?;
+        anyhow::ensure!(body.live,"persisted_ingest_requires_live");
+        let subject = claimed.subject.as_str();
+        if claimed.lane == LANE_EXPLORER {
+            let seed_list = resolve_seed_list(subject)?;
+            run_explorer_lane_progressive(
+                &config,
+                subject,
+                claimed.qid.as_deref(),
+                &seed_list,
+                &resolve_wiki_lang(body.wiki_lang.as_deref(),&config.wiki_lang),
+                body.max_titles.filter(|n| *n > 0),
+                resolve_max_documents(body.max_documents),
+                id,
+                jobs.clone(),
+            ).await
+        } else if claimed.lane == LANE_AGORA {
+            let limits = corpus_ingest::CorpusIngestLimits {
+                per_provider: body.corpus_limit_per_provider
+                    .or(body.corpus_limit).filter(|n| *n > 0).unwrap_or(15),
+                total: body.corpus_limit_total.filter(|n| *n > 0).or(Some(120)),
+                minimum_per_provider: body.minimum_per_provider.unwrap_or(3),
+                provider_timeout: Duration::from_secs(30),
+            };
+            run_agora_lane(&config,subject,claimed.qid.as_deref(),limits).await
+        } else {
+            anyhow::bail!("unsupported persisted ingest lane")
+        }
+    };
+
+    tokio::pin!(operation);
+    let mut ticker = tokio::time::interval(Duration::from_secs(15));
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    ticker.tick().await;
+    let result: anyhow::Result<Value> = loop {
+        tokio::select! {
+            result = &mut operation => break result,
+            _ = ticker.tick() => {
+                let (entity_id,progress) = {
+                    let guard = jobs.lock().await;
+                    let local = guard.get(&id);
+                    (local.and_then(|j| j.entity_id),local.map(|j|j.progress.clone()).unwrap_or_default())
+                };
+                match ingest_jobs::heartbeat(
+                    &pool,id,owner_token,entity_id,
+                    &serde_json::to_value(progress).unwrap_or_else(|_|json!({})),
+                ).await {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        tracing::warn!(%id,"ingest lease lost; cancelling pipeline");
+                        break Err(anyhow::anyhow!("worker_lease_lost"));
+                    }
+                    Err(error) => {
+                        tracing::error!(%id,%error,"ingest heartbeat failed; cancelling pipeline");
+                        break Err(anyhow::anyhow!("worker_heartbeat_failed: {error}"));
+                    }
+                }
+            }
+        }
+    };
+    // A lost owner cannot finalize a job; it will be retried after its lease.
+    let (entity_id,mut progress) = {
+        let guard = jobs.lock().await;
+        let local = guard.get(&id);
+        (local.and_then(|j| j.entity_id),local.map(|j|j.progress.clone()).unwrap_or_default())
+    };
+    let (report,error) = match result {
+        Ok(report) => {
+            progress.phase = "done".into();
+            (Some(report),None)
+        }
+        Err(error) => {
+            progress.phase = "failed".into();
+            (None,Some(error.to_string()))
+        }
+    };
+    let entity_id = report.as_ref().and_then(parse_entity_id_from_report).or(entity_id);
+    let progress_json = serde_json::to_value(progress).unwrap_or_else(|_|json!({"phase":"failed"}));
+    match ingest_jobs::finish(
+        &pool,id,owner_token,entity_id,&progress_json,
+        report.as_ref(),error.as_deref(),
+    ).await {
+        Ok(true) => {
+            tracing::info!(%id,attempts=claimed.attempts,status=if error.is_none(){"done"}else{"failed"},
+                "durable ingest completed");
+        }
+        Ok(false) => tracing::warn!(%id,"job completion rejected due to lost lease"),
+        Err(err) => tracing::error!(%id,%err,"failed to persist ingest completion"),
+    }
+    jobs.lock().await.remove(&id);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
