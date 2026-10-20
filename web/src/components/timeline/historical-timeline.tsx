@@ -29,6 +29,12 @@ import {
 import { aegeanPixiColors } from "@/lib/aegean-palette";
 import "./historical-timeline.css";
 
+function pixiThemeFromDom(fallback: "light" | "dark"): "light" | "dark" {
+  const attr = document.documentElement.dataset.theme;
+  if (attr === "dark" || attr === "light") return attr;
+  return fallback;
+}
+
 type Particle = {
   id: string;
   event: TimelineEvent;
@@ -59,6 +65,7 @@ export interface HistoricalTimelineProps {
   onSelect: (id: string) => void;
   onZoom: (from: number, to: number) => void;
   mode?: "desktop" | "fullscreen";
+  coverage?: { timeline: number; mapped: number };
 }
 
 export function HistoricalTimeline({
@@ -73,6 +80,7 @@ export function HistoricalTimeline({
   onSelect,
   onZoom,
   mode = "desktop",
+  coverage,
 }: HistoricalTimelineProps) {
   const theme = useThemeStore((s) => s.theme);
   const themeRef = useRef(theme);
@@ -236,6 +244,8 @@ export function HistoricalTimeline({
     const guides = new Graphics();
     const stage = new Container();
 
+    const pixiTheme = () => pixiThemeFromDom(themeRef.current === "dark" ? "dark" : "light");
+
     const reduceMotion = () =>
       typeof window.matchMedia === "function"
       && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -274,7 +284,7 @@ export function HistoricalTimeline({
       if (!ready || destroyed) return;
       dots.clear();
       guides.clear();
-      const palette = aegeanPixiColors(themeRef.current === "dark" ? "dark" : "light");
+      const palette = aegeanPixiColors(pixiTheme());
       const width = app.screen.width;
       const height = app.screen.height;
       const spotlightId = spotlightRef.current;
@@ -317,6 +327,7 @@ export function HistoricalTimeline({
           .lineTo(x, height - 14)
           .stroke({ width: 1, color: palette.guideInk, alpha: 0.35 });
       }
+      if (app.renderer) app.render();
     };
     drawSceneRef.current = draw;
 
@@ -359,7 +370,7 @@ export function HistoricalTimeline({
           baseY: point.y,
           radius: point.radius,
           color: point.color,
-          alpha: reduceMotion() ? point.alpha : 0,
+          alpha: point.alpha,
           targetAlpha: point.alpha,
           rank: point.rank,
           importance: point.importance,
@@ -375,15 +386,14 @@ export function HistoricalTimeline({
       const domainNow = domainRef.current;
       const visible = new Set(filterEventsByLod(datedRef.current, domainNow).map((event) => event.id));
       for (const particle of particles) {
-        const inside = particle.year >= domainNow.start && particle.year <= domainNow.end;
+        const year = eventYear(particle.event) ?? particle.year;
+        const inside = year >= domainNow.start && year <= domainNow.end;
         particle.targetX = ((particle.year - domainNow.start) / Math.max(1e-6, domainNow.end - domainNow.start)) * width;
         const show = inside && visible.has(particle.id);
         particle.targetAlpha = show ? particle.shownAlpha : 0;
-        if (reduceMotion()) {
-          particle.x = particle.targetX;
-          particle.alpha = particle.targetAlpha;
-          particle.y = particle.baseY;
-        }
+        particle.x = particle.targetX;
+        particle.alpha = particle.targetAlpha;
+        particle.y = particle.baseY;
       }
       rebuildBuckets();
       draw();
@@ -593,7 +603,7 @@ export function HistoricalTimeline({
     const init = async () => {
       await app.init({
         resizeTo: host,
-        background: aegeanPixiColors(themeRef.current === "dark" ? "dark" : "light").background,
+        background: aegeanPixiColors(pixiTheme()).background,
         antialias: true,
         autoDensity: true,
         resolution: Math.min(window.devicePixelRatio || 1, 2),
@@ -654,7 +664,7 @@ export function HistoricalTimeline({
   useEffect(() => {
     const app = pixiAppRef.current;
     if (!app?.renderer) return;
-    app.renderer.background.color = aegeanPixiColors(theme === "dark" ? "dark" : "light").background;
+    app.renderer.background.color = aegeanPixiColors(pixiThemeFromDom(theme)).background;
     drawSceneRef.current();
   }, [theme]);
 
@@ -805,6 +815,9 @@ export function HistoricalTimeline({
       </div>
       <footer className="historical-timeline__footer">
         <p className="historical-timeline__period">{t.visiblePeriod(formatYearLabel(domain.start, locale), formatYearLabel(domain.end, locale))}</p>
+        {coverage ? (
+          <p className="historical-timeline__coverage">{t.timelineMapCoverage(coverage.timeline, coverage.mapped)}</p>
+        ) : null}
         <div className="historical-timeline__phases" role="group" aria-label={t.timelinePhases}>
           {phases.map((phase) => (
             <button

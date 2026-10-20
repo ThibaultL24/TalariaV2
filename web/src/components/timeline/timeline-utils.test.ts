@@ -2,6 +2,7 @@
 import { expect, test } from "vitest";
 import type { TimelineEvent } from "@/lib/api";
 import {
+  denseVisibleWindow,
   eventImportance,
   eventTimeValue,
   filterEventsByLod,
@@ -9,6 +10,8 @@ import {
   layoutConstellation,
   lifePhasePresets,
   separateStackedPoints,
+  resolveVisibleWindow,
+  visibleYearWindow,
 } from "./timeline-utils";
 
 function event(id: string, type: string): TimelineEvent {
@@ -44,6 +47,63 @@ test("a map pin does not raise historical importance", () => {
   const plain = event("a", "battle");
   const mapped = { ...plain, id: "b", map_eligible: true };
   expect(eventImportance(mapped)).toBe(eventImportance(plain));
+});
+
+test("a life-span URL does not stretch the axis until the reader asks for it", () => {
+  const events = Array.from({ length: 20 }, (_, index) => ({
+    ...event(`early-${index}`, "anecdote"),
+    time: { kind: "exact" as const, start: String(1769 + index), precision: "year" as const },
+  }));
+  expect(
+    resolveVisibleWindow(events, [1769, 1870], false, {
+      from: "1769",
+      to: "1870",
+      span: null,
+    }),
+  ).toEqual([1769, 1789]);
+  expect(
+    resolveVisibleWindow(events, [1769, 1870], false, {
+      from: null,
+      to: null,
+      span: "full",
+    }),
+  ).toEqual([1769, 1870]);
+  expect(
+    resolveVisibleWindow(events, [1769, 1870], false, {
+      from: "1796",
+      to: "1815",
+      span: "custom",
+    }),
+  ).toEqual([1796, 1815]);
+});
+
+test("an incomplete page uses the loaded years instead of empty decades", () => {
+  const events = Array.from({ length: 20 }, (_, index) => ({
+    ...event(`early-${index}`, "anecdote"),
+    time: { kind: "exact" as const, start: String(1769 + index), precision: "year" as const },
+  }));
+  expect(visibleYearWindow(events, [1769, 1870], false)).toEqual([1769, 1789]);
+});
+
+test("a sparse tail does not stretch the first visible window", () => {
+  const events = [
+    ...Array.from({ length: 40 }, (_, index) => ({
+      ...event(`peak-${index}`, "battle"),
+      time: { kind: "exact" as const, start: String(1810 + (index % 5)), precision: "year" as const },
+    })),
+    { ...event("late", "anecdote"), time: { kind: "exact" as const, start: "1870", precision: "year" as const } },
+  ];
+  expect(denseVisibleWindow(events, [1769, 1870])[1]).toBeLessThan(1830);
+});
+
+test("many facts in one year spread along that year instead of stacking on one x", () => {
+  const events = Array.from({ length: 20 }, (_, index) => ({
+    ...event(`same-${index}`, "anecdote"),
+    time: { kind: "exact" as const, start: "1815", precision: "year" as const },
+  }));
+  const placed = layoutConstellation(events, { start: 1800, end: 1830 }, 900, 600);
+  const xs = placed.map((point) => point.x);
+  expect(Math.max(...xs) - Math.min(...xs)).toBeGreaterThan(20);
 });
 
 test("constellation positions stay put and follow event families", () => {

@@ -440,6 +440,13 @@ html:not([data-theme="dark"]) .historical-timeline {
   font-size: 12px;
   color: var(--ht-fg-muted);
 }
+.historical-timeline__coverage {
+  margin: 0 0 10px;
+  max-width: 52rem;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ht-fg-muted);
+}
 .v3-histo-handle {
   touch-action: none;
 }

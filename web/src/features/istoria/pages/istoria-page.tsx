@@ -19,6 +19,7 @@ import {
 import { COMPACT_VIEWPORT_MQ } from "@/lib/breakpoints";
 import { getEntityView, type EntityOverview } from "@/lib/entity-views";
 import { useI18n } from "@/lib/i18n";
+import { resolveVisibleWindow } from "@/components/timeline/timeline-utils";
 
 const EntityMap = lazy(() => import("@/features/entity/entity-map").then((mod) => ({ default: mod.EntityMap })));
 const HistoricalTimeline = lazy(() => import("@/components/timeline/historical-timeline").then((mod) => ({ default: mod.HistoricalTimeline })));
@@ -76,11 +77,18 @@ export function IstoriaPage() {
   activeRequest.current = `${entityId}/${view}?${filterString}&provider=${provider}`;
   const eventId = params.get("event");
   const needsTimeline = view === "timeline" || view === "map";
-  const from = Number(params.get("from") ?? overview?.time_bounds.from ?? 0);
-  const to = Number(params.get("to") ?? overview?.time_bounds.to ?? from + 1);
-
   const timeline = useEntityTimeline(entityId, filterString, locale, needsTimeline, revision);
   const events = timeline.events;
+  const spanBounds: [number, number] = [
+    overview?.time_bounds.from ?? 0,
+    overview?.time_bounds.to ?? 1,
+  ];
+  const [from, to] = resolveVisibleWindow(
+    events,
+    spanBounds,
+    !timeline.hasMore && events.length > 0,
+    { from: params.get("from"), to: params.get("to"), span: params.get("span") },
+  );
   const next = view === "sources" ? sourceNext : (timeline.hasMore ? "next" : null);
   const loading = view === "sources" ? sourceLoading : (needsTimeline && timeline.loading);
   const eventDetailQuery = useQuery({
@@ -297,6 +305,7 @@ export function IstoriaPage() {
             bounds={[overview.time_bounds.from ?? from, overview.time_bounds.to ?? to]}
             from={from}
             to={to}
+            coverage={{ timeline: overview.stats.timeline_events, mapped: overview.stats.mapped_events }}
             spotlightEventId={eventId ?? undefined}
             zoomToEventId={timelineZoomEventId}
             zoomToEventToken={timelineZoomToken}
@@ -304,8 +313,18 @@ export function IstoriaPage() {
             onSelect={select}
             onZoom={(start, end) => {
               const copy = new URLSearchParams(params);
-              copy.set("from", String(start));
-              copy.set("to", String(end));
+              const full =
+                Math.abs(start - spanBounds[0]) < 0.51
+                && Math.abs(end - spanBounds[1]) < 0.51;
+              if (full) {
+                copy.set("span", "full");
+                copy.delete("from");
+                copy.delete("to");
+              } else {
+                copy.set("span", "custom");
+                copy.set("from", String(start));
+                copy.set("to", String(end));
+              }
               setParams(copy, { replace: true });
             }}
             />

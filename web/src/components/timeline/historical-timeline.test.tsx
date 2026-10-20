@@ -80,6 +80,23 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+test("the timeline states how many moments have a place on the map", () => {
+  render(
+    <HistoricalTimeline
+      events={[event]}
+      bounds={[1802, 1885]}
+      from={1802}
+      to={1885}
+      mode="desktop"
+      coverage={{ timeline: 465, mapped: 261 }}
+      onSelect={() => {}}
+      onZoom={() => {}}
+    />,
+  );
+  expect(screen.getByText(/465 moments on this timeline/)).toBeTruthy();
+  expect(screen.getByText(/261 with a known place on the map/)).toBeTruthy();
+});
+
 test("desktop timeline keeps the category list in the layout", () => {
   render(
     <HistoricalTimeline

@@ -286,6 +286,72 @@ function unitFromId(id: string, salt: number): number {
   return (hashString(`${salt}:${id}`) % 10_000) / 10_000;
 }
 
+/** Fit the axis to loaded years. A complete set also drops a sparse late tail. */
+export function visibleYearWindow(
+  events: TimelineEvent[],
+  bounds: YearWindow,
+  complete: boolean,
+): YearWindow {
+  const years = events
+    .map(eventYear)
+    .filter((year): year is number => year != null)
+    .sort((a, b) => a - b);
+  if (years.length === 0) return bounds;
+  if (!complete) {
+    const lo = years[0];
+    const hi = years[years.length - 1];
+    return [Math.max(bounds[0], lo), Math.min(bounds[1], Math.max(hi + 1, lo + 1))];
+  }
+  return denseVisibleWindow(events, bounds);
+}
+
+/** Default axis follows loaded years. URL from/to apply only after the reader zooms. */
+export function resolveVisibleWindow(
+  events: TimelineEvent[],
+  bounds: YearWindow,
+  complete: boolean,
+  url: { from: string | null; to: string | null; span: string | null },
+): YearWindow {
+  const fitted = visibleYearWindow(events, bounds, complete);
+  if (url.span === "full") return bounds;
+  const from = url.from != null ? Number(url.from) : Number.NaN;
+  const to = url.to != null ? Number(url.to) : Number.NaN;
+  if (
+    url.span === "custom"
+    && Number.isFinite(from)
+    && Number.isFinite(to)
+    && to > from
+  ) {
+    return [from, to];
+  }
+  return fitted;
+}
+
+/** Drop a sparse tail of late outliers so the life years can use the axis. */
+export function denseVisibleWindow(events: TimelineEvent[], bounds: YearWindow): YearWindow {
+  const years = events
+    .map(eventYear)
+    .filter((year): year is number => year != null)
+    .sort((a, b) => a - b);
+  if (years.length < 12) return bounds;
+  const unique: number[] = [];
+  for (const year of years) {
+    if (unique[unique.length - 1] !== year) unique.push(year);
+  }
+  let hi = unique[unique.length - 1] ?? bounds[1];
+  for (let index = unique.length - 1; index > 0; index -= 1) {
+    const gap = unique[index] - unique[index - 1];
+    let tail = 0;
+    for (const year of years) if (year >= unique[index]) tail += 1;
+    if (gap >= 8 && tail / years.length <= 0.05) hi = unique[index - 1];
+    else break;
+  }
+  const lo = years[0];
+  const end = Math.min(bounds[1], Math.max(hi + 2, lo + 1));
+  if (bounds[1] - end < 8) return bounds;
+  return [Math.max(bounds[0], lo), end];
+}
+
 /** Stable family constellations. Dates stay on the time axis; Y is not a random lane. */
 export function layoutConstellation(
   events: TimelineEvent[],
@@ -297,30 +363,52 @@ export function layoutConstellation(
   const usable = Math.max(80, height - padding.top - padding.bottom);
   const minY = padding.top + 6;
   const maxY = padding.top + usable - 6;
-  const rough: ConstellationPoint[] = [];
+  const groups = new Map<number, TimelineEvent[]>();
   for (const event of events) {
     const time = eventTimeValue(event);
     if (time === null || time < domain.start || time > domain.end) continue;
-    const family = legendKeyForEventType(event.event_type);
-    const anchor = FAMILY_ANCHOR[family] ?? 0.55;
-    const sway = (unitFromId(event.id, 1) - 0.5) * 0.34;
-    const lane = clamp(anchor + sway, 0.04, 0.96);
-    const yearPrecision = event.time?.precision !== "month" && event.time?.precision !== "day";
-    const jitter = yearPrecision ? (unitFromId(event.id, 4) - 0.5) * 0.65 : 0;
-    const plotTime = time + jitter;
-    const importance = eventImportance(event);
-    const rank = eventRank(importance);
-    rough.push({
-      event,
-      time: plotTime,
-      x: yearToX(plotTime, domain, width),
-      y: padding.top + lane * usable,
-      rank,
-      importance,
-      color: eventColor(event),
-      radius: rank === "major" ? 7.2 : rank === "secondary" ? 3.6 : 2.7,
-      alpha: 1,
-    });
+    const key = Math.floor(time);
+    const group = groups.get(key) ?? [];
+    group.push(event);
+    groups.set(key, group);
+  }
+  const rough: ConstellationPoint[] = [];
+  for (const [year, members] of groups) {
+    members.sort((a, b) => eventImportance(b) - eventImportance(a) || a.id.localeCompare(b.id));
+    const count = members.length;
+    const cols = Math.max(1, Math.ceil(Math.sqrt(count)));
+    const rows = Math.ceil(count / cols);
+    const xSpan = Math.min(3.4, Math.max(0.9, cols * 0.42));
+    const crowded = Math.sqrt(Math.max(1, count / 6));
+    for (const [index, event] of members.entries()) {
+      const time = eventTimeValue(event);
+      if (time === null) continue;
+      const family = legendKeyForEventType(event.event_type);
+      const anchor = FAMILY_ANCHOR[family] ?? 0.55;
+      const sway = (unitFromId(event.id, 1) - 0.5) * 0.28;
+      const col = index % cols;
+      const row = Math.floor(index / cols);
+      const dated = event.time?.precision === "month" || event.time?.precision === "day";
+      const xShift =
+        dated || cols === 1 ? 0 : ((col - (cols - 1) / 2) / Math.max(1, cols - 1)) * xSpan;
+      const yShift = ((row - (rows - 1) / 2) / Math.max(1, rows)) * 0.22;
+      const plotTime = dated ? time : year + 0.5 + xShift;
+      const lane = clamp(anchor + sway + yShift, 0.04, 0.96);
+      const importance = eventImportance(event);
+      const rank = eventRank(importance);
+      const baseRadius = rank === "major" ? 7.2 : rank === "secondary" ? 3.6 : 2.7;
+      rough.push({
+        event,
+        time: plotTime,
+        x: yearToX(plotTime, domain, width),
+        y: padding.top + lane * usable,
+        rank,
+        importance,
+        color: eventColor(event),
+        radius: Math.max(rank === "major" ? 3.4 : 2.1, baseRadius / crowded),
+        alpha: 1,
+      });
+    }
   }
   separateCloud(rough, minY, maxY);
   return rough;

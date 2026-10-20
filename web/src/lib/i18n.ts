@@ -40,6 +40,7 @@ export interface AppMessages {
   timelineApproximate: string;
   timelineAllMoments: string;
   timelinePhases: string;
+  timelineMapCoverage: (timeline: number, mapped: number) => string;
   istoriaPromise: string;
   poreiaPromise: string;
   openPoreia: string;
@@ -331,6 +332,10 @@ const EN: AppMessages = {
   timelineApproximate: "Approximate or uncertain date",
   timelineAllMoments: "All moments",
   timelinePhases: "Time spans",
+  timelineMapCoverage: (timeline, mapped) =>
+    mapped >= timeline
+      ? `${timeline} moments, each with a known place on the map.`
+      : `${timeline} moments on this timeline · ${mapped} with a known place on the map. Anecdotes and facts without a located place stay here.`,
   istoriaPromise: "Historical inquiry: facts, timeline and sources.",
   poreiaPromise: "The cultural journey: places, monuments and routes.",
   openPoreia: "Discover their places in Poreia →",
@@ -641,6 +646,10 @@ const FR: AppMessages = {
   timelineApproximate: "Date approximative ou incertaine",
   timelineAllMoments: "Tous les moments",
   timelinePhases: "Périodes",
+  timelineMapCoverage: (timeline, mapped) =>
+    mapped >= timeline
+      ? `${timeline} moments, chacun avec un lieu connu sur la carte.`
+      : `${timeline} moments sur cette frise · ${mapped} avec un lieu connu sur la carte. Les anecdotes et les faits sans lieu situé restent ici.`,
   istoriaPromise: "L’enquête historique : faits, chronologie et sources.",
   poreiaPromise: "Le voyage culturel : lieux, monuments et parcours.",
   openPoreia: "Découvrir ses lieux dans Poreia →",
