@@ -1,0 +1,37 @@
+.ingestion-admin{min-height:100vh;background:var(--color-bg-primary);color:var(--color-text-primary)}
+.ingestion-admin__main{max-width:1380px;margin:0 auto;padding:44px 32px 96px;font-family:var(--font-body)}
+.ingestion-admin__breadcrumb{font-size:12px;color:var(--color-text-muted);margin-bottom:26px}
+.ingestion-admin__breadcrumb a{color:var(--color-primary)}
+.ingestion-admin__hero{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;padding:12px 0 32px;border-bottom:1px solid var(--color-border-subtle)}
+.ingestion-admin__eyebrow{font-size:11px;letter-spacing:.22em;font-weight:700;color:var(--color-primary)}
+.ingestion-admin h1{font:normal clamp(30px,4vw,46px)/1.2 var(--font-display);margin:12px 0}
+.ingestion-admin__hero p,.ingestion-admin__section-heading p{color:var(--color-text-secondary);font-size:13px;max-width:750px}
+.ingestion-admin button,.ingestion-admin select{border:1px solid var(--color-border-strong);background:var(--color-bg-surface);color:var(--color-text-primary);border-radius:8px;padding:9px 14px;cursor:pointer}
+.ingestion-admin button:hover{border-color:var(--color-primary)}
+.ingestion-admin button:disabled{opacity:.4;cursor:not-allowed}
+.ingestion-admin__filters{display:flex;flex-wrap:wrap;gap:14px;margin:28px 0}
+.ingestion-admin__filters label{display:flex;flex-direction:column;gap:6px;color:var(--color-text-secondary);font-size:12px}
+.ingestion-admin__kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:14px;margin:24px 0 28px}
+.ingestion-admin__stat{display:flex;flex-direction:column;gap:12px;border:1px solid var(--color-border-subtle);border-radius:12px;background:var(--color-bg-surface);padding:20px}
+.ingestion-admin__stat span{font-size:12px;color:var(--color-text-secondary)}
+.ingestion-admin__stat strong{font:normal 26px/1 var(--font-display);font-variant-numeric:tabular-nums}
+.ingestion-admin__stat small{font-size:11px;color:var(--color-text-muted)}
+.ingestion-admin__panel{background:var(--color-bg-surface);border:1px solid var(--color-border-subtle);border-radius:16px;padding:24px;margin-top:22px;box-shadow:var(--shadow-sm)}
+.ingestion-admin__section-heading{display:flex;align-items:start;justify-content:space-between;gap:16px;margin-bottom:18px}
+.ingestion-admin h2{font:normal 23px var(--font-display);margin:0 0 6px}
+.ingestion-admin__table-wrap{overflow:auto}
+.ingestion-admin__table{width:100%;border-collapse:collapse;font-size:12px;text-align:left;min-width:760px}
+.ingestion-admin__table th,.ingestion-admin__table td{padding:13px 12px;border-bottom:1px solid var(--color-border-subtle);white-space:nowrap;font-variant-numeric:tabular-nums}
+.ingestion-admin__table thead th{font-size:11px;letter-spacing:.035em;color:var(--color-text-muted);font-weight:600}
+.ingestion-admin__table tbody th{font-weight:600}
+.ingestion-admin__table tbody th small{display:block;margin-top:6px;font-weight:400;color:var(--color-text-muted)}
+.ingestion-admin__table button{padding:6px 10px}
+.ingestion-admin__meter{margin-top:8px;border-radius:10px;background:var(--color-bg-elevated);width:100px;height:5px;overflow:hidden}
+.ingestion-admin__meter span{display:block;background:var(--color-primary);height:100%;border-radius:10px}
+.ingestion-admin__pagination{display:flex;align-items:center;justify-content:end;gap:16px;padding-top:20px;font-size:12px}
+.ingestion-admin__note,.ingestion-admin__empty,.ingestion-admin__loading{font-size:13px;color:var(--color-text-secondary);padding:15px 0}
+.ingestion-admin__error{border:1px solid var(--color-border-strong);background:var(--color-bg-elevated);padding:18px;border-radius:10px;margin:24px 0}
+.ingestion-admin__detail code{font-size:12px;overflow-wrap:anywhere}
+.ingestion-admin__detail .ingestion-admin__kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media(max-width:1000px){.ingestion-admin__kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:640px){.ingestion-admin__main{padding:20px 14px 70px}.ingestion-admin__hero{align-items:start;flex-direction:column}.ingestion-admin__kpis,.ingestion-admin__detail .ingestion-admin__kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.ingestion-admin__panel{padding:16px}.ingestion-admin__stat{padding:14px}}

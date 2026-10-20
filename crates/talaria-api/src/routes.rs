@@ -1,5 +1,6 @@
 // crates/talaria-api/src/routes.rs
 mod auth;
+mod admin_ingest;
 mod demo;
 mod documents;
 mod entities;
@@ -148,6 +149,7 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/v1/ingest/{job_id}/metrics", get(get_ingest_metrics))
         .route("/api/v1/ingest/explorer/{job_id}/status", get(get_explorer_status))
         .merge(auth::router())
+        .merge(admin_ingest::router())
         .merge(interactions::router())
         .merge(claim_signals::router())
         .merge(comments::router())

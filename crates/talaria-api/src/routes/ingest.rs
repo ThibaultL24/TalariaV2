@@ -627,9 +627,11 @@ pub struct IngestMetricsQuery {
 /// linked bibliographic documents, never inferred historical truth.
 pub async fn get_ingest_metrics(
     State(state): State<AppState>,
+    jar: axum_extra::extract::cookie::CookieJar,
     Path(job_id): Path<Uuid>,
     Query(query): Query<IngestMetricsQuery>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    super::admin_ingest::require_admin(&state.pool,&jar).await?;
     let limit=query.limit.unwrap_or(50);
     let offset=query.offset.unwrap_or(0);
     if !(1..=100).contains(&limit) || !(0..=10_000).contains(&offset) {

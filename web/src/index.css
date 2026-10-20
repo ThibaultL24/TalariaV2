@@ -8,6 +8,7 @@
 @import "./styles/talaria-brand.css";
 @import "./styles/shell.css";
 @import "./styles/app.css";
+@import "./styles/admin-ingestion.css";
 @import "./styles/map-popup.css";
 
 html,
