@@ -152,7 +152,7 @@ fn plan_sources_for_french_military() {
 }
 
 #[test]
-fn posthumous_typed_as_commemoration() {
+fn posthumous_candidates_keep_commemorative_types() {
     let ex = default_extractor_stack();
     let input = ExtractorInput {
         text: "* 1840 — Paris — remains returned\n".into(),
@@ -166,7 +166,15 @@ fn posthumous_typed_as_commemoration() {
     for e in &ex {
         for c in e.extract(&input) {
             if c.time_surface.as_deref() == Some("1840") {
-                assert_eq!(c.event_type, "commemoration");
+                // The Visit posthumous extractor distinguishes memorials;
+                // timeline extraction retains the general commemoration type.
+                let expected = if e.extractor_id() == "posthumous" {
+                    assert_eq!(c.predicate, "commemorated_at");
+                    "memorial"
+                } else {
+                    "commemoration"
+                };
+                assert_eq!(c.event_type, expected);
                 assert!(c.is_posthumous);
                 found = true;
             }
