@@ -431,9 +431,10 @@ async fn start_lane_ingest(
             upsert_entity_with_kind(&state.pool, &state.config.wiki_lang, &subject, "person").await
         }
         .map_err(|e| {
+            tracing::error!(error=%e,"entity upsert failed");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": format!("entity_upsert: {e}") })),
+                Json(json!({ "error": "entity_upsert_failed" })),
             )
         })?;
         if let Some(qid) = body
@@ -618,6 +619,7 @@ fn elapsed_ms(job: &DurableIngestJob) -> Option<u64> {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct IngestMetricsQuery {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
@@ -641,14 +643,15 @@ pub async fn get_ingest_metrics(
     let Some(job)=ingest_jobs::get(&state.pool,job_id).await.map_err(db_ingest_error)? else {
         return Err((StatusCode::NOT_FOUND,Json(json!({"error":"job_not_found"}))));
     };
-    let (attempts,coverage,total)=tokio::try_join!(
+    let (attempts,coverage,total,totals)=tokio::try_join!(
         provider_observability::list_attempts(&state.pool,job_id,limit,offset),
         provider_observability::document_coverage(&state.pool,job_id),
-        provider_observability::count_attempts(&state.pool,job_id)
+        provider_observability::count_attempts(&state.pool,job_id),
+        provider_observability::total_document_coverage(&state.pool,job_id)
     ).map_err(db_ingest_error)?;
 
     Ok(Json(build_ingest_metrics_response(
-        &job,attempts,coverage,total,limit,offset,
+        &job,attempts,coverage,total,limit,offset,totals,
     )))
 }
 
@@ -656,10 +659,9 @@ fn build_ingest_metrics_response(
     job: &DurableIngestJob,
     attempts: Vec<provider_observability::ProviderAttempt>,
     coverage: Vec<provider_observability::DocumentCoverage>,
-    total: i64, limit: i64, offset: i64,
+    total: i64, limit: i64, offset: i64, totals: (i64,i64),
 ) -> Value {
-    let total_documents: i64=coverage.iter().map(|s|s.persisted_unique).sum();
-    let total_matched: i64=coverage.iter().map(|s|s.matched_unique).sum();
+    let (total_documents,total_matched)=totals;
     let ratio=|matched:i64,persisted:i64| -> Option<f64> {
         if persisted==0 {None} else {
             Some(((matched as f64 / persisted as f64)*10_000.0).round()/100.0)
@@ -687,7 +689,7 @@ fn build_ingest_metrics_response(
         "elapsed_ms":item.elapsed_ms,
         "started_at":item.started_at.to_rfc3339(),
         "finished_at":item.finished_at.map(|time|time.to_rfc3339()),
-        "interrupted":item.status=="running" && (item.attempt<job.attempts || job.status!="running"),
+        "interrupted":item.status=="running" && (item.attempt<job.attempts || job.status!="running" || job.lease_until.is_some_and(|until| until<=Utc::now())),
     })).collect::<Vec<_>>();
     let next_offset=if offset+limit<total {Some(offset+limit)} else {None};
     json!({
@@ -734,8 +736,8 @@ pub async fn get_ingest_job(
         "entity_id":job.entity_id,
         "timeline_events":timeline_events,
         "map_events":map_events,
-        "error":job.error,
-        "report":job.report_json,
+        "error":job.error.as_ref().map(|_| "ingestion_failed"),
+        "report":null,
         "progress":{
             "phase":progress.phase,
             "wiki_pages":progress.wiki_pages,
@@ -782,7 +784,7 @@ pub async fn get_explorer_status(
         },
         "elapsed_ms":elapsed_ms(&job),
         "is_done":matches!(job.status.as_str(),"done"|"failed"),
-        "error":job.error,
+        "error":job.error.as_ref().map(|_| "ingestion_failed"),
     })))
 }
 
@@ -1176,7 +1178,7 @@ mod tests {
         let report=build_ingest_metrics_response(
             &job,vec![attempt],vec![provider_observability::DocumentCoverage {
                 source_kind:"hal".into(),persisted_unique:4,matched_unique:3,
-            }],1,50,0
+            }],1,50,0,(4,3)
         );
         assert_eq!(report["coverage"]["match_rate_percent"],75.0);
         assert_eq!(report["provider_attempts"][0]["fetch_calls"],2);

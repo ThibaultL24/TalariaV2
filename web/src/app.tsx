@@ -1,3 +1,4 @@
+import { IngestionObservatory, IngestionJobDetail } from "@/features/admin/ingestion-observatory";
 // web/src/app.tsx
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import { AgoraPage } from "@/features/agora/pages/agora-page";
@@ -23,6 +24,8 @@ export function App() {
       </div>
       <BrowserRouter>
       <Routes>
+        <Route path="/admin/ingestion" element={<IngestionObservatory />} />
+        <Route path="/admin/ingestion/jobs/:jobId" element={<IngestionJobDetail />} />
         <Route path="/" element={<HomePage />} />
         <Route path="/istoria" element={<IstoriaPage />} />
         <Route path="/istoria/:entityId" element={<IstoriaPage />} />

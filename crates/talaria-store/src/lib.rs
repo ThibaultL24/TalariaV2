@@ -185,3 +185,5 @@ pub use wiki_sections::{
     list_pages_for_section_split, list_sections_for_title, list_sections_matching_page,
     replace_sections_for_page, HistoriographySectionRow, WikiSectionRecord, WikiSectionRow,
 };
+
+pub mod ingestion_observatory;

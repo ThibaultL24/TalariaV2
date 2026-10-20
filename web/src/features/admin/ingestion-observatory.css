@@ -1,0 +1,139 @@
+.observatory {
+  max-width: 1500px;
+  margin: auto;
+  padding: clamp(1rem, 3vw, 3rem);
+  color: var(--color-text-primary, inherit);
+}
+.observatory header {
+  margin-bottom: 2rem;
+}
+.observatory h1 {
+  font-size: clamp(1.8rem, 4vw, 3rem);
+}
+.observatory h2 {
+  font-size: 1.4rem;
+  margin-bottom: 1rem;
+}
+.observatory h3 {
+  font-size: 1.1rem;
+  margin: 1.5rem 0 1rem;
+}
+.observatory p {
+  line-height: 1.6;
+  margin: 0.75rem 0;
+  opacity: 0.85;
+}
+.observatory section {
+  margin: 2rem 0;
+  padding: 1.5rem 0;
+  border-top: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+}
+.observatory-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: end;
+}
+.observatory label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+.observatory input,
+.observatory select,
+.observatory button {
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 0.4rem;
+  padding: 0.6rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.observatory select option {
+  background: Canvas;
+  color: CanvasText;
+}
+.observatory button {
+  cursor: pointer;
+}
+.observatory button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.observatory :focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+.observatory-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+}
+.observatory-metric {
+  padding: 1rem;
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, currentColor 5%, transparent);
+}
+.observatory dt {
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+.observatory dd {
+  font-size: 1.35rem;
+  margin: 0.6rem 0 0;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.observatory-table {
+  overflow-x: auto;
+}
+.observatory table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.observatory th,
+.observatory td {
+  text-align: left;
+  padding: 0.8rem;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  min-width: 85px;
+}
+.observatory td {
+  font-variant-numeric: tabular-nums;
+}
+.observatory a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.observatory nav {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-top: 1rem;
+}
+.observatory [role="alert"] {
+  padding: 1rem;
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+}
+.observatory-volume {
+  max-height: 240px;
+  overflow: auto;
+  list-style: none;
+  padding: 0;
+}
+.observatory-volume li {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin: 0.4rem 0;
+}
+.observatory meter {
+  flex: 1;
+  max-width: 600px;
+}
+.observatory strong {
+  font-variant-numeric: tabular-nums;
+}

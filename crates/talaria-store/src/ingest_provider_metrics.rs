@@ -126,6 +126,17 @@ pub async fn document_coverage(
     ).bind(job).fetch_all(pool).await
 }
 
+/// Global totals must not sum provider buckets: aliases can journal one document
+/// under multiple sources. The entity match remains scoped to this job's identity.
+pub async fn total_document_coverage(pool: &PgPool, job: Uuid) -> Result<(i64,i64),sqlx::Error> {
+    sqlx::query_as("SELECT count(DISTINCT d.corpus_document_id)::bigint,
+      count(DISTINCT d.corpus_document_id) FILTER (WHERE EXISTS (
+        SELECT 1 FROM entity_document_links l WHERE l.entity_id=j.entity_id
+        AND l.corpus_document_id=d.corpus_document_id))::bigint
+      FROM ingest_job_documents d JOIN ingest_jobs j ON j.id=d.job_id WHERE d.job_id=$1")
+      .bind(job).fetch_one(pool).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -3,6 +3,844 @@ info:
   title: Talaria V3 entity projections
   version: 1.0.0
 paths:
+  /api/v1/claims/{claim_id}/sources:
+    get:
+      summary: List Scholar corpus documents attached to an Agora claim
+      parameters:
+      - name: claim_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - items
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ClaimSource'
+        '400':
+          $ref: '#/components/responses/StructuredError'
+        '404':
+          $ref: '#/components/responses/StructuredError'
+    post:
+      summary: Attach an indexed corpus document to a claim
+      description: Session required. Idempotent. No free-text URLs.
+      parameters:
+      - name: claim_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - corpus_document_id
+              properties:
+                corpus_document_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Source already attached
+        '201':
+          description: Source attached
+        '400':
+          $ref: '#/components/responses/StructuredError'
+        '401':
+          $ref: '#/components/responses/StructuredError'
+        '404':
+          $ref: '#/components/responses/StructuredError'
+  /api/v1/claims/{claim_id}/arguments:
+    get:
+      summary: List structured arguments targeting a claim
+      description: Uses soft_claim_relations (supports, contradicts, qualifies). Off-chain.
+      parameters:
+      - name: claim_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          default: 20
+          maximum: 50
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - items
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Argument'
+        '400':
+          $ref: '#/components/responses/StructuredError'
+        '404':
+          $ref: '#/components/responses/StructuredError'
+    post:
+      summary: Create a sourced argument (or counter-claim) as a soft_claim
+      description: Session required. Requires corpus_document_id and fragment_id or
+        quote. No Intuition publish.
+      parameters:
+      - name: claim_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - relation
+              - statement
+              - corpus_document_id
+              properties:
+                relation:
+                  $ref: '#/components/schemas/ArgumentRelation'
+                statement:
+                  type: string
+                  minLength: 1
+                  maxLength: 4000
+                corpus_document_id:
+                  type: string
+                  format: uuid
+                fragment_id:
+                  type:
+                  - string
+                  - 'null'
+                  format: uuid
+                quote:
+                  type:
+                  - string
+                  - 'null'
+                  minLength: 1
+                  maxLength: 4000
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - argument
+                properties:
+                  argument:
+                    $ref: '#/components/schemas/Argument'
+        '400':
+          $ref: '#/components/responses/StructuredError'
+        '401':
+          $ref: '#/components/responses/StructuredError'
+        '404':
+          $ref: '#/components/responses/StructuredError'
+  /api/v1/comments/{comment_id}/promote:
+    post:
+      summary: Promote an owned comment into a structured argument
+      description: Comment body is unchanged. User must still supply source and evidence.
+      parameters:
+      - name: comment_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - relation
+              - corpus_document_id
+              properties:
+                relation:
+                  $ref: '#/components/schemas/ArgumentRelation'
+                statement:
+                  type: string
+                corpus_document_id:
+                  type: string
+                  format: uuid
+                fragment_id:
+                  type:
+                  - string
+                  - 'null'
+                  format: uuid
+                quote:
+                  type:
+                  - string
+                  - 'null'
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - argument
+                properties:
+                  argument:
+                    $ref: '#/components/schemas/Argument'
+        '400':
+          $ref: '#/components/responses/StructuredError'
+        '401':
+          $ref: '#/components/responses/StructuredError'
+        '404':
+          $ref: '#/components/responses/StructuredError'
+  /api/v1/admin/ingestion/overview:
+    get:
+      summary: 'Ingestion administration: Overview'
+      description: Read-only, no-store. Requires an existing SIWE session and a server-side
+        administration_users grant. Jobs are selected by creation time. Job duration
+        spans first start to finish, including retries; mean/p50/p95 include done and
+        failed jobs with measured durations. Provider percentiles include finished attempts;
+        failure rate includes partial, failed and rate_limited among configured terminal
+        attempts. Documentary coverage is distinct corpus documents in the Agora journal,
+        evaluated against current entity links, never historical truth. Istoria provider
+        telemetry, monetary costs, exact HTTP 429 counts and exhaustive lease history
+        are not collected. Rate limits count classified attempts. Missing volume days
+        have zero jobs. Unknown query fields are rejected.
+      security:
+      - TalariaSession: []
+      parameters:
+      - name: from
+        in: query
+        description: 'RFC3339 offset required. Creation cohort [from, until), maximum
+          93 days. Defaults: until=now, from=until minus 7 days.'
+        schema:
+          type: string
+          format: date-time
+      - name: until
+        in: query
+        description: 'RFC3339 offset required. Creation cohort [from, until), maximum
+          93 days. Defaults: until=now, from=until minus 7 days.'
+        schema:
+          type: string
+          format: date-time
+      - name: lane
+        in: query
+        description: Explorer is Istoria. Omitted means both lanes.
+        schema:
+          type: string
+          enum:
+          - explorer
+          - agora
+      - name: status
+        in: query
+        description: Current job status.
+        schema:
+          type: string
+          enum:
+          - queued
+          - running
+          - done
+          - failed
+      - name: provider
+        in: query
+        description: Jobs with an observed attempt for this provider. Provider counters/coverage
+          restricted to this provider.
+        schema:
+          type: string
+          pattern: ^[a-z0-9_]{2,64}$
+      - name: qid
+        in: query
+        description: Exact resolved QID; homonyms are not merged.
+        schema:
+          type: string
+          pattern: ^Q[1-9][0-9]{0,18}$
+      - name: subject
+        in: query
+        description: Case insensitive exact name, no control characters. Prefer QID.
+        schema:
+          type: string
+          minLength: 2
+          maxLength: 240
+      - name: limit
+        in: query
+        description: SQL page size.
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 25
+      - name: offset
+        in: query
+        description: SQL offset.
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 10000
+          default: 0
+      - name: sort
+        in: query
+        description: Provider ranking by p95, total calls, or failure rate. Stable provider-name
+          tie-break.
+        schema:
+          type: string
+          enum:
+          - slowest
+          - calls
+          - errors
+          default: slowest
+      responses:
+        '200':
+          description: Administrative projection. Null statistics mean no measured population.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminIngestionOverview'
+        '400':
+          description: Invalid filter, UUID, timestamp or pagination.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: string
+                  additionalProperties: false
+                - type: string
+        '401':
+          description: Missing, expired or revoked SIWE session.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: string
+                  additionalProperties: false
+                - type: string
+        '403':
+          description: Session user has no administration_users grant.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: string
+                  additionalProperties: false
+                - type: string
+        '404':
+          description: Job not found.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: string
+                  additionalProperties: false
+                - type: string
+        '500':
+          description: Database or query timeout failure. No sensitive error detail.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: string
+                  additionalProperties: false
+                - type: string
+  /api/v1/admin/ingestion/jobs:
+    get:
+      summary: 'Ingestion administration: Jobs'
+      description: Read-only, no-store. Requires an existing SIWE session and a server-side
+        administration_users grant. Jobs are selected by creation time. Job duration
+        spans first start to finish, including retries; mean/p50/p95 include done and
+        failed jobs with measured durations. Provider percentiles include finished attempts;
+        failure rate includes partial, failed and rate_limited among configured terminal
+        attempts. Documentary coverage is distinct corpus documents in the Agora journal,
+        evaluated against current entity links, never historical truth. Istoria provider
+        telemetry, monetary costs, exact HTTP 429 counts and exhaustive lease history
+        are not collected. Rate limits count classified attempts. Missing volume days
+        have zero jobs. Unknown query fields are rejected.
+      security:
+      - TalariaSession: []
+      parameters:
+      - name: from
+        in: query
+        description: 'RFC3339 offset required. Creation cohort [from, until), maximum
+          93 days. Defaults: until=now, from=until minus 7 days.'
+        schema:
+          type: string
+          format: date-time
+      - name: until
+        in: query
+        description: 'RFC3339 offset required. Creation cohort [from, until), maximum
+          93 days. Defaults: until=now, from=until minus 7 days.'
+        schema:
+          type: string
+          format: date-time
+      - name: lane
+        in: query
+        description: Explorer is Istoria. Omitted means both lanes.
+        schema:
+          type: string
+          enum:
+          - explorer
+          - agora
+      - name: status
+        in: query
+        description: Current job status.
+        schema:
+          type: string
+          enum:
+          - queued
+          - running
+          - done
+          - failed
+      - name: provider
+        in: query
+        description: Jobs with an observed attempt for this provider. Provider counters/coverage
+          restricted to this provider.
+        schema:
+          type: string
+          pattern: ^[a-z0-9_]{2,64}$
+      - name: qid
+        in: query
+        description: Exact resolved QID; homonyms are not merged.
+        schema:
+          type: string
+          pattern: ^Q[1-9][0-9]{0,18}$
+      - name: subject
+        in: query
+        description: Case insensitive exact name, no control characters. Prefer QID.
+        schema:
+          type: string
+          minLength: 2
+          maxLength: 240
+      - name: limit
+        in: query
+        description: SQL page size.
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 25
+      - name: offset
+        in: query
+        description: SQL offset.
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 10000
+          default: 0
+      - name: sort
+        in: query
+        description: Provider ranking by p95, total calls, or failure rate. Stable provider-name
+          tie-break.
+        schema:
+          type: string
+          enum:
+          - slowest
+          - calls
+          - errors
+          default: slowest
+      responses:
+        '200':
+          description: Administrative projection. Null statistics mean no measured population.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminIngestionJobs'
+        '400':
+          description: Invalid filter, UUID, timestamp or pagination.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: string
+                  additionalProperties: false
+                - type: string
+        '401':
+          description: Missing, expired or revoked SIWE session.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: string
+                  additionalProperties: false
+                - type: string
+        '403':
+          description: Session user has no administration_users grant.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: string
+                  additionalProperties: false
+                - type: string
+        '404':
+          description: Job not found.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: string
+                  additionalProperties: false
+                - type: string
+        '500':
+          description: Database or query timeout failure. No sensitive error detail.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: string
+                  additionalProperties: false
+                - type: string
+  /api/v1/admin/ingestion/providers:
+    get:
+      summary: 'Ingestion administration: Providers'
+      description: Read-only, no-store. Requires an existing SIWE session and a server-side
+        administration_users grant. Jobs are selected by creation time. Job duration
+        spans first start to finish, including retries; mean/p50/p95 include done and
+        failed jobs with measured durations. Provider percentiles include finished attempts;
+        failure rate includes partial, failed and rate_limited among configured terminal
+        attempts. Documentary coverage is distinct corpus documents in the Agora journal,
+        evaluated against current entity links, never historical truth. Istoria provider
+        telemetry, monetary costs, exact HTTP 429 counts and exhaustive lease history
+        are not collected. Rate limits count classified attempts. Missing volume days
+        have zero jobs. Unknown query fields are rejected.
+      security:
+      - TalariaSession: []
+      parameters:
+      - name: from
+        in: query
+        description: 'RFC3339 offset required. Creation cohort [from, until), maximum
+          93 days. Defaults: until=now, from=until minus 7 days.'
+        schema:
+          type: string
+          format: date-time
+      - name: until
+        in: query
+        description: 'RFC3339 offset required. Creation cohort [from, until), maximum
+          93 days. Defaults: until=now, from=until minus 7 days.'
+        schema:
+          type: string
+          format: date-time
+      - name: lane
+        in: query
+        description: Explorer is Istoria. Omitted means both lanes.
+        schema:
+          type: string
+          enum:
+          - explorer
+          - agora
+      - name: status
+        in: query
+        description: Current job status.
+        schema:
+          type: string
+          enum:
+          - queued
+          - running
+          - done
+          - failed
+      - name: provider
+        in: query
+        description: Jobs with an observed attempt for this provider. Provider counters/coverage
+          restricted to this provider.
+        schema:
+          type: string
+          pattern: ^[a-z0-9_]{2,64}$
+      - name: qid
+        in: query
+        description: Exact resolved QID; homonyms are not merged.
+        schema:
+          type: string
+          pattern: ^Q[1-9][0-9]{0,18}$
+      - name: subject
+        in: query
+        description: Case insensitive exact name, no control characters. Prefer QID.
+        schema:
+          type: string
+          minLength: 2
+          maxLength: 240
+      - name: limit
+        in: query
+        description: SQL page size.
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 25
+      - name: offset
+        in: query
+        description: SQL offset.
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 10000
+          default: 0
+      - name: sort
+        in: query
+        description: Provider ranking by p95, total calls, or failure rate. Stable provider-name
+          tie-break.
+        schema:
+          type: string
+          enum:
+          - slowest
+          - calls
+          - errors
+          default: slowest
+      responses:
+        '200':
+          description: Administrative projection. Null statistics mean no measured population.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminIngestionProviders'
+        '400':
+          description: Invalid filter, UUID, timestamp or pagination.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: string
+                  additionalProperties: false
+                - type: string
+        '401':
+          description: Missing, expired or revoked SIWE session.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: string
+                  additionalProperties: false
+                - type: string
+        '403':
+          description: Session user has no administration_users grant.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: string
+                  additionalProperties: false
+                - type: string
+        '404':
+          description: Job not found.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: string
+                  additionalProperties: false
+                - type: string
+        '500':
+          description: Database or query timeout failure. No sensitive error detail.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: string
+                  additionalProperties: false
+                - type: string
+  /api/v1/admin/ingestion/jobs/{job_id}:
+    get:
+      summary: 'Ingestion administration: Detail'
+      description: Read-only, no-store. Requires an existing SIWE session and a server-side
+        administration_users grant. Jobs are selected by creation time. Job duration
+        spans first start to finish, including retries; mean/p50/p95 include done and
+        failed jobs with measured durations. Provider percentiles include finished attempts;
+        failure rate includes partial, failed and rate_limited among configured terminal
+        attempts. Documentary coverage is distinct corpus documents in the Agora journal,
+        evaluated against current entity links, never historical truth. Istoria provider
+        telemetry, monetary costs, exact HTTP 429 counts and exhaustive lease history
+        are not collected. Rate limits count classified attempts. Missing volume days
+        have zero jobs. Unknown query fields are rejected.
+      security:
+      - TalariaSession: []
+      parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: limit
+        in: query
+        description: Page size for attempts and checkpoints.
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
+      - name: offset
+        in: query
+        description: SQL offset.
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 10000
+          default: 0
+      responses:
+        '200':
+          description: Administrative projection. Null statistics mean no measured population.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminIngestionDetail'
+        '400':
+          description: Invalid filter, UUID, timestamp or pagination.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: string
+                  additionalProperties: false
+                - type: string
+        '401':
+          description: Missing, expired or revoked SIWE session.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: string
+                  additionalProperties: false
+                - type: string
+        '403':
+          description: Session user has no administration_users grant.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: string
+                  additionalProperties: false
+                - type: string
+        '404':
+          description: Job not found.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: string
+                  additionalProperties: false
+                - type: string
+        '500':
+          description: Database or query timeout failure. No sensitive error detail.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - type: object
+                  required:
+                  - error
+                  properties:
+                    error:
+                      type: string
+                  additionalProperties: false
+                - type: string
   /api/v1/ingest/{job_id}/metrics:
     parameters:
       - name: job_id
@@ -16,6 +854,7 @@ paths:
         in: query
         schema: {type: integer, minimum: 0, maximum: 10000, default: 0}
     get:
+      security: [{TalariaSession: []}]
       summary: Bounded per-job provider attempt diagnostics (Agora); Explorer jobs return empty provider arrays
       description: Distinct document linkage is not historical verification. Raw connector errors are never exposed.
       responses:
@@ -82,6 +921,8 @@ paths:
                       offset: {type: integer}
                       total: {type: integer}
                       next_offset: {type: [integer, 'null']}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
         '400': {$ref: '#/components/responses/Error'}
         '404': {$ref: '#/components/responses/Error'}
         '500': {$ref: '#/components/responses/Error'}
@@ -548,6 +1389,11 @@ paths:
         '404': {$ref: '#/components/responses/StructuredError'}
 
 components:
+  securitySchemes:
+    TalariaSession:
+      type: apiKey
+      in: cookie
+      name: talaria_session
   parameters:
     Entity:
       name: entity_id
@@ -620,6 +1466,659 @@ components:
                       - invalid_signature
                   message: {type: string}
   schemas:
+    ArgumentRelation:
+      type: string
+      enum:
+      - supports
+      - contradicts
+      - qualifies
+    ClaimSource:
+      type: object
+      required:
+      - corpus_document_id
+      - title
+      - source_kind
+      - document_type
+      - created_at
+      properties:
+        corpus_document_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        source_kind:
+          type: string
+        canonical_url:
+          type:
+          - string
+          - 'null'
+        document_type:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    Argument:
+      type: object
+      required:
+      - id
+      - target_claim_id
+      - relation
+      - statement
+      - origin
+      - contribution_status
+      - created_at
+      - sources
+      - evidence
+      properties:
+        id:
+          type: string
+          format: uuid
+        target_claim_id:
+          type: string
+          format: uuid
+        relation:
+          $ref: '#/components/schemas/ArgumentRelation'
+        statement:
+          type: string
+        origin:
+          type: string
+          enum:
+          - pipeline
+          - user
+        contribution_status:
+          type: string
+          enum:
+          - proposed
+          - active
+          - rejected
+        created_at:
+          type: string
+          format: date-time
+        author:
+          type:
+          - object
+          - 'null'
+          properties:
+            id:
+              type: string
+              format: uuid
+            display_name:
+              type:
+              - string
+              - 'null'
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClaimSource'
+        evidence:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              quote:
+                type:
+                - string
+                - 'null'
+              locator:
+                type:
+                - string
+                - 'null'
+              source_system:
+                type: string
+    AdminIngestionJob:
+      type: object
+      required:
+      - id
+      - lane
+      - subject
+      - qid
+      - entity_id
+      - status
+      - attempts
+      - resumes
+      - lease_expired
+      - created_at
+      - started_at
+      - finished_at
+      - duration_ms
+      properties:
+        id:
+          type: string
+          format: uuid
+        lane:
+          type: string
+          enum:
+          - explorer
+          - agora
+        subject:
+          type: string
+        qid:
+          type:
+          - string
+          - 'null'
+        entity_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+        status:
+          type: string
+          enum:
+          - queued
+          - running
+          - done
+          - failed
+        attempts:
+          type: integer
+          format: int64
+          minimum: 0
+        resumes:
+          type: integer
+          format: int64
+          minimum: 0
+        lease_expired:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        finished_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        duration_ms:
+          type:
+          - number
+          - 'null'
+      additionalProperties: false
+    AdminIngestionOverview:
+      type: object
+      required:
+      - summary
+      - volume
+      properties:
+        summary:
+          type: object
+          required:
+          - queued
+          - running
+          - done
+          - failed
+          - resumes
+          - expired_leases
+          - documents_persisted_unique
+          - documents_matched_unique
+          - instrumented_agora_jobs
+          - mean_ms
+          - p50_ms
+          - p95_ms
+          - success_percent
+          - failure_percent
+          properties:
+            queued:
+              type: integer
+              format: int64
+              minimum: 0
+            running:
+              type: integer
+              format: int64
+              minimum: 0
+            done:
+              type: integer
+              format: int64
+              minimum: 0
+            failed:
+              type: integer
+              format: int64
+              minimum: 0
+            resumes:
+              type: integer
+              format: int64
+              minimum: 0
+            expired_leases:
+              type: integer
+              format: int64
+              minimum: 0
+            documents_persisted_unique:
+              type: integer
+              format: int64
+              minimum: 0
+            documents_matched_unique:
+              type: integer
+              format: int64
+              minimum: 0
+            instrumented_agora_jobs:
+              type: integer
+              format: int64
+              minimum: 0
+            mean_ms:
+              type:
+              - number
+              - 'null'
+            p50_ms:
+              type:
+              - number
+              - 'null'
+            p95_ms:
+              type:
+              - number
+              - 'null'
+            success_percent:
+              type:
+              - number
+              - 'null'
+            failure_percent:
+              type:
+              - number
+              - 'null'
+          additionalProperties: false
+        volume:
+          type: array
+          maxItems: 94
+          items:
+            type: object
+            required:
+            - day
+            - jobs
+            properties:
+              day:
+                type: string
+                format: date
+              jobs:
+                type: integer
+                format: int64
+                minimum: 0
+            additionalProperties: false
+      additionalProperties: false
+    AdminIngestionJobs:
+      type: object
+      required:
+      - items
+      - total
+      - limit
+      - offset
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/AdminIngestionJob'
+        total:
+          type: integer
+          format: int64
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+        offset:
+          type: integer
+          minimum: 0
+          maximum: 10000
+      additionalProperties: false
+    AdminIngestionProviders:
+      type: object
+      required:
+      - items
+      - total
+      - limit
+      - offset
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            required:
+            - provider
+            - attempts
+            - completed_attempts
+            - elapsed_ms
+            - discover_calls
+            - fetch_calls
+            - discovered
+            - persisted
+            - timeouts
+            - errors
+            - rate_limited_attempts
+            - resumes
+            - interrupted_attempts
+            - documents_persisted_unique
+            - documents_matched_unique
+            - mean_ms
+            - p50_ms
+            - p95_ms
+            - failure_percent
+            - match_rate_percent
+            properties:
+              provider:
+                type: string
+              attempts:
+                type: integer
+                format: int64
+                minimum: 0
+              completed_attempts:
+                type: integer
+                format: int64
+                minimum: 0
+              elapsed_ms:
+                type: integer
+                format: int64
+                minimum: 0
+              discover_calls:
+                type: integer
+                format: int64
+                minimum: 0
+              fetch_calls:
+                type: integer
+                format: int64
+                minimum: 0
+              discovered:
+                type: integer
+                format: int64
+                minimum: 0
+              persisted:
+                type: integer
+                format: int64
+                minimum: 0
+              timeouts:
+                type: integer
+                format: int64
+                minimum: 0
+              errors:
+                type: integer
+                format: int64
+                minimum: 0
+              rate_limited_attempts:
+                type: integer
+                format: int64
+                minimum: 0
+              resumes:
+                type: integer
+                format: int64
+                minimum: 0
+              interrupted_attempts:
+                type: integer
+                format: int64
+                minimum: 0
+              documents_persisted_unique:
+                type: integer
+                format: int64
+                minimum: 0
+              documents_matched_unique:
+                type: integer
+                format: int64
+                minimum: 0
+              mean_ms:
+                type:
+                - number
+                - 'null'
+              p50_ms:
+                type:
+                - number
+                - 'null'
+              p95_ms:
+                type:
+                - number
+                - 'null'
+              failure_percent:
+                type:
+                - number
+                - 'null'
+              match_rate_percent:
+                type:
+                - number
+                - 'null'
+            additionalProperties: false
+        total:
+          type: integer
+          format: int64
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+        offset:
+          type: integer
+          minimum: 0
+          maximum: 10000
+      additionalProperties: false
+    AdminIngestionMetrics:
+      type: object
+      required:
+      - job_id
+      - lane
+      - status
+      - attempt_count
+      - coverage
+      - provider_attempts
+      - pagination
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        lane:
+          type: string
+          enum:
+          - explorer
+          - agora
+        status:
+          type: string
+          enum:
+          - queued
+          - running
+          - done
+          - failed
+        attempt_count:
+          type: integer
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        finished_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        coverage:
+          type: object
+          required:
+          - meaning
+          - documents_persisted_unique
+          - documents_matched_unique
+          - match_rate_percent
+          - providers
+          properties:
+            meaning:
+              type: string
+              const: entity_document_match_not_historical_verification
+            documents_persisted_unique:
+              type: integer
+              minimum: 0
+            documents_matched_unique:
+              type: integer
+              minimum: 0
+            match_rate_percent:
+              type:
+              - number
+              - 'null'
+              minimum: 0
+              maximum: 100
+            providers:
+              type: array
+              items:
+                type: object
+                required:
+                - provider
+                - documents_persisted_unique
+                - documents_matched_unique
+                - match_rate_percent
+                properties:
+                  provider:
+                    type: string
+                  documents_persisted_unique:
+                    type: integer
+                  documents_matched_unique:
+                    type: integer
+                  match_rate_percent:
+                    type:
+                    - number
+                    - 'null'
+        provider_attempts:
+          type: array
+          items:
+            type: object
+            required:
+            - provider
+            - attempt
+            - status
+            - discover_calls
+            - fetch_calls
+            - documents_discovered
+            - documents_persisted
+            - documents_skipped
+            - match_operations
+            - fetch_timeouts
+            - connector_errors
+            - elapsed_ms
+            - started_at
+            - finished_at
+            - interrupted
+            properties:
+              provider:
+                type: string
+              attempt:
+                type: integer
+              status:
+                type: string
+                enum:
+                - running
+                - healthy
+                - partial
+                - failed
+                - rate_limited
+                - not_configured
+              error_kind:
+                type:
+                - string
+                - 'null'
+                enum:
+                - timeout
+                - rate_limit
+                - cursor_stall
+                - upstream
+                - none
+                - null
+              discover_calls:
+                type: integer
+              fetch_calls:
+                type: integer
+              documents_discovered:
+                type: integer
+              documents_persisted:
+                type: integer
+              documents_skipped:
+                type: integer
+              match_operations:
+                type: integer
+              fetch_timeouts:
+                type: integer
+              connector_errors:
+                type: integer
+              elapsed_ms:
+                type: integer
+              started_at:
+                type: string
+                format: date-time
+              finished_at:
+                type:
+                - string
+                - 'null'
+                format: date-time
+              interrupted:
+                type: boolean
+        pagination:
+          type: object
+          required:
+          - limit
+          - offset
+          - total
+          - next_offset
+          properties:
+            limit:
+              type: integer
+            offset:
+              type: integer
+            total:
+              type: integer
+            next_offset:
+              type:
+              - integer
+              - 'null'
+    AdminIngestionDetail:
+      type: object
+      required:
+      - job
+      - metrics
+      - checkpoints
+      properties:
+        job:
+          $ref: '#/components/schemas/AdminIngestionJob'
+        metrics:
+          $ref: '#/components/schemas/AdminIngestionMetrics'
+        checkpoints:
+          type: object
+          required:
+          - items
+          - total
+          - limit
+          - offset
+          properties:
+            items:
+              type: array
+              maxItems: 100
+              items:
+                type: object
+                required:
+                - source_kind
+                - connector_version
+                - completed_at
+                properties:
+                  source_kind:
+                    type: string
+                  connector_version:
+                    type: string
+                  completed_at:
+                    type: string
+                    format: date-time
+                additionalProperties: false
+            total:
+              type: integer
+              format: int64
+              minimum: 0
+            limit:
+              type: integer
+              minimum: 1
+              maximum: 100
+            offset:
+              type: integer
+              minimum: 0
+              maximum: 10000
+          additionalProperties: false
+      additionalProperties: false
     InteractionAction:
       type: string
       enum:
@@ -671,16 +2170,29 @@ components:
         interaction: {$ref: '#/components/schemas/Interaction'}
     InteractionSummary:
       type: object
-      required: [target_id, counts, comment_count, mine]
+      required:
+      - target_id
+      - counts
+      - comment_count
+      - mine
       properties:
-        target_id: {type: string, format: uuid}
+        target_id:
+          type: string
+          format: uuid
         counts:
           type: object
-          additionalProperties: {type: integer}
-        comment_count: {type: integer}
+          additionalProperties:
+            type: integer
+        comment_count:
+          type: integer
+        argument_count:
+          type: integer
+        source_count:
+          type: integer
         mine:
           type: array
-          items: {$ref: '#/components/schemas/InteractionAction'}
+          items:
+            $ref: '#/components/schemas/InteractionAction'
     CommentReactionType:
       type: string
       enum: [relevant, well_sourced, interesting, needs_nuance, disagree]

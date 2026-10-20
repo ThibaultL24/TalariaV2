@@ -1,5 +1,6 @@
 // crates/talaria-api/src/routes.rs
 mod auth;
+mod admin_ingestion;
 mod demo;
 mod documents;
 mod entities;
@@ -28,7 +29,7 @@ use events::{detail, evidence, geojson, timeline};
 use facets::{list_periods, list_profiles};
 use crate::llm;
 use ingest::{
-    get_explorer_status, get_ingest_job, get_ingest_metrics, start_agora_ingest, start_explorer_ingest, start_ingest,
+    get_explorer_status, get_ingest_job, start_agora_ingest, start_explorer_ingest, start_ingest,
     IngestJobMap,
 };
 use serde_json::{json, Value};
@@ -145,7 +146,7 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/v1/ingest/explorer", post(start_explorer_ingest))
         .route("/api/v1/ingest/agora", post(start_agora_ingest))
         .route("/api/v1/ingest/{job_id}", get(get_ingest_job))
-        .route("/api/v1/ingest/{job_id}/metrics", get(get_ingest_metrics))
+        .merge(admin_ingestion::router(AppState { pool: pool.clone(), offline_only, config: config.clone(), ingest_jobs: ingest_jobs.clone() }))
         .route("/api/v1/ingest/explorer/{job_id}/status", get(get_explorer_status))
         .merge(auth::router())
         .merge(interactions::router())
