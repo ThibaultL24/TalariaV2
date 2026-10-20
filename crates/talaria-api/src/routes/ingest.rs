@@ -4,7 +4,7 @@
 //! - **agora** — catalogs + historiography (theses, controversies, works)
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
@@ -27,6 +27,7 @@ use talaria_store::{
     upsert_entity_with_kind, upsert_person_by_qid,
 };
 use talaria_store::ingest_jobs::{self, DurableIngestJob};
+use talaria_store::ingest_provider_metrics as provider_observability;
 
 pub const LANE_EXPLORER: &str = "explorer";
 pub const LANE_AGORA: &str = "agora";
@@ -555,21 +556,24 @@ async fn run_agora_lane(
     subject: &str,
     qid: Option<&str>,
     corpus_limits: corpus_ingest::CorpusIngestLimits,
+    resume: corpus_ingest::CorpusResume,
 ) -> anyhow::Result<Value> {
     let providers = live_corpus_providers();
-    let corpus_report = corpus_ingest::run_corpus_ingest(
-        config,
-        subject,
-        qid,
-        &providers,
-        corpus_limits,
-        false,
-        None,
-        true,
-    )
-    .await?;
+    let corpus_report = corpus_ingest::run_corpus_ingest_for_job(
+        config,subject,qid,&providers,corpus_limits,resume,
+    ).await?;
     let corpus_json: Value =
         serde_json::from_str(&corpus_report).unwrap_or_else(|_| json!({ "raw": corpus_report }));
+
+    // Only promote the full collection to historiography once every available
+    // provider has completed or has been explicitly marked not configured.
+    // A partial external source is retried without redoing completed providers.
+    if let Some(incomplete) = corpus_json.get("incomplete_providers").and_then(Value::as_array) {
+        if !incomplete.is_empty() {
+            let sources = incomplete.iter().filter_map(Value::as_str).collect::<Vec<_>>();
+            anyhow::bail!("retryable_corpus_provider_failure: {}", sources.join(","));
+        }
+    }
 
     let hist_report =
         historiography::run_historiography_extract(config, subject, None, qid).await?;
@@ -610,6 +614,103 @@ async fn read_progress(state: &AppState, job: &DurableIngestJob) -> IngestProgre
 fn elapsed_ms(job: &DurableIngestJob) -> Option<u64> {
     job.started_at.map(|started| {
         (Utc::now() - started).num_milliseconds().max(0) as u64
+    })
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IngestMetricsQuery {
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+/// Read-only, bounded diagnostics for one job. Coverage measures distinct
+/// linked bibliographic documents, never inferred historical truth.
+pub async fn get_ingest_metrics(
+    State(state): State<AppState>,
+    jar: axum_extra::extract::cookie::CookieJar,
+    Path(job_id): Path<Uuid>,
+    Query(query): Query<IngestMetricsQuery>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    super::admin_ingest::require_admin(&state.pool,&jar).await?;
+    let limit=query.limit.unwrap_or(50);
+    let offset=query.offset.unwrap_or(0);
+    if !(1..=100).contains(&limit) || !(0..=10_000).contains(&offset) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error":"invalid_metrics_pagination"})),
+        ));
+    }
+    let Some(job)=ingest_jobs::get(&state.pool,job_id).await.map_err(db_ingest_error)? else {
+        return Err((StatusCode::NOT_FOUND,Json(json!({"error":"job_not_found"}))));
+    };
+    let (attempts,coverage,total)=tokio::try_join!(
+        provider_observability::list_attempts(&state.pool,job_id,limit,offset),
+        provider_observability::document_coverage(&state.pool,job_id),
+        provider_observability::count_attempts(&state.pool,job_id)
+    ).map_err(db_ingest_error)?;
+
+    Ok(Json(build_ingest_metrics_response(
+        &job,attempts,coverage,total,limit,offset,
+    )))
+}
+
+fn build_ingest_metrics_response(
+    job: &DurableIngestJob,
+    attempts: Vec<provider_observability::ProviderAttempt>,
+    coverage: Vec<provider_observability::DocumentCoverage>,
+    total: i64, limit: i64, offset: i64,
+) -> Value {
+    let total_documents: i64=coverage.iter().map(|s|s.persisted_unique).sum();
+    let total_matched: i64=coverage.iter().map(|s|s.matched_unique).sum();
+    let ratio=|matched:i64,persisted:i64| -> Option<f64> {
+        if persisted==0 {None} else {
+            Some(((matched as f64 / persisted as f64)*10_000.0).round()/100.0)
+        }
+    };
+    let sources=coverage.iter().map(|source|json!({
+        "provider":source.source_kind,
+        "documents_persisted_unique":source.persisted_unique,
+        "documents_matched_unique":source.matched_unique,
+        "match_rate_percent":ratio(source.matched_unique,source.persisted_unique),
+    })).collect::<Vec<_>>();
+    let attempt_records=attempts.iter().map(|item|json!({
+        "provider":item.source_kind,
+        "attempt":item.attempt,
+        "status":item.status,
+        "error_kind":item.error_kind,
+        "discover_calls":item.discover_calls,
+        "fetch_calls":item.fetch_calls,
+        "documents_discovered":item.discovered,
+        "documents_persisted":item.persisted,
+        "documents_skipped":item.skipped,
+        "match_operations":item.matched,
+        "fetch_timeouts":item.timeouts,
+        "connector_errors":item.errors,
+        "elapsed_ms":item.elapsed_ms,
+        "started_at":item.started_at.to_rfc3339(),
+        "finished_at":item.finished_at.map(|time|time.to_rfc3339()),
+        "interrupted":item.status=="running" && (item.attempt<job.attempts || job.status!="running"),
+    })).collect::<Vec<_>>();
+    let next_offset=if offset+limit<total {Some(offset+limit)} else {None};
+    json!({
+        "job_id":job.id,
+        "lane":job.lane,
+        "status":job.status,
+        "attempt_count":job.attempts,
+        "created_at":job.created_at.to_rfc3339(),
+        "started_at":job.started_at.map(|time|time.to_rfc3339()),
+        "finished_at":job.finished_at.map(|time|time.to_rfc3339()),
+        "coverage": {
+            "meaning":"entity_document_match_not_historical_verification",
+            "documents_persisted_unique":total_documents,
+            "documents_matched_unique":total_matched,
+            "match_rate_percent":ratio(total_matched,total_documents),
+            "providers":sources,
+        },
+        "provider_attempts":attempt_records,
+        "pagination":{
+            "limit":limit,"offset":offset,"total":total,"next_offset":next_offset,
+        }
     })
 }
 
@@ -793,7 +894,9 @@ async fn execute_claimed_job(
                 minimum_per_provider: body.minimum_per_provider.unwrap_or(3),
                 provider_timeout: Duration::from_secs(30),
             };
-            run_agora_lane(&config,subject,claimed.qid.as_deref(),limits).await
+            run_agora_lane(&config,subject,claimed.qid.as_deref(),limits,
+                corpus_ingest::CorpusResume { job_id:id,owner_token,attempt:claimed.attempts },
+            ).await
         } else {
             anyhow::bail!("unsupported persisted ingest lane")
         }
@@ -846,6 +949,21 @@ async fn execute_claimed_job(
         }
     };
     let entity_id = report.as_ref().and_then(parse_entity_id_from_report).or(entity_id);
+    if claimed.lane == LANE_AGORA &&
+        error.as_deref().is_some_and(|text|text.starts_with("retryable_corpus_provider_failure:"))
+    {
+        match ingest_jobs::retry_incomplete_providers(
+            &pool,id,owner_token,error.as_deref().unwrap_or(""),claimed.attempts,
+        ).await {
+            Ok(true) => {
+                tracing::info!(%id,attempt=claimed.attempts,"requeued incomplete Agora providers");
+                jobs.lock().await.remove(&id);
+                return;
+            }
+            Ok(false) => {}
+            Err(err) => tracing::error!(%id,%err,"could not requeue incomplete providers"),
+        }
+    }
     let progress_json = serde_json::to_value(progress).unwrap_or_else(|_|json!({"phase":"failed"}));
     match ingest_jobs::finish(
         &pool,id,owner_token,entity_id,&progress_json,
@@ -1038,6 +1156,36 @@ mod tests {
         assert_eq!(resolve_max_documents(Some(80)), 80);
         assert_eq!(resolve_max_documents(Some(0)), 400);
         assert_eq!(resolve_max_documents(Some(9_000)), 400);
+    }
+
+    #[test]
+    fn diagnostics_report_unique_document_coverage_without_raw_errors() {
+        let now=chrono::Utc::now();
+        let job=DurableIngestJob {
+            id:Uuid::new_v4(),lane:"agora".into(),subject:"Victor Hugo".into(),
+            qid:Some("Q535".into()),identity_key:"qid:Q535".into(),
+            entity_id:None,request_json:json!({}),progress_json:json!({}),
+            report_json:None,error:Some("private upstream trace".into()),
+            status:"failed".into(),attempts:2,owner_token:None,lease_until:None,
+            created_at:now,started_at:Some(now),finished_at:Some(now),updated_at:now,
+        };
+        let attempt=provider_observability::ProviderAttempt {
+            source_kind:"hal".into(),attempt:1,status:"rate_limited".into(),
+            error_kind:Some("rate_limit".into()),discover_calls:1,fetch_calls:2,
+            discovered:3,persisted:1,skipped:1,matched:1,timeouts:0,errors:1,
+            elapsed_ms:125,started_at:now,finished_at:Some(now),
+        };
+        let report=build_ingest_metrics_response(
+            &job,vec![attempt],vec![provider_observability::DocumentCoverage {
+                source_kind:"hal".into(),persisted_unique:4,matched_unique:3,
+            }],1,50,0
+        );
+        assert_eq!(report["coverage"]["match_rate_percent"],75.0);
+        assert_eq!(report["provider_attempts"][0]["fetch_calls"],2);
+        assert_eq!(report["provider_attempts"][0]["error_kind"],"rate_limit");
+        assert_eq!(report["provider_attempts"][0]["interrupted"],false);
+        assert!(report.to_string().find("private upstream trace").is_none());
+        assert_eq!(report["pagination"]["next_offset"],serde_json::Value::Null);
     }
 
     #[test]

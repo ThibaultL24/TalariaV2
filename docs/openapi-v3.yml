@@ -3,6 +3,201 @@ info:
   title: Talaria V3 entity projections
   version: 1.0.0
 paths:
+  /api/v1/admin/ingestions/summary:
+    get:
+      summary: Operational dashboard for allowlisted Talaria session administrators
+      security: [{TalariaSession: []}]
+      parameters:
+        - name: days
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 90, default: 30}
+      responses:
+        '200':
+          description: Aggregated jobs and provider attempt statistics over the selected window
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [days, jobs, coverage_meaning, providers]
+                properties:
+                  days: {type: integer}
+                  coverage_meaning: {type: string, const: document_linkage_not_historical_truth}
+                  jobs:
+                    type: object
+                    required: [total, queued, running, done, failed, retried, p50_ms, p95_ms]
+                    properties:
+                      total: {type: integer}
+                      queued: {type: integer}
+                      running: {type: integer}
+                      done: {type: integer}
+                      failed: {type: integer}
+                      retried: {type: integer}
+                      p50_ms: {type: [number, 'null']}
+                      p95_ms: {type: [number, 'null']}
+                  providers:
+                    type: array
+                    items:
+                      type: object
+                      required: [provider, attempts, failed, rate_limited, timeouts, fetch_calls, persisted_operations, p50_ms, p95_ms, documents_persisted_unique, documents_matched_unique, document_match_percent]
+                      properties:
+                        provider: {type: string}
+                        attempts: {type: integer}
+                        failed: {type: integer}
+                        rate_limited: {type: integer}
+                        timeouts: {type: integer}
+                        fetch_calls: {type: integer}
+                        persisted_operations: {type: integer}
+                        p50_ms: {type: [number, 'null']}
+                        p95_ms: {type: [number, 'null']}
+                        documents_persisted_unique: {type: integer}
+                        documents_matched_unique: {type: integer}
+                        document_match_percent: {type: [number, 'null']}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '500': {$ref: '#/components/responses/Error'}
+  /api/v1/admin/ingestions/jobs:
+    get:
+      summary: Paginated read-only ingest job list for allowlisted session administrators
+      security: [{TalariaSession: []}]
+      parameters:
+        - name: days
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 90, default: 30}
+        - name: lane
+          in: query
+          schema: {type: string, enum: [agora, explorer]}
+        - name: status
+          in: query
+          schema: {type: string, enum: [queued, running, done, failed]}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 50, default: 25}
+        - name: offset
+          in: query
+          schema: {type: integer, minimum: 0, maximum: 5000, default: 0}
+      responses:
+        '200':
+          description: Filtered job rows without request payloads or raw upstream errors
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [days, items, pagination]
+                properties:
+                  days: {type: integer}
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [job_id, lane, subject, status, attempts, duration_ms, created_at]
+                      properties:
+                        job_id: {type: string, format: uuid}
+                        lane: {type: string, enum: [agora, explorer]}
+                        subject: {type: string}
+                        qid: {type: [string, 'null']}
+                        status: {type: string, enum: [queued, running, done, failed]}
+                        attempts: {type: integer}
+                        duration_ms: {type: [integer, 'null']}
+                        created_at: {type: string, format: date-time}
+                        started_at: {type: [string, 'null'], format: date-time}
+                        finished_at: {type: [string, 'null'], format: date-time}
+                  pagination:
+                    type: object
+                    required: [limit, offset, total, next_offset]
+                    properties:
+                      limit: {type: integer}
+                      offset: {type: integer}
+                      total: {type: integer}
+                      next_offset: {type: [integer, 'null']}
+        '400': {$ref: '#/components/responses/Error'}
+        '401': {$ref: '#/components/responses/Error'}
+        '403': {$ref: '#/components/responses/Error'}
+        '500': {$ref: '#/components/responses/Error'}
+  /api/v1/ingest/{job_id}/metrics:
+    parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+      - name: limit
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 100, default: 50}
+      - name: offset
+        in: query
+        schema: {type: integer, minimum: 0, maximum: 10000, default: 0}
+    get:
+      security: [{TalariaSession: []}]
+      description: Administrator session required. Distinct document linkage is not historical verification.
+      summary: Bounded per-job provider attempt diagnostics (Agora); Explorer jobs return empty provider arrays
+      description: Distinct document linkage is not historical verification. Raw connector errors are never exposed.
+      responses:
+        '200':
+          description: Typed provider attempts and documentary linkage for one durable ingestion job
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [job_id, lane, status, attempt_count, coverage, provider_attempts, pagination]
+                properties:
+                  job_id: {type: string, format: uuid}
+                  lane: {type: string, enum: [explorer, agora]}
+                  status: {type: string, enum: [queued, running, done, failed]}
+                  attempt_count: {type: integer, minimum: 0}
+                  created_at: {type: string, format: date-time}
+                  started_at: {type: [string, 'null'], format: date-time}
+                  finished_at: {type: [string, 'null'], format: date-time}
+                  coverage:
+                    type: object
+                    required: [meaning, documents_persisted_unique, documents_matched_unique, match_rate_percent, providers]
+                    properties:
+                      meaning: {type: string, const: entity_document_match_not_historical_verification}
+                      documents_persisted_unique: {type: integer, minimum: 0}
+                      documents_matched_unique: {type: integer, minimum: 0}
+                      match_rate_percent: {type: [number, 'null'], minimum: 0, maximum: 100}
+                      providers:
+                        type: array
+                        items:
+                          type: object
+                          required: [provider, documents_persisted_unique, documents_matched_unique, match_rate_percent]
+                          properties:
+                            provider: {type: string}
+                            documents_persisted_unique: {type: integer}
+                            documents_matched_unique: {type: integer}
+                            match_rate_percent: {type: [number, 'null']}
+                  provider_attempts:
+                    type: array
+                    items:
+                      type: object
+                      required: [provider, attempt, status, discover_calls, fetch_calls, documents_discovered, documents_persisted, documents_skipped, match_operations, fetch_timeouts, connector_errors, elapsed_ms, started_at, finished_at, interrupted]
+                      properties:
+                        provider: {type: string}
+                        attempt: {type: integer}
+                        status: {type: string, enum: [running, healthy, partial, failed, rate_limited, not_configured]}
+                        error_kind: {type: [string, 'null'], enum: [timeout, rate_limit, cursor_stall, upstream, none, null]}
+                        discover_calls: {type: integer}
+                        fetch_calls: {type: integer}
+                        documents_discovered: {type: integer}
+                        documents_persisted: {type: integer}
+                        documents_skipped: {type: integer}
+                        match_operations: {type: integer}
+                        fetch_timeouts: {type: integer}
+                        connector_errors: {type: integer}
+                        elapsed_ms: {type: integer}
+                        started_at: {type: string, format: date-time}
+                        finished_at: {type: [string, 'null'], format: date-time}
+                        interrupted: {type: boolean}
+                  pagination:
+                    type: object
+                    required: [limit, offset, total, next_offset]
+                    properties:
+                      limit: {type: integer}
+                      offset: {type: integer}
+                      total: {type: integer}
+                      next_offset: {type: [integer, 'null']}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '500': {$ref: '#/components/responses/Error'}
   /api/v1/entities/{entity_id}/overview:
     parameters:
       - $ref: '#/components/parameters/Entity'
@@ -466,6 +661,12 @@ paths:
         '404': {$ref: '#/components/responses/StructuredError'}
 
 components:
+  securitySchemes:
+    TalariaSession:
+      type: apiKey
+      in: cookie
+      name: talaria_session
+      description: Session verified server-side plus administrator allowlist
   parameters:
     Entity:
       name: entity_id
