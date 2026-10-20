@@ -4,6 +4,7 @@ import { AgoraPage } from "@/features/agora/pages/agora-page";
 import { IstoriaPage } from "@/features/istoria/pages/istoria-page";
 import { PoreiaPage } from "@/features/poreia/pages/poreia-page";
 import { HomePage } from "@/pages/home-page";
+import { IngestionAdminPage } from "@/features/admin/pages/ingestion-admin-page";
 import { legacyEntityTarget } from "@/lib/experiences";
 
 import { WhitepaperPage } from "@/pages/whitepaper-page";
@@ -36,6 +37,7 @@ export function App() {
         <Route path="/entities/:entityId" element={<LegacyEntityRedirect />} />
         <Route path="/entities/:entityId/:view" element={<LegacyEntityRedirect />} />
         <Route path="/explorer" element={<Navigate to="/istoria" replace />} />
+        <Route path="/admin/ingestions" element={<IngestionAdminPage />} />
         <Route path="/about" element={<WhitepaperPage />} />
         <Route path="/whitepaper" element={<Navigate to="/about" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
