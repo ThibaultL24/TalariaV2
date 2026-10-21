@@ -29,7 +29,7 @@ pub use analyzer::{
 };
 pub use fingerprint::{candidate_fingerprint, event_fingerprint, normalize_surface};
 pub use explorer::{
-    explorer_headline, explorer_summary, is_explorer_map_event, is_explorer_timeline_event,
+    explorer_headline, explorer_preview_title, explorer_summary, is_explorer_map_event, is_explorer_timeline_event,
     is_human_place_label, is_occurrence_prose, is_wikidata_qid,
 };
 pub use gates::{apply_gates, event_implies_subject_presence, event_type_is_map_locus, GateContext, GateDecision, RejectionCode};
