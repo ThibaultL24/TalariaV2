@@ -8,7 +8,7 @@ use axum::{
 use chrono::Datelike;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use talaria_quality::{explorer_headline, explorer_summary, is_human_place_label};
+use talaria_quality::{explorer_preview_title, explorer_summary, is_human_place_label};
 use talaria_store::CanonicalEventRow;
 use uuid::Uuid;
 
@@ -428,12 +428,12 @@ fn display_place(event: &CanonicalEventRow) -> Option<&str> {
 }
 
 fn display_title(event: &CanonicalEventRow) -> String {
-    explorer_headline(
+    explorer_preview_title(
         &event.person_name,
         &event.event_type,
         event_year(event),
         event.place_label.as_deref(),
-        None,
+        Some(&event.title),
         event.summary.as_deref(),
     )
 }

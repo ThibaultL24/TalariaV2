@@ -209,6 +209,53 @@ pub fn explorer_headline(
     }
 }
 
+
+const MAX_PREVIEW_TITLE_CHARS: usize = 96;
+const MAX_PREVIEW_TITLE_WORDS: usize = 18;
+
+/// A hover title must be concise and already supported by the stored evidence.
+/// Never shorten an arbitrary sentence into a misleading headline.
+fn usable_preview_title(raw: &str, event_type: &str) -> Option<String> {
+    let candidate = raw.trim();
+    if candidate.is_empty()
+        || candidate.chars().count() > MAX_PREVIEW_TITLE_CHARS
+        || candidate.split_whitespace().count() > MAX_PREVIEW_TITLE_WORDS
+        || candidate.contains('\n')
+        || candidate.contains('\r')
+        || candidate.contains('…')
+        || candidate.ends_with("...")
+        || is_statement_blob(candidate)
+        || is_wikidata_qid(candidate)
+        || candidate.eq_ignore_ascii_case(&event_type.replace('_', " "))
+    {
+        return None;
+    }
+    Some(candidate.to_string())
+}
+
+/// Choose an existing concise title first, otherwise a short complete source
+/// sentence, finally a typed label derived exclusively from canonical fields.
+/// The summary is retained separately for the detail endpoint.
+pub fn explorer_preview_title(
+    person: &str,
+    event_type: &str,
+    year: Option<i32>,
+    place: Option<&str>,
+    stored_title: Option<&str>,
+    summary: Option<&str>,
+) -> String {
+    if let Some(title) = stored_title.and_then(|s| usable_preview_title(s, event_type)) {
+        return title;
+    }
+    if let Some(source) = summary.filter(|s| !is_statement_blob(s)) {
+        let sentence = first_sentence(source, MAX_PREVIEW_TITLE_CHARS + 1);
+        if let Some(title) = usable_preview_title(&sentence, event_type) {
+            return title;
+        }
+    }
+    explorer_headline(person, event_type, year, place, None, None)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -337,4 +384,61 @@ mod tests {
             "notable event · 2024"
         );
     }
+    #[test]
+    fn preview_prefers_verified_short_stored_title_over_narrative() {
+        assert_eq!(
+            explorer_preview_title(
+                "Victor Hugo",
+                "publication",
+                Some(1862),
+                Some("Paris"),
+                Some("Publication des Misérables"),
+                Some("This very long document summary explains the circumstances of publication, the different reactions it generated, and several subsequent developments over the years."),
+            ),
+            "Publication des Misérables"
+        );
+    }
+
+    #[test]
+    fn preview_keeps_short_source_sentence_without_truncating_it() {
+        assert_eq!(
+            explorer_preview_title(
+                "Donald Trump",
+                "marriage",
+                Some(1977),
+                Some("New York"),
+                None,
+                Some("In 1977, Trump married Ivana Zelníčková. The wedding was reported in several places."),
+            ),
+            "In 1977, Trump married Ivana Zelníčková"
+        );
+    }
+
+    #[test]
+    fn preview_falls_back_to_grounded_fields_instead_of_cutting_a_long_summary() {
+        let long_summary = "The published work was discussed at significant length in the source, which continues with contextual details, reactions, interpretations and a later unrelated episode that should never be mistaken for a title.";
+        assert_eq!(
+            explorer_preview_title(
+                "Victor Hugo",
+                "publication",
+                Some(1862),
+                Some("Paris"),
+                Some("publication"),
+                Some(long_summary),
+            ),
+            "publication · 1862 · Paris"
+        );
+        assert_eq!(
+            explorer_preview_title(
+                "Victor Hugo",
+                "publication",
+                Some(1862),
+                Some("Q1234"),
+                Some("STATEMENT | publication | 1862 | Q1234"),
+                Some(long_summary),
+            ),
+            "publication · 1862"
+        );
+    }
+
 }
