@@ -2,6 +2,15 @@
 
 ## Talaria V2 — Agent instructions (all environments)
 
+### Delivery workflow for ChatGPT Work / Codex / Cursor
+
+- Read `docs/DEVELOPMENT_WORKFLOW.md` before starting multi-file tasks.
+- Work on a dedicated branch, **never push directly to `main`**, and open a pull request for review. Do not merge or deploy without explicit user authorization.
+- State the intended scope and acceptance criteria; inspect the code and nearest tests before implementing.
+- Keep changes small and independently reviewable. When PRs are stacked, document the base branch and validate the actual stack.
+- Run relevant Rust / web tests and the build when an executable workspace is available; if unavailable, disclose that limitation, never claim green CI or passing tests.
+- Review the diff for secrets, generated files, accidentally changed data, migrations and unrelated refactors.
+
 ### Mission
 
 Talaria is a historical exploration platform.

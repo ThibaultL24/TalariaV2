@@ -2,9 +2,22 @@ name: Talaria V3
 on:
   push:
     branches: [V3, main]
+  # Include stacked PRs (UX/SNAC) whose base is not main.
   pull_request:
-    branches: [main]
+  workflow_dispatch:
 jobs:
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject committed build and dependency caches
+        shell: bash
+        run: |
+          tracked="$(git ls-files -- 'node_modules/**' 'web/node_modules/**' 'web/dist/**' 'target/**')"
+          if [ -n "$tracked" ]; then
+            printf '%s\n' "::error::Generated artifacts are tracked in Git:" "$tracked"
+            exit 1
+          fi
   rust:
     runs-on: ubuntu-latest
     services:
@@ -38,6 +51,8 @@ jobs:
       - run: cargo test -p talaria-api routes::ingest
       - run: cargo test -p talaria-api corpus_ingest::tests
       - run: cargo test -p talaria-quality
+      - run: cargo test -p talaria-sources
+      - run: cargo test -p talaria-api routes::landmarks
       - run: cargo clippy -p talaria-ai -p talaria-api --all-targets
   web:
     runs-on: ubuntu-latest
