@@ -16,9 +16,17 @@ fn fail(status: StatusCode, code: &str) -> Response {
 
 /// Refresh only an editorial projection. Reuses existing event evidence and locally
 /// stored Wikipedia Lead; no LLM, no canonical insert/update.
-pub async fn refresh(State(state): State<AppState>, Path(entity_id): Path<Uuid>) -> Response {
+pub async fn refresh(
+    State(state): State<AppState>,
+    jar: axum_extra::extract::cookie::CookieJar,
+    Path(entity_id): Path<Uuid>,
+) -> Response {
     if !matches!(std::env::var("TALARIA_ENABLE_LANDMARK_REFRESH").as_deref(), Ok("1")|Ok("true")) {
         return fail(StatusCode::FORBIDDEN,"landmark_refresh_disabled");
+    }
+    // Refresh modifies an editorial projection and must remain operator-only.
+    if let Err(error) = super::admin_ingest::require_admin(&state.pool, &jar).await {
+        return error.into_response();
     }
     let mut tx=match state.pool.begin().await {
         Ok(tx)=>tx,Err(_)=>return fail(StatusCode::INTERNAL_SERVER_ERROR,"database_error")
