@@ -1,6 +1,7 @@
 # Build artifacts
 target/
 web/node_modules/
+node_modules/
 web/dist/
 .worktrees/
 
@@ -13,6 +14,7 @@ sidecar/cosmos/
 **/.pytest_cache/
 **/.mypy_cache/
 **/.cache/
+.cache/
 
 # Generated / heavy local data (outside repo root but listed if present)
 data/

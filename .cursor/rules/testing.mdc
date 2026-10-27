@@ -1,21 +1,28 @@
 ---
-description: How to validate changes in this repo
-globs: **/tests/**/*.rs,**/*_test.rs,**/*.test.ts
+description: Test and validation commands for Rust, React and TypeScript changes
+globs: "**/*.rs,**/*.ts,**/*.tsx"
 alwaysApply: false
 ---
 
 # Testing & validation
 
+Follow `AGENTS.md` and `docs/DEVELOPMENT_WORKFLOW.md` for the full delivery protocol.
+
 ## Rust
 
 - Domain gates: `cargo test -p talaria-quality`
-- Sources (fixtures): `cargo test -p talaria-sources`
-- Broader: `cargo test` / `cargo clippy --all-targets --all-features` (pre-existing warnings OK)
+- Source connector fixtures: `cargo test -p talaria-sources`
+- Targeted API/store tests: `cargo test -p talaria-api <module>` or `cargo test -p talaria-store <module>`
+- Build: `cargo check -p <changed-crate>`
+- Lint: `cargo clippy -p <changed-crate> --all-targets`
+- Database-backed tests require PostgreSQL with PostGIS, matching the CI job.
 
-## Web
+## Frontend
 
-- `cd web && npm run build` — no separate test script configured.
+- `cd web && npm test` (Vitest)
+- `cd web && npm run build` (includes TypeScript typechecking)
+- For user-facing changes, also validate actual browser behavior on desktop and mobile. Unit tests do not replace visual checks.
 
 ## Reporting
 
-Separate **errors** from **warnings**. For multi-file tasks: implement → targeted tests → build → report leftovers.
+Report exact commands, results, environment limitations and any tests **not run**. Never say "tests passed" when they were not executed. Separate existing warnings from new failures.
