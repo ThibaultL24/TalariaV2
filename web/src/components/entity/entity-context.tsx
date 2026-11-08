@@ -7,6 +7,7 @@ import {
   isExperienceView,
   type LifeExperience,
 } from "@/lib/experiences";
+import { poreiaSearchSuffix } from "@/features/poreia/poreia-search";
 import { useExplorerStore } from "@/stores/explorer-store";
 
 export function useExperienceSubject(experience: LifeExperience) {
@@ -49,19 +50,20 @@ export function useExperienceSubject(experience: LifeExperience) {
   }, [routeEntityId, entityId, pendingPerson, picker.selectPerson]);
 
   useEffect(() => {
+    const kept = poreiaSearchSuffix(experience, params);
     if (storedId && pendingSelection.current) {
       pendingSelection.current = false;
-      navigate(`/${experience}/${storedId}/${landing}`);
+      navigate(`/${experience}/${storedId}/${landing}${kept}`);
       return;
     }
     if (!routeEntityId && entityId) {
-      navigate(`/${experience}/${entityId}/${landing}`, { replace: true });
+      navigate(`/${experience}/${entityId}/${landing}${kept}`, { replace: true });
     }
   }, [storedId, entityId, routeEntityId, navigate, experience, landing]);
 
   const openPerson = (id: string) => {
     pendingSelection.current = false;
-    navigate(`/${experience}/${id}/${landing}`);
+    navigate(`/${experience}/${id}/${landing}${poreiaSearchSuffix(experience, params)}`);
   };
 
   return {

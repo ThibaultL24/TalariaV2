@@ -7,18 +7,24 @@ import { rememberEntity, useExperienceSubject } from "@/components/entity/entity
 import { ExperienceLayout } from "@/components/layout/experience-layout";
 import { EntitySearchBox } from "@/components/search/entity-search-box";
 import { EventMomentSearch } from "@/components/search/event-moment-search";
+import { PoreiaCatalogSheet } from "@/features/poreia/components/poreia-catalog-sheet";
+import { PoreiaDestinationSearch } from "@/features/poreia/components/poreia-destination-search";
 import { PoreiaPlaceCard } from "@/features/poreia/components/poreia-place-card";
 import { placesFromMapFeatures } from "@/features/poreia/heritage-catalog";
+import { readPoreiaDestination } from "@/features/poreia/poreia-search";
 import { PoreiaHeritageView } from "@/features/visit/poreia-heritage-view";
 import { PoreiaItineraryView } from "@/features/visit/poreia-itinerary-view";
 import { VisitNowList } from "@/features/visit/visit-now-list";
 import { fetchEventDetail, type TimelineEvent } from "@/lib/api";
 import {
+  fetchPoreiaOccurrences,
+  fetchPoreiaSites,
   fetchVisitHeritage,
   fetchVisitNow,
   fetchVisitSites,
   getEntityView,
   type EntityOverview,
+  type PoreiaCatalogSite,
   type VisitOpportunity,
   type VisitSite,
 } from "@/lib/entity-views";
@@ -69,6 +75,41 @@ export function PoreiaPage() {
     refetchOnWindowFocus: false,
     queryFn: ({ signal }) => fetchVisitNow(entityId, { signal }),
   });
+  const destination = readPoreiaDestination(params);
+  const [catalogOffset, setCatalogOffset] = useState(0);
+  const [pinnedSite, setPinnedSite] = useState<PoreiaCatalogSite>();
+  const catalogQuery = useQuery({
+    queryKey: ["poreia-sites", destination?.qid, destination?.lat, destination?.lon, destination?.radiusKm, catalogOffset, locale],
+    enabled: Boolean(destination),
+    retry: false,
+    refetchOnWindowFocus: false,
+    queryFn: ({ signal }) => fetchPoreiaSites({
+      lat: destination!.lat,
+      lon: destination!.lon,
+      radiusKm: destination!.radiusKm,
+      offset: catalogOffset,
+      lang: locale,
+    }, signal),
+  });
+  const agendaQuery = useQuery({
+    queryKey: ["poreia-occurrences", destination?.qid, destination?.lat, destination?.lon, destination?.radiusKm],
+    enabled: Boolean(destination),
+    retry: false,
+    refetchOnWindowFocus: false,
+    queryFn: ({ signal }) => {
+      const today = new Date();
+      const from = today.toISOString().slice(0, 10);
+      const end = new Date(today);
+      end.setUTCDate(end.getUTCDate() + 90);
+      return fetchPoreiaOccurrences({
+        lat: destination!.lat,
+        lon: destination!.lon,
+        radiusKm: destination!.radiusKm,
+        from,
+        to: end.toISOString().slice(0, 10),
+      }, signal);
+    },
+  });
   const overview = overviewQuery.data;
   const visitSites: VisitSite[] = sitesQuery.data?.sites ?? [];
   const events: TimelineEvent[] = heritageQuery.data?.events ?? [];
@@ -88,6 +129,10 @@ export function PoreiaPage() {
     setMapView(view);
   }, []);
   const mapPlaces = useMemo(() => placesFromMapFeatures(mapView.features), [mapView.features]);
+  const catalogIds = useMemo(
+    () => new Set((catalogQuery.data?.items ?? []).map((site) => site.id)),
+    [catalogQuery.data?.items],
+  );
   const [selected, setSelected] = useState<TimelineEvent>();
   const eventId = params.get("event");
   const showTools = view === "map" || view === "heritage" || view === "now";
@@ -110,8 +155,10 @@ export function PoreiaPage() {
 
   const select = (id?: string) => {
     const copy = new URLSearchParams(params);
-    if (id) copy.set("event", id);
-    else copy.delete("event");
+    if (id) {
+      copy.set("event", id);
+      copy.delete("site");
+    } else copy.delete("event");
     setParams(copy);
   };
   const loading = heritageQuery.isFetching || nowQuery.isFetching;
@@ -121,7 +168,11 @@ export function PoreiaPage() {
       ? String(nowQuery.error)
       : overviewQuery.error
         ? String(overviewQuery.error)
-        : "";
+        : catalogQuery.error
+          ? String(catalogQuery.error)
+          : agendaQuery.error
+            ? String(agendaQuery.error)
+            : "";
 
   return (
     <ExperienceLayout
@@ -135,6 +186,19 @@ export function PoreiaPage() {
       showHeroBand={!entityId}
       search={
         <>
+          <PoreiaDestinationSearch
+            onSelect={(city, radiusKm) => {
+              const copy = new URLSearchParams(params);
+              copy.set("destination", city.qid);
+              copy.set("dlat", String(city.coordinates.lat));
+              copy.set("dlon", String(city.coordinates.lon));
+              copy.set("radius", String(radiusKm));
+              copy.delete("site");
+              setCatalogOffset(0);
+              setPinnedSite(undefined);
+              setParams(copy);
+            }}
+          />
           <EntitySearchBox
             suggestions={picker.suggestions}
             onSubmitQuery={picker.setSearchQuery}
@@ -161,6 +225,25 @@ export function PoreiaPage() {
       }
     >
       {error && <p className="v3-inline-alert" role="alert">{error}</p>}
+      {destination && !(view === "map" && entityId) ? (
+        <PoreiaCatalogSheet
+          sites={catalogQuery.data?.items ?? []}
+          occurrences={agendaQuery.data?.items ?? []}
+          selectedId={params.get("site") ?? undefined}
+          pinned={pinnedSite}
+          loading={catalogQuery.isFetching || agendaQuery.isFetching}
+          hasMore={Boolean(catalogQuery.data?.has_more)}
+          onMore={() => setCatalogOffset((value) => value + 50)}
+          onSelect={(site) => {
+            const copy = new URLSearchParams(params);
+            copy.set("site", site.id);
+            copy.delete("event");
+            setPinnedSite(site);
+            setParams(copy);
+            setMapFocus({ eventId: site.id, lat: site.coordinates.lat, lon: site.coordinates.lon });
+          }}
+        />
+      ) : null}
       <div className={entityId && showTools ? "v3-explorer-stage" : undefined}>
         {entityId && showTools && (
           <div className="v3-moment-search-row">
@@ -189,6 +272,7 @@ export function PoreiaPage() {
               id={entityId}
               selected={mapFocus?.eventId ?? eventId ?? undefined}
               focus={mapFocus}
+              catalogSites={catalogQuery.data?.items ?? []}
               onView={reportMapView}
               onSelect={(id) => {
                 const place = mapPlaces.find((row) => row.id === id);
@@ -200,9 +284,31 @@ export function PoreiaPage() {
             />
             </Suspense>
             <aside className="poreia-sheet" aria-label={t.visitHeritageTab}>
+              {destination ? (
+                <PoreiaCatalogSheet
+                  sites={catalogQuery.data?.items ?? []}
+                  occurrences={agendaQuery.data?.items ?? []}
+                  selectedId={params.get("site") ?? undefined}
+                  pinned={pinnedSite}
+                  loading={catalogQuery.isFetching || agendaQuery.isFetching}
+                  hasMore={Boolean(catalogQuery.data?.has_more)}
+                  onMore={() => setCatalogOffset((value) => value + 50)}
+                  onSelect={(site) => {
+                    const copy = new URLSearchParams(params);
+                    copy.set("site", site.id);
+                    copy.delete("event");
+                    setPinnedSite(site);
+                    setParams(copy);
+                    setMapFocus({ eventId: site.id, lat: site.coordinates.lat, lon: site.coordinates.lon });
+                  }}
+                />
+              ) : null}
               <PlaceFilters places={mapPlaces} kind={placeKind} onKind={setPlaceKind} />
+              {mapPlaces.filter((place) => place.id === (mapFocus?.eventId ?? eventId) && !catalogIds.has(place.id)).map((place) => (
+                <PoreiaPlaceCard key={place.id} place={place} />
+              ))}
               <ul className="visit-heritage-list">
-                {mapPlaces.filter((place) => !placeKind || place.kind === placeKind).map((place) => (
+                {mapPlaces.filter((place) => !catalogIds.has(place.id) && (!placeKind || place.kind === placeKind)).map((place) => (
                   <li key={place.id}>
                     <button
                       type="button"
@@ -211,6 +317,12 @@ export function PoreiaPage() {
                         if (!place.coordinates) return;
                         setMapFocus({ eventId: place.id, lat: place.coordinates.lat, lon: place.coordinates.lon });
                         if (place.origins.includes("heritage_event")) select(place.id);
+                        if (place.origins.includes("wikidata_site")) {
+                          const copy = new URLSearchParams(params);
+                          copy.set("site", place.id);
+                          copy.delete("event");
+                          setParams(copy);
+                        }
                       }}
                     >
                       {place.title}
@@ -221,9 +333,6 @@ export function PoreiaPage() {
               {mapPlaces.length === 0 && !mapView.loading && (
                 <p role="status">{t.noPlacesInView}</p>
               )}
-              {mapPlaces.filter((place) => place.id === (mapFocus?.eventId ?? eventId)).map((place) => (
-                <PoreiaPlaceCard key={place.id} place={place} />
-              ))}
               <Link className="button button--ghost" to={`/poreia/${entityId}/itinerary`}>{t.seeItinerary}</Link>
             </aside>
           </div>
@@ -256,7 +365,8 @@ export function PoreiaPage() {
             entityId={entityId}
             onFocus={(point) => {
               setMapFocus({ eventId: point.id, lat: point.lat, lon: point.lon });
-              navigate(`/poreia/${entityId}/map`);
+              const copy = new URLSearchParams(params);
+              navigate(`/poreia/${entityId}/map?${copy.toString()}`);
             }}
           />
         )}

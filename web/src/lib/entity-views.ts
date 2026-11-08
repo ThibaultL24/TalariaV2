@@ -183,6 +183,76 @@ export interface PoreiaDestination {
   coordinates: { lat: number; lon: number };
   source_url: string;
 }
+export interface PoreiaHistoricalLink {
+  relation_role: string;
+  relation_pid?: string | null;
+  subject_qid?: string | null;
+  summary: string;
+  source_url: string;
+}
+
+export interface PoreiaCatalogSite {
+  id: string;
+  wikidata_qid: string;
+  label: string;
+  kind: string;
+  visitability: VisitSite["visitability"];
+  coordinates: { lat: number; lon: number };
+  historical_links: PoreiaHistoricalLink[];
+  media: { author?: string; license?: string; attribution?: string; source_url: string }[];
+  source_url: string;
+  opening_hours?: string;
+  hours_checked_at?: string;
+}
+
+export interface PoreiaOccurrenceItem {
+  id: string;
+  kind: string;
+  title: string;
+  summary?: string | null;
+  venue_label?: string | null;
+  occurs_on?: string;
+  ends_on?: string;
+  time_precision: "day" | "month" | "year";
+  source_url: string;
+  coordinates?: { lat: number; lon: number };
+}
+
+export async function fetchPoreiaSites(
+  input: { lat: number; lon: number; radiusKm: number; offset?: number; lang?: "fr" | "en" },
+  signal?: AbortSignal,
+): Promise<{ items: PoreiaCatalogSite[]; has_more: boolean }> {
+  const params = new URLSearchParams({
+    lat: String(input.lat),
+    lon: String(input.lon),
+    radius_km: String(input.radiusKm),
+    limit: "50",
+    offset: String(input.offset ?? 0),
+    lang: input.lang ?? "fr",
+  });
+  const response = await fetch(`/api/v1/poreia/sites?${params}`, { signal });
+  if (!response.ok) throw new Error(`Request failed (${response.status})`);
+  return response.json() as Promise<{ items: PoreiaCatalogSite[]; has_more: boolean }>;
+}
+
+export async function fetchPoreiaOccurrences(
+  input: { lat: number; lon: number; radiusKm: number; from: string; to: string },
+  signal?: AbortSignal,
+): Promise<{ items: PoreiaOccurrenceItem[] }> {
+  const params = new URLSearchParams({
+    lat: String(input.lat),
+    lon: String(input.lon),
+    radius_km: String(input.radiusKm),
+    from: input.from,
+    to: input.to,
+    limit: "30",
+    offset: "0",
+  });
+  const response = await fetch(`/api/v1/poreia/occurrences?${params}`, { signal });
+  if (!response.ok) throw new Error(`Request failed (${response.status})`);
+  return response.json() as Promise<{ items: PoreiaOccurrenceItem[] }>;
+}
+
 export async function findPoreiaDestinations(
   query: string, lang: "fr" | "en" = "fr", signal?: AbortSignal,
 ): Promise<PoreiaDestination[]> {

@@ -73,6 +73,13 @@ export interface AppMessages {
   associationSource: string;
   onlyAssociatedSites: string;
   geoSequence: string;
+  catalogTitle: string;
+  agendaTitle: string;
+  agendaNote: string;
+  catalogEmpty: string;
+  agendaEmpty: string;
+  historicalLink: string;
+  loadMorePlaces: string;
   loadingItinerary: string;
   seeOnMap: string;
   indicativeRoute: string;
@@ -368,6 +375,13 @@ const EN: AppMessages = {
   associationSource: "Association source ↗",
   onlyAssociatedSites: "Only sites historically associated with the person are offered. The search does not create places.",
   geoSequence: "Indicative geographic sequence. No walking time is calculated.",
+  catalogTitle: "Published places in this radius",
+  agendaTitle: "Cultural calendar",
+  agendaNote: "Exhibitions and performances are separate from the historical timeline. A day has no invented hour.",
+  catalogEmpty: "No published place in this radius yet.",
+  agendaEmpty: "No published cultural event in these dates.",
+  historicalLink: "Historical link",
+  loadMorePlaces: "Load more places",
   loadingItinerary: "Loading the route…",
   seeOnMap: "See on the map",
   indicativeRoute: "Indicative route: travel, opening and hours still need to be checked.",
@@ -682,6 +696,13 @@ const FR: AppMessages = {
   associationSource: "Source de l’association ↗",
   onlyAssociatedSites: "Seuls les sites historiquement associés à la personne sont proposés. La recherche ne crée aucun lieu.",
   geoSequence: "Séquence géographique indicative. Aucune durée de marche n’est calculée.",
+  catalogTitle: "Lieux publiés dans ce rayon",
+  agendaTitle: "Agenda culturel",
+  agendaNote: "Expositions et spectacles sont distincts de la chronologie historique. Un jour n’a pas d’heure inventée.",
+  catalogEmpty: "Aucun lieu publié dans ce rayon pour le moment.",
+  agendaEmpty: "Aucun événement culturel publié sur ces dates.",
+  historicalLink: "Lien historique",
+  loadMorePlaces: "Charger d’autres lieux",
   loadingItinerary: "Chargement du parcours…",
   seeOnMap: "Voir sur la carte",
   indicativeRoute: "Parcours indicatif : les déplacements, l’ouverture et les horaires sont à vérifier.",
