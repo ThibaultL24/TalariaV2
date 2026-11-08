@@ -8,7 +8,11 @@ mod entity_views;
 mod landmarks;
 mod visit;
 mod visit_wikidata;
+mod poreia_catalog;
+mod poreia_culture;
 mod poreia_destinations;
+mod poreia_query;
+mod poreia_review;
 mod events;
 mod facets;
 mod interactions;
@@ -66,6 +70,7 @@ fn cors_layer() -> CorsLayer {
                 header::CONTENT_TYPE,
                 header::COOKIE,
                 header::AUTHORIZATION,
+                header::HeaderName::from_static("x-talaria-operator-intent"),
             ])),
         _ => CorsLayer::new(),
     }
@@ -110,6 +115,12 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/v1/entities/{entity_id}/visit/sites/geojson", get(visit_wikidata::sites_geojson))
         .route("/api/v1/entities/{entity_id}/visit/itinerary", get(visit_wikidata::itinerary))
         .route("/api/v1/visit/destinations", get(poreia_destinations::search))
+        .route("/api/v1/poreia/sites", get(poreia_catalog::sites))
+        .route("/api/v1/poreia/occurrences", get(poreia_culture::occurrences))
+        .route(
+            "/api/v1/admin/poreia/sites/{site_id}/review",
+            post(poreia_review::review_site),
+        )
         .route(
             "/api/v1/entities/{entity_id}/visit/anchors",
             get(visit::anchors),

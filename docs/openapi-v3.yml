@@ -198,6 +198,163 @@ paths:
         '400': {$ref: '#/components/responses/Error'}
         '404': {$ref: '#/components/responses/Error'}
         '500': {$ref: '#/components/responses/Error'}
+  /api/v1/poreia/sites:
+    get:
+      summary: Published heritage sites inside a validated radius
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          schema: {type: number, minimum: -90, maximum: 90}
+        - name: lon
+          in: query
+          required: true
+          schema: {type: number, minimum: -180, maximum: 180}
+        - name: radius_km
+          in: query
+          required: true
+          schema: {type: number, minimum: 0.1, maximum: 50}
+        - name: lang
+          in: query
+          schema: {type: string, enum: [fr, en], default: fr}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 50, default: 50}
+        - name: offset
+          in: query
+          schema: {type: integer, minimum: 0, maximum: 10000, default: 0}
+        - name: bbox
+          in: query
+          description: Optional west,south,east,north envelope
+          schema: {type: string}
+      responses:
+        '200':
+          description: Published sites only. Quarantine rows are omitted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, limit, offset, has_more, lang]
+                properties:
+                  items: {type: array, items: {type: object}}
+                  limit: {type: integer}
+                  offset: {type: integer}
+                  has_more: {type: boolean}
+                  lang: {type: string, enum: [fr, en]}
+        '400':
+          description: Invalid coordinates, radius, language, page or bbox
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error: {type: string}
+  /api/v1/poreia/occurrences:
+    get:
+      summary: Published cultural occurrences, separate from canonical history
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          schema: {type: number, minimum: -90, maximum: 90}
+        - name: lon
+          in: query
+          required: true
+          schema: {type: number, minimum: -180, maximum: 180}
+        - name: radius_km
+          in: query
+          required: true
+          schema: {type: number, minimum: 0.1, maximum: 50}
+        - name: from
+          in: query
+          required: true
+          schema: {type: string, format: date}
+        - name: to
+          in: query
+          required: true
+          schema: {type: string, format: date}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 50, default: 30}
+        - name: offset
+          in: query
+          schema: {type: integer, minimum: 0, maximum: 10000, default: 0}
+        - name: bbox
+          in: query
+          schema: {type: string}
+      responses:
+        '200':
+          description: Day-precision dates are calendar dates, without an invented clock time
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, limit, offset, has_more, from, to]
+                properties:
+                  items: {type: array, items: {type: object}}
+                  limit: {type: integer}
+                  offset: {type: integer}
+                  has_more: {type: boolean}
+                  from: {type: string, format: date}
+                  to: {type: string, format: date}
+        '400':
+          description: Invalid geography or date range
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error: {type: string}
+  /api/v1/admin/poreia/sites/{site_id}/review:
+    post:
+      summary: Operator review that can publish one site and the evidence URL it cites
+      security: [{TalariaSession: []}]
+      parameters:
+        - name: site_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: X-Talaria-Operator-Intent
+          in: header
+          required: true
+          schema: {type: string, const: review-site}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, reason_code, evidence_url]
+              properties:
+                decision: {type: string, enum: [publish, reject, hold]}
+                reason_code:
+                  type: string
+                  enum: [location_verified, source_verified, relation_verified, license_verified, insufficient_source, not_the_subject]
+                evidence_url: {type: string, format: uri}
+      responses:
+        '200':
+          description: Review stored. Import never calls this route.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [site_id, decision, publication_status]
+                properties:
+                  site_id: {type: string, format: uuid}
+                  decision: {type: string}
+                  publication_status: {type: string}
+        '400':
+          description: Missing operator intent
+        '401':
+          description: No Talaria session
+        '403':
+          description: Session is not on the operator allowlist
+        '404':
+          description: Unknown site
+        '422':
+          description: Decision, reason or evidence URL is not acceptable
   /api/v1/entities/{entity_id}/overview:
     parameters:
       - $ref: '#/components/parameters/Entity'
