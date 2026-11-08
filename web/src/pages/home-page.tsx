@@ -1,6 +1,7 @@
 // web/src/pages/home-page.tsx
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { LicensedHeroVideo } from "@/components/brand/licensed-hero-video";
 import { TalariaHeroWordmark } from "@/components/brand/talaria-hero-wordmark";
 import { Navbar } from "@/components/layout/navbar";
 import { EntitySearchBox } from "@/components/search/entity-search-box";
@@ -76,6 +77,7 @@ export function HomePage() {
           className="hero hero--landing hero--home hero--aegean-photo"
           aria-labelledby="home-hero-title"
         >
+          <LicensedHeroVideo />
           <div className="hero__grid">
             <div className="hero__copy">
               <h1 id="home-hero-title" className="hero__title hero__title--wordmark">
