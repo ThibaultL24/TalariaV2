@@ -240,6 +240,34 @@ pub async fn dispatch(cli: Cli, config: AppConfig) -> anyhow::Result<()> {
                 crate::supervisor_run::agent_plan(&experience, &qid, &label, live).await?
             );
         }
+        Commands::AgentDispatch {
+            experience,
+            qid,
+            label,
+            execute,
+            site_qid,
+            site_label,
+            lat,
+            lon,
+            site_kind,
+        } => {
+            println!(
+                "{}",
+                crate::supervisor_run::agent_dispatch(
+                    &config,
+                    &experience,
+                    &qid,
+                    &label,
+                    execute,
+                    site_qid.as_deref(),
+                    site_label.as_deref(),
+                    lat,
+                    lon,
+                    &site_kind,
+                )
+                .await?
+            );
+        }
         Commands::PlanSources { subject, qid } => {
             ingest::run_plan_sources(&subject, qid.as_deref()).await?
         }

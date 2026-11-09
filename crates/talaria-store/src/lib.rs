@@ -34,6 +34,7 @@ pub mod user_interactions;
 pub mod intuition_user_signals;
 pub mod comments;
 pub mod poreia;
+pub mod supervisor;
 pub mod visit;
 pub mod visit_opportunities;
 
@@ -121,6 +122,7 @@ pub use person_events::{
 };
 pub use migrate_repair::repair_migration_checksums;
 pub use pool::{connect, run_migrations, DbPool};
+pub use supervisor::record_supervisor_run;
 pub use poreia::{
     evidence_supports, list_published_occurrences, list_published_sites, review_poreia_site,
     valid_reason_code, PoreiaDecision, PoreiaOccurrenceRow, PoreiaSiteRow, ReviewOutcome,

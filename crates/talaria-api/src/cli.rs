@@ -126,6 +126,28 @@ pub enum Commands {
         #[arg(long)]
         live: bool,
     },
+    /// Record a supervision run. Execution cannot publish sites or write canonical events.
+    AgentDispatch {
+        #[arg(long)]
+        experience: String,
+        #[arg(long)]
+        qid: String,
+        #[arg(long, default_value = "")]
+        label: String,
+        /// Insert a quarantine site when coordinates and a site QID are present. Still does not publish.
+        #[arg(long)]
+        execute: bool,
+        #[arg(long)]
+        site_qid: Option<String>,
+        #[arg(long)]
+        site_label: Option<String>,
+        #[arg(long)]
+        lat: Option<f64>,
+        #[arg(long)]
+        lon: Option<f64>,
+        #[arg(long, default_value = "monument")]
+        site_kind: String,
+    },
     /// Plan sources for a subject (deterministic, auditable JSON)
     PlanSources {
         #[arg(long)]

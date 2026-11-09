@@ -5,6 +5,7 @@ use talaria_ai::{
     accept_model_tasks, deterministic_plan, plan_json, policy_comparison, reference_brief,
     valid_qid, Experience, PlanTask, SubjectBrief, PROMPT_VERSION,
 };
+use talaria_core::AppConfig;
 
 pub async fn agent_plan(
     experience: &str,
@@ -58,6 +59,44 @@ pub async fn agent_plan(
         body["comparison"] = policy_comparison(experience, qid);
     }
     Ok(serde_json::to_string_pretty(&body)?)
+}
+
+pub async fn agent_dispatch(
+    config: &AppConfig,
+    experience: &str,
+    qid: &str,
+    label: &str,
+    execute: bool,
+    site_qid: Option<&str>,
+    site_label: Option<&str>,
+    lat: Option<f64>,
+    lon: Option<f64>,
+    site_kind: &str,
+) -> anyhow::Result<String> {
+    let experience = Experience::parse(experience).ok_or_else(|| anyhow::anyhow!("invalid_experience"))?;
+    anyhow::ensure!(valid_qid(qid), "invalid_qid");
+    let brief = brief_for(qid, label);
+    let plan = deterministic_plan(experience, &brief);
+    let pool = talaria_store::connect(config).await?;
+    talaria_store::run_migrations(&pool).await?;
+    let report = talaria_store::record_supervisor_run(
+        &pool,
+        experience.as_str(),
+        &plan.subject_qid,
+        &plan.subject_label,
+        &plan.provider,
+        &plan.model,
+        plan.prompt_version,
+        &plan_json(&plan),
+        execute,
+        site_qid,
+        site_label,
+        lat,
+        lon,
+        site_kind,
+    )
+    .await?;
+    Ok(serde_json::to_string_pretty(&report)?)
 }
 
 fn brief_for(qid: &str, label: &str) -> SubjectBrief {
