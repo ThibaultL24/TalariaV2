@@ -108,6 +108,25 @@ pub fn is_configured() -> bool {
     llm_creds().is_some()
 }
 
+pub async fn complete_supervisor_plan(prompt: &str) -> anyhow::Result<(String, String, Value)> {
+    let creds = llm_creds().ok_or_else(|| anyhow::anyhow!("llm_unconfigured"))?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(45))
+        .build()?;
+    let (status, body) = complete_prompt(&client, &creds, &creds.model, prompt).await?;
+    anyhow::ensure!(status.is_success(), "llm_http_{}", status.as_u16());
+    let text = output_text(&body).ok_or_else(|| anyhow::anyhow!("llm_empty"))?;
+    let parsed: Value = serde_json::from_str(text.trim().trim_start_matches("```json").trim_end_matches("```").trim())
+        .or_else(|_| serde_json::from_str(extract_json_object(&text)))?;
+    Ok((provider_label(), creds.model, parsed))
+}
+
+fn extract_json_object(text: &str) -> &str {
+    let start = text.find('{').unwrap_or(0);
+    let end = text.rfind('}').map(|index| index + 1).unwrap_or(text.len());
+    text.get(start..end).unwrap_or("{}")
+}
+
 pub fn provider_label() -> String {
     match llm_creds() {
         Some(c) if c.base_url.contains("openrouter") => "openrouter".into(),

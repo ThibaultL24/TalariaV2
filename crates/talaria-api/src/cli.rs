@@ -114,6 +114,18 @@ pub enum Commands {
         #[arg(long, help = "Include live Wikimedia clients as implemented")]
         live: bool,
     },
+    /// Read-only Istoria or Poreia supervision plan. Never publishes or writes canonical events.
+    AgentPlan {
+        #[arg(long)]
+        experience: String,
+        #[arg(long)]
+        qid: String,
+        #[arg(long, default_value = "")]
+        label: String,
+        /// Ask the configured model to rank allowed tasks. A failure keeps the deterministic plan.
+        #[arg(long)]
+        live: bool,
+    },
     /// Plan sources for a subject (deterministic, auditable JSON)
     PlanSources {
         #[arg(long)]

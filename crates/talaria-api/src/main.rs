@@ -39,6 +39,7 @@ mod place_conflict;
 mod quality;
 mod rebuild;
 mod routes;
+mod supervisor_run;
 mod visit_audit;
 mod visit_enrich;
 mod visit_live;

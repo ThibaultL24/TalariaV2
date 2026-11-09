@@ -229,6 +229,17 @@ pub async fn dispatch(cli: Cli, config: AppConfig) -> anyhow::Result<()> {
             tracing::info!(%id, "supersession done");
         }
         Commands::SourceRegistry { live } => ingest::run_source_registry(live).await?,
+        Commands::AgentPlan {
+            experience,
+            qid,
+            label,
+            live,
+        } => {
+            println!(
+                "{}",
+                crate::supervisor_run::agent_plan(&experience, &qid, &label, live).await?
+            );
+        }
         Commands::PlanSources { subject, qid } => {
             ingest::run_plan_sources(&subject, qid.as_deref()).await?
         }

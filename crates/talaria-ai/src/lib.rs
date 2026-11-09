@@ -1,4 +1,7 @@
 //! Versioned contracts for evidence-bound AI processing. No canonical writes.
+mod supervisor;
+pub use supervisor::*;
+
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
@@ -46,8 +49,8 @@ pub fn validate_extraction(value: &Value, text: &str) -> anyhow::Result<()> {
             .and_then(Value::as_str)
             .unwrap_or("");
         anyhow::ensure!(
-            !quote.trim().is_empty() && text.contains(quote),
-            "ungrounded extraction quote"
+            quote_is_documentary(quote, text),
+            "ungrounded or synthetic extraction quote"
         );
         let score = item
             .get("confidence")
