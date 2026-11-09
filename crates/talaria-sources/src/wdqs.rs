@@ -533,6 +533,31 @@ mod tests {
     }
 
     #[test]
+    fn a_qlever_response_keeps_the_date_place_and_coordinates() {
+        let payload = json!({"results": {"bindings": [{
+            "event": {"type": "uri", "value": "http://www.wikidata.org/entity/Q123"},
+            "eventLabel": {"type": "literal", "value": "Coronation of Napoleon"},
+            "date": {"type": "literal", "value": "+1804-12-02T00:00:00Z"},
+            "place": {"type": "uri", "value": "http://www.wikidata.org/entity/Q90"},
+            "placeLabel": {"type": "literal", "value": "Paris"},
+            "geo": {"type": "literal", "value": "Point(2.312200 48.856600)"},
+            "evType": {"type": "literal", "value": "historical_fact"}
+        }]}});
+        let events = parse_sparql_bindings(&payload, None);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].date, "1804-12-02");
+        assert_eq!(events[0].event_type, "office");
+        assert_eq!(events[0].place_qid.as_deref(), Some("Q90"));
+        assert_eq!(events[0].place_label.as_deref(), Some("Paris"));
+        assert!((events[0].lat.unwrap() - 48.8566).abs() < 0.0001);
+        assert!((events[0].lon.unwrap() - 2.3122).abs() < 0.0001);
+        let query = events_for_person_query_qlever("Q1048", 5);
+        assert!(query.contains("wdt:P585"));
+        assert!(query.contains("wdt:P276"));
+        assert!(!query.contains("SERVICE"));
+    }
+
+    #[test]
     fn qlever_query_does_not_use_the_wikibase_label_service() {
         let query = events_for_person_query_qlever("Q517", 20);
         assert!(!query.contains("SERVICE"));
