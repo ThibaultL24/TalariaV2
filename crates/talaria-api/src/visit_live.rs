@@ -74,7 +74,7 @@ pub async fn enrich_from_wikidata(
     Ok(opportunities)
 }
 
-/// Heritage → `canonical_events` (statues, museums…); remainder → `visit_opportunities`.
+/// Heritage enrichment stays inactive: it does not write canonical events or publish a site.
 pub async fn enrich_heritage_from_wikidata(
     pool: &PgPool,
     entity_id: Uuid,
