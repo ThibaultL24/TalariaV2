@@ -108,17 +108,61 @@ pub fn is_configured() -> bool {
     llm_creds().is_some()
 }
 
-pub async fn complete_supervisor_plan(prompt: &str) -> anyhow::Result<(String, String, Value)> {
+pub struct SupervisorCompletion {
+    pub provider: String,
+    pub model: String,
+    pub value: Value,
+    pub input_tokens: u32,
+    pub output_tokens: u32,
+    pub duration_ms: u128,
+    pub tokens_estimated: bool,
+}
+
+pub async fn complete_supervisor_plan(prompt: &str) -> anyhow::Result<SupervisorCompletion> {
     let creds = llm_creds().ok_or_else(|| anyhow::anyhow!("llm_unconfigured"))?;
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(45))
         .build()?;
+    let started = std::time::Instant::now();
     let (status, body) = complete_prompt(&client, &creds, &creds.model, prompt).await?;
+    let duration_ms = started.elapsed().as_millis();
     anyhow::ensure!(status.is_success(), "llm_http_{}", status.as_u16());
     let text = output_text(&body).ok_or_else(|| anyhow::anyhow!("llm_empty"))?;
     let parsed: Value = serde_json::from_str(text.trim().trim_start_matches("```json").trim_end_matches("```").trim())
         .or_else(|_| serde_json::from_str(extract_json_object(&text)))?;
-    Ok((provider_label(), creds.model, parsed))
+    let (input_tokens, output_tokens, tokens_estimated) = usage_tokens(&body, prompt, &text);
+    Ok(SupervisorCompletion {
+        provider: provider_label(),
+        model: creds.model,
+        value: parsed,
+        input_tokens,
+        output_tokens,
+        duration_ms,
+        tokens_estimated,
+    })
+}
+
+fn usage_tokens(body: &Value, prompt: &str, text: &str) -> (u32, u32, bool) {
+    let input = body
+        .pointer("/usage/input_tokens")
+        .or_else(|| body.pointer("/usage/prompt_tokens"))
+        .and_then(Value::as_u64);
+    let output = body
+        .pointer("/usage/output_tokens")
+        .or_else(|| body.pointer("/usage/completion_tokens"))
+        .and_then(Value::as_u64);
+    match (input, output) {
+        (Some(input), Some(output)) => (
+            u32::try_from(input).unwrap_or(u32::MAX),
+            u32::try_from(output).unwrap_or(u32::MAX),
+            false,
+        ),
+        _ => (
+            talaria_ai::estimate_tokens(prompt),
+            talaria_ai::estimate_tokens(text),
+            true,
+        ),
+    }
 }
 
 fn extract_json_object(text: &str) -> &str {

@@ -5,12 +5,13 @@
 
 use serde_json::{json, Value};
 
-pub const PROMPT_VERSION: &str = "supervisor:v1";
+pub const PROMPT_VERSION: &str = "supervisor:v2";
 pub const MODE_READ_ONLY: &str = "read_only";
 
 const MAX_TASKS: u32 = 8;
 const MAX_DOCUMENTS: u32 = 40;
 const MAX_TOKENS: u32 = 4_000;
+const MAX_COST_USD_MICROS: u64 = 20_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Experience {
@@ -116,7 +117,9 @@ pub struct SubjectBrief {
     pub birth_year: Option<i32>,
     pub death_year: Option<i32>,
     pub has_wikipedia: bool,
+    pub wikipedia_documents: u32,
     pub wikisource_count: u32,
+    pub commons_documents: u32,
     pub sourced_event_count: u32,
     pub published_site_count: u32,
 }
@@ -167,19 +170,23 @@ pub fn deterministic_plan(experience: Experience, brief: &SubjectBrief) -> Agent
     push(&mut tasks, TaskKind::ResolveWikidata, 1, "Confirm the QID before any homonym is accepted.");
     match experience {
         Experience::Istoria => {
-            if !brief.has_wikipedia {
+            if !brief.has_wikipedia && brief.wikipedia_documents == 0 {
                 gaps.push("wikipedia_page_missing".into());
             }
-            push(&mut tasks, TaskKind::HarvestWikipedia, 1, "Read the associated Wikipedia pages before prose extraction.");
+            if brief.wikipedia_documents == 0 {
+                push(&mut tasks, TaskKind::HarvestWikipedia, 1, "Read the associated Wikipedia pages before prose extraction.");
+            }
             if brief.wikisource_count == 0 {
                 gaps.push("wikisource_corpus_not_collected".into());
+                push(&mut tasks, TaskKind::HarvestWikisource, 2, "Page Wikisource inside the forty-document budget.");
             }
-            push(&mut tasks, TaskKind::HarvestWikisource, 2, "Page Wikisource inside the forty-document budget.");
-            push(&mut tasks, TaskKind::HarvestCommons, 3, "Collect Commons files only with author, license and attribution.");
+            if brief.commons_documents == 0 {
+                push(&mut tasks, TaskKind::HarvestCommons, 3, "Collect Commons files only with author, license and attribution.");
+            }
             if brief.sourced_event_count == 0 {
                 gaps.push("biography_without_sourced_events".into());
+                push(&mut tasks, TaskKind::HarvestWdqsBiography, 1, "Prefer dated, typed Wikidata statements over a generic historical fact.");
             }
-            push(&mut tasks, TaskKind::HarvestWdqsBiography, 1, "Prefer dated, typed Wikidata statements over a generic historical fact.");
             if brief.birth_year.is_none() || brief.death_year.is_none() {
                 gaps.push("lifespan_incomplete".into());
                 push(&mut tasks, TaskKind::RecordDocumentaryGap, 2, "Do not invent a missing birth or death year.");
@@ -192,8 +199,8 @@ pub fn deterministic_plan(experience: Experience, brief: &SubjectBrief) -> Agent
         Experience::Poreia => {
             if brief.published_site_count == 0 {
                 gaps.push("no_published_site".into());
+                push(&mut tasks, TaskKind::DiscoverHeritageSites, 1, "Sites start in quarantine. Publication stays with the operator review.");
             }
-            push(&mut tasks, TaskKind::DiscoverHeritageSites, 1, "Sites start in quarantine. Publication stays with the operator review.");
             push(&mut tasks, TaskKind::ReviewPersonSiteRelation, 1, "A person-site link needs a source. A place named in a text is not a visit.");
             push(&mut tasks, TaskKind::CollectCommonsMedia, 2, "A photograph stays quarantined until author, license and attribution are present.");
             push(&mut tasks, TaskKind::CollectCulturalOccurrences, 2, "Exhibitions and performances stay separate from the historical timeline.");
@@ -230,7 +237,7 @@ pub fn plan_json(plan: &AgentPlan) -> Value {
             "max_tasks": MAX_TASKS,
             "max_documents": MAX_DOCUMENTS,
             "max_tokens": MAX_TOKENS,
-            "max_cost_usd_micros": 0
+            "max_cost_usd_micros": MAX_COST_USD_MICROS
         },
         "tasks": plan.tasks.iter().map(|task| json!({
             "key": task.key,
@@ -282,7 +289,31 @@ pub fn quote_is_documentary(quote: &str, source_text: &str) -> bool {
         && !quote.to_ascii_lowercase().starts_with("summary:")
 }
 
-/// Known subjects used to compare policy with and without a model. No network and no invented facts.
+/// Price a model call in USD micros. A billed call never prices at zero.
+/// Rates are estimates and the boolean says so.
+pub fn priced_usage(model: &str, input_tokens: u32, output_tokens: u32) -> (u64, bool) {
+    if input_tokens == 0 && output_tokens == 0 {
+        return (0, false);
+    }
+    let (input_per_million, output_per_million, listed) = match model {
+        "gpt-4o-mini" => (150_000, 600_000, true),
+        "gpt-4o" => (2_500_000, 10_000_000, true),
+        _ => (2_500_000, 10_000_000, false),
+    };
+    let cost = (u64::from(input_tokens) * input_per_million) / 1_000_000
+        + (u64::from(output_tokens) * output_per_million) / 1_000_000;
+    (cost.max(1), !listed)
+}
+
+pub fn estimate_tokens(text: &str) -> u32 {
+    u32::try_from(text.chars().count() / 4).unwrap_or(u32::MAX).max(1)
+}
+
+pub fn within_token_budget(prompt: &str) -> bool {
+    estimate_tokens(prompt) <= MAX_TOKENS
+}
+
+/// Known subjects used by unit tests. Live planning reads the database instead.
 pub fn reference_brief(qid: &str) -> Option<SubjectBrief> {
     match qid {
         "Q517" => Some(SubjectBrief {
@@ -291,7 +322,9 @@ pub fn reference_brief(qid: &str) -> Option<SubjectBrief> {
             birth_year: Some(1769),
             death_year: Some(1821),
             has_wikipedia: true,
+            wikipedia_documents: 0,
             wikisource_count: 0,
+            commons_documents: 0,
             sourced_event_count: 0,
             published_site_count: 0,
         }),
@@ -301,7 +334,9 @@ pub fn reference_brief(qid: &str) -> Option<SubjectBrief> {
             birth_year: Some(1853),
             death_year: Some(1890),
             has_wikipedia: true,
+            wikipedia_documents: 0,
             wikisource_count: 0,
+            commons_documents: 0,
             sourced_event_count: 0,
             published_site_count: 0,
         }),
@@ -311,7 +346,9 @@ pub fn reference_brief(qid: &str) -> Option<SubjectBrief> {
             birth_year: Some(-100),
             death_year: Some(-44),
             has_wikipedia: true,
+            wikipedia_documents: 0,
             wikisource_count: 0,
+            commons_documents: 0,
             sourced_event_count: 0,
             published_site_count: 0,
         }),
@@ -394,6 +431,27 @@ mod tests {
         assert!(quote_is_documentary("born in Ajaccio", "He was born in Ajaccio."));
         assert!(!quote_is_documentary("[synthetic] born in Ajaccio", "He was born in Ajaccio."));
         assert!(!quote_is_documentary("born in Paris", "He was born in Ajaccio."));
+    }
+
+    #[test]
+    fn a_collected_corpus_is_not_fetched_again() {
+        let mut brief = reference_brief("Q517").unwrap();
+        brief.wikipedia_documents = 2;
+        brief.wikisource_count = 3;
+        brief.commons_documents = 1;
+        brief.sourced_event_count = 4;
+        brief.birth_year = Some(1769);
+        brief.death_year = Some(1821);
+        let plan = deterministic_plan(Experience::Istoria, &brief);
+        assert!(plan.tasks.iter().all(|task| task.kind == TaskKind::ResolveWikidata));
+    }
+
+    #[test]
+    fn a_billed_call_cannot_be_priced_at_zero() {
+        assert_eq!(priced_usage("gpt-5.4", 0, 0), (0, false));
+        let (cost, estimated) = priced_usage("gpt-5.4", 12, 4);
+        assert!(cost >= 1);
+        assert!(estimated);
     }
 
     #[test]

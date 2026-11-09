@@ -122,7 +122,11 @@ pub use person_events::{
 };
 pub use migrate_repair::repair_migration_checksums;
 pub use pool::{connect, run_migrations, DbPool};
-pub use supervisor::record_supervisor_run;
+pub use supervisor::{
+    load_subject_coverage, record_supervisor_run, resume_failed_tasks, reusable_supervisor_report,
+    upsert_supervised_document, verifiable_source_url, SourcedSite, SubjectCoverage, SupervisorCall,
+    TaskEffect,
+};
 pub use poreia::{
     evidence_supports, list_published_occurrences, list_published_sites, review_poreia_site,
     valid_reason_code, PoreiaDecision, PoreiaOccurrenceRow, PoreiaSiteRow, ReviewOutcome,

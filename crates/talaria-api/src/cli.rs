@@ -134,19 +134,12 @@ pub enum Commands {
         qid: String,
         #[arg(long, default_value = "")]
         label: String,
-        /// Insert a quarantine site when coordinates and a site QID are present. Still does not publish.
+        /// Fetch allowed connector documents. A site still needs a stored source and stays in quarantine.
         #[arg(long)]
         execute: bool,
+        /// Ask the model to rank the allowed tasks before execution.
         #[arg(long)]
-        site_qid: Option<String>,
-        #[arg(long)]
-        site_label: Option<String>,
-        #[arg(long)]
-        lat: Option<f64>,
-        #[arg(long)]
-        lon: Option<f64>,
-        #[arg(long, default_value = "monument")]
-        site_kind: String,
+        live: bool,
     },
     /// Plan sources for a subject (deterministic, auditable JSON)
     PlanSources {
