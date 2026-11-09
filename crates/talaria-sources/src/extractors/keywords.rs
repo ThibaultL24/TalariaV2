@@ -33,12 +33,13 @@ impl CandidateExtractor for KeywordMineExtractor {
             for hit in mined {
                 let (event_type, predicate) = verb_to_event(&hit.verb);
                 let end = offset + sentence.len() as i32;
+                let place_surface = (event_type != "historical_fact").then_some(hit.place);
                 out.push(RawCandidate {
                     event_type: event_type.into(),
                     predicate: predicate.into(),
                     subject_surface: person.clone(),
                     time_surface: Some(hit.time),
-                    place_surface: Some(hit.place),
+                    place_surface,
                     object_surface: None,
                     participant_surfaces: vec![],
                     clause_text: sentence.clone(),

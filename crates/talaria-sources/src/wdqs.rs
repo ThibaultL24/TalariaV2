@@ -379,12 +379,37 @@ fn event_id_from_uri(uri: &str) -> Option<String> {
 }
 
 fn normalize_date(raw: &str) -> Option<String> {
-    let t = raw.trim().trim_start_matches('+');
-    let day = t.split('T').next()?.get(..10)?;
-    if day.len() == 10 && day.as_bytes()[4] == b'-' {
-        Some(day.to_string())
+    let trimmed = raw.trim();
+    let (negative, rest) = if let Some(rest) = trimmed.strip_prefix('+') {
+        (false, rest)
+    } else if let Some(rest) = trimmed.strip_prefix('-') {
+        (true, rest)
     } else {
-        None
+        (false, trimmed)
+    };
+    let head = rest.split('T').next()?.trim();
+    let mut parts = head.split('-');
+    let year = parts.next()?;
+    if year.len() < 3 || !year.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let year_label = if negative {
+        format!("-{year}")
+    } else {
+        year.to_string()
+    };
+    let month = parts.next();
+    let day = parts.next();
+    match (month, day) {
+        (Some(month), Some(day))
+            if month.len() == 2 && day.len() == 2 && month != "00" && day != "00" =>
+        {
+            Some(format!("{year_label}-{month}-{day}"))
+        }
+        (Some(month), _) if month.len() == 2 && month != "00" => {
+            Some(format!("{year_label}-{month}"))
+        }
+        _ => Some(year_label),
     }
 }
 
@@ -406,33 +431,73 @@ fn parse_wkt(raw: Option<&str>) -> Option<(Option<f64>, Option<f64>)> {
     Some((Some(lat), Some(lon)))
 }
 
-fn classify_event(raw: &str, label: &str) -> String {
-    let lower = label.to_lowercase();
-    if raw.eq_ignore_ascii_case("battle")
-        || lower.contains("battle of")
+fn label_type(lower: &str) -> Option<&'static str> {
+    if lower.contains("battle of")
         || lower.contains("bataille")
         || lower.starts_with("siege of")
         || lower.starts_with("siège")
     {
-        return "battle".into();
-    }
-    if raw.eq_ignore_ascii_case("diplomatic")
-        || raw.eq_ignore_ascii_case("treaty")
-        || lower.contains("treaty")
+        Some("battle")
+    } else if lower.contains("treaty")
         || lower.contains("traité")
         || lower.contains("concordat")
         || lower.contains("peace of")
         || lower.contains("congress of")
         || lower.contains("conférence")
     {
+        Some("diplomatic")
+    } else if lower.contains("coronation")
+        || lower.contains("couronnement")
+        || lower.contains("abdication")
+    {
+        Some("office")
+    } else if lower.contains("exile") || lower.contains("exil") {
+        Some("exile")
+    } else if lower.contains("marriage") || lower.contains("mariage") {
+        Some("marriage")
+    } else {
+        None
+    }
+}
+
+fn classify_event(raw: &str, label: &str) -> String {
+    let lower = label.to_lowercase();
+    if raw.eq_ignore_ascii_case("battle") || label_type(&lower) == Some("battle") {
+        return "battle".into();
+    }
+    if raw.eq_ignore_ascii_case("diplomatic")
+        || raw.eq_ignore_ascii_case("treaty")
+        || label_type(&lower) == Some("diplomatic")
+    {
         return "diplomatic".into();
     }
-    let t = raw.trim().to_lowercase();
-    if t.is_empty() {
-        "historical_fact".into()
-    } else {
-        t
+    if raw.eq_ignore_ascii_case("historical_fact") || raw.trim().is_empty() {
+        return label_type(&lower).unwrap_or("historical_fact").into();
     }
+    raw.trim().to_lowercase()
+}
+
+/// QLever has no Wikibase label service. The same pattern is expressed with `rdfs:label`.
+pub fn events_for_person_query_qlever(qid: &str, limit: u32) -> String {
+    let lim = limit.clamp(1, 10_000);
+    format!(
+        r#"PREFIX wd: <http://www.wikidata.org/entity/>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+SELECT DISTINCT ?event ?eventLabel ?date ?place ?placeLabel WHERE {{
+  {{
+    ?event wdt:P710 wd:{qid} .
+  }} UNION {{
+    wd:{qid} wdt:P1344 ?event .
+  }}
+  OPTIONAL {{ ?event wdt:P585 ?date . }}
+  OPTIONAL {{ ?event wdt:P276 ?place . }}
+  OPTIONAL {{ ?event rdfs:label ?eventLabel . FILTER(lang(?eventLabel) = "en") }}
+  OPTIONAL {{ ?place rdfs:label ?placeLabel . FILTER(lang(?placeLabel) = "en") }}
+}}
+LIMIT {lim}
+"#
+    )
 }
 
 fn predicate_for(event_type: &str) -> &'static str {
@@ -446,5 +511,45 @@ fn predicate_for(event_type: &str) -> &'static str {
         "education" => "studied_at",
         "publication" => "published",
         _ => "participant_in",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn bce_dates_keep_their_sign_and_year_precision() {
+        assert_eq!(normalize_date("+1805-12-02T00:00:00Z").as_deref(), Some("1805-12-02"));
+        assert_eq!(normalize_date("-0044-03-15T00:00:00Z").as_deref(), Some("-0044-03-15"));
+        assert_eq!(normalize_date("-0100-00-00T00:00:00Z").as_deref(), Some("-0100"));
+    }
+
+    #[test]
+    fn a_coronation_is_not_left_as_a_generic_fact() {
+        assert_eq!(classify_event("historical_fact", "Coronation of Napoleon"), "office");
+        assert_eq!(classify_event("battle", "Battle of Austerlitz"), "battle");
+    }
+
+    #[test]
+    fn qlever_query_does_not_use_the_wikibase_label_service() {
+        let query = events_for_person_query_qlever("Q517", 20);
+        assert!(!query.contains("SERVICE"));
+        assert!(!query.contains("bd:serviceParam"));
+        assert!(query.contains("rdfs:label"));
+        assert!(query.contains("wd:Q517"));
+    }
+
+    #[test]
+    fn signed_year_survives_binding_parse() {
+        let payload = json!({"results": {"bindings": [{
+            "event": {"type": "uri", "value": "http://www.wikidata.org/entity/Q1"},
+            "eventLabel": {"type": "literal", "value": "Crossing of the Rubicon"},
+            "date": {"type": "literal", "value": "-0049-01-10T00:00:00Z"},
+            "evType": {"type": "literal", "value": "historical_fact"}
+        }]}});
+        let events = parse_sparql_bindings(&payload, None);
+        assert_eq!(events[0].date, "-0049-01-10");
     }
 }

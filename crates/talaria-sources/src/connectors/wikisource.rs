@@ -17,6 +17,8 @@ use crate::types::{DiscoveredDocument, ExternalEntityRef, SourceMetadata, TypedT
 const API: &str = "https://fr.wikisource.org/w/api.php";
 const CONNECTOR_VERSION: &str = "wikisource:fr_v1";
 const SKIP_PREFIXES: &[&str] = &["page:", "livre:", "index:"];
+const PAGE_SIZE: u32 = 15;
+const DOCUMENT_BUDGET: u32 = 40;
 
 /// Wikisource FR live connector (fr.wikisource.org Action API).
 pub struct WikisourceConnector {
@@ -28,12 +30,12 @@ impl WikisourceConnector {
     pub fn new() -> anyhow::Result<Self> {
         Ok(Self {
             http: http_client()?,
-            max_docs: 15,
+            max_docs: DOCUMENT_BUDGET,
         })
     }
 
-    fn cap(&self) -> u32 {
-        self.max_docs.min(15)
+    fn budget(&self) -> u32 {
+        self.max_docs.clamp(1, DOCUMENT_BUDGET)
     }
 
     pub fn document_from_title(title: &str) -> DiscoveredDocument {
@@ -71,27 +73,54 @@ impl WikisourceConnector {
     }
 
     async fn search_titles(&self, label: &str) -> Result<Vec<String>, ConnectorError> {
-        let limit = self.cap().to_string();
-        let response = self
-            .http
-            .get(API)
-            .query(&[
-                ("action", "query"),
-                ("list", "search"),
-                ("srsearch", label),
-                ("srnamespace", "0"),
-                ("srlimit", limit.as_str()),
-                ("format", "json"),
-            ])
-            .send()
-            .await
-            .map_err(|e| ConnectorError::Http(e.to_string()))?
-            .error_for_status()
-            .map_err(|e| ConnectorError::Http(e.to_string()))?
-            .json::<Value>()
-            .await
-            .map_err(|e| ConnectorError::Parse(e.to_string()))?;
-        Ok(parse_search_titles(&response))
+        let mut titles = Vec::new();
+        let mut offset = 0u32;
+        let page = PAGE_SIZE.to_string();
+        for _ in 0..4 {
+            if titles.len() >= self.budget() as usize {
+                break;
+            }
+            let offset_text = offset.to_string();
+            let response = self
+                .http
+                .get(API)
+                .query(&[
+                    ("action", "query"),
+                    ("list", "search"),
+                    ("srsearch", label),
+                    ("srnamespace", "0"),
+                    ("srlimit", page.as_str()),
+                    ("sroffset", offset_text.as_str()),
+                    ("maxlag", "5"),
+                    ("format", "json"),
+                ])
+                .send()
+                .await
+                .map_err(|e| ConnectorError::Http(e.to_string()))?;
+            let retry_after = response
+                .headers()
+                .get("retry-after")
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_string);
+            let status = response.status();
+            let body = response
+                .json::<Value>()
+                .await
+                .map_err(|e| ConnectorError::Parse(e.to_string()))?;
+            if let Some(wait) = mediawiki_wait_seconds(status.as_u16(), retry_after.as_deref(), &body) {
+                return Err(ConnectorError::Http(format!("wikimedia_backoff:{wait}")));
+            }
+            if !status.is_success() {
+                return Err(ConnectorError::Http(format!("wikisource_http_{}", status.as_u16())));
+            }
+            titles.extend(parse_search_titles(&body));
+            match search_continue_offset(&body) {
+                Some(next) if next > offset => offset = next,
+                _ => break,
+            }
+        }
+        titles.truncate(self.budget() as usize);
+        Ok(titles)
     }
 
     async fn auteur_links(&self, label: &str) -> Result<Vec<String>, ConnectorError> {
@@ -156,6 +185,27 @@ pub fn parse_siteinfo_namespaces(json: &Value) -> HashMap<String, i64> {
         }
     }
     map
+}
+
+pub fn search_continue_offset(json: &Value) -> Option<u32> {
+    json.pointer("/continue/sroffset")
+        .and_then(Value::as_u64)
+        .and_then(|value| u32::try_from(value).ok())
+}
+
+/// Honour Retry-After and MediaWiki maxlag. The wait is capped so a connector cannot stall.
+pub fn mediawiki_wait_seconds(status: u16, retry_after: Option<&str>, body: &Value) -> Option<u64> {
+    if let Some(raw) = retry_after {
+        if let Ok(seconds) = raw.trim().parse::<u64>() {
+            return Some(seconds.min(120));
+        }
+    }
+    let maxlag = body.pointer("/error/code").and_then(Value::as_str) == Some("maxlag");
+    if status == 429 || maxlag {
+        Some(5)
+    } else {
+        None
+    }
 }
 
 /// Extract page titles from a MediaWiki search API response.
@@ -450,13 +500,7 @@ impl SourceConnector for WikisourceConnector {
         subject: &ResolvedSubject,
         cursor: Option<DiscoveryCursor>,
     ) -> Result<DiscoveryPage, ConnectorError> {
-        if cursor.map(|c| c.offset).unwrap_or(0) > 0 {
-            return Ok(DiscoveryPage {
-                documents: vec![],
-                next_cursor: None,
-            });
-        }
-
+        let offset = cursor.map(|item| item.offset).unwrap_or(0) as usize;
         let (had_sitelink, mut titles) = sitelink_titles(subject);
         if titles.is_empty() && !had_sitelink {
             let search = self.search_titles(&subject.label).await;
@@ -465,14 +509,25 @@ impl SourceConnector for WikisourceConnector {
             titles.retain(|title| !is_skipped_discover_title(title));
         }
 
-        titles.truncate(self.cap() as usize);
-        let documents = titles
-            .into_iter()
-            .map(|title| Self::document_from_title(&title))
+        titles.truncate(self.budget() as usize);
+        if offset >= titles.len() {
+            return Ok(DiscoveryPage {
+                documents: vec![],
+                next_cursor: None,
+            });
+        }
+        let end = (offset + PAGE_SIZE as usize).min(titles.len());
+        let documents = titles[offset..end]
+            .iter()
+            .map(|title| Self::document_from_title(title))
             .collect();
+        let next_cursor = (end < titles.len()).then_some(DiscoveryCursor {
+            token: None,
+            offset: end as u32,
+        });
         Ok(DiscoveryPage {
             documents,
-            next_cursor: None,
+            next_cursor,
         })
     }
 
@@ -668,15 +723,37 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn discover_clamps_to_fifteen_even_when_max_docs_higher() {
+    async fn discover_pages_past_fifteen_and_stops_at_the_budget() {
         let mut conn = WikisourceConnector::new().unwrap();
         conn.max_docs = 100;
-        let ids = (1..=20)
+        let ids = (1..=50)
             .map(|n| ("frwikisource".into(), format!("Doc {n}")))
             .collect();
         let subject = napoleon_with_ids(ids);
-        let page = conn.discover(&subject, None).await.unwrap();
-        assert_eq!(page.documents.len(), 15);
+        let first = conn.discover(&subject, None).await.unwrap();
+        assert_eq!(first.documents.len(), 15);
+        let cursor = first.next_cursor.expect("another page remains");
+        let second = conn.discover(&subject, Some(cursor)).await.unwrap();
+        assert_eq!(second.documents.len(), 15);
+        let mut seen = first.documents.len() + second.documents.len();
+        let mut cursor = second.next_cursor;
+        while let Some(next) = cursor {
+            let page = conn.discover(&subject, Some(next)).await.unwrap();
+            seen += page.documents.len();
+            cursor = page.next_cursor;
+        }
+        assert_eq!(seen, 40);
+    }
+
+    #[test]
+    fn retry_after_and_maxlag_are_bounded() {
+        assert_eq!(mediawiki_wait_seconds(200, Some("2"), &serde_json::json!({})), Some(2));
+        assert_eq!(mediawiki_wait_seconds(429, None, &serde_json::json!({})), Some(5));
+        assert_eq!(
+            mediawiki_wait_seconds(200, Some("500"), &serde_json::json!({"error": {"code": "maxlag"}})),
+            Some(120)
+        );
+        assert_eq!(search_continue_offset(&serde_json::json!({"continue": {"sroffset": 15}})), Some(15));
     }
 
     #[tokio::test]

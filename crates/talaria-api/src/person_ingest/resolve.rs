@@ -2,7 +2,7 @@
 //! Resolve Wikidata QID before any person entity write.
 
 use talaria_store::normalize_qid;
-use talaria_wikidata::WikidataClient;
+use talaria_wikidata::{resolve_person_hits, PersonResolution, WikidataClient};
 
 pub async fn resolve_person_qid(
     explicit: Option<&str>,
@@ -13,13 +13,21 @@ pub async fn resolve_person_qid(
         return Some(qid);
     }
     let client = WikidataClient::new().ok()?;
-    if let Ok(Some(qid)) = client.search_entity(subject, lang).await {
+    if let Some(qid) = choose_person(&client, subject, lang).await {
         return Some(qid);
     }
     if lang != "en" {
-        return client.search_entity(subject, "en").await.ok().flatten();
+        return choose_person(&client, subject, "en").await;
     }
     None
+}
+
+async fn choose_person(client: &WikidataClient, subject: &str, lang: &str) -> Option<String> {
+    let hits = client.search_entities(subject, lang, 8).await.ok()?;
+    match resolve_person_hits(&hits, &[]) {
+        PersonResolution::Resolved(qid) => Some(qid),
+        PersonResolution::Ambiguous(_) | PersonResolution::Unresolved => None,
+    }
 }
 
 pub async fn require_person_qid(
