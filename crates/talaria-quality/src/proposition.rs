@@ -20,6 +20,7 @@ pub enum Novelty {
     New,
     Duplicate,
     Variant,
+    AdditionalEvidence,
     Uncertain,
     Rejected,
 }
@@ -95,13 +96,35 @@ pub fn anchored_action_place(clause: &str, event_type: &str, proposed: &str) -> 
     (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
-pub fn proposition_key(event_type: &str, year: Option<i32>, place: &str) -> String {
+/// Grouping heuristic for one extraction pass.
+/// The historical identity is `occurrence_key`, which also keeps the action and the object.
+/// Two events in the same city and the same year stay apart when their clauses differ.
+pub fn proposition_key(event_type: &str, year: Option<i32>, place: &str, clause: &str) -> String {
     format!(
-        "{}|{}|{}",
+        "{}|{}|{}|{}",
         event_type,
         year.unwrap_or(0),
-        place_stem(place)
+        place_stem(place),
+        clause_fingerprint(clause)
     )
+}
+
+fn clause_fingerprint(clause: &str) -> String {
+    const SKIP: &[&str] = &[
+        "the", "and", "was", "were", "with", "from", "that", "for", "his", "her", "its", "les",
+        "des", "une",
+    ];
+    let folded = fold(clause);
+    let words = folded
+        .split(|ch: char| !ch.is_alphanumeric())
+        .filter(|word| word.len() > 2 && !SKIP.contains(word))
+        .take(8)
+        .collect::<Vec<_>>();
+    if words.is_empty() {
+        "bare".into()
+    } else {
+        words.join("-")
+    }
 }
 
 pub fn time_reading(clause_year: Option<i32>, context_year: Option<i32>, same_subject: bool) -> TimeReading {
@@ -134,7 +157,7 @@ pub fn novelty_of(
         }
         let named = place_after_cues(
             event.title,
-            &["battle of ", "bataille de ", "siege of ", "siège de "],
+            &["battle of ", "bataille de ", "siege of ", "siège de ", "treaty of ", "armistice of "],
         );
         let known_stem = named
             .as_deref()
@@ -144,7 +167,11 @@ pub fn novelty_of(
         let same_place = stem == known_stem;
         let same_year = year == Some(event.year);
         if same_place && same_year {
-            return Novelty::Duplicate;
+            return if statements_match(clause, event.title) {
+                Novelty::Duplicate
+            } else {
+                Novelty::AdditionalEvidence
+            };
         }
         if same_place && year.is_none() {
             return Novelty::Uncertain;
@@ -160,6 +187,16 @@ pub fn novelty_of(
         return Novelty::Uncertain;
     }
     Novelty::New
+}
+
+fn statements_match(clause: &str, title: &str) -> bool {
+    let clause = fold(clause);
+    let title = fold(title);
+    if clause.is_empty() || title.is_empty() {
+        return false;
+    }
+    let head: String = title.chars().take(42).collect();
+    clause.contains(head.trim()) || title.contains(clause.trim())
 }
 
 fn place_after_cues(clause: &str, cues: &[&str]) -> Option<String> {
@@ -239,8 +276,34 @@ mod tests {
             Some("Montenotte")
         );
         assert_eq!(
-            proposition_key("battle", Some(1796), "Montenotte"),
-            proposition_key("battle", Some(1796), "Montenotte Superiore")
+            proposition_key("battle", Some(1796), "Montenotte", clause),
+            proposition_key("battle", Some(1796), "Montenotte Superiore", clause)
+        );
+    }
+
+    #[test]
+    fn two_meetings_in_paris_in_the_same_year_stay_apart() {
+        let josephine = proposition_key(
+            "meeting",
+            Some(1796),
+            "Paris",
+            "He met Josephine in Paris in 1796.",
+        );
+        let barras = proposition_key(
+            "meeting",
+            Some(1796),
+            "Paris",
+            "He met Barras in Paris in 1796.",
+        );
+        assert_ne!(josephine, barras);
+    }
+
+    #[test]
+    fn a_second_sentence_about_lonato_is_more_evidence() {
+        let clause = "Bonaparte crossed the bridge at Lonato the next morning.";
+        assert_eq!(
+            novelty_of("battle", Some(1796), "Lonato", clause, &[LONATO]),
+            Novelty::AdditionalEvidence
         );
     }
 

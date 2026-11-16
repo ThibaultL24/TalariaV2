@@ -1,0 +1,159 @@
+{
+  "baseline": "2026-11-16-v38-live-probe.json",
+  "biographies": {
+    "desbordes": {
+      "chars": 23417,
+      "paragraphs_read": 4,
+      "passages": [
+        {
+          "quote": "Marceline Desbordes-Valmore, née le 20 juin 1786 à Douai et morte le 23 juillet 1859 à Paris, est une poétesse française.\nAdmirée par Balzac, Verlaine ou encore Baudelaire, elle est considérée comme une pionnière du romantisme dans la poési",
+          "standing": "Documented"
+        },
+        {
+          "quote": "=== Enfance ===\nMarceline Desbordes est la fille de Catherine Lucas et de Félix Desbordes, un peintre en armoiries, devenu cabaretier à Douai, en France, après avoir été ruiné par la Révolution. Fin 1801, après un séjour à Rochefort et un a",
+          "standing": "Documented"
+        },
+        {
+          "quote": "=== Carrière théâtrale ===\nDe retour en métropole près de son père à Douai, Marceline Desbordes devient comédienne dès l'âge de seize ans. Elle joue au théâtre à l'italienne de Douai, à Lille, à Rouen (grâce à sa rencontre avec le composite",
+          "standing": "Documented"
+        },
+        {
+          "quote": "Mais un retour à l'enfance est impossible, et il faut élaborer, au cours d'une sorte de démarche initiatique, l'expérience de la liberté. Ainsi dans le poème La Vallée de la Scarpe. Contemporaine de la Révolution française, Marceline Desbor",
+          "standing": "Documented"
+        }
+      ]
+    },
+    "marie_curie": {
+      "chars": 0,
+      "paragraphs_read": 0,
+      "passages": []
+    },
+    "victor_hugo": {
+      "chars": 0,
+      "paragraphs_read": 0,
+      "passages": []
+    }
+  },
+  "cost": 0,
+  "database": "not opened",
+  "elapsed_ms": 34077,
+  "fixed_benchmark": "unit tests in military, proposition, documentary and occurrence",
+  "gaps": [
+    {
+      "chars": 23189,
+      "event_type": "battle",
+      "expected_year": 1796,
+      "full_hits": 3,
+      "place": "Arcole",
+      "quote": "The Battle of Arcole or Battle of Arcola (15–17 November 1796) (French: Bataille du pont d'Arcole, German: Schlacht bei Arcole) was fought between French and Austrian forces 25 kilometres (16 mi) southeast of Verona during the War of the First Coalition, a part of the French Revo",
+      "reconciliation": "distinct",
+      "stage": "extracted_from_opening",
+      "stem_in_first_4000": true,
+      "title": "Battle of Arcole",
+      "window_hits": 3,
+      "year": 1796
+    },
+    {
+      "chars": 1029,
+      "event_type": "diplomatic",
+      "expected_year": 1796,
+      "full_hits": 3,
+      "place": "Cherasco",
+      "quote": "The Armistice of Cherasco was a truce signed at Cherasco, Piedmont, on 28 April 1796 between Victor Amadeus III of Sardinia and Napoleon Bonaparte. It withdrew Sardinia from the War of the First Coalition (leaving only Britain and Austria in the Coalition) and handed over Alessan",
+      "reconciliation": null,
+      "stage": "extracted_from_opening",
+      "stem_in_first_4000": true,
+      "title": "Armistice of Cherasco",
+      "window_hits": 3,
+      "year": 1796
+    },
+    {
+      "chars": 5888,
+      "event_type": "treaty",
+      "expected_year": 1797,
+      "full_hits": 3,
+      "place": "Campo Formio",
+      "quote": "The Treaty of Campo Formio was a peace treaty signed on 17 October 1797 between the French First Republic and Habsburg monarchy of Austria which ended the War of the First Coalition. France had been at war with Austria since 20 April 1792, when the French Legislative Assembly vot",
+      "reconciliation": null,
+      "stage": "extracted_from_opening",
+      "stem_in_first_4000": true,
+      "title": "Treaty of Campo Formio",
+      "window_hits": 3,
+      "year": 1797
+    },
+    {
+      "chars": 11175,
+      "event_type": "battle",
+      "expected_year": 1796,
+      "full_hits": 5,
+      "place": "Castiglione",
+      "quote": "The Battle of Castiglione saw the French Army of Italy under General Napoleon Bonaparte attack an army of the Habsburg monarchy led by Feldmarschall Dagobert Sigmund von Wurmser on 5 August 1796. The outnumbered Austrians were defeated and driven back along a line of hills to the",
+      "reconciliation": "distinct",
+      "stage": "extracted_from_opening",
+      "stem_in_first_4000": true,
+      "title": "Battle of Castiglione",
+      "window_hits": 4,
+      "year": 1796
+    },
+    {
+      "chars": 20037,
+      "event_type": "siege",
+      "expected_year": 1797,
+      "full_hits": 4,
+      "place": "Mantua",
+      "quote": "The siege of Mantua lasted from 4 June 1796 to 2 February 1797 with a short break where French forces under the overall command of Napoleon Bonaparte besieged and blockaded a large Austrian garrison at Mantua for many months until it surrendered. The siege was the focal point of ",
+      "reconciliation": null,
+      "stage": "extracted_from_opening",
+      "stem_in_first_4000": true,
+      "title": "Siege of Mantua (1796–1797)",
+      "window_hits": 4,
+      "year": 1796
+    },
+    {
+      "chars": 4900,
+      "event_type": "battle",
+      "expected_year": 1796,
+      "full_hits": 1,
+      "place": "Dego",
+      "quote": "The Second Battle of Dego was fought on 14  and 15 April 1796 during the French Revolutionary Wars between French forces and Austro-Sardinian forces. The battle was fought near Dego, a hamlet in northwestern Italy, and ended in a French victory.\n\n\n== Background ==\n\nAfter successf",
+      "reconciliation": "distinct",
+      "stage": "extracted_from_opening",
+      "stem_in_first_4000": true,
+      "title": "Battle of Dego",
+      "window_hits": 1,
+      "year": 1796
+    },
+    {
+      "chars": 4090,
+      "event_type": "battle",
+      "expected_year": 1796,
+      "full_hits": 1,
+      "place": "Ceva",
+      "quote": "In the Battle of Ceva on 16 April 1796, troops of the French First Republic under General Pierre Augereau fought against part of the army of the Kingdom of Sardinia-Piedmont led by General Giuseppe Felice, Count Vital. Augereau assaulted the strong defensive position without succ",
+      "reconciliation": "distinct",
+      "stage": "extracted_from_opening",
+      "stem_in_first_4000": true,
+      "title": "Battle of Ceva",
+      "window_hits": 1,
+      "year": 1796
+    },
+    {
+      "chars": 5044,
+      "event_type": "battle",
+      "expected_year": 1815,
+      "full_hits": 5,
+      "place": "Tolentino",
+      "quote": "The Battle of Tolentino was fought from 2–3 May 1815 near Tolentino, Kingdom of Naples in what is now Marche, Italy: it was the decisive battle in the Neapolitan War, fought by the Napoleonic King of Naples Joachim Murat to keep the throne after the Congress of Vienna. The battle",
+      "reconciliation": "distinct",
+      "stage": "extracted_from_opening",
+      "stem_in_first_4000": true,
+      "title": "Battle of Tolentino",
+      "window_hits": 3,
+      "year": 1815
+    }
+  ],
+  "measured_at": "2026-11-16",
+  "pages": 11,
+  "paid_model": "not called",
+  "writes": "none"
+}

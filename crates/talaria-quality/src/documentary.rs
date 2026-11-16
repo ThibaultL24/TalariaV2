@@ -78,6 +78,11 @@ fn is_direct_passage(quote: &str, focus: Option<&str>) -> bool {
     let lower = quote.to_lowercase();
     let narrates = [
         " was fought",
+        " was signed",
+        " signed on ",
+        " signed at ",
+        "truce signed",
+        "peace treaty",
         " were fought",
         "fut livr",
         "fut combatt",
@@ -221,6 +226,91 @@ pub fn narrative_reading(event_type: &str, title: &str, quote: &str) -> Narrativ
     NarrativeReading::NotAnAnecdote
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnecdoteStanding {
+    NotAnAnecdote,
+    Apocryphal,
+    /// One passage, not yet checked against another source.
+    Candidate,
+    /// A precise passage with a date. Still not an editorial approval.
+    Documented,
+    /// Set only when a review explicitly accepts the passage.
+    Approved,
+}
+
+/// Wikipedia alone never produces Approved. `reviewed` must be an explicit decision.
+pub fn anecdote_standing(event_type: &str, quote: &str, reviewed: bool) -> AnecdoteStanding {
+    match narrative_reading(event_type, quote, quote) {
+        NarrativeReading::Apocryphal => AnecdoteStanding::Apocryphal,
+        NarrativeReading::NotAnAnecdote | NarrativeReading::MajorEvent => {
+            AnecdoteStanding::NotAnAnecdote
+        }
+        NarrativeReading::Candidate => {
+            let lower = fold(quote);
+            let hedged = [
+                "would have",
+                "usually identified",
+                "alleged",
+                "perhaps",
+                "on dit",
+                "peut-etre",
+                "peut-être",
+            ]
+            .iter()
+            .any(|cue| lower.contains(cue));
+            let dated = quote.chars().filter(|ch| ch.is_ascii_digit()).count() >= 4
+                && quote.split(|ch: char| !ch.is_ascii_digit()).any(|word| word.len() == 4);
+            if reviewed && dated && !hedged {
+                AnecdoteStanding::Approved
+            } else if dated && !hedged {
+                AnecdoteStanding::Documented
+            } else {
+                AnecdoteStanding::Candidate
+            }
+        }
+    }
+}
+
+/// Paragraphs that mention a missing fact, including one earlier paragraph when it carries a date.
+pub fn relevant_paragraphs<'a>(text: &'a str, needles: &[&str]) -> Vec<&'a str> {
+    let needles: Vec<String> = needles.iter().map(|needle| fold(needle)).collect();
+    let paras: Vec<&str> = text
+        .split("\n\n")
+        .map(str::trim)
+        .filter(|para| para.chars().count() > 30)
+        .collect();
+    let mut chosen = Vec::new();
+    for (index, para) in paras.iter().enumerate() {
+        let folded = fold(para);
+        if !needles.iter().any(|needle| folded.contains(needle)) {
+            continue;
+        }
+        if index > 0
+            && para.chars().count() < 120
+            && !para_has_year(para)
+            && paras[index - 1].chars().count() < 240
+            && para_has_year(paras[index - 1])
+        {
+            let previous = paras[index - 1];
+            if !chosen.contains(&previous) {
+                chosen.push(previous);
+            }
+        }
+        if !chosen.contains(para) {
+            chosen.push(*para);
+        }
+        if chosen.len() >= 4 {
+            break;
+        }
+    }
+    chosen
+}
+
+fn para_has_year(para: &str) -> bool {
+    para.split(|ch: char| !ch.is_ascii_digit())
+        .any(|word| word.len() == 4)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -339,5 +429,36 @@ mod tests {
             narrative_reading("travel", clause, clause),
             NarrativeReading::Candidate
         );
+    }
+
+    #[test]
+    fn a_dated_letter_is_documented_and_not_approved() {
+        let clause = "In 1859, he wrote a letter asking the United States to spare John Brown.";
+        assert_eq!(
+            anecdote_standing("meeting", clause, false),
+            AnecdoteStanding::Documented
+        );
+        assert_eq!(
+            anecdote_standing("meeting", clause, true),
+            AnecdoteStanding::Approved
+        );
+    }
+
+    #[test]
+    fn a_hedged_identification_stays_a_candidate() {
+        let clause = "Caterina is usually identified as the Caterina Buti del Vacca, who married in 1452.";
+        assert_eq!(
+            anecdote_standing("meeting", clause, false),
+            AnecdoteStanding::Candidate
+        );
+    }
+
+    #[test]
+    fn an_exile_paragraph_beyond_the_introduction_is_selected() {
+        let filler = "Victor Hugo published poems in Paris.\n\n".repeat(40);
+        let text = format!("{filler}From 1855 Victor Hugo lived in exile on Guernsey.\n\n");
+        let found = relevant_paragraphs(&text, &["guernsey", "exile"]);
+        assert!(found.iter().any(|para| para.contains("Guernsey")), "{found:?}");
+        assert!(found.len() < 5, "{found:?}");
     }
 }

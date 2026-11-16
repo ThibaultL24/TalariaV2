@@ -608,7 +608,7 @@ async fn v38_probe_dedup_place_and_french_gap() {
                 continue;
             }
             let place = place.unwrap_or_default();
-            let key = proposition_key(&hit.event_type, hit.year, &place);
+            let key = proposition_key(&hit.event_type, hit.year, &place, &hit.clause);
             if !keys.insert(key) {
                 continue;
             }

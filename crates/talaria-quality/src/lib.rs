@@ -38,8 +38,8 @@ pub use context_year::{
     scan_years_in_range, year_from_nearby_context, years_from_section_heading,
 };
 pub use documentary::{
-    documentary_relation, is_bibliographic_quote, narrative_reading, quote_may_attest,
-    DocumentaryRelation, NarrativeReading,
+    anecdote_standing, documentary_relation, is_bibliographic_quote, narrative_reading,
+    quote_may_attest, relevant_paragraphs, AnecdoteStanding, DocumentaryRelation, NarrativeReading,
 };
 pub use proposition::{
     anchored_action_place, novelty_of, place_stem, proposition_key, time_reading, KnownEvent,

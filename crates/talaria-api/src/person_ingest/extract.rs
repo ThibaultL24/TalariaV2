@@ -119,16 +119,12 @@ pub fn extract_wiki_rules(
             if quote.is_empty() {
                 continue;
             }
-            let key = if place.as_deref().unwrap_or("").is_empty() {
-                format!(
-                    "{}|{:?}|{}",
-                    raw.event_type,
-                    year,
-                    raw.start_offset
-                )
-            } else {
-                talaria_quality::proposition_key(&raw.event_type, year, place.as_deref().unwrap_or(""))
-            };
+            let key = talaria_quality::proposition_key(
+                &raw.event_type,
+                year,
+                place.as_deref().unwrap_or(""),
+                quote,
+            );
             if !seen.insert(key) {
                 continue;
             }
