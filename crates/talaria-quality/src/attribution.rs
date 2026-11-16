@@ -11,6 +11,8 @@ pub enum AttributionMatch {
     StructuredParticipantMatch,
     FollowedMilitaryAction,
     CoreferenceMatch,
+    /// The subject name is a comparison. Another person performs the action.
+    Comparison,
     Unattributed,
 }
 
@@ -67,17 +69,15 @@ fn titles_equal(a: &str, b: &str) -> bool {
 fn starts_with_coreference(quote: &str) -> bool {
     let trimmed = quote.trim_start();
     let folded = fold_case(trimmed);
-    [
-        "he ",
-        "she ",
-        "the emperor ",
-        "l'empereur ",
-    ]
-    .iter()
-    .any(|prefix| folded.starts_with(prefix))
+    ["he ", "she ", "the emperor ", "l'empereur "]
+        .iter()
+        .any(|prefix| folded.starts_with(prefix))
 }
 
 pub fn classify_attribution(input: &AttributionInput<'_>) -> AttributionMatch {
+    if subject_is_only_a_comparison(input.quote, input.subject) {
+        return AttributionMatch::Comparison;
+    }
     if input.structured_source {
         return AttributionMatch::StructuredParticipantMatch;
     }
@@ -131,9 +131,49 @@ pub fn auto_accept_attribution(m: AttributionMatch) -> bool {
     )
 }
 
+fn subject_is_only_a_comparison(quote: &str, subject: &str) -> bool {
+    let surname = subject.split_whitespace().last().unwrap_or(subject).trim();
+    if surname.chars().count() < 4 {
+        return false;
+    }
+    let folded = fold_case(quote);
+    let name = fold_case(surname);
+    let patterns = [
+        format!("the {name} of "),
+        format!("a {name} of "),
+        format!("le {name} de "),
+        format!("un {name} de "),
+        format!("like {name}"),
+        format!("comme {name}"),
+        format!("compared to {name}"),
+        format!("surnomme le {name}"),
+        format!("called the {name}"),
+        format!("known as the {name}"),
+        format!("considered by some to be the {name}"),
+    ];
+    if !patterns
+        .iter()
+        .any(|pattern| folded.contains(pattern.as_str()))
+    {
+        return false;
+    }
+    let direct = [
+        format!("{name} defeated"),
+        format!("{name} fought"),
+        format!("{name} was born"),
+        format!("{name} married"),
+        format!("{name} signed"),
+        format!("{name} commanded"),
+    ];
+    !direct.iter().any(|cue| folded.contains(cue.as_str()))
+}
+
 pub fn attribution_gate_decision(m: AttributionMatch) -> GateDecision {
     match m {
         AttributionMatch::CoreferenceMatch => GateDecision::NeedsReview,
+        AttributionMatch::Comparison => {
+            GateDecision::Reject(vec![RejectionCode::SubjectUsedAsComparison])
+        }
         AttributionMatch::Unattributed => {
             GateDecision::Reject(vec![RejectionCode::SubjectNotAttributed])
         }
@@ -177,6 +217,36 @@ mod tests {
         });
         assert_eq!(m, AttributionMatch::TitleSubjectMatch);
         assert!(auto_accept_attribution(m));
+    }
+
+    #[test]
+    fn an_indirect_action_that_names_the_subject_stays_attributable() {
+        let m = classify_attribution(&AttributionInput {
+            subject: "Napoleon",
+            aliases: &[],
+            quote: "The French army under Napoleon defeated the Austrians at Lodi.",
+            page_title: "Battle of Lodi",
+            event_type: "battle",
+            from_followed_page: true,
+            structured_source: false,
+            role_supported_by_evidence: true,
+            military_subject: true,
+        });
+        assert_eq!(m, AttributionMatch::FollowedMilitaryAction);
+        assert!(auto_accept_attribution(m));
+        let unnamed = classify_attribution(&AttributionInput {
+            subject: "Napoleon",
+            aliases: &[],
+            quote: "The French army defeated the Austrians at Lodi.",
+            page_title: "Battle of Lodi",
+            event_type: "diplomatic",
+            from_followed_page: true,
+            structured_source: false,
+            role_supported_by_evidence: false,
+            military_subject: false,
+        });
+        assert_eq!(unnamed, AttributionMatch::Unattributed);
+        assert!(!auto_accept_attribution(unnamed));
     }
 
     #[test]
@@ -226,6 +296,44 @@ mod tests {
             military_subject: true,
         });
         assert_eq!(m, AttributionMatch::FollowedMilitaryAction);
+        assert!(auto_accept_attribution(m));
+    }
+
+    #[test]
+    fn a_comparison_with_napoleon_is_not_his_action() {
+        let quote = "Meanwhile, Simón Bolívar, who is considered by some to be the Napoleon of South America, entered Chuquisaca.";
+        let m = classify_attribution(&AttributionInput {
+            subject: "Napoleon",
+            aliases: &["Napoleon Bonaparte"],
+            quote,
+            page_title: "Napoleon",
+            event_type: "arrival",
+            from_followed_page: false,
+            structured_source: false,
+            role_supported_by_evidence: true,
+            military_subject: true,
+        });
+        assert_eq!(m, AttributionMatch::Comparison);
+        assert!(matches!(
+            attribution_gate_decision(m),
+            GateDecision::Reject(codes) if codes == vec![RejectionCode::SubjectUsedAsComparison]
+        ));
+    }
+
+    #[test]
+    fn napoleon_as_the_actor_stays_attributed() {
+        let m = classify_attribution(&AttributionInput {
+            subject: "Napoleon",
+            aliases: &[],
+            quote: "Napoleon defeated the Austrian army at the Battle of Lodi on 10 May 1796.",
+            page_title: "Napoleon",
+            event_type: "battle",
+            from_followed_page: false,
+            structured_source: false,
+            role_supported_by_evidence: true,
+            military_subject: true,
+        });
+        assert_eq!(m, AttributionMatch::TitleSubjectMatch);
         assert!(auto_accept_attribution(m));
     }
 }

@@ -146,7 +146,9 @@ pub fn merge_gate_and_attribution(
         }
         (GateDecision::Reject(a), _) => GateDecision::Reject(a),
         (_, GateDecision::Reject(b)) => GateDecision::Reject(b),
-        (GateDecision::NeedsReview, _) | (_, GateDecision::NeedsReview) => GateDecision::NeedsReview,
+        (GateDecision::NeedsReview, _) | (_, GateDecision::NeedsReview) => {
+            GateDecision::NeedsReview
+        }
         (GateDecision::Accept, GateDecision::Accept) => GateDecision::Accept,
     }
 }
@@ -156,15 +158,25 @@ pub fn judge_item(
     ctx: &GateContext,
     attribution: AttributionMatch,
 ) -> GateDecision {
-    merge_gate_and_attribution(apply_gates(candidate, ctx), attribution)
+    let decision = merge_gate_and_attribution(apply_gates(candidate, ctx), attribution);
+    if !matches!(decision, GateDecision::Accept) {
+        return decision;
+    }
+    let quote = candidate
+        .evidence_ptrs
+        .first()
+        .map(|evidence| evidence.quoted_text.as_str())
+        .unwrap_or("");
+    if talaria_quality::candidate_needs_type_review(&candidate.event_type, quote, "").is_some() {
+        return GateDecision::NeedsReview;
+    }
+    decision
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use talaria_quality::{
-        auto_accept_attribution, GroundedItem, Lane, RejectionCode, TypedTime,
-    };
+    use talaria_quality::{auto_accept_attribution, GroundedItem, Lane, RejectionCode, TypedTime};
 
     fn follow_item(quote: &str, event_type: &str, year: i32) -> GroundedItem {
         GroundedItem {

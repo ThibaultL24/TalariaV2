@@ -9,12 +9,7 @@ use talaria_quality::{
 };
 use uuid::Uuid;
 
-fn subject_candidate(
-    subject: &str,
-    event_type: &str,
-    year: i32,
-    quote: &str,
-) -> EventCandidate {
+fn subject_candidate(subject: &str, event_type: &str, year: i32, quote: &str) -> EventCandidate {
     let frag = Uuid::new_v4();
     EventCandidate {
         id: Uuid::new_v4(),
@@ -185,9 +180,10 @@ fn time_json_kind_never_uses_precision_as_kind() {
 /// Baudelaire-like: undated trial clause with nearby year becomes canonical.
 #[test]
 fn baudelaire_trial_infers_year_from_paragraph_context() {
-    let clause = "Baudelaire was successfully prosecuted for creating an offense against public morals.";
+    let clause =
+        "Baudelaire was successfully prosecuted for creating an offense against public morals.";
     let paragraph = "In 1857, Les Fleurs du mal was published. Baudelaire was successfully prosecuted for creating an offense against public morals. Six poems were condemned.";
-    
+
     let result = infer_approximate_year(
         "trial",
         clause,
@@ -196,7 +192,7 @@ fn baudelaire_trial_infers_year_from_paragraph_context() {
         Some(1821), // Baudelaire birth
         Some(1867), // Baudelaire death
     );
-    
+
     assert!(result.is_some(), "should infer year from paragraph context");
     let (year, source) = result.unwrap();
     assert_eq!(year, 1857, "should infer 1857 from paragraph");
@@ -207,16 +203,9 @@ fn baudelaire_trial_infers_year_from_paragraph_context() {
 #[test]
 fn baudelaire_burial_infers_death_year() {
     let clause = "He was buried at the Cimetière du Montparnasse.";
-    
-    let result = infer_approximate_year(
-        "burial",
-        clause,
-        None,
-        None,
-        Some(1821),
-        Some(1867),
-    );
-    
+
+    let result = infer_approximate_year("burial", clause, None, None, Some(1821), Some(1867));
+
     assert!(result.is_some(), "burial should infer from death year");
     let (year, source) = result.unwrap();
     assert_eq!(year, 1867, "burial year should be death year");
@@ -229,7 +218,7 @@ fn baudelaire_event_infers_from_section_heading() {
     let clause = "He met Félicien Rops.";
     let paragraph = "Many artists visited him. He met Félicien Rops.";
     let section = "### Exil en Belgique (1864-1866)";
-    
+
     let result = infer_approximate_year(
         "meeting",
         clause,
@@ -238,7 +227,7 @@ fn baudelaire_event_infers_from_section_heading() {
         Some(1821),
         Some(1867),
     );
-    
+
     assert!(result.is_some(), "should infer from section heading");
     let (year, source) = result.unwrap();
     assert_eq!(year, 1865, "should infer midpoint of 1864-1866");
@@ -250,7 +239,7 @@ fn baudelaire_event_infers_from_section_heading() {
 fn baudelaire_conseil_judiciaire_infers_from_context() {
     let clause = "En septembre, un conseil judiciaire lui est imposé.";
     let paragraph = "En 1844, la famille observe la dilapidation de sa fortune. En septembre, un conseil judiciaire lui est imposé.";
-    
+
     let result = infer_approximate_year(
         "legal_event",
         clause,
@@ -259,7 +248,7 @@ fn baudelaire_conseil_judiciaire_infers_from_context() {
         Some(1821),
         Some(1867),
     );
-    
+
     assert!(result.is_some(), "should infer from paragraph");
     let (year, _) = result.unwrap();
     assert_eq!(year, 1844);
@@ -276,13 +265,13 @@ fn approx_eligible_types_include_anecdote_types() {
     assert!(is_approx_eligible_type("education"));
     assert!(is_approx_eligible_type("political_event"));
     assert!(is_approx_eligible_type("financial_event"));
-        assert!(is_approx_eligible_type("residence"));
-        assert!(is_approx_eligible_type("travel"));
-        assert!(is_approx_eligible_type("battle"));
-        assert!(is_approx_eligible_type("siege"));
-        assert!(is_approx_eligible_type("work"));
-        assert!(is_approx_eligible_type("imprisonment"));
-    
+    assert!(is_approx_eligible_type("residence"));
+    assert!(is_approx_eligible_type("travel"));
+    assert!(!is_approx_eligible_type("battle"));
+    assert!(!is_approx_eligible_type("siege"));
+    assert!(is_approx_eligible_type("work"));
+    assert!(is_approx_eligible_type("imprisonment"));
+
     // Non-eligible types
     assert!(!is_approx_eligible_type("publication"));
     assert!(!is_approx_eligible_type("birth"));
@@ -301,7 +290,7 @@ fn approx_typed_time_has_kind_approx() {
         }
         _ => panic!("expected TypedTime::Approx"),
     }
-    
+
     // Verify time_to_json produces valid kind
     assert_time_json_kind_contract(&t);
 }
@@ -337,13 +326,13 @@ fn approx_time_event_passes_gates() {
         status: CandidateStatus::Pending,
         rejection_codes: vec![],
     };
-    
+
     let ctx = GateContext {
         subject_birth_year: Some(1821),
         subject_death_year: Some(1867),
         ..Default::default()
     };
-    
+
     let decision = apply_gates(&c, &ctx);
     assert!(
         !matches!(decision, GateDecision::NeedsReview),
@@ -386,7 +375,7 @@ fn unknown_time_still_needs_review() {
         status: CandidateStatus::Pending,
         rejection_codes: vec![],
     };
-    
+
     let ctx = GateContext::default();
     let decision = apply_gates(&c, &ctx);
     assert!(

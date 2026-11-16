@@ -15,6 +15,21 @@ const MONTHS: &[(&str, u32)] = &[
     ("october", 10),
     ("november", 11),
     ("december", 12),
+    ("decembre", 12),
+    ("décembre", 12),
+    ("janvier", 1),
+    ("fevrier", 2),
+    ("février", 2),
+    ("mars", 3),
+    ("avril", 4),
+    ("mai", 5),
+    ("juin", 6),
+    ("juillet", 7),
+    ("aout", 8),
+    ("août", 8),
+    ("septembre", 9),
+    ("octobre", 10),
+    ("novembre", 11),
     ("jan", 1),
     ("feb", 2),
     ("mar", 3),
@@ -137,7 +152,9 @@ fn parse_day_month_year(text: &str) -> Option<(i32, u32, u32, String)> {
                 continue;
             }
             // Slice from `lower` (where positions came from), not `text`
-            let after = lower.get(mend..)?.trim_start_matches(|c: char| c == ',' || c == ' ');
+            let after = lower
+                .get(mend..)?
+                .trim_start_matches(|c: char| c == ',' || c == ' ');
             let Some(year) = leading_year(after) else {
                 from = mend;
                 continue;
@@ -222,6 +239,187 @@ fn scan_bce_surface(lower: &str) -> Option<String> {
     None
 }
 
+/// How a clause supports a date. A quantity, a publication year, or a second
+/// action does not become the event year.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClauseTime {
+    Exact {
+        year: i32,
+        month: Option<u32>,
+        day: Option<u32>,
+        surface: String,
+    },
+    Range {
+        start_year: i32,
+        end_year: i32,
+        surface: String,
+    },
+    /// The clause does not establish one historical date.
+    Ambiguous {
+        reason: &'static str,
+    },
+    Missing,
+}
+
+pub fn read_clause_time(text: &str) -> ClauseTime {
+    let masked = mask_thousands(text);
+    let years = four_digit_years(&masked);
+    let historical: Vec<(i32, usize, usize)> = if work_mentions_its_own_date(&masked) {
+        years
+            .into_iter()
+            .filter(|(_, start, _)| !year_is_parenthetical(&masked, *start))
+            .collect()
+    } else {
+        years
+    };
+    let dropped_publication =
+        work_mentions_its_own_date(&masked) && four_digit_years(&masked).len() > historical.len();
+    if let Some((start_year, end_year)) = year_span(&masked, &historical) {
+        return ClauseTime::Range {
+            start_year,
+            end_year,
+            surface: format!("{start_year}–{end_year}"),
+        };
+    }
+    if let Some((year, month, day, surface)) = dated_span(&masked) {
+        if historical.iter().any(|(other, _, _)| *other != year) {
+            return ClauseTime::Ambiguous {
+                reason: "another_action_in_the_same_passage",
+            };
+        }
+        return ClauseTime::Exact {
+            year,
+            month: Some(month),
+            day: Some(day),
+            surface,
+        };
+    }
+    match historical.as_slice() {
+        [(year, _, _)] => ClauseTime::Exact {
+            year: *year,
+            month: None,
+            day: None,
+            surface: year.to_string(),
+        },
+        [] if dropped_publication => ClauseTime::Ambiguous {
+            reason: "publication_or_cultural_year",
+        },
+        [] => ClauseTime::Missing,
+        _ => ClauseTime::Ambiguous {
+            reason: "several_years_in_one_passage",
+        },
+    }
+}
+
+fn mask_thousands(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::new();
+    let mut index = 0;
+    while index < chars.len() {
+        if chars[index].is_ascii_digit() {
+            let start = index;
+            while index < chars.len() && chars[index].is_ascii_digit() {
+                index += 1;
+            }
+            let mut end = index;
+            while end < chars.len() && chars[end] == ',' {
+                let after = end + 1;
+                let mut cursor = after;
+                while cursor < chars.len() && chars[cursor].is_ascii_digit() {
+                    cursor += 1;
+                }
+                if cursor - after == 3 {
+                    end = cursor;
+                } else {
+                    break;
+                }
+            }
+            if end > index {
+                out.extend(std::iter::repeat(' ').take(end - start));
+                index = end;
+            } else {
+                out.extend(chars[start..index].iter().copied());
+            }
+        } else {
+            out.push(chars[index]);
+            index += 1;
+        }
+    }
+    out
+}
+
+fn four_digit_years(text: &str) -> Vec<(i32, usize, usize)> {
+    let bytes = text.as_bytes();
+    let mut index = 0;
+    let mut found = Vec::new();
+    while index < bytes.len() {
+        if bytes[index].is_ascii_digit() {
+            let start = index;
+            while index < bytes.len() && bytes[index].is_ascii_digit() {
+                index += 1;
+            }
+            if index - start == 4 {
+                if let Ok(year) = text[start..index].parse::<i32>() {
+                    if (1000..=2100).contains(&year) {
+                        found.push((year, start, index));
+                    }
+                }
+            }
+            continue;
+        }
+        index += 1;
+    }
+    found
+}
+
+fn year_is_parenthetical(text: &str, start: usize) -> bool {
+    text[..start].chars().rev().find(|c| !c.is_whitespace()) == Some('(')
+}
+
+fn work_mentions_its_own_date(text: &str) -> bool {
+    let folded = text.to_lowercase();
+    [
+        "osprey",
+        "jeu ",
+        "game",
+        "published",
+        "paru",
+        " vol",
+        "film",
+        "roman",
+    ]
+    .iter()
+    .any(|cue| folded.contains(cue))
+}
+
+fn year_span(text: &str, years: &[(i32, usize, usize)]) -> Option<(i32, i32)> {
+    if years.len() < 2 {
+        return None;
+    }
+    let (_, _, left_end) = years[0];
+    let (right_year, right_start, _) = years[1];
+    let between = &text[left_end..right_start];
+    let folded = between.to_lowercase();
+    let compact = folded.split_whitespace().collect::<Vec<_>>().join(" ");
+    let short = compact.chars().count() <= 12
+        && ["a", "à", "to", "-", "–", "—", "until"].contains(&compact.as_str());
+    let long_range = folded.contains("jusqu") || folded.contains("until");
+    if short || long_range {
+        let start = years[0].0.min(right_year);
+        let end = years[0].0.max(right_year);
+        return Some((start, end));
+    }
+    None
+}
+
+fn dated_span(text: &str) -> Option<(i32, u32, u32, String)> {
+    if let Some(iso) = scan_iso_date(text) {
+        let (year, month, day) = parse_iso_ymd(&iso)?;
+        return Some((year, month, day, iso));
+    }
+    parse_day_month_year(text)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -231,10 +429,7 @@ mod tests {
         let t = parse_typed_time(Some("1769"));
         match t {
             TypedTime::Exact {
-                year,
-                month,
-                day,
-                ..
+                year, month, day, ..
             } => {
                 assert_eq!(year, 1769);
                 assert!(month.is_none());
@@ -249,10 +444,7 @@ mod tests {
         let t = parse_typed_time(Some("15 August 1769"));
         match t {
             TypedTime::Exact {
-                year,
-                month,
-                day,
-                ..
+                year, month, day, ..
             } => {
                 assert_eq!(year, 1769);
                 assert_eq!(month, Some(8));
@@ -264,10 +456,8 @@ mod tests {
 
     #[test]
     fn extracts_full_date_from_clause() {
-        let s = extract_time_surface(
-            "Napoleon Bonaparte was born on 15 August 1769 in Ajaccio.",
-        )
-        .unwrap();
+        let s = extract_time_surface("Napoleon Bonaparte was born on 15 August 1769 in Ajaccio.")
+            .unwrap();
         let t = parse_typed_time(Some(&s));
         assert_eq!(t.year_for_gates(), Some(1769));
         match t {
@@ -435,6 +625,109 @@ mod tests {
         };
         assert_eq!(t.date_precision(), "unknown");
     }
+
+    #[test]
+    fn audit_clauses_keep_a_real_date_and_refuse_a_quantity() {
+        match read_clause_time("The Battle of Lodi was fought on 10 May 1796 at Lodi.") {
+            ClauseTime::Exact {
+                year, month, day, ..
+            } => {
+                assert_eq!((year, month, day), (1796, Some(5), Some(10)));
+            }
+            other => panic!("{other:?}"),
+        }
+        match read_clause_time("The Battle of Mondovì was fought on 21 April 1796.") {
+            ClauseTime::Exact {
+                year, month, day, ..
+            } => {
+                assert_eq!((year, month, day), (1796, Some(4), Some(21)));
+            }
+            other => panic!("{other:?}"),
+        }
+        match read_clause_time("Messe du Sacre de Napoléon Ier, le 2 décembre 1804.") {
+            ClauseTime::Exact {
+                year, month, day, ..
+            } => {
+                assert_eq!((year, month, day), (1804, Some(12), Some(2)));
+            }
+            other => panic!("{other:?}"),
+        }
+        match read_clause_time("In 1814 Napoleon was exiled to Elba.") {
+            ClauseTime::Exact {
+                year, month, day, ..
+            } => {
+                assert_eq!(year, 1814);
+                assert!(month.is_none() && day.is_none());
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(matches!(
+            read_clause_time(
+                "With 2,000 French casualties, Napoleon had captured 60,000 Austrian soldiers."
+            ),
+            ClauseTime::Missing
+        ));
+        assert!(matches!(
+            read_clause_time("The Allies lost 838 men, 150 of whom were killed."),
+            ClauseTime::Missing
+        ));
+        assert!(matches!(
+            read_clause_time(
+                "(1993), Jena 1806 : Napoleon destroys Prussia, Osprey Campaign Series."
+            ),
+            ClauseTime::Exact {
+                year: 1806,
+                month: None,
+                day: None,
+                ..
+            }
+        ));
+        assert!(matches!(
+            read_clause_time(
+                "Napoleon Saga: Waterloo (2016), jeu de stratégie, campagne de Belgique en 1815."
+            ),
+            ClauseTime::Exact {
+                year: 1815,
+                month: None,
+                day: None,
+                ..
+            }
+        ));
+        assert!(matches!(
+            read_clause_time("À partir de 1786, il est atteint de paludisme jusqu'en 1796."),
+            ClauseTime::Range {
+                start_year: 1786,
+                end_year: 1796,
+                ..
+            }
+        ));
+        assert!(matches!(
+            read_clause_time("De 1805 à 1811, Napoléon reçoit des décorations étrangères."),
+            ClauseTime::Range {
+                start_year: 1805,
+                end_year: 1811,
+                ..
+            }
+        ));
+        assert!(matches!(
+            read_clause_time(
+                "In December 1805, Napoleon abolished the calendar introduced in 1793."
+            ),
+            ClauseTime::Ambiguous {
+                reason: "several_years_in_one_passage"
+            }
+        ));
+        assert!(matches!(
+            read_clause_time("After a series of battles, the allies forced a retreat at Arcis-sur-Aube (20–21 March)."),
+            ClauseTime::Missing
+        ));
+        assert!(matches!(
+            read_clause_time(
+                "Après la victoire à la bataille de Wagram, un traité est signé au château."
+            ),
+            ClauseTime::Missing
+        ));
+    }
 }
 
 /// Serialise a `TypedTime` to a JSON value for storage in `canonical_events.time_json`.
@@ -510,9 +803,9 @@ fn utc_ymd(year: i32, month: u32, day: u32) -> Option<chrono::DateTime<chrono::U
 /// Year-only → 1 January; month-only → day 1 of that month; full day → that date.
 pub fn start_time_from_typed(time: &TypedTime) -> Option<chrono::DateTime<chrono::Utc>> {
     match time {
-        TypedTime::Exact { year, month, day, .. } => {
-            utc_ymd(*year, month.unwrap_or(1), day.unwrap_or(1))
-        }
+        TypedTime::Exact {
+            year, month, day, ..
+        } => utc_ymd(*year, month.unwrap_or(1), day.unwrap_or(1)),
         TypedTime::Range { start_year, .. } => utc_ymd(*start_year, 1, 1),
         TypedTime::Approx { year, .. } => utc_ymd(*year, 1, 1),
         TypedTime::Unknown { .. } => None,

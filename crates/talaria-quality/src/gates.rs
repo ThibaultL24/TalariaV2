@@ -19,6 +19,8 @@ pub enum RejectionCode {
     DeathForLivingSubject,
     /// Death event year is at or before the birth year.
     DeathBeforeOrAtBirth,
+    /// The named person is only a comparison. The action belongs to someone else.
+    SubjectUsedAsComparison,
 }
 
 impl RejectionCode {
@@ -36,6 +38,7 @@ impl RejectionCode {
             Self::SubjectNotAttributed => "subject_not_attributed",
             Self::DeathForLivingSubject => "death_for_living_subject",
             Self::DeathBeforeOrAtBirth => "death_before_or_at_birth",
+            Self::SubjectUsedAsComparison => "subject_used_as_comparison",
         }
     }
 
@@ -53,6 +56,7 @@ impl RejectionCode {
             "subject_not_attributed" => Self::SubjectNotAttributed,
             "death_for_living_subject" => Self::DeathForLivingSubject,
             "death_before_or_at_birth" => Self::DeathBeforeOrAtBirth,
+            "subject_used_as_comparison" => Self::SubjectUsedAsComparison,
             _ => return None,
         })
     }
@@ -158,12 +162,7 @@ fn implausible_age(event_type: &str, age: i32, evidence: &str) -> bool {
 /// About-subject types (publications, commemorations, awards) do not.
 pub fn event_implies_subject_presence(event_type: &str, predicate: &str) -> bool {
     match event_type {
-        "publication"
-        | "commemoration"
-        | "award"
-        | "museum"
-        | "memorial"
-        | "statue"
+        "publication" | "commemoration" | "award" | "museum" | "memorial" | "statue"
         | "street_naming" => false,
         _ => match predicate {
             "commemorated_at" | "published" | "awarded" => false,
@@ -172,6 +171,9 @@ pub fn event_implies_subject_presence(event_type: &str, predicate: &str) -> bool
     }
 }
 
+/// Accept, NeedsReview, or Reject. A historical critic may later review the
+/// same candidate before Accept through `review_historical_record`. That
+/// review is not applied here.
 pub fn apply_gates(candidate: &EventCandidate, ctx: &GateContext) -> GateDecision {
     let mut rejects = Vec::new();
 
@@ -217,7 +219,8 @@ pub fn apply_gates(candidate: &EventCandidate, ctx: &GateContext) -> GateDecisio
             .first()
             .map(|e| e.quoted_text.as_str())
             .unwrap_or("");
-        if candidate.event_type != "birth" && implausible_age(&candidate.event_type, age, evidence) {
+        if candidate.event_type != "birth" && implausible_age(&candidate.event_type, age, evidence)
+        {
             rejects.push(RejectionCode::ImplausibleAgeForEventType);
         }
     }

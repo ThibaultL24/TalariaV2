@@ -238,11 +238,16 @@ pub fn wdqs_event_to_extract(
         .place_label
         .clone()
         .or_else(|| place_hint_from_title(&ev.label));
+    let date_surface = if ev.date.len() == 10 {
+        ev.date.clone()
+    } else {
+        year.map(|y| y.to_string()).unwrap_or_default()
+    };
     let quote = format!(
         "{subject} | {} | {} | {} | {}",
         ev.event_type,
         ev.label,
-        year.map(|y| y.to_string()).unwrap_or_default(),
+        date_surface,
         place.as_deref().unwrap_or("")
     );
     let item = RawExtractItem {
