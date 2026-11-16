@@ -13,6 +13,41 @@ The dump chain (`extract-pages` → sentences → COSMOS → judge) writes `pipe
 
 Onboarding / product path: see root [README.md](../README.md).
 
+## Current boundaries
+
+Istoria, Poreia, and Agora stay separate. A shared field is not a reason to share a table or a screen.
+
+| Concern | Where it lives | What it does not do |
+|---|---|---|
+| Canonical fact | `talaria-store` `canonical_events`, `person_events` | Store an opinion or a chapter |
+| Logical identity | `logical_events.rs`, migration `053` | Treat a shared title or `occurrence_key` as the same fact |
+| Supersession | preflight in `logical_events.rs` | Assign an identity when the chain is ambiguous |
+| Reconciliation proposal | `logical_reconciliation.rs` | Write a merge |
+| Chapter | `editorial.rs`, `routes/editorial.rs`, migrations `054` and `055` | Change a fact's type, evidence, date, or status |
+| Quality gate | `talaria-quality` | Call the historical critic or publish a row |
+| Historical critic | `talaria-ai` `critic.rs`, `historical_review.rs` | Insert or update a canonical event |
+| Supervisor | `talaria-ai` `supervisor.rs`, `supervisor_exec.rs`, `talaria-store` `supervisor.rs` | Turn a plan into a historical write |
+| Documentary source | `talaria-sources` | Create a second map point for the same occurrence |
+| Istoria UI | `web/src/features/istoria` | Mix visit listings into the biography |
+| Poreia | `routes/poreia_*`, `routes/visit*`, `web/src/features/poreia` | Rewrite Istoria facts |
+| Agora | `claims`, `routes/agora_graph.rs`, `web/src/features/agora`, `talaria-intuition` | Store the cultural corpus |
+
+`serve` and `migrate` refuse pending migrations unless `TALARIA_APPLY_MIGRATIONS=1`. Migrations `053`–`055` are embedded with the others. A restart does not apply them.
+
+Public chapter reads are `GET /api/v1/entities/{id}/groups`, `.../groups/{slug}`, and `.../groups/{slug}/events`. A draft answers as a missing chapter. Publication is not that endpoint.
+
+## Where to add something
+
+- A documentary source: a `SourceConnector` in `crates/talaria-sources/src/connectors`, registered in that crate. New documents reinforce an existing occurrence through evidence.
+- A historical quality detector: a gate in `talaria-quality` when the decision is Accept, NeedsReview, or Reject. A read-only finding belongs in `talaria-ai/src/critic.rs`. The critic does not publish.
+- An Istoria feature: the read model in `talaria-store` and `routes/entity_views.rs` or `routes/events.rs`, then `web/src/features/istoria`.
+- A Poreia feature: the visit or Poreia route, then `web/src/features/poreia`.
+- An Agora feature: `claims` and `talaria-intuition`, then `web/src/features/agora`.
+- An editorial grouping: `editorial_groups`. A membership points at `logical_event_id`.
+- An agentic treatment: a plan in `talaria-ai`. Execution and the journal stay in `supervisor_exec.rs` and `talaria-store/src/supervisor.rs`.
+
+Sections further down that describe one migration, such as migration `029`, record that migration. They are not a second product architecture. Audit reports under `docs/` are traces of a review, not the live contract.
+
 ## Core Contracts
 
 ### Single Person Pipeline
@@ -147,8 +182,8 @@ Stored in `entities.authority_ids` as JSONB:
 Only Wikimedia sources contribute to map points:
 - Wikipedia (extracts, page coordinates)
 - Wikidata (P625 coordinates, structured statements)
-- Wikisource (fact providers)
-- Commons (fact providers)
+
+Wikisource and Commons supply proof and media. They do not create an event.
 
 ### Institutional Sources (evidence only)
 These sources provide evidence but do NOT auto-create map pins:
@@ -176,6 +211,7 @@ Events go through quality gates before becoming canonical:
 |------|--------|
 | `UnknownTime` | `NeedsReview` (not on map) |
 | `OtherPersonAgent` | `Reject` (not the subject's event) |
+| `SubjectUsedAsComparison` | `Reject` (the named person is only a comparison) |
 | `OutsideLifespan` | `Reject` (impossible date) |
 | `DuplicateOccurrence` | Reinforce existing (idempotent) |
 
