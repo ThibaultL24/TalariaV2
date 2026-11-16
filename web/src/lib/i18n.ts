@@ -38,6 +38,42 @@ export interface AppMessages {
   timelinePhaseClosing: string;
   timelineOpenDetail: string;
   timelineApproximate: string;
+  openedEarlierVersion: string;
+  viewArchivedVersion: string;
+  viewingArchivedVersion: string;
+  viewActiveVersion: string;
+  unverifiedHistoricalLink: string;
+  chapters: string;
+  allBiography: string;
+  chapterContext: string;
+  unknownChapter: string;
+  chapterPosition: (index: number, total: number) => string;
+  chapterIntroduction: string;
+  chapterProvenance: string;
+  chapterPrimary: string;
+  chapterSupporting: string;
+  chapterContextFacts: string;
+  chapterPlaces: string;
+  chapterNoPlaces: string;
+  chapterSources: string;
+  chapterLimits: string;
+  chapterEmpty: string;
+  chapterNoCompleteness: string;
+  chapterEstablished: (count: number) => string;
+  chapterAttested: (count: number) => string;
+  chapterInReview: (count: number) => string;
+  chapterWithoutPlace: (count: number) => string;
+  chapterImpreciseTime: (count: number) => string;
+  chapterWithEvidence: (count: number) => string;
+  chapterPassages: (count: number) => string;
+  chapterIndependentSources: (count: number) => string;
+  chapterDocumentsRepeat: string;
+  chapterLoadMore: string;
+  chapterRecordedYear: (year: string) => string;
+  chapterEvidenceCount: (count: number) => string;
+  openChapterTimeline: string;
+  openChapterMap: string;
+  townReference: (kilometers: number | null) => string;
   timelineAllMoments: string;
   timelinePhases: string;
   timelineMapCoverage: (timeline: number, mapped: number) => string;
@@ -337,6 +373,44 @@ const EN: AppMessages = {
   timelinePhaseClosing: "Closing third",
   timelineOpenDetail: "Open the record",
   timelineApproximate: "Approximate or uncertain date",
+  openedEarlierVersion: "This link opened an earlier version. The record below is the current one.",
+  viewArchivedVersion: "View the archived version",
+  viewingArchivedVersion: "Archived version, kept so the correction can be traced. The timeline and the map show the current version.",
+  viewActiveVersion: "View the current version",
+  unverifiedHistoricalLink: "This archived record points at another event. That link has not been confirmed as the same historical fact, so this is the record you opened.",
+  chapters: "Chapters",
+  allBiography: "Full biography",
+  chapterContext: "Editorial context",
+  unknownChapter: "This chapter is not available.",
+  chapterPosition: (index, total) => `Chapter ${index} of ${total}`,
+  chapterIntroduction: "Editorial introduction",
+  chapterProvenance: "Provenance",
+  chapterPrimary: "Essential episodes",
+  chapterSupporting: "Anecdotes and secondary episodes",
+  chapterContextFacts: "Context",
+  chapterPlaces: "Documented places",
+  chapterNoPlaces: "This chapter has no located place. Its events stay in the reading and on the timeline.",
+  openChapterTimeline: "Explore the chronology",
+  openChapterMap: "Explore the places",
+  chapterSources: "Sources",
+  chapterLimits: "What this chapter does not claim",
+  chapterEmpty: "No documented event belongs to this chapter yet.",
+  chapterNoCompleteness: "No completeness percentage: this chapter has no explicit list of expected facts.",
+  chapterEstablished: (count) => `${count} established`,
+  chapterAttested: (count) => `${count} attested`,
+  chapterInReview: (count) => `${count} still being checked`,
+  chapterWithoutPlace: (count) => `${count} without coordinates`,
+  chapterImpreciseTime: (count) => `${count} with an approximate, ranged, or unknown date`,
+  chapterWithEvidence: (count) => `${count} with a stored passage`,
+  chapterPassages: (count) => count === 1 ? "1 passage" : `${count} passages`,
+  chapterIndependentSources: (count) => count === 1 ? "1 distinct source document" : `${count} distinct source documents`,
+  chapterDocumentsRepeat: "Distinct documents can repeat the same account.",
+  chapterLoadMore: "Show the next events",
+  chapterRecordedYear: (year) => `Recorded year: ${year}`,
+  chapterEvidenceCount: (count) => count === 1 ? "1 stored source" : `${count} stored sources`,
+  townReference: (kilometers) => kilometers == null
+    ? "Town reference, not a surveyed point."
+    : `Town reference, within ${kilometers} km. Not a surveyed point.`,
   timelineAllMoments: "All moments",
   timelinePhases: "Time spans",
   timelineMapCoverage: (timeline, mapped) =>
@@ -658,6 +732,44 @@ const FR: AppMessages = {
   timelinePhaseClosing: "Dernier tiers",
   timelineOpenDetail: "Ouvrir la fiche",
   timelineApproximate: "Date approximative ou incertaine",
+  openedEarlierVersion: "Ce lien ouvrait une version antérieure. La fiche ci-dessous est la version actuelle.",
+  viewArchivedVersion: "Voir la version archivée",
+  viewingArchivedVersion: "Version archivée, conservée pour suivre la correction. La frise et la carte montrent la version actuelle.",
+  viewActiveVersion: "Voir la version actuelle",
+  unverifiedHistoricalLink: "Cette archive pointe vers un autre événement. Ce lien n'a pas été confirmé comme le même fait historique : la fiche affichée est celle que vous avez ouverte.",
+  chapters: "Chapitres",
+  allBiography: "Toute la biographie",
+  chapterContext: "Contexte éditorial",
+  unknownChapter: "Ce chapitre n'est pas disponible.",
+  chapterPosition: (index, total) => `Chapitre ${index} sur ${total}`,
+  chapterIntroduction: "Introduction éditoriale",
+  chapterProvenance: "Provenance",
+  chapterPrimary: "Épisodes essentiels",
+  chapterSupporting: "Anecdotes et épisodes secondaires",
+  chapterContextFacts: "Contexte",
+  chapterPlaces: "Lieux documentés",
+  chapterNoPlaces: "Ce chapitre n'a aucun lieu situé. Ses événements restent dans la lecture et sur la frise.",
+  openChapterTimeline: "Explorer la chronologie",
+  openChapterMap: "Explorer les lieux",
+  chapterSources: "Sources",
+  chapterLimits: "Ce que ce chapitre ne prétend pas",
+  chapterEmpty: "Aucun événement documenté n'appartient encore à ce chapitre.",
+  chapterNoCompleteness: "Pas de pourcentage de complétude : ce chapitre n'a pas de liste explicite de faits attendus.",
+  chapterEstablished: (count) => `${count} établis`,
+  chapterAttested: (count) => `${count} attestés`,
+  chapterInReview: (count) => `${count} encore en vérification`,
+  chapterWithoutPlace: (count) => `${count} sans coordonnées`,
+  chapterImpreciseTime: (count) => `${count} avec une date approximative, une fourchette ou une date inconnue`,
+  chapterWithEvidence: (count) => `${count} avec un passage enregistré`,
+  chapterPassages: (count) => count === 1 ? "1 passage" : `${count} passages`,
+  chapterIndependentSources: (count) => count === 1 ? "1 document source distinct" : `${count} documents sources distincts`,
+  chapterDocumentsRepeat: "Des documents distincts peuvent reprendre le même récit.",
+  chapterLoadMore: "Afficher les événements suivants",
+  chapterRecordedYear: (year) => `Année enregistrée : ${year}`,
+  chapterEvidenceCount: (count) => count === 1 ? "1 source enregistrée" : `${count} sources enregistrées`,
+  townReference: (kilometers) => kilometers == null
+    ? "Localisation de référence de la localité, pas un point relevé."
+    : `Localisation de référence de la localité, à ${kilometers} km près.`,
   timelineAllMoments: "Tous les moments",
   timelinePhases: "Périodes",
   timelineMapCoverage: (timeline, mapped) =>

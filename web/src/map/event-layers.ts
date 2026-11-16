@@ -36,6 +36,41 @@ export const clusterCountLayer: SymbolLayerSpecification = {
   },
 };
 
+// Meters on the ground become pixels at the current zoom. 156543 m/px is the zoom-0 equator.
+const referenceRadius = [
+  "/",
+  ["*", ["to-number", ["get", "uncertainty_radius_m"]], ["^", 2, ["zoom"]]],
+  [
+    "*",
+    156543.03392,
+    ["max", 0.2, ["cos", ["*", ["to-number", ["get", "latitude"]], 0.017453292519943295]]],
+  ],
+];
+
+export const referenceAreaLayer: CircleLayerSpecification = {
+  id: "reference-areas",
+  type: "circle",
+  source: "events",
+  filter: ["in", ["get", "coord_precision_level"], ["literal", ["city", "region", "country"]]],
+  paint: {
+    "circle-radius": referenceRadius as unknown as number,
+    "circle-color": L.pointStroke,
+    "circle-opacity": 0.16,
+    "circle-stroke-width": 1.25,
+    "circle-stroke-color": L.pointStroke,
+    "circle-stroke-opacity": 0.85,
+  },
+};
+
+export const referenceAreaLayerDark: CircleLayerSpecification = {
+  ...referenceAreaLayer,
+  paint: {
+    ...referenceAreaLayer.paint,
+    "circle-color": D.pointStroke,
+    "circle-stroke-color": D.pointStroke,
+  },
+};
+
 export const unclusteredEventsLayer: CircleLayerSpecification = {
   id: "unclustered-events",
   type: "circle",
@@ -175,6 +210,7 @@ export const selectedAnecdoteLayerDark: CircleLayerSpecification = {
 };
 
 export function getExplorerEventLayers(isDark: boolean): {
+  referenceAreaLayer: CircleLayerSpecification;
   clustersLayer: CircleLayerSpecification;
   clusterCountLayer: SymbolLayerSpecification;
   unclusteredEventsLayer: CircleLayerSpecification;
@@ -184,6 +220,7 @@ export function getExplorerEventLayers(isDark: boolean): {
 } {
   if (isDark) {
     return {
+      referenceAreaLayer: referenceAreaLayerDark,
       clustersLayer: clustersLayerDark,
       clusterCountLayer: clusterCountLayerDark,
       unclusteredEventsLayer: unclusteredEventsLayerDark,
@@ -193,6 +230,7 @@ export function getExplorerEventLayers(isDark: boolean): {
     };
   }
   return {
+    referenceAreaLayer,
     clustersLayer,
     clusterCountLayer,
     unclusteredEventsLayer,

@@ -1,4 +1,5 @@
 import type { TimelineEvent, GeoJsonFeatureCollection } from "./api";
+import { localizedDateSurface } from "./localize-event-copy";
 
 export interface EntityOverview {
   entity: { id: string; label: string; qid?: string | null };
@@ -88,6 +89,96 @@ export async function fetchVisitHeritageGeojson(
   return response.json() as Promise<GeoJsonFeatureCollection>;
 }
 
+export interface EditorialGroupSummary {
+  id: string;
+  slug: string;
+  title: string;
+  group_kind: string;
+  summary?: string | null;
+  summary_origin?: string | null;
+  display_order: number;
+}
+
+export interface ChapterCoverage {
+  members: number;
+  established: number;
+  attested: number;
+  in_review: number;
+  without_coordinates: number;
+  time_not_exact: number;
+  with_evidence: number;
+  evidence_rows: number;
+  independent_sources: number;
+  scope_defined: boolean;
+  completeness_rate: null;
+}
+
+export interface ChapterEvent {
+  id: string;
+  logical_event_id: string;
+  editorial_role: string;
+  display_order: number;
+  event_type: string;
+  epistemic_status: string;
+  title: string;
+  time: TimelineEvent["time"];
+  place_label?: string | null;
+  map_eligible: boolean;
+  coordinates?: { lat: number; lon: number } | null;
+  coord_precision_level?: string | null;
+  uncertainty_radius_m?: number | null;
+  evidence_count: number;
+}
+
+export function groupChapterEvents(events: ChapterEvent[]) {
+  return {
+    primary: events.filter((event) => event.editorial_role === "primary"),
+    supporting: events.filter((event) => event.editorial_role === "supporting"),
+    context: events.filter((event) => event.editorial_role === "context"),
+  };
+}
+
+export async function fetchEntityGroups(
+  id: string,
+  signal?: AbortSignal,
+): Promise<{ groups: EditorialGroupSummary[] }> {
+  const response = await fetch(`/api/v1/entities/${encodeURIComponent(id)}/groups?limit=100`, { signal });
+  if (!response.ok) throw new Error(`Request failed (${response.status})`);
+  return response.json() as Promise<{ groups: EditorialGroupSummary[] }>;
+}
+
+export async function fetchEntityGroup(
+  id: string,
+  slug: string,
+  signal?: AbortSignal,
+): Promise<{ group: EditorialGroupSummary; coverage: ChapterCoverage }> {
+  const response = await fetch(
+    `/api/v1/entities/${encodeURIComponent(id)}/groups/${encodeURIComponent(slug)}`,
+    { signal },
+  );
+  if (!response.ok) throw new Error(`Request failed (${response.status})`);
+  return response.json() as Promise<{ group: EditorialGroupSummary; coverage: ChapterCoverage }>;
+}
+
+export async function fetchChapterEventPage(
+  id: string,
+  slug: string,
+  cursor: string | null,
+  signal?: AbortSignal,
+): Promise<{ events: ChapterEvent[]; pagination: { next_cursor: string | null } }> {
+  const params = new URLSearchParams({ limit: "100" });
+  if (cursor) params.set("cursor", cursor);
+  const response = await fetch(
+    `/api/v1/entities/${encodeURIComponent(id)}/groups/${encodeURIComponent(slug)}/events?${params}`,
+    { signal },
+  );
+  if (!response.ok) throw new Error(`Request failed (${response.status})`);
+  return response.json() as Promise<{
+    events: ChapterEvent[];
+    pagination: { next_cursor: string | null };
+  }>;
+}
+
 export async function getEntityView<T>(
   id: string,
   view: string,
@@ -101,10 +192,10 @@ export async function getEntityView<T>(
   if (!response.ok) throw new Error(`Request failed (${response.status})`);
   return response.json() as Promise<T>;
 }
-export function eventDate(event: TimelineEvent): string {
+export function eventDate(event: TimelineEvent, locale: "fr" | "en" = "en"): string {
   const time = event.time;
-  if (!time || time.kind === "unknown") return "Date unknown";
-  if (time.surface) return time.surface;
+  if (!time || time.kind === "unknown") return locale === "fr" ? "Date inconnue" : "Date unknown";
+  if (time.surface) return localizedDateSurface(time.surface, locale);
   if (time.kind === "range") return `${time.start ?? "?"} – ${time.end ?? "?"}`;
   return `${time.kind === "approx" ? "≈ " : ""}${time.start ?? "?"}`;
 }

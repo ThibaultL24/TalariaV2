@@ -24,6 +24,9 @@ export interface TimelineEvent {
   confidence?: number;
   map_eligible: boolean;
   coordinates?: { lat: number; lon: number } | null;
+  latitude?: number | null;
+  coord_precision_level?: "point" | "city" | "region" | "country" | "unknown" | null;
+  uncertainty_radius_m?: number | null;
 }
 
 export interface TimelineResponse {
@@ -116,6 +119,13 @@ export interface EventDetailResponse {
     wikipedia_url?: string | null;
     wikipedia_revision_url?: string | null;
     wikidata_url?: string | null;
+  };
+  revision?: {
+    requested_id: string;
+    active_id: string;
+    viewing: "active" | "archived";
+    filiation?: "none" | "verified" | "unverified";
+    linked_event_id?: string | null;
   };
   narrative?: {
     event_summary?: string | null;
@@ -216,8 +226,12 @@ export async function fetchEventDetail(
   eventId: string,
   lang?: string,
   signal?: AbortSignal,
+  version?: "requested",
 ): Promise<EventDetailResponse> {
-  const query = lang ? `?lang=${encodeURIComponent(lang)}` : "";
+  const params = new URLSearchParams();
+  if (lang) params.set("lang", lang);
+  if (version) params.set("version", version);
+  const query = params.toString() ? `?${params}` : "";
   const response = await fetch(`/api/v1/events/${eventId}${query}`, { signal });
   if (!response.ok) throw new Error("event detail fetch failed");
   return response.json();

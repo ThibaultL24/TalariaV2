@@ -17,9 +17,10 @@ interface EventDetailCardProps {
   event: TimelineEvent;
   onClose: () => void;
   offlineOnly?: boolean;
+  pinRequestedVersion?: boolean;
 }
 
-export function EventDetailCard({ event, onClose, offlineOnly: _offlineOnly = false }: EventDetailCardProps) {
+export function EventDetailCard({ event, onClose, offlineOnly: _offlineOnly = false, pinRequestedVersion = false }: EventDetailCardProps) {
   const { t, locale } = useI18n();
   const [detail, setDetail] = useState<EventDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -28,7 +29,7 @@ export function EventDetailCard({ event, onClose, offlineOnly: _offlineOnly = fa
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetchEventDetail(event.id, locale)
+    fetchEventDetail(event.id, locale, undefined, pinRequestedVersion ? "requested" : undefined)
       .then((payload) => {
         if (!cancelled) setDetail(payload);
       })
@@ -41,7 +42,7 @@ export function EventDetailCard({ event, onClose, offlineOnly: _offlineOnly = fa
     return () => {
       cancelled = true;
     };
-  }, [event.id, locale]);
+  }, [event.id, locale, pinRequestedVersion]);
 
   useEffect(() => {
     setSummaryOpen(false);
@@ -68,8 +69,16 @@ export function EventDetailCard({ event, onClose, offlineOnly: _offlineOnly = fa
   const passageLabel = passageLanguage && passageLanguage !== locale
     ? t.readPassageIn(passageLanguage === "fr" ? (locale === "fr" ? "français" : "French") : (locale === "fr" ? "anglais" : "English"))
     : t.readPassage;
-  const dateLabel = resolved.time ? eventDate(resolved) : formatDateLabel(resolved.start_time);
+  const dateLabel = resolved.time ? eventDate(resolved, locale) : formatDateLabel(resolved.start_time);
   const datePlace = [dateLabel, placeLabel].filter(Boolean).join(" · ");
+  const referenceKilometers = resolved.uncertainty_radius_m != null && resolved.uncertainty_radius_m >= 1000
+    ? Math.round(resolved.uncertainty_radius_m / 100) / 10
+    : null;
+  const referenceLabel = resolved.coord_precision_level === "city"
+    || resolved.coord_precision_level === "region"
+    || resolved.coord_precision_level === "country"
+    ? t.townReference(referenceKilometers)
+    : null;
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-(--color-bg-surface)">
@@ -80,6 +89,9 @@ export function EventDetailCard({ event, onClose, offlineOnly: _offlineOnly = fa
           </h2>
           {datePlace ? (
             <p className="mt-1 text-sm text-(--color-text-secondary)">{datePlace}</p>
+          ) : null}
+          {referenceLabel ? (
+            <p className="mt-1 text-sm text-(--color-text-muted)">{referenceLabel}</p>
           ) : null}
         </div>
         <button

@@ -790,7 +790,7 @@ export function HistoricalTimeline({
               className={`historical-timeline__tooltip${tooltipAbove ? "" : " is-below"}`}
               style={{ left: tooltipLeft, top: hoverPosition.y }}
             >
-              <div className="historical-timeline__tooltip-year">{eventDate(hovered)}</div>
+              <div className="historical-timeline__tooltip-year">{eventDate(hovered, locale)}</div>
               <div className="historical-timeline__tooltip-title">{hovered.title}</div>
               <div className="historical-timeline__tooltip-meta">
                 {legendLabel(legendKeyForEventType(hovered.event_type), locale)}
@@ -799,7 +799,7 @@ export function HistoricalTimeline({
           ) : null}
           {selected ? (
             <article className="historical-timeline__card">
-              <p className="historical-timeline__card-year">{eventDate(selected)}</p>
+              <p className="historical-timeline__card-year">{eventDate(selected, locale)}</p>
               <h3>{selected.title}</h3>
               <p>{legendLabel(legendKeyForEventType(selected.event_type), locale)}</p>
               {selected.place_label ? <p>{selected.place_label}</p> : null}
