@@ -183,6 +183,21 @@ impl MatchType {
     }
 }
 
+fn specific_focus(value: &str) -> bool {
+    let lower = value.trim().to_lowercase();
+    let lower = lower.trim_matches(|ch: char| !ch.is_alphanumeric());
+    if lower.chars().count() < 4 || lower.chars().all(|ch| ch.is_ascii_digit()) {
+        return false;
+    }
+    !GENERIC_CATALOG_WORDS.iter().any(|word| *word == lower)
+}
+
+const GENERIC_CATALOG_WORDS: &[&str] = &[
+    "army", "august", "battle", "bataille", "between", "bonaparte", "campaign", "campagne",
+    "corps", "europe", "forces", "fought", "france", "french", "general", "guerre", "italy",
+    "italie", "london", "napoleon", "paris", "rome", "siege", "treaty", "under", "war",
+];
+
 fn match_document_to_events(
     doc: &talaria_sources::DiscoveredDocument,
     events: &[PersonEvent],
@@ -196,38 +211,27 @@ fn match_document_to_events(
         let mut match_type = MatchType::TitleMention;
         let mut confidence = 0.5f32;
 
-        // Place matching in title
-        if let Some(ref place) = event.place_label {
-            let place_lower = place.to_lowercase();
-            if place_lower.chars().count() >= 4 && title_lower.contains(&place_lower) {
+        // A catalog title is context only when it names this event's place.
+        // The word "battle", or "Napoleon", is not that place.
+        if let Some(place) = event.place_label.as_deref().filter(|place| specific_focus(place)) {
+            if title_lower.contains(&place.to_lowercase()) {
                 matched = true;
                 match_type = MatchType::PlaceMention;
                 confidence = 0.65;
             }
         }
 
-        // Event type mention in title
-        let event_type_lower = event.event_type.to_lowercase();
-        if title_lower.contains(&event_type_lower) {
-            matched = true;
-            confidence = 0.55;
-        }
-
-        // Battle/diplomatic specific matching
-        if event.event_type == "battle" || event.event_type == "diplomatic" {
-            if let Some(ref title) = event.title {
-                let event_title_lower = title.to_lowercase();
-                // Check for battle/treaty name in document title
-                let event_name_words: Vec<&str> = event_title_lower
-                    .split_whitespace()
-                    .filter(|w| w.len() > 3)
-                    .collect();
-                for word in event_name_words {
-                    if title_lower.contains(word) {
-                        matched = true;
-                        confidence = 0.7;
-                        break;
-                    }
+        if !matched {
+            if let Some(title) = event.title.as_deref() {
+                let named = title.split_whitespace().any(|word| {
+                    specific_focus(word)
+                        && word.chars().count() >= 5
+                        && title_lower.contains(&word.to_lowercase())
+                });
+                if named {
+                    matched = true;
+                    match_type = MatchType::TitleMention;
+                    confidence = 0.7;
                 }
             }
         }
@@ -330,6 +334,43 @@ mod tests {
     }
 
     #[test]
+    fn a_napoleonic_book_does_not_match_every_italian_battle() {
+        let battles = ["Lonato", "Millesimo", "Mondovì", "Rivoli"];
+        let book = make_doc("Russia and the Napoleonic Wars, 1807-1815", Some(2015));
+        for place in battles {
+            let event = PersonEvent {
+                id: Uuid::new_v4(),
+                entity_id: Uuid::new_v4(),
+                event_type: "battle".into(),
+                title: Some(format!("The Battle of {place} was fought between the French army")),
+                place_label: Some(place.into()),
+                start_time: Some("1796-04-01T00:00:00Z".parse().unwrap()),
+                occurrence_key: None,
+            };
+            assert!(
+                match_document_to_events(&book, &[event]).is_none(),
+                "{place} must not inherit a general Napoleonic notice"
+            );
+        }
+    }
+
+    #[test]
+    fn a_title_that_names_rivoli_stays_a_context_candidate() {
+        let event = PersonEvent {
+            id: Uuid::new_v4(),
+            entity_id: Uuid::new_v4(),
+            event_type: "battle".into(),
+            title: Some("The Battle of Rivoli was fought on 14 January 1797".into()),
+            place_label: Some("Rivoli".into()),
+            start_time: Some("1797-01-14T00:00:00Z".parse().unwrap()),
+            occurrence_key: None,
+        };
+        let doc = make_doc("Bibliographie du combat de Rivoli", Some(1902));
+        let matches = match_document_to_events(&doc, &[event]).expect("place mention");
+        assert_eq!(matches.len(), 1);
+        assert!(matches[0].confidence < 0.9);
+    }
+
     fn publication_year_alone_is_not_a_candidate() {
         let event = PersonEvent {
             id: Uuid::new_v4(),

@@ -427,8 +427,8 @@ async fn run_person_ingest_inner(
         p.set_phase("corpus_enrichment").await;
     }
 
-    // Corpus evidence enrichment (Vague A): query HAL, Gallica, BnF, Persée, theses.fr, OpenAlex
-    // to reinforce existing canonical events with additional evidence. Never creates new pins.
+    // Catalog discovery records document candidates. A bibliographic notice is not
+    // event evidence and does not reinforce an event it does not narrate.
     let corpus_stats = {
         let resolved_subject = talaria_sources::ResolvedSubject {
             entity_id: Some(entity_id),

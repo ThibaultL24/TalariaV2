@@ -225,6 +225,19 @@ const VERB_CUES: &[(&str, &str)] = &[
     ("habita à", "lived"),
     ("séjourna", "lived"),
     ("résida", "lived"),
+    (" naît", "born"),
+    (" nait en", "born"),
+    (" nait le", "born"),
+    ("est élu", "appointed"),
+    ("fut élu", "appointed"),
+    ("est nommé", "appointed"),
+    ("fut nommé", "appointed"),
+    ("publia", "published"),
+    ("a publié", "published"),
+    ("découvrit", "discovered"),
+    ("a découvert", "discovered"),
+    ("rencontra", "met"),
+    ("a rencontré", "met"),
 ];
 
 pub fn mine_sentence(text: &str, page_title: &str) -> Vec<MinedCandidate> {
@@ -815,5 +828,29 @@ mod tests {
         assert_eq!(hits[0].time, "1682");
         assert!(hits[0].place.to_lowercase().contains("versailles"));
         assert_eq!(hits[0].verb, "occurred");
+    }
+
+    #[test]
+    fn mines_a_birth_a_publication_and_a_discovery_from_french_verbs() {
+        let birth = mine_sentence(
+            "En 1828, François-Victor naît à Paris dans la famille Hugo.",
+            "Victor Hugo",
+        );
+        assert_eq!(birth.first().map(|hit| hit.verb.as_str()), Some("born"));
+
+        let book = mine_sentence(
+            "En 1862 Victor Hugo publia Les Misérables à Paris.",
+            "Victor Hugo",
+        );
+        assert_eq!(book.first().map(|hit| hit.verb.as_str()), Some("published"));
+
+        let discovery = mine_sentence(
+            "En 1898 Marie Curie découvrit le polonium à Paris.",
+            "Marie Curie",
+        );
+        assert_eq!(
+            discovery.first().map(|hit| hit.verb.as_str()),
+            Some("discovered")
+        );
     }
 }

@@ -4,9 +4,9 @@
 use serde_json::json;
 use talaria_quality::{
     auto_accept_attribution, concise_event_title, event_type_is_map_locus,
-    occurrence_key_for_event, read_clause_time, start_time_from_typed, time_to_json,
-    AttributionMatch, CandidateStatus, ClauseTime, GateContext, GateDecision, GroundedItem,
-    RejectionCode, TypedTime,
+    occurrence_key_for_event, quote_may_attest, read_clause_time, start_time_from_typed,
+    time_to_json, AttributionMatch, CandidateStatus, ClauseTime, GateContext, GateDecision,
+    GroundedItem, RejectionCode, TypedTime,
 };
 use talaria_sources::is_plausible_place_label;
 use talaria_store::{
@@ -102,6 +102,19 @@ fn life_singleton_type(event_type: &str) -> bool {
     matches!(event_type, "birth" | "death")
 }
 
+async fn hold_bibliographic_candidate(
+    pool: &sqlx::PgPool,
+    candidate_id: Uuid,
+) -> anyhow::Result<()> {
+    sqlx::query(
+        "UPDATE event_candidates SET status = 'needs_review' WHERE id = $1 AND status <> 'assembled'",
+    )
+    .bind(candidate_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 async fn attach_evidence_to_existing(
     pool: &sqlx::PgPool,
     existing: Uuid,
@@ -112,6 +125,14 @@ async fn attach_evidence_to_existing(
     place_identity_qid: Option<&str>,
     source_locator: &str,
 ) -> anyhow::Result<PersistOutcome> {
+    if !quote_may_attest(&item.quoted_text, item.place_surface.as_deref()) {
+        // The candidate stays out of event_evidence. A catalog title is not a passage.
+        hold_bibliographic_candidate(pool, candidate_id).await?;
+        return Ok(PersistOutcome::CandidateOnly {
+            candidate_id,
+            status: CandidateStatus::NeedsReview,
+        });
+    }
     if let Some(place) = item
         .place_surface
         .as_deref()

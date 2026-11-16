@@ -1,6 +1,7 @@
 // crates/talaria-quality/src/explorer.rs
 //! What the explorer may show as an event: a dated occurrence, not a QID stub.
 
+use crate::documentary::is_bibliographic_quote;
 use crate::gates::event_type_is_map_locus;
 
 pub fn is_wikidata_qid(value: &str) -> bool {
@@ -269,7 +270,7 @@ pub fn candidate_needs_type_review(
     summary: &str,
 ) -> Option<&'static str> {
     let text = format!("{quote} {summary}").to_lowercase();
-    if is_documentary_notice(&text) {
+    if is_bibliographic_quote(quote) || is_documentary_notice(&text) {
         return Some("documentary_notice_is_not_an_event");
     }
     if event_type == "battle" || event_type == "siege" {
@@ -315,6 +316,17 @@ mod tests {
         ));
         assert!(is_human_place_label("Paris"));
         assert!(is_human_place_label("New York"));
+    }
+
+    #[test]
+    fn a_catalog_notice_is_not_a_battle_event() {
+        let notice = "[HAL] Napoléon et Milan : mise en scène, réception et délégation";
+        assert_eq!(
+            candidate_needs_type_review("battle", notice, "Battle of Lonato"),
+            Some("documentary_notice_is_not_an_event")
+        );
+        let passage = "The Battle of Lonato was fought on 3 and 4 August 1796.";
+        assert_eq!(candidate_needs_type_review("battle", passage, ""), None);
     }
 
     #[test]

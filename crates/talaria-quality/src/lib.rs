@@ -5,6 +5,7 @@ mod analyzer;
 mod assertion;
 mod attribution;
 mod context_year;
+mod documentary;
 mod explorer;
 mod fingerprint;
 mod gates;
@@ -34,6 +35,10 @@ pub use attribution::{
 pub use context_year::{
     approx_typed_time, infer_approximate_year, is_approx_eligible_type, local_context_window,
     scan_years_in_range, year_from_nearby_context, years_from_section_heading,
+};
+pub use documentary::{
+    documentary_relation, is_bibliographic_quote, narrative_reading, quote_may_attest,
+    DocumentaryRelation, NarrativeReading,
 };
 pub use explorer::{
     candidate_needs_type_review, concise_event_title, explorer_headline, explorer_summary,
