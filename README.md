@@ -35,7 +35,7 @@ cd web && npm install && npm run dev
 # → http://localhost:5173 (proxies /api → :8080)
 ```
 
-`serve` does not change the schema. Pending migrations, including logical identities (`053`), editorial groups (`054`), and chapter assertions (`055`), apply only when `TALARIA_APPLY_MIGRATIONS=1`.
+`serve` does not change the schema. A pending migration applies only when `TALARIA_APPLY_MIGRATIONS=1`. On `talaria_engine_development`, inspected read-only on 2026-11-16, versions 001 through 054 are applied. `055_editorial_assertions` is not applied.
 
 Build the UI into the API binary's static fallback:
 

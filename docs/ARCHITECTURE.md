@@ -32,7 +32,7 @@ Istoria, Poreia, and Agora stay separate. A shared field is not a reason to shar
 | Poreia | `routes/poreia_*`, `routes/visit*`, `web/src/features/poreia` | Rewrite Istoria facts |
 | Agora | `claims`, `routes/agora_graph.rs`, `web/src/features/agora`, `talaria-intuition` | Store the cultural corpus |
 
-`serve` and `migrate` refuse pending migrations unless `TALARIA_APPLY_MIGRATIONS=1`. Migrations `053`–`055` are embedded with the others. A restart does not apply them.
+`serve` and `migrate` refuse pending migrations unless `TALARIA_APPLY_MIGRATIONS=1`. On `talaria_engine_development`, inspected read-only on 2026-11-16, versions 001 through 054 are applied, including logical identities (`053`) and editorial groups (`054`). Migration `055` (chapter assertions) is not applied. A restart does not apply it.
 
 Public chapter reads are `GET /api/v1/entities/{id}/groups`, `.../groups/{slug}`, and `.../groups/{slug}/events`. A draft answers as a missing chapter. Publication is not that endpoint.
 

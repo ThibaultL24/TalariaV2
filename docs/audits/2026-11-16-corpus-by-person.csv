@@ -1,0 +1,7 @@
+qid,name,in_corpus,active_events,inactive_events,map_eligible,anecdote_type,historical_fact,approx_dates,chapters_A,chapters_B,chapters_C,notes
+Q517,Napoleon Bonaparte,yes,465,212,261,0,168,8,2,2,0,all active rows have a Wikipedia or Wikidata document
+Q535,Victor Hugo,yes,208,59,54,2,118,6,0,3,1,several residence labels are still QIDs or sentence fragments
+Q7186,Marie Curie,yes,74,11,19,0,46,2,0,1,2,discovery is one publication row not a chapter
+Q762,Leonardo da Vinci,entity_only,0,0,0,0,0,0,0,0,0,entity exists and has no canonical event
+Q868,Aristotle,absent,0,0,0,0,0,0,0,0,0,no entity row
+Q7312,Franz Schubert,yes,44,11,20,0,17,2,0,1,0,thinnest non-political biography in this database; not an obscure person
