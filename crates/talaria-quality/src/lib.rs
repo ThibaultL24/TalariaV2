@@ -7,6 +7,7 @@ mod attribution;
 mod context_year;
 mod documentary;
 mod explorer;
+mod proposition;
 mod fingerprint;
 mod gates;
 mod grounding;
@@ -39,6 +40,10 @@ pub use context_year::{
 pub use documentary::{
     documentary_relation, is_bibliographic_quote, narrative_reading, quote_may_attest,
     DocumentaryRelation, NarrativeReading,
+};
+pub use proposition::{
+    anchored_action_place, novelty_of, place_stem, proposition_key, time_reading, KnownEvent,
+    Novelty, TimeReading,
 };
 pub use explorer::{
     candidate_needs_type_review, concise_event_title, explorer_headline, explorer_summary,

@@ -118,10 +118,33 @@ fn looks_like_unattached_title(quote: &str) -> bool {
 }
 
 fn contains_focus(quote: &str, focus: &str) -> bool {
-    fold(quote).contains(&fold(focus))
+    let quote_words: Vec<String> = focus_words(quote);
+    let focus_words = focus_words(focus);
+    if focus_words.is_empty() {
+        return false;
+    }
+    quote_words
+        .windows(focus_words.len())
+        .any(|window| window == focus_words.as_slice())
 }
 
-fn fold(value: &str) -> String {
+fn focus_words(value: &str) -> Vec<String> {
+    fold(value)
+        .chars()
+        .map(|ch| {
+            if ch.is_alphanumeric() || ch == '\'' || ch == '-' {
+                ch
+            } else {
+                ' '
+            }
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .map(str::to_string)
+        .collect()
+}
+
+pub(crate) fn fold(value: &str) -> String {
     value
         .chars()
         .map(|ch| match ch {
@@ -174,9 +197,23 @@ pub fn narrative_reading(event_type: &str, title: &str, quote: &str) -> Narrativ
     if is_bibliographic_quote(quote) || is_bibliographic_quote(title) {
         return NarrativeReading::NotAnAnecdote;
     }
+    let singular = [
+        " a letter",
+        " his letter",
+        " une lettre",
+        "newspaper",
+        " in a cafe",
+        "yellow fever",
+        "fievre jaune",
+    ]
+    .iter()
+    .any(|cue| text.contains(cue));
+    if singular {
+        return NarrativeReading::Candidate;
+    }
     if matches!(
         event_type,
-        "meeting" | "residence" | "travel" | "exile" | "marriage" | "publication" | "anecdote"
+        "meeting" | "residence" | "travel" | "exile" | "marriage" | "anecdote"
     ) && text.chars().count() > 40
     {
         return NarrativeReading::Candidate;
@@ -274,6 +311,33 @@ mod tests {
         assert_eq!(
             narrative_reading("battle", "Battle of Rivoli", "fought on 14 January 1797"),
             NarrativeReading::MajorEvent
+        );
+    }
+
+    #[test]
+    fn louvre_rivoli_is_not_the_battle_of_rivoli() {
+        let title = "Bombage de la station Louvre-Rivoli le 1er mai 1991";
+        assert_eq!(
+            documentary_relation(title, Some("Rivoli")),
+            DocumentaryRelation::OffTopic
+        );
+    }
+
+    #[test]
+    fn a_scientific_paper_is_not_an_anecdote() {
+        let clause = "In July 1898, Curie and her husband published a joint paper announcing the existence of an element they named polonium.";
+        assert_eq!(
+            narrative_reading("publication", clause, clause),
+            NarrativeReading::NotAnAnecdote
+        );
+    }
+
+    #[test]
+    fn a_newspaper_in_a_cafe_is_only_a_candidate_anecdote() {
+        let clause = "Hugo was travelling in 1843 when he read the news in a newspaper in a cafe.";
+        assert_eq!(
+            narrative_reading("travel", clause, clause),
+            NarrativeReading::Candidate
         );
     }
 }

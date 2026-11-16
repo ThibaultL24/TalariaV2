@@ -109,11 +109,9 @@ pub fn extract_wiki_rules(
                 continue;
             }
             let year = year_from_raw(&raw);
-            let place = raw
-                .place_surface
-                .as_deref()
-                .filter(|p| talaria_sources::is_plausible_place_label(p))
-                .map(str::to_string);
+            let proposed = raw.place_surface.as_deref().unwrap_or("");
+            let place = talaria_quality::anchored_action_place(&raw.clause_text, &raw.event_type, proposed)
+                .filter(|label| talaria_sources::is_plausible_place_label(label));
             if year.is_none() && place.is_none() && raw.object_surface.is_none() {
                 continue;
             }
@@ -121,13 +119,16 @@ pub fn extract_wiki_rules(
             if quote.is_empty() {
                 continue;
             }
-            let key = format!(
-                "{}|{:?}|{:?}|{:?}",
-                raw.event_type,
-                year,
-                place.as_deref().unwrap_or(""),
-                raw.object_surface.as_deref().unwrap_or("")
-            );
+            let key = if place.as_deref().unwrap_or("").is_empty() {
+                format!(
+                    "{}|{:?}|{}",
+                    raw.event_type,
+                    year,
+                    raw.start_offset
+                )
+            } else {
+                talaria_quality::proposition_key(&raw.event_type, year, place.as_deref().unwrap_or(""))
+            };
             if !seen.insert(key) {
                 continue;
             }

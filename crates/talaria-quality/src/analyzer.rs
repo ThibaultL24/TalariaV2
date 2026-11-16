@@ -655,6 +655,13 @@ impl ClauseAnalyzer for DeterministicClauseAnalyzer {
             if place_surface.is_none() {
                 place_surface = crate::resolve::gazetteer_place_in_text(&clause_text);
             }
+            if matches!(event_type, "battle" | "siege") {
+                place_surface = crate::proposition::anchored_action_place(
+                    &clause_text,
+                    event_type,
+                    place_surface.as_deref().unwrap_or(""),
+                );
+            }
 
             // Dense extraction restricted to same clause: we never pull year/place
             // from sibling clauses. Flag would only be set by a buggy join path.

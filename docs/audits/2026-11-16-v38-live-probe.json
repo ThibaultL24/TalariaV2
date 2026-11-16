@@ -1,0 +1,137 @@
+{
+  "baseline": "2026-11-16-v37-live-probe.json",
+  "comparable_to_v37": "same page list and character caps; one extra French page for Desbordes-Valmore because the English window lacked the birth date",
+  "cost": 0,
+  "database": "not opened",
+  "elapsed_ms": 17763,
+  "measured_at": "2026-11-16",
+  "paid_model": "not called",
+  "people": [
+    {
+      "anecdote_candidates": 0,
+      "anecdote_examples": [],
+      "anecdotes_validated": 0,
+      "decisions": [
+        "battle 1796 Montenotte: Duplicate",
+        "battle 1796 Millesimo: Duplicate",
+        "battle 1796 Mondovì: Duplicate",
+        "battle 1796 Lodi: Duplicate",
+        "battle 1796 Lonato: Duplicate",
+        "battle 1796 Castiglione: New",
+        "battle 0 Bassano: Uncertain",
+        "battle 1796 Bassano: Duplicate",
+        "battle 1797 Mantua: New"
+      ],
+      "dropped_before_attest": 178,
+      "french_gap_fetch": false,
+      "label": "Napoleon",
+      "napoleon_duplicates": 6,
+      "napoleon_new": 2,
+      "page_errors": [],
+      "pages_fetched": 11,
+      "qid": "Q517",
+      "realm_places_rejected": 1,
+      "rows_before_dedup": 27,
+      "unique_after_anchor": 14
+    },
+    {
+      "anecdote_candidates": 10,
+      "anecdote_examples": [
+        "They met in Châteaubriant in 1796 and married the following year",
+        "\" In 1859, he wrote a letter asking the United States government, for the sake of their own reputation in the future, to spare abolitionist John Brown's life, H",
+        "They met in Châteaubriant in 1796 and married the following year"
+      ],
+      "anecdotes_validated": 0,
+      "decisions": [],
+      "dropped_before_attest": 60,
+      "french_gap_fetch": false,
+      "label": "Victor Hugo",
+      "napoleon_duplicates": 0,
+      "napoleon_new": 0,
+      "page_errors": [],
+      "pages_fetched": 1,
+      "qid": "Q535",
+      "realm_places_rejected": 0,
+      "rows_before_dedup": 43,
+      "unique_after_anchor": 38
+    },
+    {
+      "anecdote_candidates": 2,
+      "anecdote_examples": [
+        "In connection with this, Maria took a position first as a home tutor in Warsaw, then for two years as a governess in Szczuki with a landed family, the Żorawskis",
+        "In connection with this, Maria took a position first as a home tutor in Warsaw, then for two years as a governess in Szczuki with a landed family, the Żorawskis"
+      ],
+      "anecdotes_validated": 0,
+      "decisions": [],
+      "dropped_before_attest": 48,
+      "french_gap_fetch": false,
+      "label": "Marie Curie",
+      "napoleon_duplicates": 0,
+      "napoleon_new": 0,
+      "page_errors": [],
+      "pages_fetched": 1,
+      "qid": "Q7186",
+      "realm_places_rejected": 0,
+      "rows_before_dedup": 30,
+      "unique_after_anchor": 28
+    },
+    {
+      "anecdote_candidates": 10,
+      "anecdote_examples": [
+        "Caterina –  who later appears in Leonardo's notes as only \"Caterina\" or \"Catelina\" –  is usually identified as the Caterina Buti del Vacca, who married the loca",
+        "He would have met them at the workshop of Verrocchio or at the Platonic Academy of the Medici",
+        "Caterina –  who later appears in Leonardo's notes as only \"Caterina\" or \"Catelina\" –  is usually identified as the Caterina Buti del Vacca, who married the loca"
+      ],
+      "anecdotes_validated": 0,
+      "decisions": [],
+      "dropped_before_attest": 49,
+      "french_gap_fetch": false,
+      "label": "Leonardo da Vinci",
+      "napoleon_duplicates": 0,
+      "napoleon_new": 0,
+      "page_errors": [],
+      "pages_fetched": 1,
+      "qid": "Q762",
+      "realm_places_rejected": 0,
+      "rows_before_dedup": 38,
+      "unique_after_anchor": 36
+    },
+    {
+      "anecdote_candidates": 0,
+      "anecdote_examples": [],
+      "anecdotes_validated": 0,
+      "decisions": [],
+      "dropped_before_attest": 27,
+      "french_gap_fetch": false,
+      "label": "Aristotle",
+      "napoleon_duplicates": 0,
+      "napoleon_new": 0,
+      "page_errors": [],
+      "pages_fetched": 1,
+      "qid": "Q868",
+      "realm_places_rejected": 0,
+      "rows_before_dedup": 9,
+      "unique_after_anchor": 8
+    },
+    {
+      "anecdote_candidates": 1,
+      "anecdote_examples": [
+        "Le voyage entrepris, qui devait être un nouveau départ, devient un calvaire : d'une part, la traversée en bateau, qui dure vingt-cinq jours, est plus longue que"
+      ],
+      "anecdotes_validated": 0,
+      "decisions": [],
+      "dropped_before_attest": 26,
+      "french_gap_fetch": true,
+      "label": "Marceline Desbordes-Valmore",
+      "napoleon_duplicates": 0,
+      "napoleon_new": 0,
+      "page_errors": [],
+      "pages_fetched": 2,
+      "qid": "Q466987",
+      "realm_places_rejected": 0,
+      "rows_before_dedup": 10,
+      "unique_after_anchor": 6
+    }
+  ],
+  "writes": "none"
+}

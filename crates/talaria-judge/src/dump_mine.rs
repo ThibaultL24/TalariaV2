@@ -13,6 +13,8 @@ pub struct MinedCandidate {
     pub place: String,
     pub verb: String,
     pub extractor: &'static str,
+    /// The year was taken from the previous sentence, not from this one.
+    pub time_inherited: bool,
 }
 
 /// Year/place inherited from earlier sentences on the same page.
@@ -258,24 +260,40 @@ pub fn mine_sentence_with_carry(
         return vec![];
     };
     let own_year = find_year_in_window(&lower, subject.year_min, subject.year_max);
-    let year = own_year
-        .as_ref()
-        .map(|found| found.surface.clone())
-        .or_else(|| {
+    let verb_hint = find_verb(&lower);
+    let dated_in_the_sentence = verb_hint
+        .as_deref()
+        .is_some_and(|verb| matches!(verb, "born" | "died"));
+    let year = if dated_in_the_sentence {
+        own_year.as_ref().map(|found| found.surface.clone())
+    } else {
+        own_year.as_ref().map(|found| found.surface.clone()).or_else(|| {
             let value = carry.year_value?;
             if (subject.year_min..=subject.year_max).contains(&value) {
                 carry.year.clone()
             } else {
                 None
             }
-        });
+        })
+    };
     let Some(year) = year else {
         return vec![];
     };
-    let own_place = resolve_place(cleaned, page_title);
-    let Some(place) = own_place.clone().or_else(|| carry.place.clone()) else {
+    let own_place = explicit_life_place(cleaned, &lower).or_else(|| resolve_place(cleaned, page_title));
+    let may_inherit_place = verb_hint.as_deref().is_some_and(|verb| {
+        matches!(verb, "lived" | "moved" | "visited")
+            && (lower.contains(" there") || lower.contains(" y ") || lower.contains(" the same "))
+    });
+    let place = own_place
+        .clone()
+        .or_else(|| may_inherit_place.then(|| carry.place.clone()).flatten())
+        .unwrap_or_default();
+    let named_action = verb_hint
+        .as_deref()
+        .is_some_and(|verb| verb != "occurred");
+    if place.is_empty() && !named_action {
         return vec![];
-    };
+    }
     let used_carry = own_year.is_none() || own_place.is_none();
     if used_carry && !has_subject_hook(&lower, &subject) {
         return vec![];
@@ -289,6 +307,7 @@ pub fn mine_sentence_with_carry(
             place,
             verb: "anecdoted".into(),
             extractor: EXTRACTOR_ANECDOTE,
+            time_inherited: own_year.is_none(),
         }];
     }
 
@@ -308,11 +327,52 @@ pub fn mine_sentence_with_carry(
         place,
         verb,
         extractor: EXTRACTOR_KEYWORDS,
+        time_inherited: own_year.is_none(),
     }]
 }
 
 fn resolve_place(text: &str, page_title: &str) -> Option<String> {
     find_place_in_text(text).or_else(|| place_from_page_title(page_title))
+}
+
+/// Birth or death place named after the verb, without a gazetteer coordinate.
+fn explicit_life_place(text: &str, lower: &str) -> Option<String> {
+    let marker = if lower.contains("née le") {
+        "née le"
+    } else if lower.contains("né le") {
+        "né le"
+    } else if lower.contains("was born") || lower.contains("born in") {
+        "born"
+    } else if lower.contains(" died in ") || lower.contains(" died at ") {
+        "died"
+    } else {
+        return None;
+    };
+    let start = lower.find(marker)?;
+    let rest = &lower[start + marker.len()..];
+    let (cue, cue_len) = if let Some(rel) = rest.find(" à ") {
+        (" à ", rel)
+    } else if let Some(rel) = rest.find(" in ") {
+        (" in ", rel)
+    } else {
+        return None;
+    };
+    let byte = start + marker.len() + cue_len + cue.len();
+    let after = text.get(byte..)?;
+    for word in after.split_whitespace() {
+        let clean = word.trim_matches(|ch: char| !ch.is_alphabetic() && ch != '-');
+        if clean.chars().count() < 3 {
+            continue;
+        }
+        if matches!(
+            clean.to_ascii_lowercase().as_str(),
+            "the" | "city" | "town" | "village" | "of"
+        ) {
+            continue;
+        }
+        return Some(clean.to_string());
+    }
+    None
 }
 
 fn resolve_subject(_lower: &str, page_title: &str) -> Option<Subject> {
@@ -852,5 +912,74 @@ mod tests {
             discovery.first().map(|hit| hit.verb.as_str()),
             Some("discovered")
         );
+    }
+
+    #[test]
+    fn an_ancient_birth_keeps_its_own_year_and_town() {
+        let mut carry = MineCarry::default();
+        carry.absorb("He died in 322 BC in Athens.", "Aristotle");
+        let hits = mine_sentence_with_carry(
+            "He was born in 384 BC in the city of Stagira in Chalkidiki.",
+            "Aristotle",
+            &carry,
+        );
+        assert_eq!(hits.len(), 1, "{hits:?}");
+        assert!(hits[0].time.contains("384"), "{hits:?}");
+        assert!(!hits[0].time.contains("322"), "{hits:?}");
+        assert_eq!(hits[0].place.to_lowercase(), "stagira");
+        assert!(!hits[0].time_inherited);
+    }
+
+    #[test]
+    fn a_birth_without_a_year_does_not_take_the_death_year() {
+        let mut carry = MineCarry::default();
+        carry.absorb("He died in 322 BC in Athens.", "Aristotle");
+        let hits = mine_sentence_with_carry(
+            "He was born in the city of Stagira in Chalkidiki during the Classical period.",
+            "Aristotle",
+            &carry,
+        );
+        assert!(hits.is_empty(), "{hits:?}");
+    }
+
+    #[test]
+    fn an_ornamented_room_is_not_a_birth() {
+        let hits = mine_sentence(
+            "En 1860 le poète occupe à Paris une chambre ornée de deux toiles de Manet.",
+            "Charles Baudelaire",
+        );
+        assert!(hits.iter().all(|hit| hit.verb != "born"), "{hits:?}");
+    }
+
+    #[test]
+    fn a_publication_does_not_inherit_the_previous_residence() {
+        let mut carry = MineCarry::default();
+        carry.absorb(
+            "In 1855 Victor Hugo lived in Guernsey at Hauteville House.",
+            "Victor Hugo",
+        );
+        let hits = mine_sentence_with_carry(
+            "In 1862 Victor Hugo published Les Misérables after many years of work.",
+            "Victor Hugo",
+            &carry,
+        );
+        assert!(
+            hits.iter().all(|hit| !hit.place.to_lowercase().contains("guernsey")),
+            "{hits:?}"
+        );
+        assert!(hits.iter().all(|hit| !hit.time_inherited));
+    }
+
+    #[test]
+    fn a_french_birth_keeps_the_town_named_after_nee_le() {
+        let hits = mine_sentence(
+            "Marceline Desbordes-Valmore, née le 20 juin 1786 à Douai, est une poétesse française.",
+            "Marceline Desbordes-Valmore",
+        );
+        assert_eq!(hits.len(), 1, "{hits:?}");
+        assert_eq!(hits[0].verb, "born");
+        assert_eq!(hits[0].time, "1786");
+        assert!(hits[0].place.to_lowercase().contains("douai"), "{hits:?}");
+        assert!(!hits[0].time_inherited);
     }
 }
