@@ -1,5 +1,9 @@
 //! Versioned contracts for evidence-bound AI processing. No canonical writes.
+mod critic;
+mod passages;
 mod supervisor;
+pub use critic::*;
+pub use passages::*;
 pub use supervisor::*;
 
 use serde_json::{json, Value};

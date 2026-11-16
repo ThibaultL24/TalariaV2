@@ -118,18 +118,33 @@ pub struct SupervisorCompletion {
     pub tokens_estimated: bool,
 }
 
-pub async fn complete_supervisor_plan(prompt: &str) -> anyhow::Result<SupervisorCompletion> {
+pub async fn complete_supervisor_plan(
+    prompt: &str,
+    max_output_tokens: u32,
+) -> anyhow::Result<SupervisorCompletion> {
     let creds = llm_creds().ok_or_else(|| anyhow::anyhow!("llm_unconfigured"))?;
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(45))
         .build()?;
     let started = std::time::Instant::now();
-    let (status, body) = complete_prompt(&client, &creds, &creds.model, prompt).await?;
+    let (status, body) = complete_prompt(
+        &client,
+        &creds,
+        &creds.model,
+        prompt,
+        Some(max_output_tokens),
+    )
+    .await?;
     let duration_ms = started.elapsed().as_millis();
     anyhow::ensure!(status.is_success(), "llm_http_{}", status.as_u16());
     let text = output_text(&body).ok_or_else(|| anyhow::anyhow!("llm_empty"))?;
-    let parsed: Value = serde_json::from_str(text.trim().trim_start_matches("```json").trim_end_matches("```").trim())
-        .or_else(|_| serde_json::from_str(extract_json_object(&text)))?;
+    let parsed: Value = serde_json::from_str(
+        text.trim()
+            .trim_start_matches("```json")
+            .trim_end_matches("```")
+            .trim(),
+    )
+    .or_else(|_| serde_json::from_str(extract_json_object(&text)))?;
     let (input_tokens, output_tokens, tokens_estimated) = usage_tokens(&body, prompt, &text);
     Ok(SupervisorCompletion {
         provider: provider_label(),
@@ -185,24 +200,33 @@ async fn complete_prompt(
     creds: &LlmCreds,
     model: &str,
     prompt: &str,
+    max_output_tokens: Option<u32>,
 ) -> anyhow::Result<(reqwest::StatusCode, Value)> {
-    let mut req = match creds.kind {
-        LlmApiKind::Responses => client
-            .post(format!("{}/responses", creds.base_url))
-            .bearer_auth(&creds.key)
-            .json(&json!({
-                "model": model,
-                "input": prompt,
-                "store": false,
-            })),
-        LlmApiKind::ChatCompletions => client
-            .post(format!("{}/chat/completions", creds.base_url))
-            .bearer_auth(&creds.key)
-            .json(&json!({
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-            })),
+    let mut body = match creds.kind {
+        LlmApiKind::Responses => json!({
+            "model": model,
+            "input": prompt,
+            "store": false,
+        }),
+        LlmApiKind::ChatCompletions => json!({
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+        }),
     };
+    if let Some(max_output_tokens) = max_output_tokens {
+        let key = match creds.kind {
+            LlmApiKind::Responses => "max_output_tokens",
+            LlmApiKind::ChatCompletions => "max_tokens",
+        };
+        body[key] = json!(max_output_tokens);
+    }
+    let mut req = client
+        .post(match creds.kind {
+            LlmApiKind::Responses => format!("{}/responses", creds.base_url),
+            LlmApiKind::ChatCompletions => format!("{}/chat/completions", creds.base_url),
+        })
+        .bearer_auth(&creds.key)
+        .json(&body);
     if let Some(referer) = &creds.http_referer {
         req = req.header("HTTP-Referer", referer);
     }
@@ -250,7 +274,14 @@ pub async fn ping() -> PingResult {
     };
 
     let started = std::time::Instant::now();
-    let response = complete_prompt(&client, &creds, &model, "Reply with the single word OK.").await;
+    let response = complete_prompt(
+        &client,
+        &creds,
+        &model,
+        "Reply with the single word OK.",
+        None,
+    )
+    .await;
     let latency_ms = started.elapsed().as_millis();
 
     match response {
@@ -532,7 +563,7 @@ Rules:\n\
 Events:\n{payload}"
     );
 
-    let (status, body) = complete_prompt(client, creds, model, &prompt).await?;
+    let (status, body) = complete_prompt(client, creds, model, &prompt, None).await?;
     if !status.is_success() {
         let message = body
             .pointer("/error/message")
@@ -712,6 +743,7 @@ Sources:\n{sources}",
         &creds,
         &env_nonempty("OPENAI_SYNTHESIS_MODEL").unwrap_or_else(|| creds.model.clone()),
         &prompt,
+        None,
     )
     .await
     .ok()?;
@@ -811,7 +843,7 @@ Keep personal names, place names, years, and [n] citation markers unchanged.\n\
 Do not add facts. Do not wrap in markdown.\n\
 Input: {payload}"
                 );
-                let response = complete_prompt(&client, &creds, &xlat_model, &prompt).await;
+                let response = complete_prompt(&client, &creds, &xlat_model, &prompt, None).await;
                 let (status, body) = match response {
                     Ok(pair) => pair,
                     Err(err) => {

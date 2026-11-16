@@ -1,6 +1,6 @@
 // crates/talaria-store/src/visit.rs
 use crate::canonical_events::CanonicalEventRow;
-use sqlx::{PgPool, QueryBuilder, Postgres};
+use sqlx::{PgPool, Postgres, QueryBuilder};
 use uuid::Uuid;
 
 pub const VISIT_COMMEMORATIVE_TYPES: &[&str] = &[
@@ -31,15 +31,14 @@ pub async fn list_visit_heritage(
         "SELECT ce.id, ce.entity_id, COALESCE(e.canonical_name, e.wikipedia_title) AS person_name, \
          ce.event_type, ce.epistemic_status, ce.title, ce.summary, ce.start_time, ce.time_json, \
          ce.place_label, ce.confidence, ce.map_eligible, \
-         ST_Y(ce.geom::geometry) AS lat, ST_X(ce.geom::geometry) AS lon \
+         ST_Y(ce.geom::geometry) AS lat, ST_X(ce.geom::geometry) AS lon, \
+         ce.coord_precision_level, ce.uncertainty_radius_m \
          FROM canonical_events ce \
          JOIN entities e ON e.id = ce.entity_id \
          WHERE ce.entity_id = ",
     );
     sql.push_bind(entity_id);
-    sql.push(
-        " AND ce.is_active AND ce.pipeline = 'person' AND ce.visit_eligible = true",
-    );
+    sql.push(" AND ce.is_active AND ce.pipeline = 'person' AND ce.visit_eligible = true");
     if map_only {
         sql.push(" AND ce.map_eligible AND ce.geom IS NOT NULL");
     }

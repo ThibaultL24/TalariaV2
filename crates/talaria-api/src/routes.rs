@@ -1,26 +1,29 @@
 // crates/talaria-api/src/routes.rs
-mod auth;
 mod admin_ingest;
+mod agora_graph;
+mod auth;
+mod claim_signals;
+mod comments;
 mod demo;
 mod documents;
+mod editorial;
 mod entities;
 mod entity_views;
+mod events;
+mod facets;
+pub mod ingest;
+mod interactions;
 mod landmarks;
-mod visit;
-mod visit_wikidata;
 mod poreia_catalog;
 mod poreia_culture;
 mod poreia_destinations;
 mod poreia_query;
 mod poreia_review;
-mod events;
-mod facets;
-mod interactions;
-mod claim_signals;
-mod comments;
-mod agora_graph;
-pub mod ingest;
+mod visit;
+mod visit_wikidata;
 
+use crate::llm;
+use axum::http::{header, HeaderValue, Method};
 use axum::{
     routing::{get, post},
     Json, Router,
@@ -31,10 +34,9 @@ use documents::{
 use entities::{get_entity, list_claims, search as search_entities};
 use events::{detail, evidence, geojson, timeline};
 use facets::{list_periods, list_profiles};
-use crate::llm;
 use ingest::{
-    get_explorer_status, get_ingest_job, get_ingest_metrics, start_agora_ingest, start_explorer_ingest, start_ingest,
-    IngestJobMap,
+    get_explorer_status, get_ingest_job, get_ingest_metrics, start_agora_ingest,
+    start_explorer_ingest, start_ingest, IngestJobMap,
 };
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -48,7 +50,6 @@ use tower_http::compression::CompressionLayer;
 use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer};
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
-use axum::http::{header, HeaderValue, Method};
 
 fn cors_layer() -> CorsLayer {
     // Same-origin (Vite proxy + Docker serving web/dist) does not need CORS.
@@ -56,7 +57,10 @@ fn cors_layer() -> CorsLayer {
     match std::env::var("TALARIA_CORS_ORIGIN") {
         Ok(origin) if !origin.trim().is_empty() => CorsLayer::new()
             .allow_origin(AllowOrigin::exact(
-                origin.trim().parse::<HeaderValue>().unwrap_or_else(|_| HeaderValue::from_static("http://localhost:5173")),
+                origin
+                    .trim()
+                    .parse::<HeaderValue>()
+                    .unwrap_or_else(|_| HeaderValue::from_static("http://localhost:5173")),
             ))
             .allow_credentials(true)
             .allow_methods(AllowMethods::list([
@@ -96,11 +100,38 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/v1/llm/ping", get(llm_ping))
         .route("/api/v1/entities/search", get(search_entities))
         .route("/api/v1/entities/{entity_id}", get(get_entity))
-        .route("/api/v1/entities/{entity_id}/overview", get(entity_views::overview))
-        .route("/api/v1/entities/{entity_id}/landmarks", get(landmarks::list))
-        .route("/api/v1/entities/{entity_id}/landmarks/refresh", post(landmarks::refresh))
-        .route("/api/v1/entities/{entity_id}/timeline", get(entity_views::timeline))
-        .route("/api/v1/entities/{entity_id}/events", get(entity_views::map))
+        .route(
+            "/api/v1/entities/{entity_id}/overview",
+            get(entity_views::overview),
+        )
+        .route(
+            "/api/v1/entities/{entity_id}/landmarks",
+            get(landmarks::list),
+        )
+        .route(
+            "/api/v1/entities/{entity_id}/landmarks/refresh",
+            post(landmarks::refresh),
+        )
+        .route(
+            "/api/v1/entities/{entity_id}/groups",
+            get(editorial::list_groups),
+        )
+        .route(
+            "/api/v1/entities/{entity_id}/groups/{slug}",
+            get(editorial::group_detail),
+        )
+        .route(
+            "/api/v1/entities/{entity_id}/groups/{slug}/events",
+            get(editorial::group_events),
+        )
+        .route(
+            "/api/v1/entities/{entity_id}/timeline",
+            get(entity_views::timeline),
+        )
+        .route(
+            "/api/v1/entities/{entity_id}/events",
+            get(entity_views::map),
+        )
         .route(
             "/api/v1/entities/{entity_id}/visit/heritage",
             get(visit::heritage),
@@ -109,14 +140,35 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
             "/api/v1/entities/{entity_id}/visit/heritage/geojson",
             get(visit::heritage_geojson),
         )
-        .route("/api/v1/entities/{entity_id}/visit/discover", post(visit_wikidata::discover))
-        .route("/api/v1/visit/sites/{site_id}/refresh-osm", post(visit_wikidata::refresh_osm))
-        .route("/api/v1/entities/{entity_id}/visit/sites", get(visit_wikidata::sites))
-        .route("/api/v1/entities/{entity_id}/visit/sites/geojson", get(visit_wikidata::sites_geojson))
-        .route("/api/v1/entities/{entity_id}/visit/itinerary", get(visit_wikidata::itinerary))
-        .route("/api/v1/visit/destinations", get(poreia_destinations::search))
+        .route(
+            "/api/v1/entities/{entity_id}/visit/discover",
+            post(visit_wikidata::discover),
+        )
+        .route(
+            "/api/v1/visit/sites/{site_id}/refresh-osm",
+            post(visit_wikidata::refresh_osm),
+        )
+        .route(
+            "/api/v1/entities/{entity_id}/visit/sites",
+            get(visit_wikidata::sites),
+        )
+        .route(
+            "/api/v1/entities/{entity_id}/visit/sites/geojson",
+            get(visit_wikidata::sites_geojson),
+        )
+        .route(
+            "/api/v1/entities/{entity_id}/visit/itinerary",
+            get(visit_wikidata::itinerary),
+        )
+        .route(
+            "/api/v1/visit/destinations",
+            get(poreia_destinations::search),
+        )
         .route("/api/v1/poreia/sites", get(poreia_catalog::sites))
-        .route("/api/v1/poreia/occurrences", get(poreia_culture::occurrences))
+        .route(
+            "/api/v1/poreia/occurrences",
+            get(poreia_culture::occurrences),
+        )
         .route(
             "/api/v1/admin/poreia/sites/{site_id}/review",
             post(poreia_review::review_site),
@@ -125,10 +177,7 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
             "/api/v1/entities/{entity_id}/visit/anchors",
             get(visit::anchors),
         )
-        .route(
-            "/api/v1/entities/{entity_id}/visit/now",
-            get(visit::now),
-        )
+        .route("/api/v1/entities/{entity_id}/visit/now", get(visit::now))
         .route(
             "/api/v1/entities/{entity_id}/visit/now/geojson",
             get(visit::now_geojson),
@@ -158,7 +207,10 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/v1/ingest/agora", post(start_agora_ingest))
         .route("/api/v1/ingest/{job_id}", get(get_ingest_job))
         .route("/api/v1/ingest/{job_id}/metrics", get(get_ingest_metrics))
-        .route("/api/v1/ingest/explorer/{job_id}/status", get(get_explorer_status))
+        .route(
+            "/api/v1/ingest/explorer/{job_id}/status",
+            get(get_explorer_status),
+        )
         .merge(auth::router())
         .merge(admin_ingest::router())
         .merge(interactions::router())

@@ -3,17 +3,16 @@
 
 use serde_json::json;
 use talaria_quality::{
-    auto_accept_attribution, event_type_is_map_locus, explorer_headline, occurrence_key_for_event,
-    start_time_from_typed, time_to_json, AttributionMatch, CandidateStatus, GateContext,
-    GateDecision, GroundedItem, RejectionCode, TypedTime,
+    auto_accept_attribution, concise_event_title, event_type_is_map_locus,
+    occurrence_key_for_event, read_clause_time, start_time_from_typed, time_to_json,
+    AttributionMatch, CandidateStatus, ClauseTime, GateContext, GateDecision, GroundedItem,
+    RejectionCode, TypedTime,
 };
 use talaria_sources::is_plausible_place_label;
 use talaria_store::{
     eligibility_for_event_type, enrich_person_event_place_if_empty,
-    find_active_person_event_by_fingerprint, find_active_person_event_by_occurrence,
-    find_active_person_event_by_title, find_active_person_singleton_event,
-    find_nearby_visit_heritage, insert_claim,
-    insert_claim_evidence, insert_person_candidate, insert_person_event,
+    find_active_person_singleton_event, find_nearby_visit_heritage, find_recognized_person_event,
+    insert_claim, insert_claim_evidence, insert_person_candidate, insert_person_event,
     insert_person_quote_evidence, mark_candidate_assembled, ClaimInsert, PersonCandidateInsert,
     PersonEventInsert,
 };
@@ -23,8 +22,14 @@ use super::gating;
 use super::typing;
 
 pub enum PersistOutcome {
-    Canonical { event_id: Uuid, inserted: bool },
-    CandidateOnly { candidate_id: Uuid, status: CandidateStatus },
+    Canonical {
+        event_id: Uuid,
+        inserted: bool,
+    },
+    CandidateOnly {
+        candidate_id: Uuid,
+        status: CandidateStatus,
+    },
 }
 
 pub struct PersistMeta<'a> {
@@ -51,24 +56,10 @@ async fn find_existing_person_event(
     pool: &sqlx::PgPool,
     entity_id: Uuid,
     occurrence_key: &str,
-    title: &str,
 ) -> anyhow::Result<Option<Uuid>> {
-    if let Some(id) =
-        find_active_person_event_by_occurrence(pool, entity_id, occurrence_key).await?
-    {
-        return Ok(Some(id));
-    }
-    if let Some(id) = find_active_person_event_by_fingerprint(
-        pool,
-        &person_event_fingerprint(entity_id, occurrence_key),
-    )
-    .await?
-    {
-        return Ok(Some(id));
-    }
-    // Re-ingest often changes place_label (QID vs label) and thus occurrence_key while
-    // the explorer title stays identical — collapse on display title.
-    find_active_person_event_by_title(pool, entity_id, title).await
+    // Exact reading only. A shared title, or a key changed by a refined date or place,
+    // stays a separate fact until an explicit merge.
+    find_recognized_person_event(pool, entity_id, occurrence_key).await
 }
 
 fn attribution_label(m: AttributionMatch) -> &'static str {
@@ -79,8 +70,32 @@ fn attribution_label(m: AttributionMatch) -> &'static str {
         AttributionMatch::StructuredParticipantMatch => "structured_participant_match",
         AttributionMatch::FollowedMilitaryAction => "followed_military_action",
         AttributionMatch::CoreferenceMatch => "coreference_match",
+        AttributionMatch::Comparison => "subject_used_as_comparison",
         AttributionMatch::Unattributed => "unattributed",
     }
+}
+
+fn place_role(item: &GroundedItem) -> talaria_ai::PlaceRole {
+    let label = item.place_surface.clone().unwrap_or_default();
+    let record = talaria_ai::HistoricalRecord {
+        event_id: String::new(),
+        title: item.summary.clone(),
+        event_type: item.event_type.clone(),
+        anchors: vec![label.clone()],
+        stored_year: item.year,
+        stored_precision: "year".into(),
+        place_label: label,
+        place_qid: None,
+        lat: None,
+        lon: None,
+        passages: vec![talaria_ai::CitedPassage {
+            quote: item.quoted_text.clone(),
+            url: String::new(),
+        }],
+        identities: Vec::new(),
+        occurrence_key: None,
+    };
+    talaria_ai::classify_place_role(&record)
 }
 
 fn life_singleton_type(event_type: &str) -> bool {
@@ -149,6 +164,8 @@ pub async fn persist_gated_item(
     coords: Option<(f64, f64)>,
     place_identity_qid: Option<&str>,
     source_locator: &str,
+    time_reading: &str,
+    place_reading: &str,
 ) -> anyhow::Result<PersistOutcome> {
     let fingerprint = gating::fingerprint_for(subject, item, time, raw_document_id);
     let status = decision.status();
@@ -172,7 +189,11 @@ pub async fn persist_gated_item(
             action_role: Some(item.role.clone()),
             status: status.as_str().to_string(),
             rejection_codes: decision.codes(),
-            judgment_json: json!({ "attribution": attribution_label(attribution) }),
+            judgment_json: json!({
+                "attribution": attribution_label(attribution),
+                "time_reading": time_reading,
+                "place_reading": place_reading,
+            }),
             raw_document_id,
         },
     )
@@ -210,7 +231,7 @@ pub async fn persist_gated_item(
 
     let place_label = item.place_surface.clone();
     let map_eligible = coords.is_some() && event_type_is_map_locus(&item.event_type);
-    let title = explorer_headline(
+    let title = concise_event_title(
         subject,
         &item.event_type,
         item.year,
@@ -219,9 +240,7 @@ pub async fn persist_gated_item(
         Some(item.summary.as_str()),
     );
 
-    if let Some(existing) =
-        find_existing_person_event(pool, entity_id, occurrence_key, &title).await?
-    {
+    if let Some(existing) = find_existing_person_event(pool, entity_id, occurrence_key).await? {
         return attach_evidence_to_existing(
             pool,
             existing,
@@ -238,15 +257,9 @@ pub async fn persist_gated_item(
     let (timeline_eligible, visit_eligible) = eligibility_for_event_type(&item.event_type);
     if visit_eligible && !timeline_eligible {
         if let Some((lat, lon)) = coords {
-            if let Some(existing) = find_nearby_visit_heritage(
-                pool,
-                entity_id,
-                &item.event_type,
-                lat,
-                lon,
-                80.0,
-            )
-            .await?
+            if let Some(existing) =
+                find_nearby_visit_heritage(pool, entity_id, &item.event_type, lat, lon, 80.0)
+                    .await?
             {
                 return attach_evidence_to_existing(
                     pool,
@@ -288,7 +301,9 @@ pub async fn persist_gated_item(
     .await;
     let event_id = match inserted {
         Ok(id) => id,
-        Err(err) if life_singleton_type(&item.event_type) && is_singleton_unique_violation(&err) => {
+        Err(err)
+            if life_singleton_type(&item.event_type) && is_singleton_unique_violation(&err) =>
+        {
             if let Some(existing) =
                 find_active_person_singleton_event(pool, entity_id, &item.event_type).await?
             {
@@ -324,6 +339,79 @@ pub async fn persist_gated_item(
     })
 }
 
+fn event_time(
+    item: &GroundedItem,
+    ctx: &GateContext,
+    meta: &PersistMeta<'_>,
+) -> (TypedTime, &'static str) {
+    match read_clause_time(&item.quoted_text) {
+        ClauseTime::Exact {
+            year,
+            month,
+            day,
+            surface,
+        } => {
+            let reading = if day.is_some() {
+                "explicit_day"
+            } else if month.is_some() {
+                "explicit_month"
+            } else {
+                "explicit_year"
+            };
+            (
+                TypedTime::Exact {
+                    year,
+                    month,
+                    day,
+                    surface: Some(surface),
+                },
+                reading,
+            )
+        }
+        ClauseTime::Range {
+            start_year,
+            end_year,
+            surface,
+        } => (
+            TypedTime::Range {
+                start_year,
+                end_year,
+                surface: Some(surface),
+            },
+            "range",
+        ),
+        ClauseTime::Ambiguous { reason } => (
+            TypedTime::Unknown {
+                surface: Some(reason.to_string()),
+            },
+            reason,
+        ),
+        ClauseTime::Missing if meta.structured_source => {
+            (typing::typed_time_from_year(item.year), "structured_year")
+        }
+        ClauseTime::Missing => {
+            let local = meta
+                .document_text
+                .map(|doc| talaria_quality::local_context_window(doc, &item.quoted_text, 400));
+            let infer_ctx = typing::YearInferenceContext {
+                clause_text: &item.quoted_text,
+                paragraph_context: local,
+                section_heading: meta.section_heading,
+                birth_year: ctx.subject_birth_year,
+                death_year: ctx.subject_death_year,
+            };
+            let time =
+                typing::typed_time_from_year_with_context(item.year, &item.event_type, &infer_ctx);
+            let reading = match &time {
+                TypedTime::Approx { .. } => "inferred_year",
+                TypedTime::Exact { .. } => "explicit_year",
+                _ => "missing",
+            };
+            (time, reading)
+        }
+    }
+}
+
 pub async fn persist_fact_item(
     pool: &sqlx::PgPool,
     entity_id: Uuid,
@@ -341,21 +429,7 @@ pub async fn persist_fact_item(
     item.place_surface = clean_place;
     let item = &item;
 
-    let time = if item.year.is_none() && !meta.structured_source {
-        let local = meta
-            .document_text
-            .map(|doc| talaria_quality::local_context_window(doc, &item.quoted_text, 400));
-        let infer_ctx = typing::YearInferenceContext {
-            clause_text: &item.quoted_text,
-            paragraph_context: local,
-            section_heading: meta.section_heading,
-            birth_year: ctx.subject_birth_year,
-            death_year: ctx.subject_death_year,
-        };
-        typing::typed_time_from_year_with_context(item.year, &item.event_type, &infer_ctx)
-    } else {
-        typing::typed_time_from_year(item.year)
-    };
+    let (time, time_reading) = event_time(item, ctx, &meta);
     let occ = occurrence_key_for_event(
         subject,
         &item.event_type,
@@ -379,6 +453,18 @@ pub async fn persist_fact_item(
 
     // Full place grounding: identity resolution (TGN/WHG) + geocoding
     let grounding = typing::ground_place_full(item.place_surface.as_deref(), meta.coords).await;
+    let role = place_role(item);
+    let point = talaria_sources::event_place_point(
+        role.as_str(),
+        item.place_surface.as_deref().unwrap_or(""),
+        grounding.coords.or(meta.coords),
+    );
+    let coords = point.lat.zip(point.lon);
+    let place_qid = if role == talaria_ai::PlaceRole::Locus {
+        point.qid.clone().or(grounding.identity_qid.clone())
+    } else {
+        None
+    };
 
     // Persist place resolution to audit trail if identity was resolved
     if let Some(ref identity) = grounding.identity {
@@ -386,7 +472,7 @@ pub async fn persist_fact_item(
             pool,
             item.place_surface.as_deref().unwrap_or_default(),
             identity,
-            grounding.coords,
+            coords,
         )
         .await
         {
@@ -404,9 +490,11 @@ pub async fn persist_fact_item(
         meta.raw_document_id,
         &occ,
         &time,
-        grounding.coords,
-        grounding.identity_qid.as_deref(),
+        coords,
+        place_qid.as_deref(),
         meta.source_locator,
+        time_reading,
+        point.reason,
     )
     .await?;
     if matches!(outcome, PersistOutcome::Canonical { .. }) {
@@ -462,6 +550,135 @@ pub async fn persist_debate(
 mod tests {
     use super::*;
 
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn a_tenth_of_may_1796_keeps_day_precision_in_the_api_shape(pool: sqlx::PgPool) {
+        let entity_id = talaria_store::ensure_subject_entity(&pool, "Q9001796", "Napoleon")
+            .await
+            .unwrap();
+        let quote = "Napoleon fought the Battle of Lodi on 10 May 1796 at Lodi.";
+        let raw_id = talaria_store::upsert_raw_wikipedia_document(
+            &pool,
+            "https://en.wikipedia.org/wiki/Battle_of_Lodi",
+            "Battle of Lodi",
+            "en",
+            quote,
+        )
+        .await
+        .unwrap();
+        let item = GroundedItem {
+            lane: talaria_quality::Lane::Fact,
+            event_type: "battle".into(),
+            role: "direct".into(),
+            year: Some(1796),
+            place_surface: Some("Lodi".into()),
+            summary: quote.into(),
+            quoted_text: quote.into(),
+            confidence: 0.9,
+        };
+        let mut ctx = GateContext {
+            subject_birth_year: Some(1769),
+            subject_death_year: Some(1821),
+            has_active_birth: true,
+            has_active_death: false,
+            fingerprint_exists: false,
+            cross_clause_join_detected: false,
+            place_entity_kind: None,
+            subject_confirmed_alive: false,
+        };
+        let outcome = persist_fact_item(
+            &pool,
+            entity_id,
+            "Napoleon",
+            &item,
+            &mut ctx,
+            PersistMeta {
+                raw_document_id: raw_id,
+                coords: Some((45.314, 9.503)),
+                primary_object: Some("Battle of Lodi"),
+                source_locator: "https://en.wikipedia.org/wiki/Battle_of_Lodi",
+                page_title: "Napoleon",
+                from_followed_page: false,
+                structured_source: false,
+                military_subject: true,
+                aliases: &[],
+                document_text: None,
+                section_heading: None,
+            },
+        )
+        .await
+        .unwrap();
+        let PersistOutcome::Canonical { event_id, .. } = outcome else {
+            panic!("the dated battle must be published");
+        };
+        let (time_json, title, lat): (serde_json::Value, String, Option<f64>) = sqlx::query_as(
+            "SELECT time_json, title, ST_Y(geom::geometry) FROM canonical_events WHERE id = $1",
+        )
+        .bind(event_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let api = json!({ "time": time_json, "title": title });
+        assert_eq!(api["time"]["kind"], "exact");
+        assert_eq!(api["time"]["precision"], "day");
+        assert!(api["time"]["start"]
+            .as_str()
+            .unwrap()
+            .starts_with("1796-05-10"));
+        assert_eq!(api["title"], "Battle of Lodi (1796)");
+        assert!((lat.unwrap() - 45.314).abs() < 0.01);
+
+        let mondovi = "Napoleon fought the Battle of Mondovì on 21 April 1796.";
+        let mondovi_doc = talaria_store::upsert_raw_wikipedia_document(
+            &pool,
+            "https://en.wikipedia.org/wiki/Battle_of_Mondovi",
+            "Battle of Mondovì",
+            "en",
+            mondovi,
+        )
+        .await
+        .unwrap();
+        let item = GroundedItem {
+            place_surface: Some("Mondovì".into()),
+            summary: mondovi.into(),
+            quoted_text: mondovi.into(),
+            ..item
+        };
+        let outcome = persist_fact_item(
+            &pool,
+            entity_id,
+            "Napoleon",
+            &item,
+            &mut ctx,
+            PersistMeta {
+                raw_document_id: mondovi_doc,
+                coords: Some((59.60, 29.67)),
+                primary_object: Some("Battle of Mondovì"),
+                source_locator: "https://en.wikipedia.org/wiki/Battle_of_Mondovi",
+                page_title: "Napoleon",
+                from_followed_page: false,
+                structured_source: false,
+                military_subject: true,
+                aliases: &[],
+                document_text: None,
+                section_heading: None,
+            },
+        )
+        .await
+        .unwrap();
+        let PersistOutcome::Canonical { event_id, .. } = outcome else {
+            panic!("Mondovì must stay a battle, with the Italian point");
+        };
+        let (lat, lon): (f64, f64) = sqlx::query_as(
+            "SELECT ST_Y(geom::geometry), ST_X(geom::geometry) FROM canonical_events WHERE id = $1",
+        )
+        .bind(event_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!((lat - 44.3833).abs() < 0.01, "lat {lat}");
+        assert!((lon - 7.8167).abs() < 0.01, "lon {lon}");
+    }
+
     #[test]
     fn detects_singleton_unique_index_name() {
         let err = anyhow::anyhow!(
@@ -473,4 +690,3 @@ mod tests {
         )));
     }
 }
-

@@ -19,6 +19,8 @@ use crate::{
 pub async fn dispatch(cli: Cli, config: AppConfig) -> anyhow::Result<()> {
     match cli.command {
         Commands::Migrate => cli::run_migrate(&config).await?,
+        Commands::LogicalIdentityPreflight => cli::run_logical_identity_preflight(&config).await?,
+        Commands::LogicalIdentityBackfill => cli::run_logical_identity_backfill(&config).await?,
         Commands::Serve => routes::serve(config).await?,
         Commands::DumpIndex { index, limit } => cli::run_dump_index(&config, &index, limit).await?,
         Commands::Dump { action } => match action {
@@ -249,8 +251,15 @@ pub async fn dispatch(cli: Cli, config: AppConfig) -> anyhow::Result<()> {
         } => {
             println!(
                 "{}",
-                crate::supervisor_run::agent_dispatch(&config, &experience, &qid, &label, execute, live)
-                    .await?
+                crate::supervisor_run::agent_dispatch(
+                    &config,
+                    &experience,
+                    &qid,
+                    &label,
+                    execute,
+                    live
+                )
+                .await?
             );
         }
         Commands::PlanSources { subject, qid } => {
@@ -361,7 +370,9 @@ pub async fn dispatch(cli: Cli, config: AppConfig) -> anyhow::Result<()> {
                     .await
                     {
                         Ok(report) => println!("{report}"),
-                        Err(error) => tracing::warn!(error = %error, "corpus bibliography ingest failed"),
+                        Err(error) => {
+                            tracing::warn!(error = %error, "corpus bibliography ingest failed")
+                        }
                     }
                 }
 
@@ -400,7 +411,8 @@ pub async fn dispatch(cli: Cli, config: AppConfig) -> anyhow::Result<()> {
             live: _,
             qid_only,
         } => {
-            let report = lot_e::run_resolve_places(&config, &subject, all_unresolved, qid_only).await?;
+            let report =
+                lot_e::run_resolve_places(&config, &subject, all_unresolved, qid_only).await?;
             println!("{report}");
         }
         Commands::DensityReport {
@@ -441,12 +453,10 @@ pub async fn dispatch(cli: Cli, config: AppConfig) -> anyhow::Result<()> {
             let pool = talaria_store::connect(&config).await?;
             talaria_store::run_migrations(&pool).await?;
             let fixture_path = cli_helpers::resolve_repo_path(
-                fixture_file.unwrap_or_else(|| {
-                    PathBuf::from("fixtures/visit/opportunities_sample.json")
-                }),
+                fixture_file
+                    .unwrap_or_else(|| PathBuf::from("fixtures/visit/opportunities_sample.json")),
             );
-            let europeana_fixture_dir =
-                cli_helpers::resolve_repo_path(europeana_fixture_dir);
+            let europeana_fixture_dir = cli_helpers::resolve_repo_path(europeana_fixture_dir);
             let use_fixture = fixture || (!live && !fixture);
             let count = visit_enrich::run_visit_enrich(
                 &pool,

@@ -6,8 +6,10 @@ use talaria_dump::{
     build_extract_job, content_hash, read_multistream_index, run_page_extraction, write_index_jsonl,
 };
 use talaria_store::{
-    connect, finish_dump_run, list_pages_for_sentence_split, replace_sentences_for_page,
-    run_migrations, start_dump_run, store_extracted_page, SentenceRecord, WikiPageRecord,
+    backfill_logical_identities, connect, diagnose_logical_identities, finish_dump_run,
+    list_pages_for_sentence_split, migration_consent_granted, propose_logical_reconciliations,
+    replace_sentences_for_page, run_migrations, start_dump_run, store_extracted_page,
+    SentenceRecord, WikiPageRecord,
 };
 use talaria_text::segment_wikitext;
 
@@ -20,8 +22,13 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Apply SQL migrations
+    /// Apply SQL migrations. Requires TALARIA_APPLY_MIGRATIONS=1 when any are pending.
     Migrate,
+    /// Read-only supersession and duplicate-candidate report. Does not migrate or backfill.
+    LogicalIdentityPreflight,
+    /// Assign logical identities. Refuses when the preflight reports an ambiguous chain.
+    /// Requires TALARIA_APPLY_MIGRATIONS=1 and does not apply the schema itself.
+    LogicalIdentityBackfill,
     /// Start HTTP API
     Serve,
     /// Create JSONL index from Wikimedia multistream-index.txt
@@ -178,7 +185,10 @@ pub enum Commands {
         sources: Option<Vec<String>>,
         #[arg(long, default_value_t = true, action = clap::ArgAction::Set, help = "Use deterministic fixture corpus")]
         fixture: bool,
-        #[arg(long, help = "Call live Wikimedia + catalog APIs (Open Library, Internet Archive, Gallica; Europeana if EUROPEANA_API_KEY)")]
+        #[arg(
+            long,
+            help = "Call live Wikimedia + catalog APIs (Open Library, Internet Archive, Gallica; Europeana if EUROPEANA_API_KEY)"
+        )]
         live: bool,
         /// Lot E: seed-driven dense Wikipedia exploration toward density targets
         #[arg(
@@ -227,7 +237,10 @@ pub enum Commands {
         all_unresolved: bool,
         #[arg(long, help = "Allow live Wikidata P625 (optional; offline used first)")]
         live: bool,
-        #[arg(long, help = "Backfill QIDs for places that have coords but no place_identity_qid")]
+        #[arg(
+            long,
+            help = "Backfill QIDs for places that have coords but no place_identity_qid"
+        )]
         qid_only: bool,
     },
     /// Density / multi-source quality report for a subject
@@ -263,7 +276,10 @@ pub enum Commands {
         qid: Option<String>,
         #[arg(long, default_value = "en")]
         wiki_lang: String,
-        #[arg(long, help = "Load fixtures/visit/opportunities_sample.json (or --fixture-file)")]
+        #[arg(
+            long,
+            help = "Load fixtures/visit/opportunities_sample.json (or --fixture-file)"
+        )]
         fixture: bool,
         #[arg(
             long,
@@ -295,7 +311,10 @@ pub enum Commands {
         subject: Option<String>,
         #[arg(long)]
         qid: Option<String>,
-        #[arg(long, help = "Deactivate redundant visit heritage pins within ~80m (same type)")]
+        #[arg(
+            long,
+            help = "Deactivate redundant visit heritage pins within ~80m (same type)"
+        )]
         apply_dedupe: bool,
     },
     /// Ingest Wikidata JSON dump → entity QIDs + occupation/position profiles
@@ -360,7 +379,10 @@ pub enum Commands {
     IntuitionPublish {
         #[arg(long)]
         subject: String,
-        #[arg(long, help = "Blocked: live Intuition writes are disabled until IPFS atom IDs and tx simulation are fixed")]
+        #[arg(
+            long,
+            help = "Blocked: live Intuition writes are disabled until IPFS atom IDs and tx simulation are fixed"
+        )]
         live: bool,
     },
     /// Operator admin actions (destructive rebuild is explicit)
@@ -399,7 +421,11 @@ pub enum DumpAction {
         skip_existing: bool,
         #[arg(long, default_value = "jsonl")]
         source_kind: String,
-        #[arg(long, default_value = "0", help = "Max documents this invocation (0 = all)")]
+        #[arg(
+            long,
+            default_value = "0",
+            help = "Max documents this invocation (0 = all)"
+        )]
         limit: usize,
         #[arg(long, help = "Resume an existing corpus dump run")]
         run: Option<String>,
@@ -483,7 +509,10 @@ pub enum DumpAction {
 pub enum AdminAction {
     /// Count, optionally wipe canonical events + merge duplicate QIDs (not a migration)
     RebuildPersonPipeline {
-        #[arg(long, help = "Actually merge duplicates and TRUNCATE events (irreversible)")]
+        #[arg(
+            long,
+            help = "Actually merge duplicates and TRUNCATE events (irreversible)"
+        )]
         confirm_destruction: bool,
         #[arg(
             long,
@@ -503,6 +532,66 @@ pub async fn run_migrate(config: &AppConfig) -> anyhow::Result<()> {
     let pool = connect(config).await?;
     run_migrations(&pool).await?;
     tracing::info!("migrations applied");
+    Ok(())
+}
+
+pub async fn run_logical_identity_preflight(config: &AppConfig) -> anyhow::Result<()> {
+    let pool = connect(config).await?;
+    let report = diagnose_logical_identities(&pool).await?;
+    let proposals = propose_logical_reconciliations(&pool).await?;
+    let body = serde_json::json!({
+        "canonical_rows": report.canonical_rows,
+        "version_chains": report.version_chains,
+        "coherent_chains": report.coherent_chains,
+        "cycles": report.cycles,
+        "one_way_links": report.one_way_links,
+        "forward_only_versions": report.forward_only_versions,
+        "multiple_active": report.multiple_active,
+        "inactive_unlinked": report.inactive_unlinked,
+        "cross_entity": report.cross_entity,
+        "identity_conflicts": report.identity_conflicts,
+        "dangling_links": report.dangling_links,
+        "parked_restorations": report.parked_restorations,
+        "active_receiving_identity": report.active_receiving_identity,
+        "unresolved_archives": report.unresolved_archives,
+        "blocks_progressive_backfill": report.blocks_migration(),
+        "reconciliation_proposals": proposals.len(),
+        "issues_shown": report.issues.len().min(20),
+        "issues_total": report.issues.len(),
+        "issues": report.issues.iter().take(20).map(|issue| serde_json::json!({
+            "kind": issue.kind,
+            "event_id": issue.event_id,
+            "other_event_id": issue.other_event_id,
+        })).collect::<Vec<_>>(),
+    });
+    println!("{}", serde_json::to_string_pretty(&body)?);
+    Ok(())
+}
+
+pub async fn run_logical_identity_backfill(config: &AppConfig) -> anyhow::Result<()> {
+    if !migration_consent_granted() {
+        anyhow::bail!("refusing logical identity backfill without TALARIA_APPLY_MIGRATIONS=1");
+    }
+    let pool = connect(config).await?;
+    let report = diagnose_logical_identities(&pool).await?;
+    if report.blocks_migration() {
+        anyhow::bail!(
+            "logical identity backfill refused: {} cycles, {} conflicts, {} dangling links",
+            report.cycles,
+            report.identity_conflicts,
+            report.dangling_links
+        );
+    }
+    let result = backfill_logical_identities(&pool).await?;
+    println!(
+        "{}",
+        serde_json::json!({
+            "assigned_events": result.assigned_events,
+            "created_identities": result.created_identities,
+            "unresolved_archives": report.unresolved_archives,
+            "issues": result.issues.len(),
+        })
+    );
     Ok(())
 }
 

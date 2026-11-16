@@ -23,6 +23,7 @@ pub struct ViewQuery {
     limit: Option<i64>,
     lang: Option<String>,
     resolution: Option<String>,
+    group: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -34,6 +35,8 @@ struct Cursor {
     bbox: Option<[f64; 4]>,
     map: bool,
     resolution: String,
+    #[serde(default)]
+    group: Option<String>,
     time: Option<DateTime<Utc>>,
     id: Uuid,
 }
@@ -119,6 +122,18 @@ async fn view(state: AppState, entity: Uuid, query: ViewQuery, map: bool) -> Res
     }
     types.sort();
     types.dedup();
+    let group = query
+        .group
+        .as_deref()
+        .map(str::trim)
+        .filter(|slug| !slug.is_empty())
+        .map(str::to_string);
+    if group
+        .as_deref()
+        .is_some_and(|slug| !talaria_store::is_editorial_slug(slug))
+    {
+        return error(StatusCode::BAD_REQUEST, "invalid_group");
+    }
     let cursor = match query.cursor.as_deref() {
         None => None,
         Some(value) => {
@@ -136,7 +151,8 @@ async fn view(state: AppState, entity: Uuid, query: ViewQuery, map: bool) -> Res
                         && c.types == types
                         && c.bbox == bbox
                         && c.map == map
-                        && c.resolution == resolution =>
+                        && c.resolution == resolution
+                        && c.group.as_deref() == group.as_deref() =>
                 {
                     Some(c)
                 }
@@ -152,20 +168,43 @@ async fn view(state: AppState, entity: Uuid, query: ViewQuery, map: bool) -> Res
             return error(StatusCode::INTERNAL_SERVER_ERROR, "database_error");
         }
     }
-    let mut sql = QueryBuilder::<Postgres>::new("SELECT ce.id, ce.entity_id, COALESCE(e.canonical_name,e.wikipedia_title) AS person_name, ce.event_type, ce.epistemic_status, ce.title, ce.summary, ce.start_time, ce.time_json, ce.place_label, ce.confidence, ce.map_eligible, ST_Y(ce.geom::geometry) AS lat, ST_X(ce.geom::geometry) AS lon FROM person_timeline_projection ce JOIN entities e ON e.id=ce.entity_id WHERE ce.entity_id=");
-    sql.push_bind(entity);
-    // Life of the person. Memorials and later honors stay out of this view.
-    sql.push(
-        " AND ce.event_type NOT IN ('statue','museum','memorial','street_naming','commemoration')",
-    );
-    if !map {
-        let threshold = match resolution {
-            "overview" => 0.8f64,
-            "period" => 0.6,
-            _ => 0.0,
-        };
-        sql.push(" AND ce.timeline_importance >= ")
-            .push_bind(threshold);
+    let group_id = if let Some(slug) = group.as_deref() {
+        match talaria_store::find_published_editorial_group(&state.pool, entity, slug).await {
+            Ok(Some(found)) => Some(found.id),
+            Ok(None) => return error(StatusCode::NOT_FOUND, "group_not_found"),
+            Err(e) => {
+                tracing::error!(error=%e, "editorial group lookup failed");
+                return error(StatusCode::INTERNAL_SERVER_ERROR, "database_error");
+            }
+        }
+    } else {
+        None
+    };
+    let mut sql = QueryBuilder::<Postgres>::new("SELECT ce.id, ce.entity_id, COALESCE(e.canonical_name,e.wikipedia_title) AS person_name, ce.event_type, ce.epistemic_status, ce.title, ce.summary, ce.start_time, ce.time_json, ce.place_label, ce.confidence, ce.map_eligible, ST_Y(ce.geom::geometry) AS lat, ST_X(ce.geom::geometry) AS lon, ce.coord_precision_level, ce.uncertainty_radius_m ");
+    if let Some(group_id) = group_id {
+        // A chapter lists the active version of each chosen fact.
+        // The biography overview threshold does not apply inside it.
+        sql.push("FROM canonical_events ce JOIN entities e ON e.id=ce.entity_id JOIN editorial_memberships m ON m.logical_event_id=ce.logical_event_id AND m.group_id=")
+            .push_bind(group_id);
+        sql.push(" WHERE ce.entity_id=")
+            .push_bind(entity)
+            .push(" AND ce.is_active AND ce.pipeline='person'");
+    } else {
+        sql.push("FROM person_timeline_projection ce JOIN entities e ON e.id=ce.entity_id WHERE ce.entity_id=")
+            .push_bind(entity);
+        // Life of the person. Memorials and later honors stay out of the general view.
+        sql.push(
+            " AND ce.event_type NOT IN ('statue','museum','memorial','street_naming','commemoration')",
+        );
+        if !map {
+            let threshold = match resolution {
+                "overview" => 0.8f64,
+                "period" => 0.6,
+                _ => 0.0,
+            };
+            sql.push(" AND ce.timeline_importance >= ")
+                .push_bind(threshold);
+        }
     }
     if !types.is_empty() {
         sql.push(" AND ce.event_type=ANY(")
@@ -235,6 +274,7 @@ async fn view(state: AppState, entity: Uuid, query: ViewQuery, map: bool) -> Res
                     bbox,
                     map,
                     resolution: resolution.into(),
+                    group: group.clone(),
                     time: last.start_time,
                     id: last.id,
                 })
@@ -297,6 +337,7 @@ mod tests {
             bbox: None,
             map: false,
             resolution: "detail".into(),
+            group: None,
             time: None,
             id: Uuid::nil(),
         };
@@ -454,5 +495,977 @@ mod tests {
         assert!(levels[0].is_subset(&levels[1]));
         assert!(levels[1].is_subset(&levels[2]));
         assert_eq!(levels[2].len(), 4);
+    }
+
+    struct PlacedFact {
+        canonical: Uuid,
+        logical: Uuid,
+    }
+
+    async fn person(pool: &sqlx::PgPool, name: &str) -> Uuid {
+        sqlx::query_scalar(
+            "INSERT INTO entities(wikipedia_title, canonical_name) VALUES($1, $1) RETURNING id",
+        )
+        .bind(name)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+    }
+
+    async fn fact(
+        pool: &sqlx::PgPool,
+        entity: Uuid,
+        event_type: &str,
+        title: &str,
+        time: Value,
+        start: Option<&str>,
+        place: Option<&str>,
+        point: Option<(f64, f64)>,
+        status: &str,
+        precision: Option<&str>,
+        radius: Option<f64>,
+    ) -> PlacedFact {
+        let logical: Uuid =
+            sqlx::query_scalar("INSERT INTO logical_events DEFAULT VALUES RETURNING id")
+                .fetch_one(pool)
+                .await
+                .unwrap();
+        let (lon, lat) = point.unzip();
+        let canonical: Uuid = sqlx::query_scalar(
+            r#"
+            INSERT INTO canonical_events (
+                entity_id, event_type, title, start_time, time_json, pipeline, is_active,
+                timeline_eligible, map_eligible, epistemic_status, logical_event_id,
+                place_label, coord_precision_level, uncertainty_radius_m, geom
+            )
+            VALUES (
+                $1, $2, $3, $4::text::timestamptz, $5, 'person', true,
+                true, $6, $7, $8,
+                $9, $10, $11,
+                CASE WHEN $12::float8 IS NULL THEN NULL
+                     ELSE ST_SetSRID(ST_MakePoint($13, $12), 4326)::geography END
+            )
+            RETURNING id
+            "#,
+        )
+        .bind(entity)
+        .bind(event_type)
+        .bind(title)
+        .bind(start)
+        .bind(time)
+        .bind(point.is_some())
+        .bind(status)
+        .bind(logical)
+        .bind(place)
+        .bind(precision)
+        .bind(radius)
+        .bind(lat)
+        .bind(lon)
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        PlacedFact { canonical, logical }
+    }
+
+    async fn chapter(
+        pool: &sqlx::PgPool,
+        entity: Uuid,
+        slug: &str,
+        title: &str,
+        kind: &str,
+        summary: Option<&str>,
+        origin: Option<&str>,
+        order: i32,
+        publish: bool,
+    ) -> Uuid {
+        let id = talaria_store::create_editorial_group(
+            pool,
+            talaria_store::NewEditorialGroup {
+                entity_id: entity,
+                slug,
+                title,
+                group_kind: kind,
+                summary,
+                summary_origin: origin,
+                display_order: order,
+            },
+        )
+        .await
+        .unwrap();
+        if publish {
+            talaria_store::set_editorial_group_status(pool, id, talaria_store::STATUS_PUBLISHED)
+                .await
+                .unwrap();
+        }
+        id
+    }
+
+    async fn json_status(response: Response) -> (StatusCode, Value) {
+        let status = response.status();
+        let bytes = axum::body::to_bytes(response.into_body(), 2_000_000)
+            .await
+            .unwrap();
+        let body = if bytes.is_empty() {
+            json!({})
+        } else {
+            serde_json::from_slice(&bytes).unwrap()
+        };
+        (status, body)
+    }
+
+    fn event_ids(body: &Value) -> Vec<String> {
+        body["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["id"].as_str().unwrap().to_string())
+            .collect()
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn published_chapters_filter_timeline_and_map(pool: sqlx::PgPool) {
+        let napoleon = person(&pool, "Napoleon fixture").await;
+        let hugo = person(&pool, "Victor Hugo fixture").await;
+        let curie = person(&pool, "Marie Curie fixture").await;
+        let aristotle = person(&pool, "Aristotle fixture").await;
+        let birth = fact(
+            &pool,
+            napoleon,
+            "birth",
+            "Birth",
+            json!({"kind":"exact","precision":"year","start":"1769"}),
+            Some("1769-01-01"),
+            Some("Ajaccio"),
+            Some((8.73, 41.92)),
+            "attested",
+            Some("point"),
+            None,
+        )
+        .await;
+        let battle = fact(
+            &pool,
+            napoleon,
+            "battle",
+            "Battle of Lodi",
+            json!({"kind":"exact","precision":"day","start":"1796-05-10"}),
+            Some("1796-05-10"),
+            Some("Lodi"),
+            Some((9.5, 45.3)),
+            "attested",
+            Some("point"),
+            None,
+        )
+        .await;
+        let travel = fact(
+            &pool,
+            napoleon,
+            "travel",
+            "Passage through Milan",
+            json!({"kind":"exact","precision":"year","start":"1796"}),
+            Some("1796-01-01"),
+            Some("Milan"),
+            None,
+            "attested",
+            None,
+            None,
+        )
+        .await;
+        let diplomatic = fact(
+            &pool,
+            napoleon,
+            "diplomatic",
+            "Armistice of Cherasco",
+            json!({"kind":"exact","precision":"year","start":"1796"}),
+            Some("1796-01-01"),
+            Some("Cherasco"),
+            Some((2.35, 48.86)),
+            "uncertain",
+            Some("city"),
+            Some(5000.0),
+        )
+        .await;
+        let draft_fact = fact(
+            &pool,
+            napoleon,
+            "residence",
+            "Unpublished note",
+            json!({"kind":"approx","precision":"year","start":"1797"}),
+            Some("1797-01-01"),
+            None,
+            None,
+            "uncertain",
+            None,
+            None,
+        )
+        .await;
+        let campaign = chapter(
+            &pool,
+            napoleon,
+            "italian-campaign",
+            "Campagne d'Italie",
+            "chronological",
+            Some("The 1796 campaign in northern Italy."),
+            Some("editorial introduction"),
+            0,
+            false,
+        )
+        .await;
+        let before: String =
+            sqlx::query_scalar("SELECT epistemic_status FROM canonical_events WHERE id = $1")
+                .bind(diplomatic.canonical)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        talaria_store::set_editorial_group_status(&pool, campaign, talaria_store::STATUS_PUBLISHED)
+            .await
+            .unwrap();
+        let after: String =
+            sqlx::query_scalar("SELECT epistemic_status FROM canonical_events WHERE id = $1")
+                .bind(diplomatic.canonical)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(before, after);
+        assert_eq!(after, "uncertain");
+        let northern = chapter(
+            &pool,
+            napoleon,
+            "northern-italy",
+            "Italie du Nord",
+            "thematic",
+            None,
+            None,
+            1,
+            true,
+        )
+        .await;
+        let letters = chapter(
+            &pool,
+            napoleon,
+            "letters",
+            "Lettres",
+            "documentary",
+            Some("No documented events in this chapter yet."),
+            None,
+            2,
+            true,
+        )
+        .await;
+        let private_notes = chapter(
+            &pool,
+            napoleon,
+            "private-notes",
+            "Notes privées",
+            "narrative",
+            Some("Draft"),
+            None,
+            3,
+            false,
+        )
+        .await;
+        for (group, fact_id, role, order) in [
+            (campaign, diplomatic.logical, "primary", 0),
+            (campaign, battle.logical, "primary", 1),
+            (campaign, travel.logical, "supporting", 2),
+            (northern, battle.logical, "primary", 0),
+            (private_notes, draft_fact.logical, "context", 0),
+        ] {
+            talaria_store::add_editorial_membership(&pool, group, fact_id, role, order, None)
+                .await
+                .unwrap();
+        }
+        let successor = Uuid::new_v4();
+        sqlx::query("UPDATE canonical_events SET is_active = false WHERE id = $1")
+            .bind(battle.canonical)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            r#"
+            INSERT INTO canonical_events (
+                id, entity_id, event_type, title, start_time, time_json, pipeline, is_active,
+                timeline_eligible, map_eligible, epistemic_status, logical_event_id,
+                place_label, coord_precision_level, uncertainty_radius_m, geom, supersedes
+            )
+            SELECT $1, entity_id, event_type, 'Battle of Lodi, revised', start_time, time_json,
+                   pipeline, true, timeline_eligible, map_eligible, epistemic_status,
+                   logical_event_id, place_label, coord_precision_level, uncertainty_radius_m,
+                   geom, $2
+            FROM canonical_events WHERE id = $2
+            "#,
+        )
+        .bind(successor)
+        .bind(battle.canonical)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query("UPDATE canonical_events SET superseded_by = $2 WHERE id = $1")
+            .bind(battle.canonical)
+            .bind(successor)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let residence = fact(
+            &pool,
+            hugo,
+            "residence",
+            "Residence in Guernsey",
+            json!({"kind":"range","precision":"year","start":"1855","end":"1870"}),
+            Some("1855-01-01"),
+            Some("Guernsey"),
+            Some((-2.58, 49.45)),
+            "attested",
+            Some("point"),
+            None,
+        )
+        .await;
+        let publication = fact(
+            &pool,
+            hugo,
+            "publication",
+            "Les Misérables",
+            json!({"kind":"approx","precision":"year","start":"1862"}),
+            Some("1862-01-01"),
+            None,
+            None,
+            "attested",
+            None,
+            None,
+        )
+        .await;
+        let exile = chapter(
+            &pool,
+            hugo,
+            "exile",
+            "Exil",
+            "narrative",
+            Some("The years away from France."),
+            Some("editorial introduction"),
+            0,
+            true,
+        )
+        .await;
+        talaria_store::add_editorial_membership(
+            &pool,
+            exile,
+            residence.logical,
+            "primary",
+            0,
+            None,
+        )
+        .await
+        .unwrap();
+        talaria_store::add_editorial_membership(
+            &pool,
+            exile,
+            publication.logical,
+            "supporting",
+            1,
+            None,
+        )
+        .await
+        .unwrap();
+        let discovery = fact(
+            &pool,
+            curie,
+            "publication",
+            "Research on radioactivity",
+            json!({"kind":"exact","precision":"year","start":"1898"}),
+            Some("1898-01-01"),
+            None,
+            None,
+            "uncertain",
+            None,
+            None,
+        )
+        .await;
+        let research = chapter(
+            &pool,
+            curie,
+            "radioactivity",
+            "Radioactivité",
+            "thematic",
+            Some("Scientific publications."),
+            None,
+            0,
+            true,
+        )
+        .await;
+        talaria_store::add_editorial_membership(
+            &pool,
+            research,
+            discovery.logical,
+            "primary",
+            0,
+            None,
+        )
+        .await
+        .unwrap();
+        let lyceum = fact(
+            &pool,
+            aristotle,
+            "education",
+            "Teaching at the Lyceum",
+            json!({"kind":"unknown"}),
+            None,
+            None,
+            None,
+            "uncertain",
+            None,
+            None,
+        )
+        .await;
+        let school = chapter(
+            &pool,
+            aristotle,
+            "lyceum",
+            "Le Lycée",
+            "thematic",
+            Some("Teaching, without a modern exact date."),
+            None,
+            0,
+            true,
+        )
+        .await;
+        talaria_store::add_editorial_membership(&pool, school, lyceum.logical, "primary", 0, None)
+            .await
+            .unwrap();
+        let memoir: Uuid = sqlx::query_scalar(
+            "INSERT INTO raw_documents (source_type, source_uri, title) VALUES ('fixture', 'urn:v34:memoir', 'A memoir') RETURNING id",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let other_book: Uuid = sqlx::query_scalar(
+            "INSERT INTO raw_documents (source_type, source_uri, title) VALUES ('fixture', 'urn:v34:other', 'Another book') RETURNING id",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            r#"
+            INSERT INTO event_evidence (canonical_event_id, raw_document_id, quoted_text, evidence_hash)
+            VALUES ($1, $2, 'first passage', 'passage-1'), ($1, $2, 'second passage', 'passage-2')
+            "#,
+        )
+        .bind(successor)
+        .bind(memoir)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            r#"
+            INSERT INTO event_evidence (canonical_event_id, raw_document_id, quoted_text, evidence_hash)
+            VALUES ($1, $2, 'archived passage', 'archived-passage')
+            "#,
+        )
+        .bind(battle.canonical)
+        .bind(other_book)
+        .execute(&pool)
+        .await
+        .unwrap();
+        let _ = letters;
+        let app = state(pool);
+
+        let (status, listed) = json_status(
+            super::super::editorial::list_groups(
+                State(app.clone()),
+                Path(napoleon),
+                Query(super::super::editorial::PageQuery::default()),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let slugs: Vec<&str> = listed["groups"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|group| group["slug"].as_str().unwrap())
+            .collect();
+        assert_eq!(slugs, vec!["italian-campaign", "northern-italy", "letters"]);
+        assert!(!slugs.contains(&"private-notes"));
+
+        let (status, detail) = json_status(
+            super::super::editorial::group_detail(
+                State(app.clone()),
+                Path((napoleon, "italian-campaign".into())),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(detail["group"]["title"], "Campagne d'Italie");
+        assert_eq!(detail["group"]["summary_origin"], "editorial introduction");
+        assert_eq!(detail["coverage"]["members"], 3);
+        assert_eq!(detail["coverage"]["established"], 0);
+        assert_eq!(detail["coverage"]["attested"], 2);
+        assert_eq!(detail["coverage"]["in_review"], 1);
+        assert_eq!(detail["coverage"]["without_coordinates"], 1);
+        assert_eq!(detail["coverage"]["time_not_exact"], 0);
+        assert_eq!(detail["coverage"]["with_evidence"], 1);
+        assert_eq!(detail["coverage"]["evidence_rows"], 2);
+        assert_eq!(detail["coverage"]["independent_sources"], 1);
+        assert!(detail["coverage"]["completeness_rate"].is_null());
+        assert_eq!(detail["coverage"]["scope_defined"], false);
+
+        for slug in ["private-notes", "missing-chapter"] {
+            let (status, body) = json_status(
+                super::super::editorial::group_detail(
+                    State(app.clone()),
+                    Path((napoleon, slug.into())),
+                )
+                .await,
+            )
+            .await;
+            assert_eq!(status, StatusCode::NOT_FOUND);
+            assert_eq!(body["error"], "group_not_found");
+            let (status, body) = json_status(
+                view(
+                    app.clone(),
+                    napoleon,
+                    ViewQuery {
+                        group: Some(slug.into()),
+                        ..Default::default()
+                    },
+                    false,
+                )
+                .await,
+            )
+            .await;
+            assert_eq!(status, StatusCode::NOT_FOUND);
+            assert_eq!(body["error"], "group_not_found");
+        }
+        let (status, body) = json_status(
+            view(
+                app.clone(),
+                napoleon,
+                ViewQuery {
+                    group: Some("Campagne".into()),
+                    ..Default::default()
+                },
+                false,
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body["error"], "invalid_group");
+
+        let (status, empty) = json_status(
+            view(
+                app.clone(),
+                napoleon,
+                ViewQuery {
+                    group: Some("letters".into()),
+                    ..Default::default()
+                },
+                false,
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(empty["events"].as_array().unwrap().is_empty());
+
+        let campaign_timeline = payload(
+            view(
+                app.clone(),
+                napoleon,
+                ViewQuery {
+                    group: Some("italian-campaign".into()),
+                    resolution: Some("overview".into()),
+                    ..Default::default()
+                },
+                false,
+            )
+            .await,
+        )
+        .await;
+        let campaign_ids = event_ids(&campaign_timeline);
+        assert!(campaign_ids.contains(&successor.to_string()));
+        assert!(campaign_ids.contains(&travel.canonical.to_string()));
+        assert!(campaign_ids.contains(&diplomatic.canonical.to_string()));
+        assert!(!campaign_ids.contains(&battle.canonical.to_string()));
+        assert!(!campaign_ids.contains(&birth.canonical.to_string()));
+        assert!(!campaign_ids.contains(&draft_fact.canonical.to_string()));
+        let battle_item = campaign_timeline["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["id"] == successor.to_string())
+            .unwrap();
+        assert_eq!(battle_item["time"]["precision"], "day");
+        assert_eq!(battle_item["time"]["start"], "1796-05-10");
+        assert_eq!(battle_item["epistemic_status"], "attested");
+        let place_item = campaign_timeline["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["event_type"] == "diplomatic")
+            .unwrap();
+        assert_eq!(place_item["epistemic_status"], "uncertain");
+        assert_eq!(place_item["coord_precision_level"], "city");
+        assert_eq!(place_item["uncertainty_radius_m"], 5000.0);
+        let unlocated = campaign_timeline["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["event_type"] == "travel")
+            .unwrap();
+        assert!(unlocated["coordinates"].is_null());
+
+        let general = payload(
+            view(
+                app.clone(),
+                napoleon,
+                ViewQuery {
+                    resolution: Some("overview".into()),
+                    ..Default::default()
+                },
+                false,
+            )
+            .await,
+        )
+        .await;
+        let general_ids = event_ids(&general);
+        assert!(general_ids.contains(&birth.canonical.to_string()));
+        assert!(general_ids.contains(&successor.to_string()));
+        assert!(!general_ids.contains(&travel.canonical.to_string()));
+
+        let other_group = event_ids(
+            &payload(
+                view(
+                    app.clone(),
+                    napoleon,
+                    ViewQuery {
+                        group: Some("northern-italy".into()),
+                        ..Default::default()
+                    },
+                    false,
+                )
+                .await,
+            )
+            .await,
+        );
+        assert_eq!(other_group, vec![successor.to_string()]);
+
+        let filtered = payload(
+            view(
+                app.clone(),
+                napoleon,
+                ViewQuery {
+                    group: Some("italian-campaign".into()),
+                    from: Some(1796),
+                    to: Some(1796),
+                    bbox: Some("9.4,45.2,9.6,45.4".into()),
+                    ..Default::default()
+                },
+                true,
+            )
+            .await,
+        )
+        .await;
+        let features = filtered["features"].as_array().unwrap();
+        assert_eq!(features.len(), 1);
+        assert_eq!(features[0]["id"], successor.to_string());
+        assert_eq!(features[0]["properties"]["coord_precision_level"], "point");
+        let chapter_map = payload(
+            view(
+                app.clone(),
+                napoleon,
+                ViewQuery {
+                    group: Some("italian-campaign".into()),
+                    ..Default::default()
+                },
+                true,
+            )
+            .await,
+        )
+        .await;
+        let diplomatic_place = chapter_map["features"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|feature| feature["properties"]["event_type"] == "diplomatic")
+            .unwrap();
+        assert_eq!(
+            diplomatic_place["properties"]["coord_precision_level"],
+            "city"
+        );
+        assert_eq!(
+            diplomatic_place["properties"]["uncertainty_radius_m"],
+            5000.0
+        );
+        assert!(chapter_map["features"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|feature| feature["id"] != battle.canonical.to_string()));
+
+        let (status, ordered) = json_status(
+            super::super::editorial::group_events(
+                State(app.clone()),
+                Path((napoleon, "italian-campaign".into())),
+                Query(super::super::editorial::PageQuery {
+                    limit: Some(1),
+                    cursor: None,
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(ordered["events"][0]["id"], diplomatic.canonical.to_string());
+        assert_eq!(
+            ordered["events"][0]["logical_event_id"],
+            diplomatic.logical.to_string()
+        );
+        let next = ordered["pagination"]["next_cursor"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let (status, second) = json_status(
+            super::super::editorial::group_events(
+                State(app.clone()),
+                Path((napoleon, "italian-campaign".into())),
+                Query(super::super::editorial::PageQuery {
+                    limit: Some(1),
+                    cursor: Some(next),
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(second["events"][0]["id"], successor.to_string());
+        assert_eq!(
+            second["events"][0]["logical_event_id"],
+            battle.logical.to_string()
+        );
+        assert_eq!(second["events"][0]["editorial_role"], "primary");
+        assert_eq!(second["events"][0]["evidence_count"], 2);
+        assert_eq!(ordered["events"][0]["coord_precision_level"], "city");
+        assert_eq!(ordered["events"][0]["uncertainty_radius_m"], 5000.0);
+
+        let exile_timeline = payload(
+            view(
+                app.clone(),
+                hugo,
+                ViewQuery {
+                    group: Some("exile".into()),
+                    ..Default::default()
+                },
+                false,
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(event_ids(&exile_timeline).len(), 2);
+        assert_eq!(exile_timeline["events"][1]["time"]["kind"], "approx");
+        let exile_map = payload(
+            view(
+                app.clone(),
+                hugo,
+                ViewQuery {
+                    group: Some("exile".into()),
+                    ..Default::default()
+                },
+                true,
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(exile_map["features"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            exile_map["features"][0]["id"],
+            residence.canonical.to_string()
+        );
+
+        let curie_map = payload(
+            view(
+                app.clone(),
+                curie,
+                ViewQuery {
+                    group: Some("radioactivity".into()),
+                    ..Default::default()
+                },
+                true,
+            )
+            .await,
+        )
+        .await;
+        assert!(curie_map["features"].as_array().unwrap().is_empty());
+        let curie_timeline = payload(
+            view(
+                app.clone(),
+                curie,
+                ViewQuery {
+                    group: Some("radioactivity".into()),
+                    ..Default::default()
+                },
+                false,
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(curie_timeline["events"][0]["epistemic_status"], "uncertain");
+        assert!(curie_timeline["events"][0]["coordinates"].is_null());
+
+        let ancient = payload(
+            view(
+                app.clone(),
+                aristotle,
+                ViewQuery {
+                    group: Some("lyceum".into()),
+                    ..Default::default()
+                },
+                false,
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(ancient["events"][0]["time"]["kind"], "unknown");
+        assert!(ancient["events"][0]["time"].get("start").is_none());
+        let (status, ancient_detail) = json_status(
+            super::super::editorial::group_detail(
+                State(app.clone()),
+                Path((aristotle, "lyceum".into())),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(ancient_detail["coverage"]["time_not_exact"], 1);
+        assert_eq!(ancient_detail["coverage"]["without_coordinates"], 1);
+        assert!(ancient_detail["coverage"]["completeness_rate"].is_null());
+        let (status, hugo_detail) = json_status(
+            super::super::editorial::group_detail(State(app.clone()), Path((hugo, "exile".into())))
+                .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(hugo_detail["coverage"]["members"], 2);
+        assert_eq!(hugo_detail["coverage"]["time_not_exact"], 2);
+        assert_eq!(hugo_detail["coverage"]["without_coordinates"], 1);
+        let (status, empty_detail) = json_status(
+            super::super::editorial::group_detail(
+                State(app.clone()),
+                Path((napoleon, "letters".into())),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(empty_detail["coverage"]["members"], 0);
+        assert!(empty_detail["coverage"]["completeness_rate"].is_null());
+        let (status, hugo_groups) = json_status(
+            super::super::editorial::list_groups(
+                State(app),
+                Path(hugo),
+                Query(super::super::editorial::PageQuery::default()),
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(hugo_groups["groups"][0]["slug"], "exile");
+        assert_eq!(hugo_groups["groups"].as_array().unwrap().len(), 1);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn chapter_timeline_pages_beyond_two_hundred_events(pool: sqlx::PgPool) {
+        let entity = person(&pool, "Long chapter fixture").await;
+        let group = chapter(
+            &pool,
+            entity,
+            "long-chapter",
+            "Long chapter",
+            "chronological",
+            None,
+            None,
+            0,
+            true,
+        )
+        .await;
+        sqlx::query(
+            r#"
+            WITH created AS (
+                INSERT INTO logical_events (origin_occurrence_key)
+                SELECT 'moment-' || n::text FROM generate_series(1, 201) AS n
+                RETURNING id
+            )
+            INSERT INTO canonical_events (
+                entity_id, event_type, title, start_time, time_json, pipeline, is_active,
+                timeline_eligible, map_eligible, logical_event_id
+            )
+            SELECT $1, 'other', id::text, '1800-01-01',
+                   '{"kind":"exact","precision":"year","start":"1800"}',
+                   'person', true, true, false, id
+            FROM created
+            "#,
+        )
+        .bind(entity)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            r#"
+            INSERT INTO editorial_memberships (group_id, logical_event_id, editorial_role, display_order)
+            SELECT $1, logical_event_id, 'context', 0
+            FROM canonical_events
+            WHERE entity_id = $2
+            "#,
+        )
+        .bind(group)
+        .bind(entity)
+        .execute(&pool)
+        .await
+        .unwrap();
+        let app = state(pool);
+        let first = payload(
+            view(
+                app.clone(),
+                entity,
+                ViewQuery {
+                    group: Some("long-chapter".into()),
+                    limit: Some(200),
+                    ..Default::default()
+                },
+                false,
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(first["events"].as_array().unwrap().len(), 200);
+        let cursor = first["pagination"]["next_cursor"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let second = payload(
+            view(
+                app,
+                entity,
+                ViewQuery {
+                    group: Some("long-chapter".into()),
+                    limit: Some(200),
+                    cursor: Some(cursor),
+                    ..Default::default()
+                },
+                false,
+            )
+            .await,
+        )
+        .await;
+        assert_eq!(second["events"].as_array().unwrap().len(), 1);
+        assert!(second["pagination"]["next_cursor"].is_null());
+        let mut seen = event_ids(&first);
+        seen.extend(event_ids(&second));
+        assert_eq!(seen.len(), 201);
+        assert_eq!(
+            seen.iter().collect::<std::collections::HashSet<_>>().len(),
+            201
+        );
     }
 }

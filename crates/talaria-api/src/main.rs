@@ -8,23 +8,24 @@
 #![allow(clippy::unnecessary_cast)]
 #![allow(dead_code)]
 
+mod agora_graph;
 mod agora_stance;
 mod auth;
 mod claim_extract;
 mod claim_signals;
-mod comments;
-mod agora_graph;
 mod cli;
 mod cli_dispatch;
 mod cli_helpers;
+mod comments;
 mod corpus_ingest;
 mod cosmos;
-mod dump_mine;
 mod display_i18n;
 mod dump_cosmos;
 mod dump_events;
 mod dump_ingest;
+mod dump_mine;
 mod geocode;
+mod historical_review;
 mod historiography;
 mod ingest;
 mod interactions;

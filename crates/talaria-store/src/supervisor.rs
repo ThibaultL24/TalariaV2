@@ -195,7 +195,11 @@ pub async fn load_subject_coverage(pool: &PgPool, qid: &str) -> anyhow::Result<S
 }
 
 pub fn supervisor_input_hash(call: &SupervisorCall) -> String {
-    let mut tasks: Vec<&str> = call.effects.iter().map(|effect| effect.key.as_str()).collect();
+    let mut tasks: Vec<&str> = call
+        .effects
+        .iter()
+        .map(|effect| effect.key.as_str())
+        .collect();
     if tasks.is_empty() {
         if let Some(items) = call.plan_json.get("tasks").and_then(Value::as_array) {
             tasks = items
@@ -214,10 +218,15 @@ pub fn supervisor_input_hash(call: &SupervisorCall) -> String {
         "qid": call.subject_qid,
         "tasks": tasks,
     });
-    hex::encode(Sha256::digest(serde_json::to_vec(&body).expect("hash input serializes")))
+    hex::encode(Sha256::digest(
+        serde_json::to_vec(&body).expect("hash input serializes"),
+    ))
 }
 
-pub async fn reusable_supervisor_report(pool: &PgPool, call: &SupervisorCall) -> anyhow::Result<Option<Value>> {
+pub async fn reusable_supervisor_report(
+    pool: &PgPool,
+    call: &SupervisorCall,
+) -> anyhow::Result<Option<Value>> {
     let hash = supervisor_input_hash(call);
     let run_id = sqlx::query_scalar::<_, Uuid>(
         r#"
@@ -246,7 +255,29 @@ pub async fn reusable_supervisor_report(pool: &PgPool, call: &SupervisorCall) ->
     if failed > 0 {
         return Ok(None);
     }
-    Ok(Some(report(pool, run_id, &hash, true, &call.experience).await?))
+    Ok(Some(
+        report(pool, run_id, &hash, true, &call.experience).await?,
+    ))
+}
+
+pub async fn supervisor_subject_spend_usd_micros(
+    pool: &PgPool,
+    qid: &str,
+    window_days: i64,
+) -> anyhow::Result<u64> {
+    let spent: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(SUM(cost_usd_micros), 0)::bigint
+        FROM supervisor_runs
+        WHERE subject_qid = $1
+          AND created_at >= NOW() - ($2::int * interval '1 day')
+        "#,
+    )
+    .bind(qid)
+    .bind(window_days)
+    .fetch_one(pool)
+    .await?;
+    Ok(u64::try_from(spent).unwrap_or(0))
 }
 
 pub async fn record_supervisor_run(pool: &PgPool, call: &SupervisorCall) -> anyhow::Result<Value> {
@@ -366,6 +397,7 @@ pub async fn upsert_supervised_document(
     revision_id: Option<&str>,
     license: Option<&str>,
     text: &str,
+    passages: &Value,
 ) -> anyhow::Result<(Uuid, bool)> {
     if !verifiable_source_url(source_uri) {
         anyhow::bail!("unverifiable_source_url");
@@ -378,7 +410,7 @@ pub async fn upsert_supervised_document(
         )
         VALUES (
             $1, $2, $3, $4, $5, $6, $7,
-            jsonb_build_object('text', $8::text),
+            jsonb_build_object('char_len', $8::int, 'text_sha256', $9::text, 'passages', $10::jsonb),
             jsonb_build_object('subject_qid', $3::text, 'retrieved_at', NOW())
         )
         ON CONFLICT (source_type, source_uri) DO UPDATE
@@ -397,10 +429,41 @@ pub async fn upsert_supervised_document(
     .bind(language)
     .bind(revision_id)
     .bind(license)
-    .bind(text)
+    .bind(text.chars().count() as i32)
+    .bind(hex::encode(Sha256::digest(text.as_bytes())))
+    .bind(passages)
     .fetch_one(pool)
     .await?;
     Ok(row)
+}
+
+pub async fn ensure_subject_entity(pool: &PgPool, qid: &str, label: &str) -> anyhow::Result<Uuid> {
+    if let Some(id) = sqlx::query_scalar::<_, Uuid>("SELECT id FROM entities WHERE qid = $1")
+        .bind(qid)
+        .fetch_optional(pool)
+        .await?
+    {
+        return Ok(id);
+    }
+    let title = if label.trim().is_empty() {
+        qid
+    } else {
+        label.trim()
+    };
+    let id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO entities (qid, wikipedia_title, wiki_lang, canonical_name)
+        VALUES ($1, $2, 'und', $2)
+        ON CONFLICT (wiki_lang, wikipedia_title) DO UPDATE
+        SET qid = COALESCE(entities.qid, EXCLUDED.qid)
+        RETURNING id
+        "#,
+    )
+    .bind(qid)
+    .bind(title)
+    .fetch_one(pool)
+    .await?;
+    Ok(id)
 }
 
 async fn apply_effect(
@@ -409,23 +472,43 @@ async fn apply_effect(
     call: &SupervisorCall,
     effect: &TaskEffect,
 ) -> anyhow::Result<()> {
-    let (status, writes, detail, site_id) = if effect.kind == "discover_heritage_sites" && effect.status == "completed" {
+    let (status, writes, detail, site_id) = if effect.kind == "discover_heritage_sites"
+        && effect.status == "completed"
+    {
         if call.sourced_site.is_some() {
             match insert_quarantine_site(tx, call).await? {
                 SiteInsert::Stored { site_id, wrote } => (
                     "completed",
                     wrote,
-                    json!({"publication_status": "quarantine", "site_id": site_id}),
+                    json!({
+                        "publication_status": "quarantine",
+                        "visitability": "unknown",
+                        "visitability_asserted": false,
+                        "site_id": site_id
+                    }),
                     Some(site_id),
                 ),
                 SiteInsert::Refused(reason) => ("refused", false, json!({"reason": reason}), None),
             }
-        } else if effect.detail.get("reason").and_then(Value::as_str).is_some_and(|reason| {
-            matches!(reason, "no_documented_place" | "coordinates_missing" | "no_commons_file")
-        }) {
+        } else if effect
+            .detail
+            .get("reason")
+            .and_then(Value::as_str)
+            .is_some_and(|reason| {
+                matches!(
+                    reason,
+                    "no_documented_place" | "coordinates_missing" | "no_commons_file"
+                )
+            })
+        {
             (effect.status, effect.writes, effect.detail.clone(), None)
         } else {
-            ("refused", false, json!({"reason": "source_document_required"}), None)
+            (
+                "refused",
+                false,
+                json!({"reason": "source_document_required"}),
+                None,
+            )
         }
     } else {
         (effect.status, effect.writes, effect.detail.clone(), None)
@@ -448,13 +531,17 @@ async fn apply_effect(
     .fetch_optional(&mut **tx)
     .await?;
     if let Some(task_id) = task_id {
-        insert_event(tx, task_id, &TaskEffect {
-            key: effect.key.clone(),
-            kind: effect.kind.clone(),
-            status,
-            writes,
-            detail,
-        })
+        insert_event(
+            tx,
+            task_id,
+            &TaskEffect {
+                key: effect.key.clone(),
+                kind: effect.kind.clone(),
+                status,
+                writes,
+                detail,
+            },
+        )
         .await?;
     }
     Ok(())
@@ -475,7 +562,10 @@ async fn insert_quarantine_site(
     if !verifiable_source_url(&site.source_url) {
         return Ok(SiteInsert::Refused("unverifiable_source_url"));
     }
-    if !valid_qid(&site.qid) || site.label.trim().is_empty() || !SITE_KINDS.contains(&site.kind.as_str()) {
+    if !valid_qid(&site.qid)
+        || site.label.trim().is_empty()
+        || !SITE_KINDS.contains(&site.kind.as_str())
+    {
         return Ok(SiteInsert::Refused("invalid_site"));
     }
     if !site.lat.is_finite()
@@ -485,15 +575,16 @@ async fn insert_quarantine_site(
     {
         return Ok(SiteInsert::Refused("invalid_coordinates"));
     }
-    if !relation_matches(&site.relation_pid, &site.relation_role) || site.statement_id.trim().is_empty() {
+    if !relation_matches(&site.relation_pid, &site.relation_role)
+        || site.statement_id.trim().is_empty()
+    {
         return Ok(SiteInsert::Refused("documented_relation_required"));
     }
-    let document_exists = sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS(SELECT 1 FROM raw_documents WHERE id = $1)",
-    )
-    .bind(site.document_id)
-    .fetch_one(&mut **tx)
-    .await?;
+    let document_exists =
+        sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM raw_documents WHERE id = $1)")
+            .bind(site.document_id)
+            .fetch_one(&mut **tx)
+            .await?;
     if !document_exists {
         return Ok(SiteInsert::Refused("source_document_required"));
     }
@@ -543,13 +634,19 @@ async fn insert_quarantine_site(
     .bind(&call.subject_qid)
     .bind(&site.relation_role)
     .bind(&site.relation_pid)
-    .bind(format!("{} {}", site.relation_role, site.statement_id))
+    .bind(format!(
+        "Wikidata statement {} ({}) links the subject to this place. The relation does not show that the place can be visited.",
+        site.statement_id, site.relation_pid
+    ))
     .bind(&site.source_url)
     .bind(site.retrieved_at)
     .bind(site.revision_id)
     .execute(&mut **tx)
     .await?;
-    Ok(SiteInsert::Stored { site_id: row.0, wrote: true })
+    Ok(SiteInsert::Stored {
+        site_id: row.0,
+        wrote: true,
+    })
 }
 
 async fn insert_event(
@@ -715,7 +812,10 @@ mod tests {
         let coverage = load_subject_coverage(&pool, "Q517").await.unwrap();
         assert_eq!(coverage.sourced_event_count, 0);
         assert_eq!(coverage.published_site_count, 0);
-        let mut request = call(vec![effect("flag_unverified_visit_facts", "queued", false)], None);
+        let mut request = call(
+            vec![effect("flag_unverified_visit_facts", "queued", false)],
+            None,
+        );
         request.execute = false;
         let first = record_supervisor_run(&pool, &request).await.unwrap();
         let second = record_supervisor_run(&pool, &request).await.unwrap();
@@ -723,20 +823,65 @@ mod tests {
         assert_eq!(second["idempotent"], true);
         assert_eq!(first["run_id"], second["run_id"]);
         assert_eq!(first["canonical_events"], 0);
-        let events = sqlx::query_scalar::<_, i64>("SELECT count(*)::bigint FROM supervisor_task_events")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+        let events =
+            sqlx::query_scalar::<_, i64>("SELECT count(*)::bigint FROM supervisor_task_events")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
         assert_eq!(events, 1);
-        assert!(sqlx::query("DELETE FROM supervisor_task_events").execute(&pool).await.is_err());
+        assert!(sqlx::query("DELETE FROM supervisor_task_events")
+            .execute(&pool)
+            .await
+            .is_err());
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn a_new_detector_version_keeps_the_previous_report(pool: PgPool) {
+        fn review(version: &str) -> SupervisorCall {
+            let key = format!("review_historical_consistency:Q517:{version}:same-evidence");
+            let mut request = call(
+                vec![effect("review_historical_consistency", "completed", false)],
+                None,
+            );
+            request.experience = "istoria".into();
+            request.subject_qid = "Q517".into();
+            request.subject_label = "Napoleon".into();
+            request.execute = false;
+            request.effects[0].key = key.clone();
+            request.plan_json = json!({"tasks":[{"key": key}]});
+            request
+        }
+        let older = review("place-role:v2");
+        let newer = review("place-role:v3");
+        assert_ne!(supervisor_input_hash(&older), supervisor_input_hash(&newer));
+        let first = record_supervisor_run(&pool, &older).await.unwrap();
+        let second = record_supervisor_run(&pool, &newer).await.unwrap();
+        assert_ne!(first["run_id"], second["run_id"]);
+        let again = record_supervisor_run(&pool, &older).await.unwrap();
+        assert_eq!(again["run_id"], first["run_id"]);
+        assert_eq!(again["idempotent"], true);
+        let kept = reusable_supervisor_report(&pool, &older).await.unwrap();
+        assert!(kept.is_some());
+        let runs = sqlx::query_scalar::<_, i64>(
+            "SELECT count(*)::bigint FROM supervisor_runs WHERE subject_qid = 'Q517'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(runs, 2);
     }
 
     #[sqlx::test(migrations = "../../migrations")]
     async fn a_site_without_a_source_document_is_refused(pool: PgPool) {
-        let request = call(vec![effect("discover_heritage_sites", "completed", false)], None);
+        let request = call(
+            vec![effect("discover_heritage_sites", "completed", false)],
+            None,
+        );
         let report = record_supervisor_run(&pool, &request).await.unwrap();
         let refused = report["tasks"].as_array().unwrap().iter().any(|task| {
-            task["kind"] == "discover_heritage_sites" && task["status"] == "refused" && task["writes"] == false
+            task["kind"] == "discover_heritage_sites"
+                && task["status"] == "refused"
+                && task["writes"] == false
         });
         assert!(refused);
         let sites = sqlx::query_scalar::<_, i64>("SELECT count(*)::bigint FROM visit_sites")
@@ -760,6 +905,7 @@ mod tests {
             Some("99"),
             Some("CC0"),
             "P119 Q170481",
+            &json!([]),
         )
         .await
         .unwrap();
@@ -784,7 +930,10 @@ mod tests {
             .unwrap();
         let report = record_supervisor_run(
             &pool,
-            &call(vec![effect("discover_heritage_sites", "completed", false)], Some(site)),
+            &call(
+                vec![effect("discover_heritage_sites", "completed", false)],
+                Some(site),
+            ),
         )
         .await
         .unwrap();
@@ -800,6 +949,20 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(status, "quarantine");
+        let visitability = sqlx::query_scalar::<_, String>(
+            "SELECT visitability FROM visit_sites WHERE wikidata_qid = 'Q170481'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(visitability, "unknown");
+        let summary = sqlx::query_scalar::<_, String>(
+            "SELECT summary FROM visit_site_narratives WHERE relation_pid = 'P119'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(summary.contains("does not show that the place can be visited"));
     }
 
     #[sqlx::test(migrations = "../../migrations")]
@@ -814,18 +977,75 @@ mod tests {
         assert_eq!(first["run_id"], second["run_id"]);
         assert_eq!(second["tasks"][0]["status"], "completed");
         assert_eq!(second["tasks"][0]["writes"], true);
-        let events = sqlx::query_scalar::<_, i64>(
-            "SELECT count(*)::bigint FROM supervisor_task_events",
+        let events =
+            sqlx::query_scalar::<_, i64>("SELECT count(*)::bigint FROM supervisor_task_events")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(events, 2);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn a_critic_report_is_stored_without_a_canonical_event(pool: PgPool) {
+        let mut sample = call(
+            vec![effect("review_historical_consistency", "completed", false)],
+            None,
+        );
+        sample.experience = "istoria".into();
+        sample.effects[0].detail = json!({
+            "origin": "historical_critic:v1",
+            "canonical_write": false,
+            "integration": "review_historical_record",
+            "findings": [{"event_id": "valmy", "status": "proposal", "canonical_write": false}]
+        });
+        let stored = record_supervisor_run(&pool, &sample).await.unwrap();
+        assert_eq!(stored["tasks"][0]["writes"], false);
+        let detail = sqlx::query_scalar::<_, serde_json::Value>(
+            "SELECT detail_json FROM supervisor_tasks WHERE kind = 'review_historical_consistency'",
         )
         .fetch_one(&pool)
         .await
         .unwrap();
-        assert_eq!(events, 2);
+        assert_eq!(detail["origin"], "historical_critic:v1");
+        assert_eq!(detail["canonical_write"], false);
+        let canonical =
+            sqlx::query_scalar::<_, i64>("SELECT count(*)::bigint FROM canonical_events")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(canonical, 0);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn qid_spend_outside_the_window_does_not_block_a_later_review(pool: PgPool) {
+        sqlx::query(
+            r#"
+            INSERT INTO supervisor_runs (
+                experience, mode, subject_qid, subject_label, provider, model,
+                prompt_version, input_hash, plan_json, status, cost_usd_micros, created_at
+            ) VALUES
+            ('istoria', 'read_only', 'Q900001', 'Critic Subject', 'deterministic', 'none',
+             'supervisor:v2', $1, '{}'::jsonb, 'completed', 500000, NOW() - interval '40 days'),
+            ('istoria', 'read_only', 'Q900001', 'Critic Subject', 'deterministic', 'none',
+             'supervisor:v2', $2, '{}'::jsonb, 'completed', 1000, NOW())
+            "#,
+        )
+        .bind("a".repeat(64))
+        .bind("b".repeat(64))
+        .execute(&pool)
+        .await
+        .unwrap();
+        let spent = supervisor_subject_spend_usd_micros(&pool, "Q900001", 30)
+            .await
+            .unwrap();
+        assert_eq!(spent, 1000);
     }
 
     #[test]
     fn an_http_url_is_not_a_verifiable_source() {
         assert!(!verifiable_source_url("http://www.wikidata.org/wiki/Q517"));
-        assert!(verifiable_source_url("https://fr.wikisource.org/wiki/Napol%C3%A9on"));
+        assert!(verifiable_source_url(
+            "https://fr.wikisource.org/wiki/Napol%C3%A9on"
+        ));
     }
 }

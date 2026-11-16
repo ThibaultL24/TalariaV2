@@ -167,6 +167,16 @@ pub async fn evidence(State(state): State<AppState>, Path(event_id): Path<Uuid>)
 #[derive(Debug, Deserialize)]
 pub struct DetailQuery {
     pub lang: Option<String>,
+    /// `requested` keeps the archived row. Any other value follows the active version.
+    pub version: Option<String>,
+}
+
+fn viewed_event_id(requested: Uuid, active: Uuid, version: Option<&str>) -> Uuid {
+    if version == Some("requested") {
+        requested
+    } else {
+        active
+    }
 }
 
 pub async fn detail(
@@ -174,7 +184,24 @@ pub async fn detail(
     Path(event_id): Path<Uuid>,
     Query(query): Query<DetailQuery>,
 ) -> Json<Value> {
-    let Some(event) = talaria_store::get_canonical_event(&state.pool, event_id)
+    let resolution = talaria_store::resolve_person_event(&state.pool, event_id)
+        .await
+        .unwrap_or(talaria_store::PersonEventResolution {
+            requested_id: event_id,
+            display_id: event_id,
+            filiation: talaria_store::FILIATION_NONE,
+            linked_event_id: None,
+        });
+    let active_id = resolution.display_id;
+    let display_id = viewed_event_id(event_id, active_id, query.version.as_deref());
+    let viewing = if resolution.filiation == talaria_store::FILIATION_UNVERIFIED {
+        "archived"
+    } else if display_id == active_id {
+        "active"
+    } else {
+        "archived"
+    };
+    let Some(event) = talaria_store::get_canonical_event(&state.pool, display_id)
         .await
         .ok()
         .flatten()
@@ -187,12 +214,12 @@ pub async fn detail(
         .ok()
         .flatten();
 
-    let evidence_rows = talaria_store::list_event_evidence(&state.pool, event_id)
+    let evidence_rows = talaria_store::list_event_evidence(&state.pool, display_id)
         .await
         .unwrap_or_default();
 
     // Local window around evidence: enough for a short “how it happened”, not a bio dump.
-    let narrative = talaria_store::list_event_narrative_context(&state.pool, event_id, 2)
+    let narrative = talaria_store::list_event_narrative_context(&state.pool, display_id, 2)
         .await
         .unwrap_or_default();
 
@@ -243,7 +270,7 @@ pub async fn detail(
             }
         });
 
-    let mut dossier = crate::narrative_dossier::build_event_dossier(
+    let dossier = crate::narrative_dossier::build_event_dossier(
         &state.pool,
         &event,
         fact_text.as_deref(),
@@ -257,7 +284,7 @@ pub async fn detail(
     .await;
 
     // Persist DB evidence refs; dossier adds section-level citations for the paragraph.
-    let _ = talaria_store::refresh_event_source_refs(&state.pool, event_id).await;
+    let _ = talaria_store::refresh_event_source_refs(&state.pool, display_id).await;
     let mut source_refs: Vec<Value> = dossier.source_refs;
     if source_refs.is_empty() {
         source_refs = evidence_rows
@@ -304,6 +331,13 @@ pub async fn detail(
 
     Json(json!({
         "event": event_json,
+        "revision": {
+            "requested_id": event_id,
+            "active_id": active_id,
+            "viewing": viewing,
+            "filiation": resolution.filiation,
+            "linked_event_id": resolution.linked_event_id,
+        },
         "entity": entity.as_ref().map(|row| json!({
             "id": row.id,
             "label": row.canonical_name.clone().unwrap_or_else(|| row.wikipedia_title.clone()),
@@ -456,6 +490,9 @@ fn event_to_json(event: &CanonicalEventRow) -> Value {
         "place_label": display_place(event),
         "map_eligible": event.map_eligible,
         "coordinates": coords_json(event),
+        "latitude": event.lat,
+        "coord_precision_level": event.coord_precision_level,
+        "uncertainty_radius_m": event.uncertainty_radius_m,
     })
 }
 
@@ -473,6 +510,9 @@ pub(super) fn event_to_json_list(event: &CanonicalEventRow) -> Value {
         "place_label": display_place(event),
         "map_eligible": event.map_eligible,
         "coordinates": coords_json(event),
+        "latitude": event.lat,
+        "coord_precision_level": event.coord_precision_level,
+        "uncertainty_radius_m": event.uncertainty_radius_m,
     })
 }
 
@@ -496,6 +536,9 @@ fn geojson_feature(event: &CanonicalEventRow) -> Option<Value> {
             "start_time": event.start_time,
             "time": event.time_json,
             "place_label": display_place(event),
+            "latitude": event.lat,
+            "coord_precision_level": event.coord_precision_level,
+            "uncertainty_radius_m": event.uncertainty_radius_m,
         }
     }))
 }
@@ -519,6 +562,9 @@ fn geojson_feature_list(event: &CanonicalEventRow) -> Option<Value> {
             "start_time": event.start_time,
             "time": event.time_json,
             "place_label": display_place(event),
+            "latitude": event.lat,
+            "coord_precision_level": event.coord_precision_level,
+            "uncertainty_radius_m": event.uncertainty_radius_m,
         }
     }))
 }
@@ -537,7 +583,9 @@ mod tests {
     #[test]
     fn timeline_and_map_default_to_the_person_pipeline() {
         assert_eq!(
-            resolve_pipeline(&None).expect("default pipeline").as_deref(),
+            resolve_pipeline(&None)
+                .expect("default pipeline")
+                .as_deref(),
             Some("person")
         );
     }
@@ -550,6 +598,19 @@ mod tests {
     #[test]
     fn retired_legacy_pipeline_is_rejected() {
         assert!(resolve_pipeline(&Some("legacy".into())).is_err());
+    }
+
+    #[test]
+    fn an_old_link_opens_the_active_version_unless_the_archive_is_requested() {
+        let requested = Uuid::from_u128(1);
+        let active = Uuid::from_u128(2);
+        assert_eq!(viewed_event_id(requested, active, None), active);
+        assert_eq!(viewed_event_id(requested, active, Some("active")), active);
+        assert_eq!(
+            viewed_event_id(requested, active, Some("requested")),
+            requested
+        );
+        assert_eq!(viewed_event_id(active, active, None), active);
     }
 
     #[test]
@@ -578,6 +639,8 @@ mod tests {
             map_eligible: true,
             lat: Some(0.0),
             lon: Some(0.0),
+            coord_precision_level: None,
+            uncertainty_radius_m: None,
         }
     }
 
