@@ -33,6 +33,8 @@ impl CandidateExtractor for KeywordMineExtractor {
             for hit in mined {
                 let (event_type, predicate) = verb_to_event(&hit.verb);
                 let end = offset + sentence.len() as i32;
+                // An unclassified year+place hit is not yet a located event.
+                // Residence, battle, travel and the other typed verbs keep the place.
                 let place_surface = (event_type != "historical_fact").then_some(hit.place);
                 out.push(RawCandidate {
                     event_type: event_type.into(),

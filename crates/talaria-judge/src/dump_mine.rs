@@ -214,6 +214,17 @@ const VERB_CUES: &[(&str, &str)] = &[
     ("s'installe", "lived"),
     ("installe à", "lived"),
     ("dirige son royaume depuis", "lived"),
+    // "Demeure au/à" is a residence, the same fact as "lived in".
+    // A bare "demeure" is left unclassified: it can mean "it remains true".
+    ("demeure au", "lived"),
+    ("demeure à", "lived"),
+    ("demeurait", "lived"),
+    ("vécut", "lived"),
+    ("habitait", "lived"),
+    ("habita au", "lived"),
+    ("habita à", "lived"),
+    ("séjourna", "lived"),
+    ("résida", "lived"),
 ];
 
 pub fn mine_sentence(text: &str, page_title: &str) -> Vec<MinedCandidate> {
@@ -783,9 +794,21 @@ mod tests {
     }
 
     #[test]
-    fn mines_year_and_place_without_a_verb() {
+    fn mines_a_residence_when_the_court_remains_at_a_place() {
         let hits = mine_sentence(
             "À partir de 1682 la cour demeure au château de Versailles pour tout le règne.",
+            "Louis XIV",
+        );
+        assert_eq!(hits.len(), 1, "{hits:?}");
+        assert_eq!(hits[0].time, "1682");
+        assert!(hits[0].place.to_lowercase().contains("versailles"));
+        assert_eq!(hits[0].verb, "lived");
+    }
+
+    #[test]
+    fn mines_year_and_place_without_a_verb() {
+        let hits = mine_sentence(
+            "En 1682 la cour se tient au château de Versailles durant tout le règne.",
             "Louis XIV",
         );
         assert_eq!(hits.len(), 1, "{hits:?}");
