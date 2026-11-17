@@ -6,6 +6,8 @@ export interface ChapterSuggestion {
   title_en: string;
   event_count: number;
   standing: string;
+  basis_fr: string;
+  basis_en: string;
 }
 
 export function ChapterSuggestions({
@@ -28,8 +30,9 @@ export function ChapterSuggestions({
       <ul>
         {suggestions.map((item) => (
           <li key={item.slug}>
-            {fr ? item.title_fr : item.title_en}
-            {` · ${item.event_count} · ${item.standing}`}
+            <span>{fr ? item.title_fr : item.title_en}</span>
+            {` · ${item.standing}`}
+            <p>{fr ? item.basis_fr : item.basis_en}</p>
           </li>
         ))}
       </ul>

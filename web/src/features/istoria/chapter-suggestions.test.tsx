@@ -13,10 +13,19 @@ describe("ChapterSuggestions", () => {
     render(
       <ChapterSuggestions
         locale="fr"
-        suggestions={[{ slug: "works", title_fr: "Œuvres", title_en: "Works", event_count: 8, standing: "suggestion" }]}
+        suggestions={[{
+          slug: "works",
+          title_fr: "Œuvres",
+          title_en: "Works",
+          event_count: 8,
+          standing: "suggestion",
+          basis_fr: "8 faits documentés de type publication",
+          basis_en: "8 documented events of type publication",
+        }]}
       />,
     );
-    expect(screen.getByText(/Œuvres · 8 · suggestion/)).toBeTruthy();
+    expect(screen.getByText("Œuvres")).toBeTruthy();
+    expect(screen.getByText("8 faits documentés de type publication")).toBeTruthy();
     expect(screen.getByText(/pas des chapitres publiés/)).toBeTruthy();
   });
 });

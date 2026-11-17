@@ -9,6 +9,8 @@ interface EntitySearchBoxProps {
   onSubmitQuery: (trimmedQuery: string) => void;
   onSelect: (item: SearchSuggestion) => void;
   isLoading?: boolean;
+  /** Istoria opens search. Other public pages stay on the curated roster. */
+  enabled?: boolean;
 }
 
 export function EntitySearchBox({
@@ -16,9 +18,10 @@ export function EntitySearchBox({
   onSubmitQuery,
   onSelect,
   isLoading,
+  enabled = PUBLIC_PERSON_SEARCH_ENABLED,
 }: EntitySearchBoxProps) {
   const { t } = useI18n();
-  const searchEnabled = PUBLIC_PERSON_SEARCH_ENABLED;
+  const searchEnabled = enabled;
   const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);

@@ -83,6 +83,7 @@ export interface AppMessages {
   openIstoria: string;
   poreiaChoosePerson: string;
   noPlacesInView: string;
+  eventOffMap: string;
   seeItinerary: string;
   allKinds: string;
   filterByPlaceKind: string;
@@ -423,6 +424,7 @@ const EN: AppMessages = {
   openIstoria: "Explore their life in Istoria →",
   poreiaChoosePerson: "Choose a person, then a city, to see places that are actually associated with them.",
   noPlacesInView: "No places in the current map view.",
+  eventOffMap: "This fact stays off the map: its place is not established, or no reliable geometry was kept.",
   seeItinerary: "See the route",
   allKinds: "All",
   filterByPlaceKind: "Filter by place type",
@@ -782,6 +784,7 @@ const FR: AppMessages = {
   openIstoria: "Explorer sa vie dans Istoria →",
   poreiaChoosePerson: "Choisissez une personnalité, puis une ville, pour voir les lieux qui lui sont réellement associés.",
   noPlacesInView: "Aucun lieu dans la vue actuelle de la carte.",
+  eventOffMap: "Ce fait reste hors de la carte : son lieu n'est pas établi, ou aucune géométrie fiable n'a été retenue.",
   seeItinerary: "Voir le parcours",
   allKinds: "Tous",
   filterByPlaceKind: "Filtrer par type de lieu",

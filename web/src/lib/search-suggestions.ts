@@ -12,6 +12,11 @@ function fold(value: string): string {
   return value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim().replace(/\s+/g, " ");
 }
 
+function isRecordedPlaceOrName(description?: string | null): boolean {
+  const text = (description ?? "").toLowerCase();
+  return /human settlement|family name|given name|genus|higher education|city in|county seat|wikimedia|taxon|\bband\b/.test(text);
+}
+
 function relevance(query: string, label: string): number {
   const name = fold(label);
   if (name === query) return 0;
@@ -39,6 +44,7 @@ export function rankPersonSuggestions(
   const candidates = items
     .filter((item) => !isPersonSearchNoise(item.label))
     .sort((a, b) =>
+      Number(isRecordedPlaceOrName(a.description)) - Number(isRecordedPlaceOrName(b.description)) ||
       relevance(q, a.label) - relevance(q, b.label) ||
       Number(Boolean(b.known_locally)) - Number(Boolean(a.known_locally)) ||
       (b.event_count ?? 0) - (a.event_count ?? 0) ||

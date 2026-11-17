@@ -33,4 +33,20 @@ describe("EntitySearchBox", () => {
     expect(onSelect).toHaveBeenCalledWith(suggestions[1]);
     expect(onSubmitQuery).toHaveBeenLastCalledWith("");
   });
+
+  it("stays closed when search is not opened for that page", () => {
+    const onSubmitQuery = vi.fn();
+    render(
+      <EntitySearchBox
+        enabled={false}
+        suggestions={[]}
+        onSubmitQuery={onSubmitQuery}
+        onSelect={vi.fn()}
+      />,
+    );
+    const input = screen.getByPlaceholderText("Unavailable") as HTMLInputElement;
+    expect(input.disabled).toBe(true);
+    fireEvent.change(input, { target: { value: "Aristote" } });
+    expect(onSubmitQuery).not.toHaveBeenCalled();
+  });
 });

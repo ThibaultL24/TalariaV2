@@ -144,6 +144,8 @@ export interface ChapterSuggestionView {
   title_en: string;
   event_count: number;
   standing: string;
+  basis_fr: string;
+  basis_en: string;
 }
 
 export async function fetchChapterSuggestions(

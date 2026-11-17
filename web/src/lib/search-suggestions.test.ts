@@ -24,6 +24,14 @@ describe("rankPersonSuggestions", () => {
     expect(out).toHaveLength(5);
     expect(out[0].qid).toBe("Q2");
   });
+  it("keeps people ahead of a place that copies the searched name", () => {
+    const out = rankPersonSuggestions("Dumas", [
+      person("Qtown", "Dumas", { description: "human settlement in Mississippi" }),
+      person("Qson", "Alexandre Dumas fils", { description: "French writer and dramatist" }),
+      person("Qfather", "Alexandre Dumas", { description: "French writer and dramatist" }),
+    ]);
+    expect(out.map((item) => item.qid)).toEqual(["Qfather", "Qson", "Qtown"]);
+  });
   it("does not merge similar but distinct people", () => {
     expect(rankPersonSuggestions("Dumas", [
       person("Q1", "Dumas père"), person("Q2", "Dumas fils"),

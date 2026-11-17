@@ -6,14 +6,12 @@ export function IdentityOffer({
   identity,
   locale,
   busy,
-  phase,
   error,
   onResearch,
 }: {
   identity: SearchSuggestion;
   locale: "fr" | "en";
   busy: boolean;
-  phase?: string | null;
   error?: string | null;
   onResearch: () => void;
 }) {
@@ -23,6 +21,9 @@ export function IdentityOffer({
   return (
     <section className="v3-note" aria-label={fr ? "Identité" : "Identity"}>
       <h2>{identity.label}</h2>
+      {identity.qid && (
+        <p>{fr ? `Identifiant retenu : ${identity.qid}` : `Selected identifier: ${identity.qid}`}</p>
+      )}
       {identity.description && <p>{identity.description}</p>}
       {decision === "unresolved" && (
         <p>
@@ -42,11 +43,6 @@ export function IdentityOffer({
             {fr ? "Lancer la recherche" : "Start research"}
           </button>
         </>
-      )}
-      {busy && (
-        <p role="status">
-          {phase || (fr ? "Recherche en cours" : "Research in progress")}
-        </p>
       )}
       {error && <p role="alert">{error}</p>}
     </section>

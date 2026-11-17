@@ -5,13 +5,16 @@
 pub const MIN_CHAPTER_EVENTS: usize = 6;
 pub const SUGGESTION: &str = "suggestion";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChapterSuggestion {
     pub slug: &'static str,
     pub title_fr: &'static str,
     pub title_en: &'static str,
     pub event_count: usize,
     pub standing: &'static str,
+    /// The event types that met the threshold. This is the whole justification.
+    pub basis_fr: String,
+    pub basis_en: String,
 }
 
 struct Theme {
@@ -42,12 +45,15 @@ pub fn suggest_chapters(counts: &[(&str, usize)]) -> Vec<ChapterSuggestion> {
         if event_count < MIN_CHAPTER_EVENTS {
             continue;
         }
+        let kinds = theme.types.join(", ");
         suggestions.push(ChapterSuggestion {
             slug: theme.slug,
             title_fr: theme.title_fr,
             title_en: theme.title_en,
             event_count,
             standing: SUGGESTION,
+            basis_fr: format!("{event_count} faits documentés de type {kinds}"),
+            basis_en: format!("{event_count} documented events of type {kinds}"),
         });
     }
     suggestions
@@ -75,9 +81,11 @@ mod tests {
     }
 
     #[test]
-    fn a_philosopher_gets_works_when_the_writings_are_numerous() {
+    fn a_publication_count_can_suggest_works_without_naming_a_person() {
         let suggestions = suggest_chapters(&[("publication", 8), ("birth", 1), ("death", 1)]);
         assert_eq!(suggestions.iter().map(|item| item.slug).collect::<Vec<_>>(), vec!["works"]);
+        assert!(suggestions[0].basis_en.contains("publication"));
+        assert!(!suggestions[0].basis_en.contains("battle"));
     }
 
     #[test]

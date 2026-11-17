@@ -260,6 +260,7 @@ export function IstoriaPage() {
       search={
         <>
           <EntitySearchBox
+            enabled
             suggestions={picker.suggestions}
             onSubmitQuery={picker.setSearchQuery}
             isLoading={picker.searchLoading}
@@ -282,7 +283,6 @@ export function IstoriaPage() {
               identity={picker.heldIdentity}
               locale={locale}
               busy={picker.ingestBusy}
-              phase={picker.ingestPhase}
               error={picker.error}
               onResearch={() => picker.requestResearch()}
             />
@@ -499,8 +499,10 @@ export function IstoriaPage() {
       {selected && (
         <aside className="v3-detail">
           <div className="v3-detail-links">
-            {selected.map_eligible && (
+            {selected.map_eligible ? (
               <Link to={`/istoria/${entityId}/map?${params}`}>View on map</Link>
+            ) : (
+              <p className="v3-note">{t.eventOffMap}</p>
             )}
             <Link to={`/istoria/${entityId}/timeline?${params}`}>View in timeline</Link>
           </div>

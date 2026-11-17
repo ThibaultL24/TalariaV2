@@ -312,6 +312,8 @@ pub async fn chapter_suggestions(
                 "title_en": item.title_en,
                 "event_count": item.event_count,
                 "standing": item.standing,
+                "basis_fr": item.basis_fr,
+                "basis_en": item.basis_en,
             })
         })
         .collect();

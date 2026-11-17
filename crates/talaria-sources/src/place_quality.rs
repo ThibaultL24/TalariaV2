@@ -90,6 +90,7 @@ const ABSTRACT_NOUNS: &[&str] = &[
     "schisme", "schism", "concile", "council", "rencontre", "meeting", "encounter",
     "victoire", "victory", "guerre", "war", "paix", "peace", "traité", "traite",
     "treaty", "alliance", "coalition", "révolution", "revolution", "empire",
+    "écriture", "ecriture", "l'écriture", "l'ecriture", "writing",
 ];
 
 const ORGANIZATIONS: &[&str] = &[
@@ -286,6 +287,8 @@ mod tests {
         assert!(!is_plausible_place_label("Georges-Antoine Rochegrosse"));
         assert!(!is_plausible_place_label("Anglais"));
         assert!(!is_plausible_place_label("schisme"));
+        assert!(!is_plausible_place_label("écriture"));
+        assert!(!is_plausible_place_label("L'écriture"));
         assert!(!is_plausible_place_label("la rencontre de Nobel et Hess"));
         assert!(is_plausible_place_label("Waterloo"));
         assert!(is_plausible_place_label("Saint Helena"));

@@ -991,6 +991,7 @@ mod tests {
             place_entity_kind: None,
             subject_confirmed_alive: false,
         };
+        // Gate fixture, not a retrieved passage. The traditional year is explicit; no day is invented.
         let birth = "Aristotle was born in Stagira in 384 BC.";
         let birth_doc = talaria_store::upsert_raw_wikipedia_document(
             &pool,
@@ -1054,45 +1055,6 @@ mod tests {
         .unwrap();
         assert_eq!(birth_map, birth_geom);
 
-        for index in 0..6 {
-            let quote = format!("Aristotle published a treatise in Athens in {} BC.", 340 - index);
-            let url = format!("https://example.test/aristotle-work-{index}");
-            let doc = talaria_store::upsert_raw_wikipedia_document(
-                &pool, &url, "Aristotle", "en", &quote,
-            )
-            .await
-            .unwrap();
-            let item = GroundedItem {
-                event_type: "publication".into(),
-                role: "published".into(),
-                place_surface: Some("Athens".into()),
-                summary: quote.clone(),
-                quoted_text: quote,
-                ..birth_item.clone()
-            };
-            persist_fact_item(
-                &pool,
-                first,
-                "Aristotle",
-                &item,
-                &mut ctx,
-                PersistMeta {
-                    raw_document_id: doc,
-                    coords: None,
-                    primary_object: Some("treatise"),
-                    source_locator: &url,
-                    page_title: "Aristotle",
-                    from_followed_page: false,
-                    structured_source: false,
-                    military_subject: false,
-                    aliases: &[],
-                    document_text: None,
-                    section_heading: None,
-                },
-            )
-            .await
-            .unwrap();
-        }
         let rows: Vec<(String, i64)> = sqlx::query_as(
             "SELECT event_type, count(*)::bigint FROM canonical_events \
              WHERE entity_id = $1 AND is_active GROUP BY event_type",
@@ -1106,9 +1068,7 @@ mod tests {
             .map(|(kind, count)| (kind.as_str(), *count as usize))
             .collect();
         let suggestions = talaria_quality::suggest_chapters(&counts);
-        assert_eq!(suggestions.len(), 1);
-        assert_eq!(suggestions[0].slug, "works");
-        assert_eq!(suggestions[0].standing, "suggestion");
+        assert!(suggestions.is_empty(), "one birth is not a chapter");
         let published: i64 = sqlx::query_scalar(
             "SELECT count(*)::bigint FROM editorial_groups WHERE entity_id = $1 AND status = 'published'",
         )

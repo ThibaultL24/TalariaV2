@@ -7,6 +7,8 @@ import { rankPersonSuggestions } from "@/lib/search-suggestions";
 import { useExplorerStore } from "@/stores/explorer-store";
 import { useProgressiveIngest } from "./use-progressive-ingest";
 
+/** The server never follows fewer than eight pages. Istoria asks for that floor, not the explorer cap of 400. */
+const ON_DEMAND_RESEARCH_DOCUMENTS = 8;
 const SEARCH_DELAY_MS = 180;
 const SEARCH_TTL_MS = 30_000;
 const CACHE_LIMIT = 100;
@@ -127,6 +129,7 @@ export function usePersonPicker(opts: UsePersonPickerOptions = {}) {
         subject: chosen.label,
         qid: chosen.qid,
         wikiLang: locale,
+        maxDocuments: ON_DEMAND_RESEARCH_DOCUMENTS,
       });
     },
     [heldIdentity, locale, progressiveIngest.startIngest],

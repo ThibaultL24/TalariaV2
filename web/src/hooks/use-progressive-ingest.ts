@@ -115,6 +115,7 @@ export function useProgressiveIngest(opts: UseProgressiveIngestOptions = {}) {
       subject: string;
       qid?: string | null;
       wikiLang: string;
+      maxDocuments?: number;
     }) => {
       stopPolling();
       setState({
@@ -130,7 +131,7 @@ export function useProgressiveIngest(opts: UseProgressiveIngestOptions = {}) {
           subject: input.subject,
           qid: input.qid,
           live: true,
-          maxDocuments: EXPLORER_INGEST_MAX_DOCUMENTS,
+          maxDocuments: input.maxDocuments ?? EXPLORER_INGEST_MAX_DOCUMENTS,
           wikiLang: input.wikiLang,
         });
 
