@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rankPersonSuggestions } from "./search-suggestions";
+import { rankPersonSuggestions, researchDecision } from "./search-suggestions";
 import type { SearchSuggestion } from "@/lib/schemas/entity";
 
 function person(qid: string, label: string, extra: Partial<SearchSuggestion> = {}): SearchSuggestion {
@@ -28,6 +28,13 @@ describe("rankPersonSuggestions", () => {
     expect(rankPersonSuggestions("Dumas", [
       person("Q1", "Dumas père"), person("Q2", "Dumas fils"),
     ])).toHaveLength(2);
+  });
+  it("opens a known person, offers a selected QID, and refuses a name without one", () => {
+    expect(researchDecision(person("Q517", "Napoleon", { known_locally: true, entity_id: "n" }))).toBe("open");
+    expect(researchDecision(person("Q868", "Aristotle"))).toBe("offer");
+    const unnamed = rankPersonSuggestions("Marceline", [])[0];
+    expect(unnamed.qid).toBeNull();
+    expect(researchDecision(unnamed)).toBe("unresolved");
   });
   it("keeps manual fallback and ignores development noise", () => {
     expect(rankPersonSuggestions("Unknown Historian", [])[0].label).toBe("Unknown Historian");

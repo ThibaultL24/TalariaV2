@@ -138,6 +138,23 @@ export function groupChapterEvents(events: ChapterEvent[]) {
   };
 }
 
+export interface ChapterSuggestionView {
+  slug: string;
+  title_fr: string;
+  title_en: string;
+  event_count: number;
+  standing: string;
+}
+
+export async function fetchChapterSuggestions(
+  id: string,
+  signal?: AbortSignal,
+): Promise<{ standing: string; published: boolean; suggestions: ChapterSuggestionView[] }> {
+  const response = await fetch(`/api/v1/entities/${encodeURIComponent(id)}/chapter-suggestions`, { signal });
+  if (!response.ok) throw new Error(`Request failed (${response.status})`);
+  return response.json();
+}
+
 export async function fetchEntityGroups(
   id: string,
   signal?: AbortSignal,

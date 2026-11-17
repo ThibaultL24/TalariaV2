@@ -21,6 +21,13 @@ function relevance(query: string, label: string): number {
   return 4;
 }
 
+/** A known fiche opens at once. A selected QID may be researched. A bare name may not. */
+export function researchDecision(item: SearchSuggestion): "open" | "offer" | "unresolved" {
+  if (item.known_locally && item.entity_id) return "open";
+  if (item.qid && /^Q\d+$/.test(item.qid)) return "offer";
+  return "unresolved";
+}
+
 /** Preserve distinct Wikidata identities; never merge on label or event density. */
 export function rankPersonSuggestions(
   query: string,

@@ -3,10 +3,10 @@
 
 use serde_json::json;
 use talaria_quality::{
-    auto_accept_attribution, concise_event_title, event_type_is_map_locus,
-    occurrence_key_for_event, quote_may_attest, read_clause_time, start_time_from_typed,
-    time_to_json, AttributionMatch, CandidateStatus, ClauseTime, GateContext, GateDecision,
-    GroundedItem, RejectionCode, TypedTime,
+    concise_event_title, event_type_is_map_locus,
+    occurrence_key_for_event, publishes_to_public_corpus, quote_may_attest, read_clause_time,
+    start_time_from_typed, time_to_json, AttributionMatch, CandidateStatus, ClauseTime, GateContext,
+    GateDecision, GroundedItem, RejectionCode, TypedTime,
 };
 use talaria_sources::is_plausible_place_label;
 use talaria_store::{
@@ -221,8 +221,7 @@ pub async fn persist_gated_item(
     )
     .await?;
 
-    let accept_canonical =
-        matches!(decision, GateDecision::Accept) && auto_accept_attribution(attribution);
+    let accept_canonical = publishes_to_public_corpus(decision, attribution);
     let singleton_reject = matches!(decision, GateDecision::Reject(ref codes)
         if codes.contains(&RejectionCode::SingletonCardinalityViolation));
 
@@ -966,6 +965,272 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(logical, 4);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn an_absent_person_keeps_one_identity_and_only_accepted_facts(pool: sqlx::PgPool) {
+        let first = talaria_store::ensure_subject_entity(&pool, "Q868", "Aristotle")
+            .await
+            .unwrap();
+        let again = talaria_store::ensure_subject_entity(&pool, "Q868", "Aristotle")
+            .await
+            .unwrap();
+        assert_eq!(first, again);
+        let other = talaria_store::ensure_subject_entity(&pool, "Q535", "Victor Hugo")
+            .await
+            .unwrap();
+        assert_ne!(first, other);
+
+        let mut ctx = GateContext {
+            subject_birth_year: Some(-384),
+            subject_death_year: Some(-322),
+            has_active_birth: false,
+            has_active_death: false,
+            fingerprint_exists: false,
+            cross_clause_join_detected: false,
+            place_entity_kind: None,
+            subject_confirmed_alive: false,
+        };
+        let birth = "Aristotle was born in Stagira in 384 BC.";
+        let birth_doc = talaria_store::upsert_raw_wikipedia_document(
+            &pool,
+            "https://en.wikipedia.org/wiki/Aristotle",
+            "Aristotle",
+            "en",
+            birth,
+        )
+        .await
+        .unwrap();
+        let birth_item = GroundedItem {
+            lane: talaria_quality::Lane::Fact,
+            event_type: "birth".into(),
+            role: "born".into(),
+            year: None,
+            place_surface: Some("Stagira".into()),
+            summary: birth.into(),
+            quoted_text: birth.into(),
+            confidence: 0.9,
+        };
+        let outcome = persist_fact_item(
+            &pool,
+            first,
+            "Aristotle",
+            &birth_item,
+            &mut ctx,
+            PersistMeta {
+                raw_document_id: birth_doc,
+                coords: None,
+                primary_object: Some("birth"),
+                source_locator: "https://en.wikipedia.org/wiki/Aristotle",
+                page_title: "Aristotle",
+                from_followed_page: false,
+                structured_source: false,
+                military_subject: false,
+                aliases: &[],
+                document_text: None,
+                section_heading: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(matches!(outcome, PersistOutcome::Canonical { inserted: true, .. }));
+        let time: serde_json::Value = sqlx::query_scalar(
+            "SELECT time_json FROM canonical_events WHERE entity_id = $1 AND event_type = 'birth'",
+        )
+        .bind(first)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(time["kind"], "exact");
+        assert_eq!(time["precision"], "year");
+        assert_eq!(time["start"], "-384");
+        let (birth_map, birth_geom): (bool, bool) = sqlx::query_as(
+            "SELECT map_eligible, geom IS NOT NULL FROM canonical_events \
+             WHERE entity_id = $1 AND event_type = 'birth'",
+        )
+        .bind(first)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(birth_map, birth_geom);
+
+        for index in 0..6 {
+            let quote = format!("Aristotle published a treatise in Athens in {} BC.", 340 - index);
+            let url = format!("https://example.test/aristotle-work-{index}");
+            let doc = talaria_store::upsert_raw_wikipedia_document(
+                &pool, &url, "Aristotle", "en", &quote,
+            )
+            .await
+            .unwrap();
+            let item = GroundedItem {
+                event_type: "publication".into(),
+                role: "published".into(),
+                place_surface: Some("Athens".into()),
+                summary: quote.clone(),
+                quoted_text: quote,
+                ..birth_item.clone()
+            };
+            persist_fact_item(
+                &pool,
+                first,
+                "Aristotle",
+                &item,
+                &mut ctx,
+                PersistMeta {
+                    raw_document_id: doc,
+                    coords: None,
+                    primary_object: Some("treatise"),
+                    source_locator: &url,
+                    page_title: "Aristotle",
+                    from_followed_page: false,
+                    structured_source: false,
+                    military_subject: false,
+                    aliases: &[],
+                    document_text: None,
+                    section_heading: None,
+                },
+            )
+            .await
+            .unwrap();
+        }
+        let rows: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT event_type, count(*)::bigint FROM canonical_events \
+             WHERE entity_id = $1 AND is_active GROUP BY event_type",
+        )
+        .bind(first)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        let counts: Vec<(&str, usize)> = rows
+            .iter()
+            .map(|(kind, count)| (kind.as_str(), *count as usize))
+            .collect();
+        let suggestions = talaria_quality::suggest_chapters(&counts);
+        assert_eq!(suggestions.len(), 1);
+        assert_eq!(suggestions[0].slug, "works");
+        assert_eq!(suggestions[0].standing, "suggestion");
+        let published: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint FROM editorial_groups WHERE entity_id = $1 AND status = 'published'",
+        )
+        .bind(first)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(published, 0);
+
+        ctx.subject_birth_year = Some(1802);
+        ctx.subject_death_year = Some(1885);
+        let hugo = "In 1855 Victor Hugo lived in Guernsey.";
+        let hugo_doc = talaria_store::upsert_raw_wikipedia_document(
+            &pool,
+            "https://en.wikipedia.org/wiki/Victor_Hugo",
+            "Victor Hugo",
+            "en",
+            hugo,
+        )
+        .await
+        .unwrap();
+        let hugo_item = GroundedItem {
+            lane: talaria_quality::Lane::Fact,
+            event_type: "residence".into(),
+            role: "lived".into(),
+            year: None,
+            place_surface: Some("Guernsey".into()),
+            summary: hugo.into(),
+            quoted_text: hugo.into(),
+            confidence: 0.9,
+        };
+        persist_fact_item(
+            &pool,
+            other,
+            "Victor Hugo",
+            &hugo_item,
+            &mut ctx,
+            PersistMeta {
+                raw_document_id: hugo_doc,
+                coords: None,
+                primary_object: Some("residence"),
+                source_locator: "https://en.wikipedia.org/wiki/Victor_Hugo",
+                page_title: "Victor Hugo",
+                from_followed_page: false,
+                structured_source: false,
+                military_subject: false,
+                aliases: &[],
+                document_text: None,
+                section_heading: None,
+            },
+        )
+        .await
+        .unwrap();
+        let (map_eligible, has_geom): (bool, bool) = sqlx::query_as(
+            "SELECT map_eligible, geom IS NOT NULL FROM canonical_events \
+             WHERE entity_id = $1 AND event_type = 'residence'",
+        )
+        .bind(other)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(map_eligible, has_geom);
+
+        ctx.subject_birth_year = Some(1786);
+        ctx.subject_death_year = Some(1859);
+        ctx.has_active_birth = false;
+        let sparse = talaria_store::ensure_subject_entity(&pool, "Q466987", "Marceline Desbordes-Valmore")
+            .await
+            .unwrap();
+        let note = "Marceline Desbordes-Valmore was born in Douai in 1786.";
+        let note_doc = talaria_store::upsert_raw_wikipedia_document(
+            &pool,
+            "https://fr.wikipedia.org/wiki/Marceline_Desbordes-Valmore",
+            "Marceline Desbordes-Valmore",
+            "fr",
+            note,
+        )
+        .await
+        .unwrap();
+        let note_item = GroundedItem {
+            event_type: "birth".into(),
+            role: "born".into(),
+            place_surface: Some("Douai".into()),
+            summary: note.into(),
+            quoted_text: note.into(),
+            ..hugo_item
+        };
+        let note_outcome = persist_fact_item(
+            &pool,
+            sparse,
+            "Marceline Desbordes-Valmore",
+            &note_item,
+            &mut ctx,
+            PersistMeta {
+                raw_document_id: note_doc,
+                coords: None,
+                primary_object: Some("birth"),
+                source_locator: "https://fr.wikipedia.org/wiki/Marceline_Desbordes-Valmore",
+                page_title: "Marceline Desbordes-Valmore",
+                from_followed_page: false,
+                structured_source: false,
+                military_subject: false,
+                aliases: &[],
+                document_text: None,
+                section_heading: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(matches!(note_outcome, PersistOutcome::Canonical { inserted: true, .. }));
+        let sparse_counts: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT event_type, count(*)::bigint FROM canonical_events WHERE entity_id = $1 AND is_active GROUP BY event_type",
+        )
+        .bind(sparse)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        let sparse_pairs: Vec<(&str, usize)> = sparse_counts
+            .iter()
+            .map(|(kind, count)| (kind.as_str(), *count as usize))
+            .collect();
+        assert!(talaria_quality::suggest_chapters(&sparse_pairs).is_empty());
     }
 
     #[test]

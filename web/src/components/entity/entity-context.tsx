@@ -22,6 +22,7 @@ export function useExperienceSubject(experience: LifeExperience) {
     : defaultExperienceView(experience);
   const [revision, setRevision] = useState(0);
   const picker = usePersonPicker({
+    startLifeIngest: experience !== "istoria",
     onCountsChanged: () => setRevision((value) => value + 1),
   });
   const pendingSelection = useRef(false);

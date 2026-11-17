@@ -17,8 +17,10 @@ import {
   type TimelineEvent,
 } from "@/lib/api";
 import { COMPACT_VIEWPORT_MQ } from "@/lib/breakpoints";
-import { fetchChapterEventPage, fetchEntityGroup, fetchEntityGroups, getEntityView, type EntityOverview } from "@/lib/entity-views";
+import { fetchChapterEventPage, fetchChapterSuggestions, fetchEntityGroup, fetchEntityGroups, getEntityView, type EntityOverview } from "@/lib/entity-views";
 import { ChapterReading } from "@/features/istoria/chapter-reading";
+import { ChapterSuggestions } from "@/features/istoria/chapter-suggestions";
+import { IdentityOffer } from "@/features/istoria/identity-offer";
 import { biographyFilters } from "@/features/istoria/biography-filters";
 import { useI18n } from "@/lib/i18n";
 import { resolveVisibleWindow } from "@/components/timeline/timeline-utils";
@@ -76,6 +78,14 @@ export function IstoriaPage() {
     queryFn: ({ signal }) => fetchEntityGroups(entityId, signal),
   });
   const groups = groupsQuery.data?.groups ?? [];
+  const suggestionsQuery = useQuery({
+    queryKey: ["istoria", "chapter-suggestions", entityId, revision],
+    enabled: Boolean(entityId),
+    retry: false,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    queryFn: ({ signal }) => fetchChapterSuggestions(entityId, signal),
+  });
   const chapterQuery = useQuery({
     queryKey: ["istoria", "group", entityId, groupSlug],
     enabled: Boolean(entityId && groupSlug),
@@ -261,17 +271,51 @@ export function IstoriaPage() {
           />
           {picker.ingestBusy && (
             <p role="status">
-              Collecting sources · {picker.timelineEvents} events · {picker.mapPins} map points
+              {picker.ingestPhase || (locale === "fr" ? "Recherche en cours" : "Research in progress")}
+              {picker.currentPage ? ` · ${picker.currentPage}` : ""}
+              {` · ${picker.timelineEvents}`}
             </p>
           )}
           {picker.error && <p role="alert">{picker.error}</p>}
-          {!entityId && !picker.ingestBusy && (
+          {!entityId && picker.heldIdentity && (
+            <IdentityOffer
+              identity={picker.heldIdentity}
+              locale={locale}
+              busy={picker.ingestBusy}
+              phase={picker.ingestPhase}
+              error={picker.error}
+              onResearch={() => picker.requestResearch()}
+            />
+          )}
+          {!entityId && !picker.heldIdentity && !picker.ingestBusy && (
             <p className="v3-note">Rechercher une personnalité pour découvrir sa vie et ses sources.</p>
           )}
         </>
       }
     >
       {pageError && <p className="v3-inline-alert" role="alert">{pageError}</p>}
+      {entityId && overview?.entity.qid && (
+        <p>
+          <button
+            type="button"
+            onClick={() => picker.requestResearch({
+              label: overview.entity.label,
+              qid: overview.entity.qid,
+              known_locally: true,
+              entity_id: entityId,
+            })}
+            disabled={picker.ingestBusy}
+          >
+            {locale === "fr" ? "Enrichir le corpus" : "Enrich the corpus"}
+          </button>
+        </p>
+      )}
+      {entityId && (
+        <ChapterSuggestions
+          suggestions={suggestionsQuery.data?.suggestions ?? []}
+          locale={locale === "fr" ? "fr" : "en"}
+        />
+      )}
       {entityId && (groups.length > 0 || groupSlug) && (
         <nav className="v3-provider-tabs" aria-label={t.chapters}>
           <button type="button" aria-pressed={!groupSlug} onClick={() => selectChapter("")}>

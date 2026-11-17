@@ -407,6 +407,13 @@ async fn start_lane_ingest(
     ).await.map_err(db_ingest_error)? {
         return Ok(durable_job_started_response(&existing, true));
     }
+    let active = ingest_jobs::count_active(&state.pool).await.map_err(db_ingest_error)?;
+    if !ingest_jobs::capacity_open(active) {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(json!({ "error": "ingest_capacity", "active": active })),
+        ));
+    }
 
     // Explorer/person: UUID only after QID resolve inside run_person_ingest.
     let entity_id = if lane == LANE_EXPLORER {
@@ -1146,6 +1153,15 @@ mod tests {
             !providers.iter().any(|p| p == "hal"),
             "HAL stays on the Agora bibliographic lane"
         );
+    }
+
+    #[test]
+    #[test]
+    fn a_full_research_queue_refuses_a_new_identity_only() {
+        use talaria_store::ingest_jobs::{capacity_open, MAX_CONCURRENT_INGESTS};
+        assert!(capacity_open(0));
+        assert!(capacity_open(MAX_CONCURRENT_INGESTS - 1));
+        assert!(!capacity_open(MAX_CONCURRENT_INGESTS));
     }
 
     #[test]

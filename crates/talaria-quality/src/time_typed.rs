@@ -564,7 +564,18 @@ pub fn read_clause_time(text: &str) -> ClauseTime {
         [] if dropped_publication => ClauseTime::Ambiguous {
             reason: "publication_or_cultural_year",
         },
-        [] => ClauseTime::Missing,
+        [] => {
+            if let Some((year, surface)) = explicit_bce(&masked) {
+                ClauseTime::Exact {
+                    year,
+                    month: None,
+                    day: None,
+                    surface,
+                }
+            } else {
+                ClauseTime::Missing
+            }
+        }
         _ => ClauseTime::Ambiguous {
             reason: "several_years_in_one_passage",
         },
@@ -606,6 +617,19 @@ fn mask_thousands(text: &str) -> String {
         }
     }
     out
+}
+
+fn explicit_bce(text: &str) -> Option<(i32, String)> {
+    let lower = text.to_lowercase();
+    if lower.len() != text.len() {
+        return None;
+    }
+    let surface = scan_bce_surface(&lower)?;
+    let year = parse_typed_time(Some(&surface)).year_for_gates()?;
+    if year >= 0 {
+        return None;
+    }
+    Some((year, surface))
 }
 
 fn four_digit_years(text: &str) -> Vec<(i32, usize, usize)> {
@@ -735,6 +759,18 @@ mod tests {
         assert_eq!(s, "1814");
         match parse_typed_time(Some(&s)) {
             TypedTime::Exact { month, day, .. } => {
+                assert!(month.is_none());
+                assert!(day.is_none());
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_ancient_birth_keeps_the_year_and_does_not_invent_a_day() {
+        match read_clause_time("Aristotle was born in Stagira in 384 BC.") {
+            ClauseTime::Exact { year, month, day, .. } => {
+                assert_eq!(year, -384);
                 assert!(month.is_none());
                 assert!(day.is_none());
             }

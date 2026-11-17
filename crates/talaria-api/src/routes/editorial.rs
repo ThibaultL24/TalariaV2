@@ -273,3 +273,52 @@ pub async fn group_events(
         }
     }
 }
+
+/// Computed groupings. Nothing is written, and nothing here is a published chapter.
+pub async fn chapter_suggestions(
+    State(state): State<AppState>,
+    Path(entity): Path<Uuid>,
+) -> Response {
+    if let Err(response) = require_entity(&state, entity).await {
+        return response;
+    }
+    let rows: Result<Vec<(String, i64)>, sqlx::Error> = sqlx::query_as(
+        "SELECT event_type, count(*)::bigint \
+         FROM canonical_events \
+         WHERE entity_id = $1 AND pipeline = 'person' AND is_active \
+         GROUP BY event_type",
+    )
+    .bind(entity)
+    .fetch_all(&state.pool)
+    .await;
+    let rows = match rows {
+        Ok(rows) => rows,
+        Err(reason) => {
+            tracing::error!(error = %reason, "chapter suggestion counts failed");
+            return error(StatusCode::INTERNAL_SERVER_ERROR, "database_error");
+        }
+    };
+    let counts: Vec<(&str, usize)> = rows
+        .iter()
+        .map(|(kind, count)| (kind.as_str(), *count as usize))
+        .collect();
+    let suggestions = talaria_quality::suggest_chapters(&counts);
+    let body: Vec<Value> = suggestions
+        .iter()
+        .map(|item| {
+            json!({
+                "slug": item.slug,
+                "title_fr": item.title_fr,
+                "title_en": item.title_en,
+                "event_count": item.event_count,
+                "standing": item.standing,
+            })
+        })
+        .collect();
+    Json(json!({
+        "standing": talaria_quality::SUGGESTION,
+        "published": false,
+        "suggestions": body,
+    }))
+    .into_response()
+}

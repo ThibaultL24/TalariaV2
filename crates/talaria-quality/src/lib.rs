@@ -2,6 +2,7 @@
 //! Quality gate between extraction and canonical events.
 
 mod analyzer;
+mod chapters;
 mod assertion;
 mod attribution;
 mod context_year;
@@ -31,8 +32,9 @@ pub use assertion::{
 };
 pub use attribution::{
     attribution_gate_decision, auto_accept_attribution, classify_attribution, demonstrated_role,
-    AttributionInput, AttributionMatch,
+    publishes_to_public_corpus, AttributionInput, AttributionMatch,
 };
+pub use chapters::{suggest_chapters, ChapterSuggestion, MIN_CHAPTER_EVENTS, SUGGESTION};
 pub use context_year::{
     approx_typed_time, infer_approximate_year, is_approx_eligible_type, local_context_window,
     scan_years_in_range, year_from_nearby_context, years_from_section_heading,

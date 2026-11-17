@@ -50,6 +50,23 @@ pub async fn find_active(
         .await
 }
 
+pub async fn count_active(pool: &PgPool) -> Result<i64, sqlx::Error> {
+    let count = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM ingest_jobs WHERE status IN ('queued','running')",
+    )
+    .fetch_one(pool)
+    .await?;
+    Ok(count)
+}
+
+pub const MAX_CONCURRENT_INGESTS: i64 = 8;
+
+/// A new research starts only while fewer than the concurrent limit are already running.
+/// Repeating the same identity still attaches to the job already admitted.
+pub fn capacity_open(active: i64) -> bool {
+    active < MAX_CONCURRENT_INGESTS
+}
+
 /// A partial UNIQUE index handles concurrent inserts across all API replicas.
 pub async fn admit(
     pool: &PgPool,

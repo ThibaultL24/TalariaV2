@@ -215,6 +215,12 @@ pub fn classify_attribution(input: &AttributionInput<'_>) -> AttributionMatch {
     AttributionMatch::Unattributed
 }
 
+/// A public fact requires both a quality accept and an attribution that can stand alone.
+/// A finished pipeline run is not that decision.
+pub fn publishes_to_public_corpus(decision: &GateDecision, attribution: AttributionMatch) -> bool {
+    matches!(decision, GateDecision::Accept) && auto_accept_attribution(attribution)
+}
+
 pub fn auto_accept_attribution(m: AttributionMatch) -> bool {
     matches!(
         m,
@@ -447,6 +453,14 @@ mod tests {
             military_subject: true,
         });
         assert_eq!(tolentino, AttributionMatch::MentionedNotActing);
+        assert!(!publishes_to_public_corpus(
+            &attribution_gate_decision(tolentino),
+            tolentino,
+        ));
+        assert!(publishes_to_public_corpus(
+            &GateDecision::Accept,
+            arcole,
+        ));
         assert_eq!(
             demonstrated_role(
                 "The Battle of Tolentino was fought by the Napoleonic King of Naples Joachim Murat.",

@@ -113,6 +113,10 @@ pub async fn serve(config: AppConfig) -> anyhow::Result<()> {
             post(landmarks::refresh),
         )
         .route(
+            "/api/v1/entities/{entity_id}/chapter-suggestions",
+            get(editorial::chapter_suggestions),
+        )
+        .route(
             "/api/v1/entities/{entity_id}/groups",
             get(editorial::list_groups),
         )
