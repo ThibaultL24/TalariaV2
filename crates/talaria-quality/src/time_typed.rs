@@ -48,6 +48,29 @@ pub fn parse_typed_time(surface: Option<&str>) -> TypedTime {
     let Some(raw) = surface.map(str::trim).filter(|s| !s.is_empty()) else {
         return TypedTime::Unknown { surface: None };
     };
+    if let Some(t) = short_time_reading(raw) {
+        return t;
+    }
+    if let Some(ClauseTime::Range {
+        start_year,
+        end_year,
+        start_month,
+        start_day,
+        end_month,
+        end_day,
+        surface,
+    }) = calendar_clause(raw)
+    {
+        return TypedTime::Range {
+            start_year,
+            end_year,
+            start_month,
+            start_day,
+            end_month,
+            end_day,
+            surface: Some(surface),
+        };
+    }
     if let Some(t) = parse_calendar_date(raw) {
         return t;
     }
@@ -252,6 +275,10 @@ pub enum ClauseTime {
     Range {
         start_year: i32,
         end_year: i32,
+        start_month: Option<u32>,
+        start_day: Option<u32>,
+        end_month: Option<u32>,
+        end_day: Option<u32>,
         surface: String,
     },
     /// The clause does not establish one historical date.
@@ -261,8 +288,237 @@ pub enum ClauseTime {
     Missing,
 }
 
+struct DatedPoint {
+    year: i32,
+    month: u32,
+    day: u32,
+    start: usize,
+    end: usize,
+}
+
+fn short_time_reading(raw: &str) -> Option<TypedTime> {
+    let lower = raw.trim().to_lowercase();
+    if matches!(
+        lower.as_str(),
+        "unknown" | "undated" | "date inconnue" | "date unknown"
+    ) {
+        return Some(TypedTime::Unknown {
+            surface: Some(raw.trim().to_string()),
+        });
+    }
+    let open = lower.starts_with("c.")
+        || lower.starts_with("circa")
+        || lower.starts_with("vers ")
+        || lower.starts_with("environ ")
+        || lower.starts_with("after ")
+        || lower.starts_with("apres ")
+        || lower.starts_with("après ")
+        || lower.starts_with("from ")
+        || lower.starts_with("à partir de ")
+        || lower.starts_with("a partir de ");
+    if !open || raw.trim().len() > 32 || four_digit_years(raw).len() != 1 {
+        return None;
+    }
+    let year = four_digit_years(raw).first().map(|(year, _, _)| *year)?;
+    Some(TypedTime::Approx {
+        year,
+        surface: Some(raw.trim().to_string()),
+    })
+}
+
+fn calendar_clause(text: &str) -> Option<ClauseTime> {
+    let lower = text.to_lowercase();
+    if lower.len() != text.len() {
+        return None;
+    }
+    if let Some(span) = same_month_day_span(&lower) {
+        return Some(span);
+    }
+    let dates = dated_points(&lower);
+    if dates.len() < 2 {
+        return None;
+    }
+    let first = &dates[0];
+    let second = &dates[1];
+    let between = lower.get(first.end..second.start)?.trim();
+    if !range_connector(between) {
+        return None;
+    }
+    Some(ClauseTime::Range {
+        start_year: first.year,
+        end_year: second.year,
+        start_month: Some(first.month),
+        start_day: Some(first.day),
+        end_month: Some(second.month),
+        end_day: Some(second.day),
+        surface: text
+            .get(first.start..second.end)
+            .unwrap_or("")
+            .trim()
+            .to_string(),
+    })
+}
+
+fn range_connector(between: &str) -> bool {
+    let folded = between
+        .trim_matches(|c: char| c == ',' || c == '.' || c == ';' || c == ':')
+        .trim();
+    matches!(
+        folded,
+        "to" | "until" | "au" | "à" | "a" | "-" | "–" | "—" | "jusqu'au" | "jusqu’au" | "jusqu'en"
+            | "jusqu’en"
+    )
+}
+
+fn same_month_day_span(lower: &str) -> Option<ClauseTime> {
+    for (name, month) in MONTHS {
+        let mut from = 0usize;
+        while let Some(rel) = lower.get(from..)?.find(name) {
+            let mstart = from + rel;
+            let mend = mstart + name.len();
+            if !month_boundaries(lower, mstart, mend) {
+                from = mend;
+                continue;
+            }
+            let after = lower
+                .get(mend..)?
+                .trim_start_matches(|c: char| c == ',' || c == ' ');
+            let Some(year) = leading_year(after) else {
+                from = mend;
+                continue;
+            };
+            let before = lower.get(..mstart)?.trim_end();
+            let Some((start_day, end_day, day_start)) = trailing_day_span(before) else {
+                from = mend;
+                continue;
+            };
+            let year_digits = year.to_string();
+            let year_at = after.find(year_digits.as_str())?;
+            let raw_after = lower.get(mend..)?;
+            let skipped = raw_after.len() - after.len();
+            let end = mend + skipped + year_at + year_digits.len();
+            return Some(ClauseTime::Range {
+                start_year: year,
+                end_year: year,
+                start_month: Some(*month),
+                start_day: Some(start_day),
+                end_month: Some(*month),
+                end_day: Some(end_day),
+                surface: lower
+                    .get(day_start..end)
+                    .unwrap_or("")
+                    .trim()
+                    .to_string(),
+            });
+        }
+    }
+    None
+}
+
+fn trailing_day_span(before: &str) -> Option<(u32, u32, usize)> {
+    let parts: Vec<&str> = before.split_whitespace().collect();
+    if parts.len() < 2 {
+        return None;
+    }
+    let last = *parts.last()?;
+    for sep in ["–", "—", "-"] {
+        if let Some((left, right)) = last.split_once(sep) {
+            let start_day = parse_day_token(left)?;
+            let end_day = parse_day_token(right)?;
+            if end_day < start_day {
+                return None;
+            }
+            let start = before.rfind(last)?;
+            return Some((start_day, end_day, start));
+        }
+    }
+    let joiner = parts[parts.len() - 2];
+    if joiner == "and" || joiner == "et" {
+        let end_day = parse_day_token(last)?;
+        let start_token = parts.get(parts.len().checked_sub(3)?)?;
+        let start_day = parse_day_token(start_token)?;
+        if end_day < start_day {
+            return None;
+        }
+        let start = before.rfind(start_token)?;
+        return Some((start_day, end_day, start));
+    }
+    None
+}
+
+fn parse_day_token(token: &str) -> Option<u32> {
+    let day: u32 = token
+        .trim_matches(|c: char| !c.is_ascii_digit())
+        .parse()
+        .ok()?;
+    (1..=31).contains(&day).then_some(day)
+}
+
+fn dated_points(lower: &str) -> Vec<DatedPoint> {
+    let mut found = Vec::new();
+    for (name, month) in MONTHS {
+        let mut from = 0usize;
+        while let Some(rel) = lower.get(from..).and_then(|rest| rest.find(name)) {
+            let mstart = from + rel;
+            let mend = mstart + name.len();
+            if !month_boundaries(lower, mstart, mend) {
+                from = mend;
+                continue;
+            }
+            let after = lower
+                .get(mend..)
+                .unwrap_or("")
+                .trim_start_matches(|c: char| c == ',' || c == ' ');
+            let Some(year) = leading_year(after) else {
+                from = mend;
+                continue;
+            };
+            let before = lower.get(..mstart).unwrap_or("").trim_end();
+            let Some(day) = trailing_day(before) else {
+                from = mend;
+                continue;
+            };
+            let day_token = day.to_string();
+            let trimmed = before.trim_end();
+            if !trimmed.ends_with(day_token.as_str()) {
+                from = mend;
+                continue;
+            }
+            let day_at = trimmed.len() - day_token.len();
+            let year_digits = year.to_string();
+            let Some(year_at) = after.find(year_digits.as_str()) else {
+                from = mend;
+                continue;
+            };
+            let raw_after = lower.get(mend..).unwrap_or("");
+            let skipped = raw_after.len() - after.len();
+            let end = mend + skipped + year_at + year_digits.len();
+            if !found.iter().any(|point: &DatedPoint| ranges_overlap(point.start, point.end, day_at, end))
+            {
+                found.push(DatedPoint {
+                    year,
+                    month: *month,
+                    day,
+                    start: day_at,
+                    end,
+                });
+            }
+            from = mend;
+        }
+    }
+    found.sort_by_key(|point| point.start);
+    found
+}
+
+fn ranges_overlap(a0: usize, a1: usize, b0: usize, b1: usize) -> bool {
+    a0 < b1 && b0 < a1
+}
+
 pub fn read_clause_time(text: &str) -> ClauseTime {
     let masked = mask_thousands(text);
+    if let Some(span) = calendar_clause(&masked) {
+        return span;
+    }
     let years = four_digit_years(&masked);
     let historical: Vec<(i32, usize, usize)> = if work_mentions_its_own_date(&masked) {
         years
@@ -278,6 +534,10 @@ pub fn read_clause_time(text: &str) -> ClauseTime {
         return ClauseTime::Range {
             start_year,
             end_year,
+            start_month: None,
+            start_day: None,
+            end_month: None,
+            end_day: None,
             surface: format!("{start_year}–{end_year}"),
         };
     }
@@ -550,10 +810,106 @@ mod tests {
         let t = TypedTime::Range {
             start_year: 1804,
             end_year: 1815,
+            start_month: None,
+            start_day: None,
+            end_month: None,
+            end_day: None,
             surface: Some("1804–1815".into()),
         };
         let dt = start_time_from_typed(&t).expect("projection");
         assert_eq!(dt.format("%Y-%m-%d").to_string(), "1804-01-01");
+    }
+
+    #[test]
+    fn a_siege_keeps_both_day_bounds() {
+        let clause = "The siege of Mantua lasted from 4 June 1796 to 2 February 1797.";
+        let ClauseTime::Range {
+            start_year,
+            end_year,
+            start_month,
+            start_day,
+            end_month,
+            end_day,
+            ..
+        } = read_clause_time(clause)
+        else {
+            panic!("Mantua must stay a range");
+        };
+        assert_eq!(
+            (start_year, start_month, start_day, end_year, end_month, end_day),
+            (1796, Some(6), Some(4), 1797, Some(2), Some(2))
+        );
+        let typed = parse_typed_time(Some("4 June 1796 to 2 February 1797"));
+        let json = time_to_json(&typed);
+        assert_eq!(json["kind"], "range");
+        assert_eq!(json["precision"], "day");
+        assert_eq!(json["start"], "1796-06-04");
+        assert_eq!(json["end"], "1797-02-02");
+        let projected = start_time_from_typed(&typed).expect("start");
+        assert_eq!(projected.format("%Y-%m-%d").to_string(), "1796-06-04");
+    }
+
+    #[test]
+    fn multi_day_battles_keep_their_span() {
+        let arcole = read_clause_time(
+            "The Battle of Arcole (15–17 November 1796) was fought southeast of Verona.",
+        );
+        assert!(matches!(
+            arcole,
+            ClauseTime::Range {
+                start_year: 1796,
+                end_year: 1796,
+                start_month: Some(11),
+                start_day: Some(15),
+                end_month: Some(11),
+                end_day: Some(17),
+                ..
+            }
+        ));
+        let dego = read_clause_time(
+            "The Second Battle of Dego was fought on 14 and 15 April 1796 near Dego.",
+        );
+        assert!(matches!(
+            dego,
+            ClauseTime::Range {
+                start_year: 1796,
+                end_year: 1796,
+                start_month: Some(4),
+                start_day: Some(14),
+                end_month: Some(4),
+                end_day: Some(15),
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn open_approximate_and_unknown_dates_stay_distinct() {
+        assert!(matches!(
+            parse_typed_time(Some("c. 1797")),
+            TypedTime::Approx { year: 1797, .. }
+        ));
+        assert!(matches!(
+            parse_typed_time(Some("from 1796")),
+            TypedTime::Approx { year: 1796, .. }
+        ));
+        assert!(matches!(
+            parse_typed_time(Some("date inconnue")),
+            TypedTime::Unknown { .. }
+        ));
+        assert!(matches!(
+            parse_typed_time(None),
+            TypedTime::Unknown { surface: None }
+        ));
+        assert!(matches!(
+            parse_typed_time(Some("5 August 1796")),
+            TypedTime::Exact {
+                year: 1796,
+                month: Some(8),
+                day: Some(5),
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -604,6 +960,10 @@ mod tests {
         let t = TypedTime::Range {
             start_year: 1804,
             end_year: 1815,
+            start_month: None,
+            start_day: None,
+            end_month: None,
+            end_day: None,
             surface: Some("1804–1815".into()),
         };
         assert_eq!(t.date_precision(), "range");
@@ -758,15 +1118,28 @@ pub fn time_to_json(time: &TypedTime) -> serde_json::Value {
         TypedTime::Range {
             start_year,
             end_year,
+            start_month,
+            start_day,
+            end_month,
+            end_day,
             surface,
-        } => serde_json::json!({
-            "kind": "range",
-            "start": start_year.to_string(),
-            "end": end_year.to_string(),
-            "precision": "year",
-            "calendar": "gregorian",
-            "surface": surface,
-        }),
+        } => {
+            let precision = if start_day.is_some() && end_day.is_some() {
+                "day"
+            } else if start_month.is_some() || end_month.is_some() {
+                "month"
+            } else {
+                "year"
+            };
+            serde_json::json!({
+                "kind": "range",
+                "start": format_exact_start(*start_year, *start_month, *start_day),
+                "end": format_exact_start(*end_year, *end_month, *end_day),
+                "precision": precision,
+                "calendar": "gregorian",
+                "surface": surface,
+            })
+        }
         TypedTime::Approx { year, surface } => serde_json::json!({
             "kind": "approx",
             "start": year.to_string(),
@@ -806,7 +1179,12 @@ pub fn start_time_from_typed(time: &TypedTime) -> Option<chrono::DateTime<chrono
         TypedTime::Exact {
             year, month, day, ..
         } => utc_ymd(*year, month.unwrap_or(1), day.unwrap_or(1)),
-        TypedTime::Range { start_year, .. } => utc_ymd(*start_year, 1, 1),
+        TypedTime::Range {
+            start_year,
+            start_month,
+            start_day,
+            ..
+        } => utc_ymd(*start_year, start_month.unwrap_or(1), start_day.unwrap_or(1)),
         TypedTime::Approx { year, .. } => utc_ymd(*year, 1, 1),
         TypedTime::Unknown { .. } => None,
     }

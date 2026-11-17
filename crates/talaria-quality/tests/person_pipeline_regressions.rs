@@ -160,6 +160,10 @@ fn time_json_kind_never_uses_precision_as_kind() {
         TypedTime::Range {
             start_year: 1800,
             end_year: 1810,
+            start_month: None,
+            start_day: None,
+            end_month: None,
+            end_day: None,
             surface: Some("1800–1810".into()),
         },
         TypedTime::Approx {

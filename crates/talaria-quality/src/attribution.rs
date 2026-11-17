@@ -2,6 +2,7 @@
 //! Subject attribution for events extracted from followed vs biography pages.
 
 use crate::gates::{GateDecision, RejectionCode};
+use crate::model::ParticipantRole;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AttributionMatch {
@@ -10,6 +11,8 @@ pub enum AttributionMatch {
     TitleSubjectMatch,
     StructuredParticipantMatch,
     FollowedMilitaryAction,
+    /// The page is about an action, but the passage does not show the subject acting.
+    MentionedNotActing,
     CoreferenceMatch,
     /// The subject name is a comparison. Another person performs the action.
     Comparison,
@@ -34,6 +37,92 @@ fn is_military_action_type(event_type: &str) -> bool {
         "battle" | "siege" | "military_campaign" | "surrender" | "retreat"
     )
 }
+
+fn is_agreement_type(event_type: &str) -> bool {
+    matches!(event_type, "treaty" | "diplomatic")
+}
+
+fn is_role_bearing_action(event_type: &str) -> bool {
+    is_military_action_type(event_type) || is_agreement_type(event_type)
+}
+
+/// The role the passage actually gives the subject. A nearby name is not a role.
+pub fn demonstrated_role(quote: &str, subject: &str) -> Option<ParticipantRole> {
+    let folded = fold_case(quote);
+    let name = fold_case(subject);
+    let token = name.split_whitespace().next().unwrap_or(name.as_str());
+    if token.chars().count() < 4 || !contains_word(&folded, token) {
+        return None;
+    }
+    if is_signatory(&folded, token) {
+        return Some(ParticipantRole::Signatory);
+    }
+    if cue_before(&folded, token, &["command of", "commanded by", "under", "by"])
+        || folded.contains(&format!("{token}'"))
+    {
+        return Some(ParticipantRole::Commander);
+    }
+    if cue_after(&folded, token, &["defeated", "fought", "attacked"]) {
+        return Some(ParticipantRole::Participant);
+    }
+    if cue_before(&folded, token, &["addressed to", "wrote to"]) {
+        return Some(ParticipantRole::Addressee);
+    }
+    None
+}
+
+fn is_signatory(hay: &str, name: &str) -> bool {
+    let mentions_signing = hay.contains("signed") || hay.contains("signe") || hay.contains("truce");
+    mentions_signing
+        && (hay.contains(&format!("and {name}"))
+            || hay.contains(&format!("{name} signed"))
+            || hay.contains(&format!("signed by {name}"))
+            || hay.contains(&format!("signe par {name}")))
+}
+
+fn cue_before(hay: &str, name: &str, cues: &[&str]) -> bool {
+    let Some(name_at) = word_at(hay, name) else {
+        return false;
+    };
+    let window_start = name_at.saturating_sub(24);
+    let window = &hay[window_start..name_at];
+    cues.iter().any(|cue| window.contains(cue))
+}
+
+fn cue_after(hay: &str, name: &str, cues: &[&str]) -> bool {
+    let Some(name_at) = word_at(hay, name) else {
+        return false;
+    };
+    let after = &hay[name_at + name.len()..];
+    let window = &after[..after.len().min(24)];
+    cues.iter().any(|cue| window.contains(cue))
+}
+
+fn word_at(hay: &str, word: &str) -> Option<usize> {
+    hay.match_indices(word).find_map(|(index, _)| {
+        contains_word(&hay[index..], word).then_some(index)
+    })
+}
+
+fn contains_word(hay: &str, word: &str) -> bool {
+    if word.is_empty() {
+        return false;
+    }
+    hay.match_indices(word).any(|(index, _)| {
+        let before = hay[..index]
+            .chars()
+            .next_back()
+            .map(|c| !c.is_alphabetic())
+            .unwrap_or(true);
+        let after = hay[index + word.len()..]
+            .chars()
+            .next()
+            .map(|c| !c.is_alphabetic())
+            .unwrap_or(true);
+        before && after
+    })
+}
+
 
 fn fold_case(s: &str) -> String {
     s.to_lowercase()
@@ -84,9 +173,15 @@ pub fn classify_attribution(input: &AttributionInput<'_>) -> AttributionMatch {
 
     if input.military_subject
         && input.from_followed_page
-        && is_military_action_type(input.event_type)
+        && is_role_bearing_action(input.event_type)
     {
-        return AttributionMatch::FollowedMilitaryAction;
+        return match demonstrated_role(input.quote, input.subject) {
+            Some(_) if is_military_action_type(input.event_type) => {
+                AttributionMatch::FollowedMilitaryAction
+            }
+            Some(_) => AttributionMatch::DirectNameMatch,
+            None => AttributionMatch::MentionedNotActing,
+        };
     }
 
     if !input.from_followed_page {
@@ -170,7 +265,9 @@ fn subject_is_only_a_comparison(quote: &str, subject: &str) -> bool {
 
 pub fn attribution_gate_decision(m: AttributionMatch) -> GateDecision {
     match m {
-        AttributionMatch::CoreferenceMatch => GateDecision::NeedsReview,
+        AttributionMatch::MentionedNotActing | AttributionMatch::CoreferenceMatch => {
+            GateDecision::NeedsReview
+        }
         AttributionMatch::Comparison => {
             GateDecision::Reject(vec![RejectionCode::SubjectUsedAsComparison])
         }
@@ -283,7 +380,7 @@ mod tests {
     }
 
     #[test]
-    fn military_followed_battle_page_is_auto_accept() {
+    fn a_followed_battle_without_the_subject_role_stays_in_review() {
         let m = classify_attribution(&AttributionInput {
             subject: "Napoleon",
             aliases: &[],
@@ -295,8 +392,89 @@ mod tests {
             role_supported_by_evidence: false,
             military_subject: true,
         });
-        assert_eq!(m, AttributionMatch::FollowedMilitaryAction);
-        assert!(auto_accept_attribution(m));
+        assert_eq!(m, AttributionMatch::MentionedNotActing);
+        assert!(!auto_accept_attribution(m));
+        assert!(matches!(
+            attribution_gate_decision(m),
+            GateDecision::NeedsReview
+        ));
+    }
+
+    #[test]
+    fn arcole_names_his_army_ceva_names_augereau_and_tolentino_names_murat() {
+        let arcole = classify_attribution(&AttributionInput {
+            subject: "Napoleon",
+            aliases: &["Napoleon Bonaparte"],
+            quote: "The battle saw a bold maneuver by Napoleon Bonaparte's French Army of Italy.",
+            page_title: "Battle of Arcole",
+            event_type: "battle",
+            from_followed_page: true,
+            structured_source: false,
+            role_supported_by_evidence: true,
+            military_subject: true,
+        });
+        assert_eq!(arcole, AttributionMatch::FollowedMilitaryAction);
+        assert_eq!(
+            demonstrated_role(
+                "The battle saw a bold maneuver by Napoleon Bonaparte's French Army of Italy.",
+                "Napoleon"
+            ),
+            Some(ParticipantRole::Commander)
+        );
+
+        let ceva = classify_attribution(&AttributionInput {
+            subject: "Napoleon",
+            aliases: &[],
+            quote: "The Battle of Ceva was fought by the French under General Pierre Augereau.",
+            page_title: "Battle of Ceva",
+            event_type: "battle",
+            from_followed_page: true,
+            structured_source: false,
+            role_supported_by_evidence: false,
+            military_subject: true,
+        });
+        assert_eq!(ceva, AttributionMatch::MentionedNotActing);
+
+        let tolentino = classify_attribution(&AttributionInput {
+            subject: "Napoleon",
+            aliases: &[],
+            quote: "The Battle of Tolentino was fought by the Napoleonic King of Naples Joachim Murat.",
+            page_title: "Battle of Tolentino",
+            event_type: "battle",
+            from_followed_page: true,
+            structured_source: false,
+            role_supported_by_evidence: false,
+            military_subject: true,
+        });
+        assert_eq!(tolentino, AttributionMatch::MentionedNotActing);
+        assert_eq!(
+            demonstrated_role(
+                "The Battle of Tolentino was fought by the Napoleonic King of Naples Joachim Murat.",
+                "Napoleon"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn a_signed_truce_names_the_signatory_not_every_mentioned_treaty() {
+        let cherasco = demonstrated_role(
+            "The Armistice of Cherasco was a truce signed at Cherasco on 28 April 1796 between Victor Amadeus III of Sardinia and Napoleon Bonaparte.",
+            "Napoleon",
+        );
+        assert_eq!(cherasco, Some(ParticipantRole::Signatory));
+        let campo = classify_attribution(&AttributionInput {
+            subject: "Napoleon",
+            aliases: &[],
+            quote: "The Treaty of Campo Formio was a peace treaty signed on 17 October 1797 between the French Republic and Austria.",
+            page_title: "Treaty of Campo Formio",
+            event_type: "treaty",
+            from_followed_page: true,
+            structured_source: false,
+            role_supported_by_evidence: false,
+            military_subject: true,
+        });
+        assert_eq!(campo, AttributionMatch::MentionedNotActing);
     }
 
     #[test]

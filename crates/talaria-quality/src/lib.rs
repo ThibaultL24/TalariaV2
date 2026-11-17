@@ -30,8 +30,8 @@ pub use assertion::{
     EXTRACTOR_EPISTEMIC_STATUS,
 };
 pub use attribution::{
-    attribution_gate_decision, auto_accept_attribution, classify_attribution, AttributionInput,
-    AttributionMatch,
+    attribution_gate_decision, auto_accept_attribution, classify_attribution, demonstrated_role,
+    AttributionInput, AttributionMatch,
 };
 pub use context_year::{
     approx_typed_time, infer_approximate_year, is_approx_eligible_type, local_context_window,

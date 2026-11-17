@@ -29,6 +29,21 @@ describe("event display keeps the date out of the title", () => {
     expect(localizedEventTitle(battle(), "fr")).toBe("Bataille · Mondovì");
   });
 
+  test("a siege keeps both bounds", () => {
+    const siege = battle({
+      id: "mantua",
+      event_type: "siege",
+      title: "Siege of Mantua",
+      time: {
+        kind: "range",
+        precision: "day",
+        start: "1796-06-04",
+        end: "1797-02-02",
+      },
+    });
+    expect(eventDate(siege, "en")).toBe("1796-06-04 – 1797-02-02");
+  });
+
   test("the frieze date follows the typed day", () => {
     expect(eventDate(battle(), "fr")).toBe("21 avril 1796");
     expect(eventDate(battle(), "en")).toBe("21 April 1796");

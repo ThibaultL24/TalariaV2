@@ -69,6 +69,7 @@ fn attribution_label(m: AttributionMatch) -> &'static str {
         AttributionMatch::TitleSubjectMatch => "title_subject_match",
         AttributionMatch::StructuredParticipantMatch => "structured_participant_match",
         AttributionMatch::FollowedMilitaryAction => "followed_military_action",
+        AttributionMatch::MentionedNotActing => "mentioned_not_acting",
         AttributionMatch::CoreferenceMatch => "coreference_match",
         AttributionMatch::Comparison => "subject_used_as_comparison",
         AttributionMatch::Unattributed => "unattributed",
@@ -392,11 +393,19 @@ fn event_time(
         ClauseTime::Range {
             start_year,
             end_year,
+            start_month,
+            start_day,
+            end_month,
+            end_day,
             surface,
         } => (
             TypedTime::Range {
                 start_year,
                 end_year,
+                start_month,
+                start_day,
+                end_month,
+                end_day,
                 surface: Some(surface),
             },
             "range",
@@ -698,6 +707,265 @@ mod tests {
         .unwrap();
         assert!((lat - 44.3833).abs() < 0.01, "lat {lat}");
         assert!((lon - 7.8167).abs() < 0.01, "lon {lon}");
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn reviewed_italian_events_persist_once_on_a_fresh_database(pool: sqlx::PgPool) {
+        let entity_id = talaria_store::ensure_subject_entity(&pool, "Q517", "Napoleon")
+            .await
+            .unwrap();
+        let mut ctx = GateContext {
+            subject_birth_year: Some(1769),
+            subject_death_year: Some(1821),
+            has_active_birth: true,
+            has_active_death: true,
+            fingerprint_exists: false,
+            cross_clause_join_detected: false,
+            place_entity_kind: None,
+            subject_confirmed_alive: false,
+        };
+        let cases = [
+            (
+                "https://en.wikipedia.org/wiki/Battle_of_Arcole",
+                "Battle of Arcole",
+                "The Battle of Arcole (15–17 November 1796) was fought southeast of Verona. The battle saw a bold maneuver by Napoleon Bonaparte's French Army of Italy.",
+                "battle",
+                "Arcole",
+                "Battle of Arcole",
+                true,
+            ),
+            (
+                "https://en.wikipedia.org/wiki/Battle_of_Castiglione",
+                "Battle of Castiglione",
+                "The Battle of Castiglione saw the French Army of Italy under General Napoleon Bonaparte attack the Austrian army on 5 August 1796.",
+                "battle",
+                "Castiglione",
+                "Battle of Castiglione",
+                true,
+            ),
+            (
+                "https://en.wikipedia.org/wiki/Siege_of_Mantua_(1796%E2%80%931797)",
+                "Siege of Mantua",
+                "The siege of Mantua lasted from 4 June 1796 to 2 February 1797 under the overall command of Napoleon Bonaparte.",
+                "siege",
+                "Mantua",
+                "Siege of Mantua",
+                true,
+            ),
+            (
+                "https://en.wikipedia.org/wiki/Armistice_of_Cherasco",
+                "Armistice of Cherasco",
+                "The Armistice of Cherasco was a truce signed at Cherasco on 28 April 1796 between Victor Amadeus III of Sardinia and Napoleon Bonaparte.",
+                "diplomatic",
+                "Cherasco",
+                "Armistice of Cherasco",
+                true,
+            ),
+            (
+                "https://en.wikipedia.org/wiki/Second_Battle_of_Dego",
+                "Second Battle of Dego",
+                "The Second Battle of Dego was fought on 14 and 15 April 1796 near Dego.",
+                "battle",
+                "Dego",
+                "Second Battle of Dego",
+                false,
+            ),
+            (
+                "https://en.wikipedia.org/wiki/Treaty_of_Campo_Formio",
+                "Treaty of Campo Formio",
+                "The Treaty of Campo Formio was a peace treaty signed on 17 October 1797 between the French Republic and Austria.",
+                "treaty",
+                "Campo Formio",
+                "Treaty of Campo Formio",
+                false,
+            ),
+            (
+                "https://en.wikipedia.org/wiki/Battle_of_Ceva",
+                "Battle of Ceva",
+                "The Battle of Ceva was fought by the French under General Pierre Augereau.",
+                "battle",
+                "Ceva",
+                "Battle of Ceva",
+                false,
+            ),
+            (
+                "https://en.wikipedia.org/wiki/Battle_of_Tolentino",
+                "Battle of Tolentino",
+                "The Battle of Tolentino was fought by the Napoleonic King of Naples Joachim Murat.",
+                "battle",
+                "Tolentino",
+                "Battle of Tolentino",
+                false,
+            ),
+        ];
+        let before: i64 =
+            sqlx::query_scalar("SELECT count(*)::bigint FROM canonical_events WHERE entity_id = $1")
+                .bind(entity_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(before, 0);
+
+        for (url, title, quote, event_type, place, object, publish) in cases {
+            let raw_id = talaria_store::upsert_raw_wikipedia_document(
+                &pool, url, title, "en", quote,
+            )
+            .await
+            .unwrap();
+            let item = GroundedItem {
+                lane: talaria_quality::Lane::Fact,
+                event_type: event_type.into(),
+                role: if event_type == "diplomatic" || event_type == "treaty" {
+                    "signed".into()
+                } else {
+                    "commanded".into()
+                },
+                year: Some(1796),
+                place_surface: Some(place.into()),
+                summary: quote.into(),
+                quoted_text: quote.into(),
+                confidence: 0.9,
+            };
+            let outcome = persist_fact_item(
+                &pool,
+                entity_id,
+                "Napoleon",
+                &item,
+                &mut ctx,
+                PersistMeta {
+                    raw_document_id: raw_id,
+                    coords: None,
+                    primary_object: Some(object),
+                    source_locator: url,
+                    page_title: title,
+                    from_followed_page: true,
+                    structured_source: false,
+                    military_subject: true,
+                    aliases: &[],
+                    document_text: None,
+                    section_heading: None,
+                },
+            )
+            .await
+            .unwrap();
+            assert_eq!(
+                matches!(outcome, PersistOutcome::Canonical { inserted: true, .. }),
+                publish,
+                "{title}"
+            );
+        }
+
+        let after: i64 =
+            sqlx::query_scalar("SELECT count(*)::bigint FROM canonical_events WHERE entity_id = $1 AND is_active")
+                .bind(entity_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(after, 4);
+        let mantua: serde_json::Value = sqlx::query_scalar(
+            "SELECT time_json FROM canonical_events WHERE place_label = 'Mantua' AND entity_id = $1",
+        )
+        .bind(entity_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(mantua["kind"], "range");
+        assert_eq!(mantua["start"], "1796-06-04");
+        assert_eq!(mantua["end"], "1797-02-02");
+        assert_eq!(mantua["precision"], "day");
+        let castiglione: serde_json::Value = sqlx::query_scalar(
+            "SELECT time_json FROM canonical_events WHERE place_label = 'Castiglione' AND entity_id = $1",
+        )
+        .bind(entity_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(castiglione["kind"], "exact");
+        assert_eq!(castiglione["start"], "1796-08-05");
+        let held_back: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint FROM canonical_events WHERE entity_id = $1 AND place_label IN ('Dego', 'Campo Formio', 'Ceva', 'Tolentino')",
+        )
+        .bind(entity_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(held_back, 0);
+        let unmapped: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint FROM canonical_events WHERE entity_id = $1 AND map_eligible AND geom IS NULL",
+        )
+        .bind(entity_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(unmapped, 0);
+
+        for (url, title, quote, event_type, place, object, _) in cases {
+            let raw_id = talaria_store::upsert_raw_wikipedia_document(
+                &pool, url, title, "en", quote,
+            )
+            .await
+            .unwrap();
+            let item = GroundedItem {
+                lane: talaria_quality::Lane::Fact,
+                event_type: event_type.into(),
+                role: if event_type == "diplomatic" || event_type == "treaty" {
+                    "signed".into()
+                } else {
+                    "commanded".into()
+                },
+                year: Some(1796),
+                place_surface: Some(place.into()),
+                summary: quote.into(),
+                quoted_text: quote.into(),
+                confidence: 0.9,
+            };
+            persist_fact_item(
+                &pool,
+                entity_id,
+                "Napoleon",
+                &item,
+                &mut ctx,
+                PersistMeta {
+                    raw_document_id: raw_id,
+                    coords: None,
+                    primary_object: Some(object),
+                    source_locator: url,
+                    page_title: title,
+                    from_followed_page: true,
+                    structured_source: false,
+                    military_subject: true,
+                    aliases: &[],
+                    document_text: None,
+                    section_heading: None,
+                },
+            )
+            .await
+            .unwrap();
+        }
+
+        let replayed: i64 =
+            sqlx::query_scalar("SELECT count(*)::bigint FROM canonical_events WHERE entity_id = $1 AND is_active")
+                .bind(entity_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(replayed, after);
+        let evidence: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint FROM event_evidence ee JOIN canonical_events ce ON ce.id = ee.canonical_event_id WHERE ce.entity_id = $1",
+        )
+        .bind(entity_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(evidence, 4);
+        let logical: i64 = sqlx::query_scalar(
+            "SELECT count(DISTINCT logical_event_id)::bigint FROM canonical_events WHERE entity_id = $1 AND is_active",
+        )
+        .bind(entity_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(logical, 4);
     }
 
     #[test]

@@ -143,6 +143,9 @@ function recordedDate(
   locale: "fr" | "en",
   recordedYear: (year: string) => string,
 ): string {
+  if (event.time?.kind === "range") {
+    return eventDate({ time: event.time } as Parameters<typeof eventDate>[0], locale);
+  }
   const year = event.time?.precision === "year" ? recordedYearValue(event.time.start, event.time.surface) : null;
   if (year) return recordedYear(year);
   return eventDate({ time: event.time } as Parameters<typeof eventDate>[0], locale);
