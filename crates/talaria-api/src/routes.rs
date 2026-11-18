@@ -248,7 +248,12 @@ pub struct AppState {
 }
 
 async fn health() -> Json<Value> {
-    Json(json!({ "status": "ok", "engine": "talaria" }))
+    Json(json!({
+        "status": "ok",
+        "engine": "talaria",
+        "research_writes": ingest::research_writes_enabled(),
+        "research_qid": ingest::authorized_research_qid(),
+    }))
 }
 
 async fn status(axum::extract::State(state): axum::extract::State<AppState>) -> Json<Value> {

@@ -16,6 +16,7 @@ export interface AppMessages {
   loadingMap: string;
   searchInProgress: string;
   researchUnverified: string;
+  researchWritesClosed: string;
   mapWithoutPoints: string;
   noResults: string;
   emptySearch: string;
@@ -354,6 +355,7 @@ const EN: AppMessages = {
   loadingMap: "Placing events on the map…",
   searchInProgress: "Search in progress",
   researchUnverified: "A finished search is not a verified biography. The facts shown are the ones the engine admitted. The other extracts stay in review.",
+  researchWritesClosed: "Documentary research is closed on this server. No biography is created.",
   mapWithoutPoints: "No place is precise enough to map. An empty map does not mean this person never travelled.",
   noResults: "No matches.",
   emptySearch: "Open a demo figure from the home page to explore a life.",
@@ -716,6 +718,7 @@ const FR: AppMessages = {
   loadingMap: "Placement des événements sur la carte…",
   searchInProgress: "Recherche en cours",
   researchUnverified: "Une recherche terminée n'est pas une vérification historique. Les faits affichés sont ceux que le moteur a admis. Les autres extraits restent en vérification.",
+  researchWritesClosed: "La recherche documentaire est fermée sur ce serveur. Aucune biographie n'est créée.",
   mapWithoutPoints: "Aucun lieu n'est assez précis pour être cartographié. Une carte vide ne signifie pas que cette personne n'a jamais voyagé.",
   noResults: "Aucun résultat.",
   emptySearch: "Ouvrez une figure de la démo depuis l’accueil pour explorer une vie.",

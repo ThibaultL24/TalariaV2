@@ -18,7 +18,8 @@ test("a typed name offers identities and does not start research by itself", asy
   await expect(page.getByRole("option").first()).not.toContainText("human settlement");
   await father.click();
   await expect(page.getByText("Identifiant retenu : Q38337")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Lancer la recherche" })).toBeEnabled();
+  await expect(page.getByText("La recherche documentaire est fermée sur ce serveur")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Lancer la recherche" })).toHaveCount(0);
   await expect(page).toHaveURL(/\/istoria\/?$/);
 });
 
@@ -32,40 +33,38 @@ test("a name with no Wikidata hit creates no fiche", async ({ page }) => {
   await expect(page).toHaveURL(/\/istoria\/?$/);
 });
 
-test("selecting Desbordes-Valmore starts a bounded research and keeps the fiche", async ({ page }) => {
+test("an absent person is not researched while writes are closed", async ({ page }) => {
   await page.goto("/istoria");
   const search = page.getByRole("combobox", { name: "Recherche de personnalité" });
   await search.fill("Marceline Desbordes-Valmore");
   await page.getByRole("option").filter({ hasText: "Q466987" }).first().click();
-  const research = page.getByRole("button", { name: "Lancer la recherche" });
-  if (await research.isVisible()) {
-    await expect(page.getByText("Identifiant retenu : Q466987")).toBeVisible();
-    await research.click();
-    await expect(page.getByText(/Recherche en cours ·/)).toBeVisible();
-  }
-  await page.waitForURL(/\/istoria\/[0-9a-f-]{36}/i, { timeout: 120_000 });
-  const entityUrl = page.url();
-  const entityId = entityUrl.match(/[0-9a-f-]{36}/i)?.[0];
-  const timeline = await page.request.get(
-    `/api/v1/timeline?entity_id=${entityId}&pipeline=person&limit=200`,
-  );
-  const body = await timeline.json();
-  const events = body.events as Array<{ title?: string; place_label?: string | null }>;
-  const titles = events.map((event) => event.title ?? "").join("\n");
-  const places = events.map((event) => event.place_label ?? "");
-  expect(titles).not.toContain("Hyacinthe");
-  expect(titles).not.toContain("Gallica");
-  expect(places.some((place) => place.toLowerCase().includes("criture"))).toBe(false);
-  expect(places).toContain("Lyon");
+  await expect(page.getByText("Identifiant retenu : Q466987")).toBeVisible();
+  await expect(page.getByText("La recherche documentaire est fermée sur ce serveur")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Lancer la recherche" })).toHaveCount(0);
+  await expect(page).toHaveURL(/\/istoria\/?$/);
+  const refused = await page.request.post("/api/v1/ingest/explorer", {
+    data: { subject: "Marceline Desbordes-Valmore", qid: "Q466987", live: true },
+  });
+  expect(refused.status()).toBe(403);
+});
 
+test("Napoleon opens on the timeline, the map and the sources", async ({ page }) => {
+  const health = await page.request.get("http://127.0.0.1:8081/health");
+  const healthBody = await health.json();
+  expect(healthBody.research_writes).toBe(false);
+  expect(healthBody.research_qid).toBeNull();
+  await page.goto("/istoria");
+  const search = page.getByRole("combobox", { name: "Recherche de personnalité" });
+  await search.fill("Napoleon");
+  await page.getByRole("option").filter({ hasText: "Q517" }).first().click();
+  await page.waitForURL(/\/istoria\/[0-9a-f-]{36}/i, { timeout: 60_000 });
+  const entityUrl = page.url();
   await page.goto(entityUrl.replace(/\/[^/]*$/, "/timeline"));
   await expect(page.locator("canvas").first()).toBeVisible();
   await page.goto(entityUrl.replace(/\/[^/]*$/, "/map"));
   await expect(page.locator("canvas.maplibregl-canvas")).toBeVisible();
-
-  await page.reload();
-  await expect(page.getByRole("button", { name: "Enrichir le corpus" })).toBeVisible();
-  await expect(page.getByText(/n'est pas une vérification historique/)).toBeVisible();
-  await expect(page.getByText("Biographie vérifiée")).toHaveCount(0);
-  await expect(page.getByText(/^\d+%$/)).toHaveCount(0);
+  await page.goto(entityUrl.replace(/\/[^/]*$/, "/sources"));
+  await expect(page.getByRole("heading", { name: "Documents sources" })).toBeVisible();
+  const enrich = page.getByRole("button", { name: "Enrichir le corpus" });
+  await expect(enrich).toBeDisabled();
 });

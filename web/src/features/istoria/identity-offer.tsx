@@ -7,12 +7,14 @@ export function IdentityOffer({
   locale,
   busy,
   error,
+  writesOpen,
   onResearch,
 }: {
   identity: SearchSuggestion;
   locale: "fr" | "en";
   busy: boolean;
   error?: string | null;
+  writesOpen: boolean;
   onResearch: () => void;
 }) {
   const decision = researchDecision(identity);
@@ -32,7 +34,14 @@ export function IdentityOffer({
             : "No reliable Wikidata identifier. No record is created."}
         </p>
       )}
-      {decision === "offer" && (
+      {decision === "offer" && !writesOpen && (
+        <p>
+          {fr
+            ? "La recherche documentaire est fermée sur ce serveur. Aucune biographie n'est créée."
+            : "Documentary research is closed on this server. No biography is created."}
+        </p>
+      )}
+      {decision === "offer" && writesOpen && (
         <>
           <p>
             {fr

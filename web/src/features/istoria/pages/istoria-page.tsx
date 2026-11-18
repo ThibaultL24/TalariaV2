@@ -40,6 +40,24 @@ export function IstoriaPage() {
     openPerson,
   } = useExperienceSubject("istoria");
   const { t, locale } = useI18n();
+  const [writesOpen, setWritesOpen] = useState(false);
+  const [researchQid, setResearchQid] = useState<string | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/health", { signal: controller.signal })
+      .then((response) => response.json())
+      .then((body: { research_writes?: boolean; research_qid?: string | null }) => {
+        setWritesOpen(body.research_writes === true);
+        setResearchQid(typeof body.research_qid === "string" ? body.research_qid : null);
+      })
+      .catch(() => {
+        setWritesOpen(false);
+        setResearchQid(null);
+      });
+    return () => controller.abort();
+  }, []);
+  const heldResearchOpen =
+    writesOpen && researchQid !== null && picker.heldIdentity?.qid === researchQid;
   const overviewQuery = useQuery({
     queryKey: ["entity", entityId, "overview", revision],
     enabled: Boolean(entityId),
@@ -49,6 +67,8 @@ export function IstoriaPage() {
     queryFn: ({ signal }) => getEntityView<EntityOverview>(entityId, "overview", new URLSearchParams(), signal),
   });
   const overview = overviewQuery.data;
+  const entityResearchOpen =
+    writesOpen && researchQid !== null && overview?.entity.qid === researchQid;
   useEffect(() => {
     if (!entityId) return;
     rememberEntity(entityId, overview?.entity.label, overview?.entity.qid);
@@ -284,7 +304,10 @@ export function IstoriaPage() {
               locale={locale}
               busy={picker.ingestBusy}
               error={picker.error}
-              onResearch={() => picker.requestResearch()}
+              writesOpen={heldResearchOpen}
+              onResearch={() => {
+                if (heldResearchOpen) picker.requestResearch();
+              }}
             />
           )}
           {!entityId && !picker.heldIdentity && !picker.ingestBusy && (
@@ -298,13 +321,16 @@ export function IstoriaPage() {
         <p>
           <button
             type="button"
-            onClick={() => picker.requestResearch({
-              label: overview.entity.label,
-              qid: overview.entity.qid,
-              known_locally: true,
-              entity_id: entityId,
-            })}
-            disabled={picker.ingestBusy}
+            onClick={() => {
+              if (!entityResearchOpen) return;
+              picker.requestResearch({
+                label: overview.entity.label,
+                qid: overview.entity.qid,
+                known_locally: true,
+                entity_id: entityId,
+              });
+            }}
+            disabled={!entityResearchOpen || picker.ingestBusy}
           >
             {locale === "fr" ? "Enrichir le corpus" : "Enrich the corpus"}
           </button>

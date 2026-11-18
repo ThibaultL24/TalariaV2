@@ -344,11 +344,46 @@ pub async fn start_ingest(
     start_explorer_ingest(State(state), Json(body)).await
 }
 
+/// Documentary research writes only when the process is started with
+/// `TALARIA_RESEARCH_WRITES=1`. The default refuses every ingest POST.
+pub fn research_writes_enabled() -> bool {
+    std::env::var("TALARIA_RESEARCH_WRITES").ok().as_deref() == Some("1")
+}
+
+/// The single Wikidata identity allowed to be researched, when one has been named.
+/// An empty or malformed value authorizes nobody.
+pub fn authorized_research_qid() -> Option<String> {
+    let raw = std::env::var("TALARIA_RESEARCH_QID").ok()?;
+    let qid = raw.trim().to_ascii_uppercase();
+    let digits = qid.strip_prefix('Q')?;
+    if digits.is_empty() || digits.len() > 23 || !digits.chars().all(|ch| ch.is_ascii_digit()) {
+        return None;
+    }
+    Some(qid)
+}
+
+/// Writes and the named identity are both required. Any other person is refused.
+pub fn research_identity_allowed(qid: Option<&str>) -> bool {
+    let Some(allowed) = authorized_research_qid() else {
+        return false;
+    };
+    research_writes_enabled() && qid.is_some_and(|requested| requested.trim().to_ascii_uppercase() == allowed)
+}
+
 async fn start_lane_ingest(
     state: AppState,
     body: StartIngestBody,
     lane: &str,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if !research_writes_enabled() {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "research_writes_disabled",
+                "detail": "La recherche documentaire n'écrit pas dans cette base.",
+            })),
+        ));
+    }
     let subject = body.subject.trim().to_string();
     if subject.len() < 2 {
         return Err((
@@ -379,6 +414,15 @@ async fn start_lane_ingest(
                 Json(json!({ "error": "invalid_wikidata_qid" })),
             ));
         }
+    }
+    if !research_identity_allowed(body.qid.as_deref()) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "research_identity_not_authorized",
+                "detail": "Cette identité n'est pas autorisée pour la recherche documentaire.",
+            })),
+        ));
     }
     body.wiki_lang = Some(resolve_wiki_lang(body.wiki_lang.as_deref(), &state.config.wiki_lang));
     body.max_documents = Some(resolve_max_documents(body.max_documents));
@@ -853,8 +897,8 @@ pub fn spawn_ingest_workers(
     config: talaria_core::AppConfig,
     jobs: IngestJobMap,
 ) {
-    if config.offline_only {
-        tracing::info!("persistent ingest worker disabled by offline_only");
+    if config.offline_only || !research_writes_enabled() || authorized_research_qid().is_none() {
+        tracing::info!("persistent ingest worker not started");
         return;
     }
     let concurrency = std::env::var("TALARIA_INGEST_WORKERS")
@@ -1212,6 +1256,37 @@ mod tests {
         assert!(capacity_open(0));
         assert!(capacity_open(MAX_CONCURRENT_INGESTS - 1));
         assert!(!capacity_open(MAX_CONCURRENT_INGESTS));
+    }
+
+    #[test]
+    fn research_writes_stay_closed_unless_the_process_is_opened() {
+        let previous = std::env::var("TALARIA_RESEARCH_WRITES").ok();
+        unsafe { std::env::remove_var("TALARIA_RESEARCH_WRITES") };
+        assert!(!research_writes_enabled());
+        unsafe { std::env::set_var("TALARIA_RESEARCH_WRITES", "true") };
+        assert!(!research_writes_enabled());
+        unsafe { std::env::set_var("TALARIA_RESEARCH_WRITES", "1") };
+        assert!(research_writes_enabled());
+        let previous_qid = std::env::var("TALARIA_RESEARCH_QID").ok();
+        unsafe { std::env::remove_var("TALARIA_RESEARCH_QID") };
+        assert!(!research_identity_allowed(Some("Q466987")));
+        unsafe { std::env::set_var("TALARIA_RESEARCH_QID", "not-a-qid") };
+        assert!(authorized_research_qid().is_none());
+        unsafe { std::env::set_var("TALARIA_RESEARCH_QID", "q466987") };
+        assert_eq!(authorized_research_qid().as_deref(), Some("Q466987"));
+        assert!(research_identity_allowed(Some("Q466987")));
+        assert!(!research_identity_allowed(Some("Q517")));
+        assert!(!research_identity_allowed(None));
+        unsafe { std::env::remove_var("TALARIA_RESEARCH_WRITES") };
+        assert!(!research_identity_allowed(Some("Q466987")));
+        match previous {
+            Some(value) => unsafe { std::env::set_var("TALARIA_RESEARCH_WRITES", value) },
+            None => unsafe { std::env::remove_var("TALARIA_RESEARCH_WRITES") },
+        }
+        match previous_qid {
+            Some(value) => unsafe { std::env::set_var("TALARIA_RESEARCH_QID", value) },
+            None => unsafe { std::env::remove_var("TALARIA_RESEARCH_QID") },
+        }
     }
 
     #[test]
