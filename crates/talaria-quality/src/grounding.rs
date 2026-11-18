@@ -175,7 +175,7 @@ fn contains_name_token(haystack_lower: &str, needle_lower: &str) -> bool {
         return false;
     }
     haystack_lower
-        .split(|c: char| !c.is_alphabetic() && c != '-' && c != '\'')
+        .split(|c: char| !c.is_alphabetic() && c != '-')
         .filter(|w| !w.is_empty())
         .any(|w| w == needle_lower)
 }

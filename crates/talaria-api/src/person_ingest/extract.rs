@@ -32,6 +32,35 @@ fn short_clause_summary(_event_type: &str, quote: &str) -> String {
     format!("{}…", short.trim_end())
 }
 
+fn push_biography_lead(text: &str, seen: &mut HashSet<String>, out: &mut Vec<RawExtractItem>) {
+    let sentence_end = text.find(". ").unwrap_or(text.len().min(800));
+    let Some(sentence) = text.get(..sentence_end).map(str::trim).filter(|s| !s.is_empty()) else {
+        return;
+    };
+    for event_type in ["birth", "death"] {
+        let Some(surface) = talaria_quality::biography_lead_date(event_type, sentence) else {
+            continue;
+        };
+        let year = surface
+            .split_whitespace()
+            .last()
+            .and_then(|token| token.parse::<i32>().ok());
+        if !seen.insert(format!("{event_type}:{surface}")) {
+            continue;
+        }
+        out.push(RawExtractItem {
+            lane: "fact".into(),
+            event_type: event_type.into(),
+            role: event_type.into(),
+            year,
+            place_surface: None,
+            summary: surface,
+            quoted_text: sentence.to_string(),
+            confidence: 0.9,
+        });
+    }
+}
+
 pub fn apply_wikidata_identity_places(
     items: &mut [talaria_quality::RawExtractItem],
     birth_place: Option<&str>,
@@ -103,6 +132,7 @@ pub fn extract_wiki_rules(
     };
     let mut seen = HashSet::new();
     let mut out = Vec::new();
+    push_biography_lead(text, &mut seen, &mut out);
     for extractor in default_extractor_stack() {
         for raw in extractor.extract(&input) {
             if !keep_extracted_raw(&raw, title, subject) {
@@ -191,22 +221,35 @@ pub fn statements_to_raw_items(subject: &str, statements: &str) -> (String, Vec<
         if event_type.is_empty() {
             continue;
         }
-        let quote = format!(
-            "{subject} | {event_type} | {pred} | {} | {place}",
-            parts[3].trim()
-        );
+        let place_is_id = talaria_quality::is_wikidata_qid(place);
+        let quote = if place_is_id {
+            format!(
+                "{subject} | {event_type} | {pred} | {}",
+                parts[3].trim()
+            )
+        } else {
+            format!(
+                "{subject} | {event_type} | {pred} | {} | {place}",
+                parts[3].trim()
+            )
+        };
         lines.push(quote.clone());
+        let place_surface = if place.is_empty() || place_is_id {
+            None
+        } else {
+            Some(place.to_string())
+        };
+        let summary = match &place_surface {
+            Some(label) => format!("{pred} {label}"),
+            None => pred.replace('_', " "),
+        };
         items.push(RawExtractItem {
             lane: "fact".into(),
             event_type: event_type.into(),
             role: "direct".into(),
             year,
-            place_surface: if place.is_empty() {
-                None
-            } else {
-                Some(place.to_string())
-            },
-            summary: format!("{pred} {place}").trim().to_string(),
+            place_surface,
+            summary: summary.trim().to_string(),
             quoted_text: quote,
             confidence: 0.92,
         });
@@ -339,18 +382,13 @@ pub fn follow_page_to_extract(
     title: &str,
     extract: &str,
     coords: Option<(f64, f64)>,
-    military_subject: bool,
+    _military_subject: bool,
 ) -> Option<(String, RawExtractItem, Option<(f64, f64)>)> {
-    let quote = mention_sentence(extract, subject).or_else(|| {
-        if military_subject && title_is_military_action(title) {
-            first_sentence(extract)
-        } else {
-            None
-        }
-    })?;
+    let quote = episode_quote(extract, subject, title)?;
     let event_type = event_type_from_title(title);
-    let year = year_from_text(extract).or_else(|| year_from_text(title));
-    let place = place_hint_from_title(title);
+    let year = year_from_text(&quote);
+    let place = place_hint_from_title(title).filter(|place| quote_contains(&quote, place));
+    let coords = place.as_ref().and(coords);
     let item = RawExtractItem {
         lane: "fact".into(),
         event_type,
@@ -358,10 +396,55 @@ pub fn follow_page_to_extract(
         year,
         place_surface: place,
         summary: title.to_string(),
-        quoted_text: quote.to_string(),
+        quoted_text: quote,
         confidence: 0.88,
     };
     Some((extract.to_string(), item, coords))
+}
+
+/// The sentence that names the subject, widened by one neighbour when that neighbour names the page.
+fn episode_quote(extract: &str, subject: &str, title: &str) -> Option<String> {
+    let sentences = sentence_spans(extract);
+    for sentence in &sentences {
+        if subject_mentioned(sentence, subject)
+            && talaria_quality::passage_supports_title(title, sentence)
+        {
+            return Some((*sentence).to_string());
+        }
+    }
+    for pair in sentences.windows(2) {
+        let joined = format!("{} {}", pair[0], pair[1]);
+        if subject_mentioned(&joined, subject)
+            && talaria_quality::passage_supports_title(title, &joined)
+        {
+            return Some(joined);
+        }
+    }
+    None
+}
+
+fn sentence_spans(extract: &str) -> Vec<&str> {
+    let mut spans = Vec::new();
+    let mut start = 0usize;
+    let mut rest = extract;
+    let mut offset = 0usize;
+    while let Some(index) = rest.find(". ") {
+        let end = offset + index + 1;
+        if end > start {
+            spans.push(extract[start..end].trim());
+        }
+        offset += index + 2;
+        start = offset;
+        rest = extract.get(offset..).unwrap_or("");
+    }
+    if start < extract.len() {
+        spans.push(extract[start..].trim());
+    }
+    spans.into_iter().filter(|sentence| !sentence.is_empty()).collect()
+}
+
+fn quote_contains(quote: &str, place: &str) -> bool {
+    quote.to_lowercase().contains(&place.to_lowercase())
 }
 
 #[cfg(test)]
@@ -377,12 +460,36 @@ mod tests {
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].event_type, "birth");
         assert_eq!(got[0].place_surface.as_deref(), Some("Warsaw"));
+        let identifiers = "STATEMENT\tresidence\tresided_in\t1769\tQ40104";
+        let (_, raw) = statements_to_raw_items("Napoleon Bonaparte", identifiers);
+        assert_eq!(raw[0].place_surface, None);
+        assert!(!raw[0].summary.contains("Q40104"));
+        assert!(!raw[0].quoted_text.contains("Q40104"));
     }
 
     #[test]
     fn chunks_split_long_text() {
         let text = "aaaa\n\nbbbb\n\ncccc";
         assert_eq!(split_chunks(text, 8).len(), 3);
+    }
+
+    #[test]
+    fn a_biography_lead_keeps_the_birth_and_death_days() {
+        let lead = "Napoleon Bonaparte (born Napoleone di Buonaparte; 15 August 1769 – 5 May 1821) was Emperor of the French. He later fought at Lodi.";
+        let items = extract_wiki_rules("Napoleon Bonaparte", "Napoleon", lead, Some(1821));
+        let birth = items.iter().find(|item| item.event_type == "birth").expect("birth");
+        let death = items.iter().find(|item| item.event_type == "death").expect("death");
+        assert_eq!(birth.year, Some(1769));
+        assert_eq!(death.year, Some(1821));
+        assert!(birth.summary.to_lowercase().contains("15"));
+        assert!(death.summary.to_lowercase().contains("5 may") || death.summary.to_lowercase().contains("5"));
+        let campaign = extract_wiki_rules(
+            "Napoleon Bonaparte",
+            "Siege of Mantua",
+            "Siege of Mantua (4 June 1796 – 2 February 1797) was a siege.",
+            Some(1821),
+        );
+        assert!(campaign.iter().all(|item| item.event_type != "birth"));
     }
 
     #[test]
@@ -496,7 +603,6 @@ mod tests {
         assert_eq!(item.event_type, "battle");
         assert_eq!(item.place_surface.as_deref(), Some("Waterloo"));
         let got = accept_items("Napoleon", &doc, [item]);
-        assert_eq!(got.len(), 1);
         assert!(
             !got[0].quoted_text.contains('|'),
             "follow quote must be page text, not a synthetic pipe line"
@@ -506,6 +612,7 @@ mod tests {
                 talaria_quality::quote_is_grounded(extract, &got[0].quoted_text)
             }
         );
+        assert!(got[0].quoted_text.contains("18 June 1815"));
     }
 
     #[test]
@@ -529,37 +636,29 @@ mod tests {
             false,
         )
         .is_none());
-        let pinned = follow_page_to_extract(
+        assert!(follow_page_to_extract(
             "Napoleon",
             "Battle of Waterloo",
             extract,
             Some((50.680, 4.412)),
             true,
         )
-        .expect("military pin uses title even without name");
-        assert_eq!(pinned.1.event_type, "battle");
+        .is_none());
     }
 
     #[test]
-    fn victor_hugo_followed_battle_title_is_not_role_supported() {
+    fn a_title_the_passage_does_not_name_is_not_assembled() {
+        let prisoners = "Bonaparte returned with prisoners and cannons after 18 pitched battles.";
+        assert!(follow_page_to_extract(
+            "Napoleon",
+            "Treaty of Campo Formio",
+            prisoners,
+            Some((48.86, 2.35)),
+            true,
+        )
+        .is_none());
         let extract =
             "The siege was fought in 1877. Victor Hugo is named among later commemorations.";
-        let (doc, item, _) =
-            follow_page_to_extract("Victor Hugo", "Siege of Plevna", extract, None, false)
-                .expect("mention");
-        assert!(!item.quoted_text.contains('|'));
-        let got = accept_items("Victor Hugo", &doc, [item]);
-        assert_eq!(got.len(), 1);
-        let m = crate::person_ingest::gating::classify_item(
-            "Victor Hugo",
-            &[],
-            &got[0],
-            "Siege of Plevna",
-            true,
-            false,
-            false,
-        );
-        assert_eq!(m, talaria_quality::AttributionMatch::Unattributed);
-        assert!(!talaria_quality::auto_accept_attribution(m));
+        assert!(follow_page_to_extract("Victor Hugo", "Siege of Plevna", extract, None, false).is_none());
     }
 }

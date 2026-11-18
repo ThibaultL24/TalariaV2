@@ -363,10 +363,13 @@ async fn run_person_ingest_inner(
     // then Medium (battles, treaties), then Low (generic links)
     let extra = follow_cap.saturating_sub(wiki_pages);
     let mut followed = 0u32;
+    let mut fetched = wiki_pages;
+    let mut attempts = 0u32;
+    let attempt_cap = extra.saturating_mul(4).max(extra);
     let mut current_priority: Option<CrawlPriority> = None;
 
     while let Some(item) = crawl_queue.pop() {
-        if followed >= extra {
+        if followed >= extra || attempts >= attempt_cap {
             break;
         }
 
@@ -393,6 +396,8 @@ async fn run_person_ingest_inner(
             p.set_sources_pending(crawl_queue.remaining() as u32).await;
         }
 
+        attempts += 1;
+        fetched += 1;
         match ingest_follow_page(
             &pool,
             entity_id,
@@ -406,8 +411,8 @@ async fn run_person_ingest_inner(
         .await
         {
             Ok((ins, re)) => {
-                followed += 1;
                 if ins + re > 0 {
+                    followed += 1;
                     wiki_pages += 1;
                     if let Some(ref p) = progress {
                         p.increment_wiki_pages().await;
@@ -472,6 +477,9 @@ async fn run_person_ingest_inner(
         "entity_id": entity_id,
         "wikipedia_title": primary_title,
         "wiki_pages": wiki_pages,
+        "documents_fetched": fetched,
+        "documents_used": wiki_pages,
+        "follow_attempts": attempts,
         "wdqs_events": wdqs_events,
         "facts_inserted": facts_inserted,
         "facts_reinforced": facts_reinforced,

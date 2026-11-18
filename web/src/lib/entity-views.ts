@@ -151,7 +151,7 @@ export interface ChapterSuggestionView {
 export async function fetchChapterSuggestions(
   id: string,
   signal?: AbortSignal,
-): Promise<{ standing: string; published: boolean; suggestions: ChapterSuggestionView[] }> {
+): Promise<{ standing: string; published: boolean; suggestions: ChapterSuggestionView[]; periods?: ChapterSuggestionView[] }> {
   const response = await fetch(`/api/v1/entities/${encodeURIComponent(id)}/chapter-suggestions`, { signal });
   if (!response.ok) throw new Error(`Request failed (${response.status})`);
   return response.json();

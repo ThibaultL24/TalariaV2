@@ -534,6 +534,65 @@ fn ranges_overlap(a0: usize, a1: usize, b0: usize, b1: usize) -> bool {
     a0 < b1 && b0 < a1
 }
 
+/// Birth and death days written in the opening parenthesis of a biography.
+/// A campaign of one or two years is not a lifespan.
+pub fn biography_lead_date(event_type: &str, text: &str) -> Option<String> {
+    let lead = biography_lead(text)?;
+    match event_type {
+        "birth" => Some(lead.birth_surface),
+        "death" => Some(lead.death_surface),
+        _ => None,
+    }
+}
+
+struct LeadLifespan {
+    birth_surface: String,
+    death_surface: String,
+}
+
+fn biography_lead(text: &str) -> Option<LeadLifespan> {
+    let sentence_end = text.find(". ").unwrap_or(text.len());
+    let sentence = text.get(..sentence_end)?.trim();
+    let open = sentence.find('(')?;
+    if open > 90 {
+        return None;
+    }
+    let close = sentence.get(open..)?.find(')')? + open;
+    let inner = sentence.get(open + 1..close)?.trim();
+    let ClauseTime::Range {
+        start_year,
+        end_year,
+        start_day: Some(_),
+        end_day: Some(_),
+        surface,
+        ..
+    } = read_clause_time(inner)
+    else {
+        return None;
+    };
+    if end_year.saturating_sub(start_year) < 10 {
+        return None;
+    }
+    let (birth_surface, death_surface) = split_range_surface(&surface)?;
+    Some(LeadLifespan {
+        birth_surface: birth_surface.to_string(),
+        death_surface: death_surface.to_string(),
+    })
+}
+
+fn split_range_surface(surface: &str) -> Option<(&str, &str)> {
+    for separator in [" – ", " — ", " - ", "–", "—"] {
+        if let Some((left, right)) = surface.split_once(separator) {
+            let left = left.trim();
+            let right = right.trim();
+            if !left.is_empty() && !right.is_empty() {
+                return Some((left, right));
+            }
+        }
+    }
+    None
+}
+
 pub fn read_clause_time(text: &str) -> ClauseTime {
     let masked = mask_thousands(text);
     if let Some(span) = calendar_clause(&masked) {

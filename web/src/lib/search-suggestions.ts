@@ -12,6 +12,19 @@ function fold(value: string): string {
   return value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim().replace(/\s+/g, " ");
 }
 
+function isEventPhrase(label: string): boolean {
+  return /\b(battle|retreat|army|attack|treaty|siege|campaign|plan of)\b/i.test(label) || label.length > 80;
+}
+
+function isNotAPersonRecord(item: SearchSuggestion): boolean {
+  const label = item.label.trim();
+  if (/^(avenue|rue|boulevard|chemin|quai|impasse|place|road|street)\b/i.test(label)) return true;
+  const hasQid = Boolean(item.qid && /^Q\d+$/.test(item.qid));
+  if (isEventPhrase(label) && !hasQid) return true;
+  if (!hasQid && fold(label) === fold(item.description ?? label)) return true;
+  return false;
+}
+
 function isRecordedPlaceOrName(description?: string | null): boolean {
   const text = (description ?? "").toLowerCase();
   return /human settlement|family name|given name|genus|higher education|city in|county seat|wikimedia|taxon|\bband\b/.test(text);
@@ -43,6 +56,7 @@ export function rankPersonSuggestions(
   if (q.length < 2) return [];
   const candidates = items
     .filter((item) => !isPersonSearchNoise(item.label))
+    .filter((item) => !isNotAPersonRecord(item))
     .sort((a, b) =>
       Number(isRecordedPlaceOrName(a.description)) - Number(isRecordedPlaceOrName(b.description)) ||
       relevance(q, a.label) - relevance(q, b.label) ||

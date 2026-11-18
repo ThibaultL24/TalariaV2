@@ -36,6 +36,7 @@ pub fn is_plausible_place_label(raw: &str) -> bool {
         || lower.starts_with("his ")
         || lower.starts_with("her ")
         || lower.starts_with("their ")
+        || lower.starts_with("its ")
         || lower.starts_with("have ")
         || lower.starts_with("fight")
         || lower.starts_with("chapter")

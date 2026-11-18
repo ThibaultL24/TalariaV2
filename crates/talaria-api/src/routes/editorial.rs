@@ -303,6 +303,45 @@ pub async fn chapter_suggestions(
         .map(|(kind, count)| (kind.as_str(), *count as usize))
         .collect();
     let suggestions = talaria_quality::suggest_chapters(&counts);
+    let moments: Result<Vec<(i32, Option<String>)>, sqlx::Error> = sqlx::query_as(
+        "SELECT EXTRACT(YEAR FROM start_time)::int, place_label \
+         FROM canonical_events \
+         WHERE entity_id = $1 AND pipeline = 'person' AND is_active AND start_time IS NOT NULL \
+         ORDER BY start_time \
+         LIMIT 800",
+    )
+    .bind(entity)
+    .fetch_all(&state.pool)
+    .await;
+    let moments = match moments {
+        Ok(moments) => moments,
+        Err(reason) => {
+            tracing::error!(error = %reason, "chapter period dates failed");
+            return error(StatusCode::INTERNAL_SERVER_ERROR, "database_error");
+        }
+    };
+    let facts: Vec<talaria_quality::DatedFact> = moments
+        .into_iter()
+        .map(|(year, place)| talaria_quality::DatedFact { year, place })
+        .collect();
+    let periods = talaria_quality::suggest_life_periods(&facts);
+    let period_body: Vec<Value> = periods
+        .iter()
+        .map(|item| {
+            json!({
+                "slug": format!("period-{}-{}", item.start_year, item.end_year),
+                "title_fr": item.title_fr,
+                "title_en": item.title_en,
+                "event_count": item.event_count,
+                "standing": talaria_quality::SUGGESTION,
+                "basis_fr": item.basis_fr,
+                "basis_en": item.basis_en,
+                "start_year": item.start_year,
+                "end_year": item.end_year,
+                "members": item.members.len(),
+            })
+        })
+        .collect();
     let body: Vec<Value> = suggestions
         .iter()
         .map(|item| {
@@ -321,6 +360,7 @@ pub async fn chapter_suggestions(
         "standing": talaria_quality::SUGGESTION,
         "published": false,
         "suggestions": body,
+        "periods": period_body,
     }))
     .into_response()
 }

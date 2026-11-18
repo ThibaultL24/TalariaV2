@@ -32,6 +32,17 @@ describe("rankPersonSuggestions", () => {
     ]);
     expect(out.map((item) => item.qid)).toEqual(["Qfather", "Qson", "Qtown"]);
   });
+  it("drops an event phrase that is not a person", () => {
+    const out = rankPersonSuggestions("Napoleon", [
+      person("Q517", "Napoleon", { known_locally: true, entity_id: "napoleon", description: "French emperor" }),
+      person("", "Napoleon's arduous retreat from Moscow", { qid: null }),
+      person("", "Napoleon's army", { qid: null }),
+      person("", "Napoleon's plan of attack on Ligny", { qid: null }),
+      person("", "avenue Napoléon-Bonaparte", { qid: null, known_locally: true, description: "avenue Napoléon-Bonaparte" }),
+      person("", "Napoléon", { qid: null, known_locally: true, description: "Napoléon" }),
+    ]);
+    expect(out.map((item) => item.label)).toEqual(["Napoleon"]);
+  });
   it("does not merge similar but distinct people", () => {
     expect(rankPersonSuggestions("Dumas", [
       person("Q1", "Dumas père"), person("Q2", "Dumas fils"),

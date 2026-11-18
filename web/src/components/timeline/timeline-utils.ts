@@ -333,6 +333,10 @@ export function resolveVisibleWindow(
   complete: boolean,
   url: { from: string | null; to: string | null; span: string | null },
 ): YearWindow {
+  const life = bounds[1] - bounds[0];
+  if ((url.span == null || url.span === "full") && life > 1 && life <= 130) {
+    return bounds;
+  }
   const fitted = visibleYearWindow(events, bounds, complete);
   if (url.span === "full") return bounds;
   const from = url.from != null ? Number(url.from) : Number.NaN;

@@ -35,7 +35,10 @@ pub use attribution::{
     attribution_gate_decision, auto_accept_attribution, classify_attribution, demonstrated_role,
     publishes_to_public_corpus, AttributionInput, AttributionMatch,
 };
-pub use chapters::{suggest_chapters, ChapterSuggestion, MIN_CHAPTER_EVENTS, SUGGESTION};
+pub use chapters::{
+    suggest_chapters, suggest_life_periods, ChapterSuggestion, DatedFact, LifePeriod,
+    MIN_CHAPTER_EVENTS, SUGGESTION,
+};
 pub use context_year::{
     approx_typed_time, infer_approximate_year, is_approx_eligible_type, local_context_window,
     scan_years_in_range, year_from_nearby_context, years_from_section_heading,
@@ -73,9 +76,9 @@ pub use overlay::{
 pub use places::{place_query, PlaceQuery};
 pub use projections::{BuildProjections, DerivedLabelProjections, ProjectionEvent};
 pub use public_admission::{
-    admit_to_public_corpus, clause_identity, decide_fact, is_political_territory, locality_count,
-    quote_names_several_localities, FactDecisions, HistoricalStanding, MapStanding,
-    PublicAdmission, PublicFact, TimeStanding,
+    admit_to_public_corpus, clause_for_time, clause_identity, decide_fact, evidence_quote_fits_event,
+    is_political_territory, locality_count, passage_supports_title, quote_names_several_localities,
+    FactDecisions, HistoricalStanding, MapStanding, PublicAdmission, PublicFact, TimeStanding,
 };
 pub use resolve::{
     gazetteer_place_in_text, resolve_mentions, GazetteerResolver, MentionResolver, ResolvedMentions,
@@ -84,6 +87,7 @@ pub use resume::{
     existing_candidate_action, should_reinforce_existing_event, ExistingCandidateAction,
 };
 pub use time_typed::{
-    extract_time_surface, parse_typed_time, read_clause_time, start_time_from_typed, time_to_json,
+    biography_lead_date, extract_time_surface, parse_typed_time, read_clause_time,
+    start_time_from_typed, time_to_json,
     typed_time_year, ClauseTime,
 };

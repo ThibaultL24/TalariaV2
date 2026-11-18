@@ -4,7 +4,9 @@
 use serde_json::json;
 use talaria_quality::{
     admit_to_public_corpus, clause_identity, concise_event_title, event_type_is_map_locus,
-    is_wikidata_qid, occurrence_key_for_event, publishes_to_public_corpus, quote_may_attest,
+    clause_for_time, evidence_quote_fits_event, is_wikidata_qid, occurrence_key_for_event,
+    publishes_to_public_corpus,
+    quote_may_attest,
     quote_names_several_localities, read_clause_time, start_time_from_typed, time_to_json,
     AttributionMatch, CandidateStatus, ClauseTime, GateContext, GateDecision, GroundedItem,
     PublicAdmission, PublicFact, RejectionCode, TypedTime,
@@ -247,14 +249,17 @@ async fn find_same_publication(
 async fn refine_singleton_date(
     pool: &sqlx::PgPool,
     event_id: Uuid,
+    event_type: &str,
     quote: &str,
 ) -> anyhow::Result<()> {
+    let focus = talaria_quality::biography_lead_date(event_type, quote)
+        .unwrap_or_else(|| quote.to_string());
     let ClauseTime::Exact {
         year,
         month: Some(month),
         day: Some(day),
         surface,
-    } = read_clause_time(quote)
+    } = read_clause_time(&focus)
     else {
         return Ok(());
     };
@@ -315,6 +320,21 @@ async fn attach_evidence_to_existing(
             status: CandidateStatus::NeedsReview,
         });
     }
+    let event_row: Option<(String, Option<String>)> = sqlx::query_as(
+        "SELECT event_type, place_label FROM canonical_events WHERE id = $1",
+    )
+    .bind(existing)
+    .fetch_optional(pool)
+    .await?;
+    if let Some((kind, place)) = event_row {
+        if !evidence_quote_fits_event(&kind, place.as_deref(), &item.quoted_text) {
+            hold_bibliographic_candidate(pool, candidate_id).await?;
+            return Ok(PersistOutcome::CandidateOnly {
+                candidate_id,
+                status: CandidateStatus::NeedsReview,
+            });
+        }
+    }
     if let Some(place) = item
         .place_surface
         .as_deref()
@@ -334,7 +354,7 @@ async fn attach_evidence_to_existing(
         .await?;
     }
     if life_singleton_type(&item.event_type) {
-        refine_singleton_date(pool, existing, &item.quoted_text).await?;
+        refine_singleton_date(pool, existing, &item.event_type, &item.quoted_text).await?;
     }
     insert_person_quote_evidence(
         pool,
@@ -381,6 +401,7 @@ pub async fn persist_gated_item(
         event_type: &item.event_type,
         time_reading,
         structured_source: time_reading == "structured_year",
+        place: item.place_surface.as_deref(),
     });
     let hold_reason = match admission {
         PublicAdmission::Hold(reason) => Some(reason),
@@ -615,7 +636,9 @@ fn event_time(
     ctx: &GateContext,
     meta: &PersistMeta<'_>,
 ) -> (TypedTime, &'static str) {
-    match read_clause_time(&item.quoted_text) {
+    let focus = talaria_quality::biography_lead_date(&item.event_type, &item.quoted_text)
+        .unwrap_or_else(|| clause_for_time(&item.summary, &item.quoted_text));
+    match read_clause_time(&focus) {
         ClauseTime::Exact {
             year,
             month,

@@ -9,6 +9,7 @@ import {
   legendKeyForEventType,
   legendLabel,
 } from "@/lib/event-legend";
+import { readableLabel } from "@/lib/human-label";
 import { useI18n } from "@/lib/i18n";
 import { useThemeStore } from "@/stores/theme-store";
 import { HistographyBrush } from "@/features/entity/timeline-histography-brush";
@@ -805,7 +806,7 @@ export function HistoricalTimeline({
               style={{ left: tooltipLeft, top: hoverPosition.y }}
             >
               <div className="historical-timeline__tooltip-year">{eventDate(hovered, locale)}</div>
-              <div className="historical-timeline__tooltip-title">{hovered.title}</div>
+              <div className="historical-timeline__tooltip-title">{readableLabel(hovered.title)}</div>
               <div className="historical-timeline__tooltip-meta">
                 {legendLabel(legendKeyForEventType(hovered.event_type), locale)}
               </div>
@@ -814,9 +815,9 @@ export function HistoricalTimeline({
           {selected ? (
             <article className="historical-timeline__card">
               <p className="historical-timeline__card-year">{eventDate(selected, locale)}</p>
-              <h3>{selected.title}</h3>
+              <h3>{readableLabel(selected.title)}</h3>
               <p>{legendLabel(legendKeyForEventType(selected.event_type), locale)}</p>
-              {selected.place_label ? <p>{selected.place_label}</p> : null}
+              {selected.place_label ? <p>{readableLabel(selected.place_label)}</p> : null}
               {selected.time?.kind === "approx" || selected.time?.kind === "unknown" ? (
                 <p className="historical-timeline__card-note">{t.timelineApproximate}</p>
               ) : null}

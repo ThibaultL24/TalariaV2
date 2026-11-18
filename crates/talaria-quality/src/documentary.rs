@@ -75,6 +75,9 @@ pub fn quote_may_attest(quote: &str, event_focus: Option<&str>) -> bool {
 }
 
 fn is_direct_passage(quote: &str, focus: Option<&str>) -> bool {
+    if crate::biography_lead_date("birth", quote).is_some() {
+        return true;
+    }
     let lower = quote.to_lowercase();
     let narrates = [
         " was fought",
@@ -344,6 +347,13 @@ mod tests {
             );
             assert!(!quote_may_attest(notice, Some(place)), "{place}");
         }
+    }
+
+    #[test]
+    fn a_biography_lead_attests_the_life_dates() {
+        let lead = "Napoleon Bonaparte (born Napoleone di Buonaparte; 15 August 1769 – 5 May 1821) was Emperor of the French";
+        assert!(quote_may_attest(lead, None));
+        assert_eq!(documentary_relation(lead, None), DocumentaryRelation::Direct);
     }
 
     #[test]

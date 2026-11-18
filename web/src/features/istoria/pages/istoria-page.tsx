@@ -317,7 +317,7 @@ export function IstoriaPage() {
       }
     >
       {pageError && <p className="v3-inline-alert" role="alert">{pageError}</p>}
-      {entityId && overview?.entity.qid && (
+      {entityId && view === "overview" && overview?.entity.qid && (
         <p>
           <button
             type="button"
@@ -336,14 +336,20 @@ export function IstoriaPage() {
           </button>
         </p>
       )}
-      {entityId && (
+      {entityId && view === "overview" && (
         <p className="v3-note" role="status">{t.researchUnverified}</p>
       )}
-      {entityId && (
+      {entityId && view === "overview" && (
         <ChapterSuggestions
           suggestions={suggestionsQuery.data?.suggestions ?? []}
+          periods={suggestionsQuery.data?.periods ?? []}
           locale={locale === "fr" ? "fr" : "en"}
         />
+      )}
+      {entityId && view !== "overview" && ((suggestionsQuery.data?.periods?.length ?? 0) + (suggestionsQuery.data?.suggestions?.length ?? 0) > 0) && (
+        <p className="v3-note">
+          <Link to={`/istoria/${entityId}/overview`}>{locale === "fr" ? "Périodes et catégories" : "Periods and categories"}</Link>
+        </p>
       )}
       {entityId && (groups.length > 0 || groupSlug) && (
         <nav className="v3-provider-tabs" aria-label={t.chapters}>
@@ -413,7 +419,7 @@ export function IstoriaPage() {
                 {view === "map" && (
                   <form className="v3-filters v3-filters--compact" onSubmit={(event) => event.preventDefault()}>
                     <label>
-                      From{" "}
+                      {locale === "fr" ? "De" : "From"}{" "}
                       <input
                         type="number"
                         value={params.get("from") ?? ""}
@@ -421,7 +427,7 @@ export function IstoriaPage() {
                       />
                     </label>
                     <label>
-                      To{" "}
+                      {locale === "fr" ? "À" : "To"}{" "}
                       <input
                         type="number"
                         value={params.get("to") ?? ""}
@@ -451,6 +457,11 @@ export function IstoriaPage() {
           <>
             <p className="v3-note">
               {t.visiblePeriod(String(from || "?"), String(to || "?"))}
+              {timeline.hasMore
+                ? locale === "fr"
+                  ? " Les moments se chargent progressivement."
+                  : " Moments load progressively."
+                : ""}
             </p>
             <HistoricalTimeline
             key={entityId}
@@ -506,6 +517,8 @@ export function IstoriaPage() {
             {[...sources].sort((left, right) => Number(right.language?.toLowerCase().startsWith(locale)) - Number(left.language?.toLowerCase().startsWith(locale))).map((source) => (
               <article key={source.id}>
                 <span>
+                  {locale === "fr" ? "Notice de catalogue" : "Catalog notice"}
+                  {" · "}
                   {providerLabel(source.source_kind)} · {source.document_type.replaceAll("_", " ")}
                 </span>
                 <h3>{source.title}</h3>

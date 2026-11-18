@@ -50,7 +50,7 @@ test("a map pin does not raise historical importance", () => {
   expect(eventImportance(mapped)).toBe(eventImportance(plain));
 });
 
-test("a life-span URL does not stretch the axis until the reader asks for it", () => {
+test("a human life opens on its whole documented span", () => {
   const events = Array.from({ length: 20 }, (_, index) => ({
     ...event(`early-${index}`, "anecdote"),
     time: { kind: "exact" as const, start: String(1769 + index), precision: "year" as const },
@@ -61,7 +61,7 @@ test("a life-span URL does not stretch the axis until the reader asks for it", (
       to: "1870",
       span: null,
     }),
-  ).toEqual([1769, 1789]);
+  ).toEqual([1769, 1870]);
   expect(
     resolveVisibleWindow(events, [1769, 1870], false, {
       from: null,

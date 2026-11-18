@@ -35,8 +35,22 @@ fn env_nonempty(key: &str) -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
+/// Model calls stay closed unless `TALARIA_LLM_CALLS` is exactly `1`.
+/// `TALARIA_LLM_DISABLED=1` wins even when calls are opened and a key is present.
+/// Loading a key from the environment or from `.env` is not enough.
+pub fn llm_calls_allowed() -> bool {
+    if std::env::var("TALARIA_LLM_DISABLED").ok().as_deref() == Some("1") {
+        return false;
+    }
+    std::env::var("TALARIA_LLM_CALLS").ok().as_deref() == Some("1")
+}
+
 /// Resolve LLM credentials. Preference: `OPENAI_API_KEY` → `OPENROUTER_API_KEY` → `LLM_API_KEY`.
+/// A key is ignored while model calls are closed.
 fn llm_creds() -> Option<LlmCreds> {
+    if !llm_calls_allowed() {
+        return None;
+    }
     if let Some(key) = env_nonempty("OPENAI_API_KEY") {
         let base = env_nonempty("LLM_BASE_URL").unwrap_or_else(|| OPENAI_BASE.into());
         let kind = match env_nonempty("LLM_API")
@@ -95,6 +109,9 @@ pub fn api_key() -> Option<String> {
 }
 
 pub fn model() -> String {
+    if !llm_calls_allowed() {
+        return "disabled".into();
+    }
     llm_creds()
         .map(|c| c.model)
         .unwrap_or_else(|| DEFAULT_OPENAI_MODEL.into())
@@ -202,6 +219,9 @@ async fn complete_prompt(
     prompt: &str,
     max_output_tokens: Option<u32>,
 ) -> anyhow::Result<(reqwest::StatusCode, Value)> {
+    if !llm_calls_allowed() {
+        anyhow::bail!("llm_calls_disabled");
+    }
     let mut body = match creds.kind {
         LlmApiKind::Responses => json!({
             "model": model,
@@ -1201,6 +1221,56 @@ fn first_year(surface: &str) -> Option<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_fake_key_does_not_open_a_model_call() {
+        let prior_key = std::env::var("OPENAI_API_KEY").ok();
+        let prior_router = std::env::var("OPENROUTER_API_KEY").ok();
+        let prior_llm = std::env::var("LLM_API_KEY").ok();
+        let prior_calls = std::env::var("TALARIA_LLM_CALLS").ok();
+        let prior_disabled = std::env::var("TALARIA_LLM_DISABLED").ok();
+        unsafe {
+            std::env::set_var("OPENAI_API_KEY", "sk-test-not-a-real-key");
+            std::env::set_var("OPENROUTER_API_KEY", "sk-test-not-a-real-key");
+            std::env::set_var("LLM_API_KEY", "sk-test-not-a-real-key");
+            std::env::remove_var("TALARIA_LLM_CALLS");
+            std::env::remove_var("TALARIA_LLM_DISABLED");
+        }
+        assert!(!llm_calls_allowed());
+        assert!(!is_configured());
+        assert_eq!(model(), "disabled");
+        unsafe {
+            std::env::set_var("TALARIA_LLM_CALLS", "1");
+            std::env::set_var("TALARIA_LLM_DISABLED", "1");
+        }
+        assert!(
+            !llm_calls_allowed(),
+            "an explicit disable wins over an opened key"
+        );
+        assert!(!is_configured());
+        unsafe {
+            match prior_key {
+                Some(value) => std::env::set_var("OPENAI_API_KEY", value),
+                None => std::env::remove_var("OPENAI_API_KEY"),
+            }
+            match prior_router {
+                Some(value) => std::env::set_var("OPENROUTER_API_KEY", value),
+                None => std::env::remove_var("OPENROUTER_API_KEY"),
+            }
+            match prior_llm {
+                Some(value) => std::env::set_var("LLM_API_KEY", value),
+                None => std::env::remove_var("LLM_API_KEY"),
+            }
+            match prior_calls {
+                Some(value) => std::env::set_var("TALARIA_LLM_CALLS", value),
+                None => std::env::remove_var("TALARIA_LLM_CALLS"),
+            }
+            match prior_disabled {
+                Some(value) => std::env::set_var("TALARIA_LLM_DISABLED", value),
+                None => std::env::remove_var("TALARIA_LLM_DISABLED"),
+            }
+        }
+    }
 
     #[test]
     fn parse_json_array_of_extracts() {

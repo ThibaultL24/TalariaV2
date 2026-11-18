@@ -112,7 +112,7 @@ export function EntitySearchBox({
 
       {showPanel ? (
         <div
-          className="absolute top-full right-0 left-0 z-30 mt-1.5 overflow-hidden rounded-xl border border-(--color-border-strong) bg-(--color-bg-surface) shadow-lg"
+          className="absolute top-full right-0 left-0 z-30 mt-1.5 overflow-visible rounded-xl border border-(--color-border-strong) bg-(--color-bg-surface) shadow-lg"
           role="listbox"
           id={listId}
         >
@@ -145,9 +145,6 @@ export function EntitySearchBox({
                         <div className="text-xs opacity-70">{item.description}</div>
                       ) : null}
                     </div>
-                    {item.qid ? (
-                      <span className="shrink-0 text-[10px] text-(--color-text-muted)">{item.qid}</span>
-                    ) : null}
                   </div>
                 </button>
               ))
