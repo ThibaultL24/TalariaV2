@@ -502,7 +502,7 @@ fn tally(outcome: PersistOutcome, inserted: &mut u32, reinforced: &mut u32) {
     }
 }
 
-async fn ingest_wiki_text(
+pub(crate) async fn ingest_wiki_text(
     pool: &sqlx::PgPool,
     entity_id: Uuid,
     subject: &str,
@@ -768,4 +768,282 @@ async fn persist_wdqs_events(
         }
     }
     Ok((inserted, reinforced))
+}
+
+#[cfg(test)]
+mod qualification {
+    use super::*;
+    use persist::PersistMeta;
+    use talaria_quality::{suggest_chapters, Lane, RawExtractItem};
+
+    const FR: &str = include_str!("fixtures/desbordes-fr.txt");
+    const EN: &str = include_str!("fixtures/desbordes-en.txt");
+    const WD: &str = include_str!("fixtures/desbordes-wd.txt");
+    const WD_PART: &str = include_str!("fixtures/desbordes-wd-participation.txt");
+
+    fn pipe_item(line: &str) -> Option<RawExtractItem> {
+        let parts: Vec<&str> = line.split(" | ").map(str::trim).collect();
+        if parts.len() < 4 || parts[1].is_empty() {
+            return None;
+        }
+        let when = parts[3];
+        let year = when.chars().take(4).collect::<String>().parse::<i32>().ok();
+        let place = parts.get(4).map(|value| value.trim()).filter(|value| !value.is_empty());
+        Some(RawExtractItem {
+            lane: "fact".into(),
+            event_type: parts[1].to_string(),
+            role: parts[2].to_string(),
+            year,
+            place_surface: place.map(str::to_string),
+            summary: line.to_string(),
+            quoted_text: line.to_string(),
+            confidence: 0.9,
+        })
+    }
+
+    async fn replay_once(pool: &sqlx::PgPool, entity_id: Uuid, ctx: &mut GateContext) {
+        for (uri, text) in [
+            ("https://www.wikidata.org/wiki/Q466987", WD),
+            ("https://www.wikidata.org/wiki/Q466987#participation", WD_PART),
+        ] {
+            let raw_id = upsert_raw_wikidata_document(pool, uri, "Marceline Desbordes-Valmore", text)
+                .await
+                .unwrap();
+            let items: Vec<RawExtractItem> = text.lines().filter_map(pipe_item).collect();
+            for item in grounding::ground_structured(
+                "Marceline Desbordes-Valmore",
+                text,
+                items,
+                Some("Q466987"),
+            ) {
+                if item.lane != Lane::Fact {
+                    continue;
+                }
+                let _ = persist::persist_fact_item(
+                    pool,
+                    entity_id,
+                    "Marceline Desbordes-Valmore",
+                    &item,
+                    ctx,
+                    PersistMeta {
+                        raw_document_id: raw_id,
+                        coords: None,
+                        primary_object: None,
+                        source_locator: uri,
+                        page_title: "Marceline Desbordes-Valmore",
+                        from_followed_page: false,
+                        structured_source: true,
+                        military_subject: false,
+                        aliases: &[],
+                        document_text: None,
+                        section_heading: None,
+                    },
+                )
+                .await
+                .unwrap();
+            }
+        }
+        for (lang, text) in [("fr", FR), ("en", EN)] {
+            ingest_wiki_text(
+                pool,
+                entity_id,
+                "Marceline Desbordes-Valmore",
+                lang,
+                "Marceline Desbordes-Valmore",
+                text,
+                ctx,
+                &[],
+                false,
+            )
+            .await
+            .unwrap();
+        }
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn the_original_desbordes_documents_replay_without_the_old_errors(pool: sqlx::PgPool) {
+        std::env::set_var("TALARIA_OFFLINE_PLACES", "1");
+        for key in ["OPENAI_API_KEY", "OPENROUTER_API_KEY", "LLM_API_KEY"] {
+            unsafe { std::env::remove_var(key) };
+        }
+        assert!(!crate::llm::is_configured(), "the comparison stays on the rules, not a model");
+        let entity_id = talaria_store::ensure_subject_entity(
+            &pool,
+            "Q466987",
+            "Marceline Desbordes-Valmore",
+        )
+        .await
+        .unwrap();
+        let mut ctx = GateContext {
+            subject_birth_year: Some(1786),
+            subject_death_year: Some(1859),
+            has_active_birth: false,
+            has_active_death: false,
+            ..Default::default()
+        };
+        replay_once(&pool, entity_id, &mut ctx).await;
+        let first: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint FROM canonical_events WHERE entity_id = $1 AND is_active",
+        )
+        .bind(entity_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        replay_once(&pool, entity_id, &mut ctx).await;
+        let second: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint FROM canonical_events WHERE entity_id = $1 AND is_active",
+        )
+        .bind(entity_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(first, second, "a second pass must not create new public facts");
+
+        let bad: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint FROM canonical_events ce \
+             JOIN event_evidence ee ON ee.canonical_event_id = ce.id \
+             WHERE ce.entity_id = $1 AND ce.is_active AND (\
+               ee.quoted_text ILIKE '%Hyacinthe%' \
+               OR ee.quoted_text ILIKE '%Gallica%' \
+               OR ee.quoted_text ILIKE '%Houssin%' \
+               OR ee.quoted_text ILIKE '%Impr.%' \
+               OR ee.quoted_text ILIKE '%Imprimerie%' \
+               OR coalesce(ce.place_label, '') ILIKE '%criture%'\
+             )",
+        )
+        .bind(entity_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(bad, 0);
+        let mapped_country: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint FROM canonical_events \
+             WHERE entity_id = $1 AND is_active AND map_eligible AND place_label = 'France'",
+        )
+        .bind(entity_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(mapped_country, 0);
+        let borrowed_birth: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint FROM canonical_events ce \
+             JOIN event_evidence ee ON ee.canonical_event_id = ce.id \
+             WHERE ce.entity_id = $1 AND ce.is_active \
+               AND ee.quoted_text ILIKE '%back to France%' \
+               AND ce.time_json->>'start' = '1786'",
+        )
+        .bind(entity_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(borrowed_birth, 0);
+
+        let rows: Vec<(String, String, String, Option<String>, bool, String)> = sqlx::query_as(
+            "SELECT ce.event_type, coalesce(ce.place_label, ''), ce.time_json::text, \
+                    ce.time_json->>'start', ce.map_eligible, left(ee.quoted_text, 220) \
+             FROM canonical_events ce \
+             JOIN LATERAL (SELECT quoted_text FROM event_evidence \
+                           WHERE canonical_event_id = ce.id ORDER BY created_at LIMIT 1) ee ON true \
+             WHERE ce.entity_id = $1 AND ce.is_active \
+             ORDER BY ce.start_time NULLS LAST, ce.event_type",
+        )
+        .bind(entity_id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        let counts: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT event_type, count(*)::bigint FROM canonical_events \
+             WHERE entity_id = $1 AND is_active GROUP BY event_type",
+        )
+        .bind(entity_id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        let pairs: Vec<(&str, usize)> = counts
+            .iter()
+            .map(|(kind, count)| (kind.as_str(), *count as usize))
+            .collect();
+        let suggestions = suggest_chapters(&pairs);
+        let published: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint FROM editorial_groups WHERE entity_id = $1 AND status = 'published'",
+        )
+        .bind(entity_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(published, 0);
+        let statuses: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT status, count(*)::bigint FROM event_candidates \
+             WHERE subject_entity_id = $1 GROUP BY status ORDER BY status",
+        )
+        .bind(entity_id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        let mut audit = format!("public={first} suggestions={}\n", suggestions.len());
+        for (status, count) in &statuses {
+            audit.push_str(&format!("candidates {status} {count}\n"));
+        }
+        for suggestion in &suggestions {
+            audit.push_str(&format!("chapter {} {}\n", suggestion.slug, suggestion.event_count));
+        }
+        for (kind, place, time_json, start, mapped, quote) in &rows {
+            audit.push_str(&format!("{kind}\t{place}\t{start:?}\t{mapped}\t{time_json}\t{quote}\n"));
+        }
+        let watched: Vec<(String, String)> = sqlx::query_as(
+            "SELECT status, left(coalesce(evidence_ptrs::text, '') || ' ' || coalesce(judgment_json::text, ''), 180) \
+             FROM event_candidates WHERE subject_entity_id = $1 AND (\
+               evidence_ptrs::text ILIKE '%louette%' OR judgment_json::text ILIKE '%louette%' \
+               OR evidence_ptrs::text ILIKE '%Poésies de Mme%' OR judgment_json::text ILIKE '%Poésies de Mme%' \
+               OR evidence_ptrs::text ILIKE '%23 juillet%' OR judgment_json::text ILIKE '%23 juillet%' \
+               OR evidence_ptrs::text ILIKE '%Le Billet%' OR judgment_json::text ILIKE '%Le Billet%')",
+        )
+        .bind(entity_id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        for (status, excerpt) in &watched {
+            audit.push_str(&format!("watched {status} {excerpt}\n"));
+        }
+        std::fs::write("/tmp/v311d-desbordes-audit.txt", &audit).unwrap();
+        assert!(first > 0, "the replay published nothing\n{audit}");
+    }
+
+    #[tokio::test]
+    async fn write_the_qualification_database_when_asked() {
+        let Ok(url) = std::env::var("TALARIA_QUALIFICATION_DB") else {
+            return;
+        };
+        if !url.contains("v311d_ephemeral") {
+            return;
+        }
+        std::env::set_var("TALARIA_OFFLINE_PLACES", "1");
+        for key in ["OPENAI_API_KEY", "OPENROUTER_API_KEY", "LLM_API_KEY"] {
+            unsafe { std::env::remove_var(key) };
+        }
+        let pool = sqlx::PgPool::connect(&url).await.unwrap();
+        let entity_id = talaria_store::ensure_subject_entity(
+            &pool,
+            "Q466987",
+            "Marceline Desbordes-Valmore",
+        )
+        .await
+        .unwrap();
+        let mut ctx = GateContext {
+            subject_birth_year: Some(1786),
+            subject_death_year: Some(1859),
+            has_active_birth: false,
+            has_active_death: false,
+            ..Default::default()
+        };
+        replay_once(&pool, entity_id, &mut ctx).await;
+        let public_count: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint FROM canonical_events WHERE entity_id = $1 AND is_active",
+        )
+        .bind(entity_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(public_count > 0);
+    }
 }

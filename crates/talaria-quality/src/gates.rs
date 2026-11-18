@@ -1,7 +1,7 @@
 // crates/talaria-quality/src/gates.rs
 //! Deterministic quality gates — no subject-specific hardcoding.
 
-use crate::model::{CandidateStatus, EntityKind, EventCandidate, TypedTime};
+use crate::model::{CandidateStatus, EntityKind, EventCandidate};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RejectionCode {
@@ -272,11 +272,9 @@ pub fn apply_gates(candidate: &EventCandidate, ctx: &GateContext) -> GateDecisio
         return GateDecision::Reject(rejects);
     }
 
-    // Soft: unknown time → needs_review rather than hard accept for map.
-    if matches!(candidate.time, TypedTime::Unknown { .. }) {
-        return GateDecision::NeedsReview;
-    }
-
+    // An unknown date stays unknown. It does not, by itself, keep a supported
+    // fact out of the biography. The map is a separate decision: no geometry
+    // means the fact is off the map, not that the fact is false.
     if candidate.subject_entity_id.is_none() {
         return GateDecision::NeedsReview;
     }
@@ -319,7 +317,7 @@ pub fn event_type_is_map_locus(event_type: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{EvidencePtr, EXTRACTOR_DETERMINISTIC_V1};
+    use crate::model::{EvidencePtr, TypedTime, EXTRACTOR_DETERMINISTIC_V1};
     use uuid::Uuid;
 
     fn base_candidate(event_type: &str, year: i32) -> EventCandidate {

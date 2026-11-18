@@ -46,6 +46,18 @@ test("selecting Desbordes-Valmore starts a bounded research and keeps the fiche"
   }
   await page.waitForURL(/\/istoria\/[0-9a-f-]{36}/i, { timeout: 120_000 });
   const entityUrl = page.url();
+  const entityId = entityUrl.match(/[0-9a-f-]{36}/i)?.[0];
+  const timeline = await page.request.get(
+    `/api/v1/timeline?entity_id=${entityId}&pipeline=person&limit=200`,
+  );
+  const body = await timeline.json();
+  const events = body.events as Array<{ title?: string; place_label?: string | null }>;
+  const titles = events.map((event) => event.title ?? "").join("\n");
+  const places = events.map((event) => event.place_label ?? "");
+  expect(titles).not.toContain("Hyacinthe");
+  expect(titles).not.toContain("Gallica");
+  expect(places.some((place) => place.toLowerCase().includes("criture"))).toBe(false);
+  expect(places).toContain("Lyon");
 
   await page.goto(entityUrl.replace(/\/[^/]*$/, "/timeline"));
   await expect(page.locator("canvas").first()).toBeVisible();

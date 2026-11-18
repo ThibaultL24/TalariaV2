@@ -356,6 +356,19 @@ export interface IngestJobResponse {
   deduped?: boolean;
 }
 
+function visitorKey(): string {
+  const storageKey = "talaria.visitor";
+  try {
+    const existing = localStorage.getItem(storageKey);
+    if (existing && /^[A-Za-z0-9-]{8,80}$/.test(existing)) return existing;
+    const created = crypto.randomUUID();
+    localStorage.setItem(storageKey, created);
+    return created;
+  } catch {
+    return "";
+  }
+}
+
 export function browserWikiLang(): string {
   const lang = (navigator.language || "en").slice(0, 2).toLowerCase();
   return /^[a-z]{2}$/.test(lang) ? lang : "en";
@@ -392,6 +405,7 @@ async function startLaneIngest(
       corpus_limit_per_provider: input.corpusLimitPerProvider,
       corpus_limit_total: input.corpusLimitTotal,
       minimum_per_provider: input.minimumPerProvider,
+      visitor_key: visitorKey(),
     }),
   });
   if (!response.ok) {

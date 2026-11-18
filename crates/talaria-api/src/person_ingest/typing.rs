@@ -113,9 +113,19 @@ pub async fn resolve_place_identity(label: Option<&str>) -> Option<PlaceIdentity
 /// Geocode a place identity (second step in grounding chain).
 /// Coordinates come only from Wikidata P625 / offline gazetteer.
 /// This function assumes identity was already resolved; it just fetches coords.
+fn offline_places() -> bool {
+    std::env::var("TALARIA_OFFLINE_PLACES").ok().as_deref() == Some("1")
+}
+
 pub async fn geocode_identity(
     identity: &PlaceIdentity,
 ) -> Option<talaria_sources::PlaceResolution> {
+    if identity.identity_source == "alias_gazetteer" {
+        return resolve_place_offline(&identity.label);
+    }
+    if offline_places() {
+        return None;
+    }
     // If identity has a QID, fetch coords via P625
     if let Some(qid) = &identity.wikidata_qid {
         if let Ok(client) = talaria_wikidata::WikidataClient::new() {
@@ -132,11 +142,6 @@ pub async fn geocode_identity(
                 });
             }
         }
-    }
-
-    // If identity came from alias gazetteer, it already has coords in PlaceResolution
-    if identity.identity_source == "alias_gazetteer" {
-        return resolve_place_offline(&identity.label);
     }
 
     None
@@ -156,7 +161,7 @@ pub async fn geocode_place(label: Option<&str>) -> Option<talaria_sources::Place
     }
 
     // Direct QID path (already a QID, not a mention)
-    if talaria_quality::is_wikidata_qid(label) {
+    if talaria_quality::is_wikidata_qid(label) && !offline_places() {
         if let Ok(client) = talaria_wikidata::WikidataClient::new() {
             if let Ok(Some((lat, lon))) = client.fetch_coordinates(label).await {
                 return Some(talaria_sources::PlaceResolution {
@@ -189,6 +194,9 @@ pub async fn geocode_place(label: Option<&str>) -> Option<talaria_sources::Place
         if let Some(res) = resolve_place_offline(key) {
             return Some(res);
         }
+    }
+    if offline_places() {
+        return None;
     }
 
     // Try Wikidata search → P625 (identity resolution + geocode in one step)

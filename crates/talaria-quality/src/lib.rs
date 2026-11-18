@@ -73,8 +73,9 @@ pub use overlay::{
 pub use places::{place_query, PlaceQuery};
 pub use projections::{BuildProjections, DerivedLabelProjections, ProjectionEvent};
 pub use public_admission::{
-    admit_to_public_corpus, clause_identity, is_political_territory, locality_count,
-    quote_names_several_localities, PublicAdmission, PublicFact,
+    admit_to_public_corpus, clause_identity, decide_fact, is_political_territory, locality_count,
+    quote_names_several_localities, FactDecisions, HistoricalStanding, MapStanding,
+    PublicAdmission, PublicFact, TimeStanding,
 };
 pub use resolve::{
     gazetteer_place_in_text, resolve_mentions, GazetteerResolver, MentionResolver, ResolvedMentions,

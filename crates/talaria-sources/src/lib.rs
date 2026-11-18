@@ -59,7 +59,7 @@ pub use person_profile::{
 pub use place_identity::{
     CompositeIdentityResolver, PlaceIdentity, PlaceIdentityResolver, TgnResolver, WhgResolver,
 };
-pub use place_quality::is_plausible_place_label;
+pub use place_quality::{is_plausible_place_label, place_is_the_named_work};
 pub use places::{
     event_place_point, gazetteer_entry_count, gazetteer_exact_identities,
     gazetteer_identities_for_qid, gazetteer_qid_count, place_hint_from_title, place_query_variants,

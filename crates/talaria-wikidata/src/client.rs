@@ -20,6 +20,8 @@ impl WikidataClient {
     pub fn new() -> Result<Self> {
         let http = reqwest::Client::builder()
             .user_agent(USER_AGENT)
+            .timeout(std::time::Duration::from_secs(8))
+            .connect_timeout(std::time::Duration::from_secs(4))
             .build()?;
         Ok(Self {
             http,

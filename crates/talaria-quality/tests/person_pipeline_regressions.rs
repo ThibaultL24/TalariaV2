@@ -348,9 +348,9 @@ fn approx_time_event_passes_gates() {
     );
 }
 
-/// Unknown time still triggers needs_review (regression guard).
+/// A missing date does not by itself withhold a fact that names its subject.
 #[test]
-fn unknown_time_still_needs_review() {
+fn unknown_time_does_not_by_itself_withhold_the_fact() {
     let frag = Uuid::new_v4();
     let c = EventCandidate {
         id: Uuid::new_v4(),
@@ -383,7 +383,7 @@ fn unknown_time_still_needs_review() {
     let ctx = GateContext::default();
     let decision = apply_gates(&c, &ctx);
     assert!(
-        matches!(decision, GateDecision::NeedsReview),
-        "unknown time should still trigger needs_review: {decision:?}"
+        matches!(decision, GateDecision::Accept),
+        "unknown time should not withhold the fact: {decision:?}"
     );
 }

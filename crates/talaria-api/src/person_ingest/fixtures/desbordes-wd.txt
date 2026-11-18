@@ -1,0 +1,3 @@
+Marceline Desbordes-Valmore | marriage | married | 1817 | Q33838374
+Marceline Desbordes-Valmore | birth | born_in | 1786 | 
+Marceline Desbordes-Valmore | death | died_in | 1859 | 

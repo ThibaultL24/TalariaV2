@@ -9,7 +9,7 @@ use talaria_quality::{
     AttributionMatch, CandidateStatus, ClauseTime, GateContext, GateDecision, GroundedItem,
     PublicAdmission, PublicFact, RejectionCode, TypedTime,
 };
-use talaria_sources::is_plausible_place_label;
+use talaria_sources::{is_plausible_place_label, place_is_the_named_work};
 use talaria_store::{
     eligibility_for_event_type, enrich_person_event_place_if_empty,
     find_active_person_singleton_event, find_nearby_visit_heritage, find_recognized_person_event,
@@ -531,8 +531,9 @@ fn event_time(
                 birth_year: ctx.subject_birth_year,
                 death_year: ctx.subject_death_year,
             };
+            // The clause itself has no date. A year guessed by the extractor is not used.
             let time =
-                typing::typed_time_from_year_with_context(item.year, &item.event_type, &infer_ctx);
+                typing::typed_time_from_year_with_context(None, &item.event_type, &infer_ctx);
             let source = match &time {
                 TypedTime::Approx { surface, .. } => surface.clone().unwrap_or_default(),
                 TypedTime::Exact { .. } => "explicit_year".to_string(),
@@ -571,6 +572,7 @@ pub async fn persist_fact_item(
         .as_deref()
         .filter(|_| !several_places)
         .filter(|place| is_plausible_place_label(place) && !is_wikidata_qid(place))
+        .filter(|place| !place_is_the_named_work(place, &item.quoted_text))
         .map(str::to_string);
     let mut item = item.clone();
     item.place_surface = clean_place;
@@ -1494,6 +1496,66 @@ mod tests {
         .unwrap();
         assert_eq!(poems["kind"], "exact");
         assert_eq!(poems["start"], "1820");
+
+        let letter = "Marceline écrit à Prosper Lanchantin une lettre dont la date n'est pas connue.";
+        let letter_url = "https://fr.wikipedia.org/wiki/Marceline_Desbordes-Valmore#letter";
+        let letter_doc = talaria_store::upsert_raw_wikipedia_document(
+            &pool,
+            letter_url,
+            "Marceline Desbordes-Valmore",
+            "fr",
+            letter,
+        )
+        .await
+        .unwrap();
+        let letter_item = GroundedItem {
+            lane: talaria_quality::Lane::Fact,
+            event_type: "historical_fact".into(),
+            role: "wrote".into(),
+            year: None,
+            place_surface: None,
+            summary: letter.into(),
+            quoted_text: letter.into(),
+            confidence: 0.8,
+        };
+        let letter_outcome = persist_fact_item(
+            &pool,
+            entity_id,
+            "Marceline Desbordes-Valmore",
+            &letter_item,
+            &mut ctx,
+            PersistMeta {
+                raw_document_id: letter_doc,
+                coords: None,
+                primary_object: None,
+                source_locator: letter_url,
+                page_title: "Marceline Desbordes-Valmore",
+                from_followed_page: false,
+                structured_source: false,
+                military_subject: false,
+                aliases: &[],
+                document_text: None,
+                section_heading: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(
+            matches!(letter_outcome, PersistOutcome::Canonical { inserted: true, .. }),
+            "a supported letter without a date or a place stays in the biography"
+        );
+        let (kind, mapped): (String, bool) = sqlx::query_as(
+            "SELECT time_json->>'kind', map_eligible FROM canonical_events ce \
+             JOIN event_evidence ee ON ee.canonical_event_id = ce.id \
+             WHERE ce.entity_id = $1 AND ee.quoted_text = $2",
+        )
+        .bind(entity_id)
+        .bind(letter)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(kind, "unknown");
+        assert!(!mapped);
     }
 
     #[test]

@@ -166,6 +166,9 @@ pub struct StartIngestBody {
     pub corpus_limit_total: Option<u32>,
     #[serde(default)]
     pub minimum_per_provider: Option<u32>,
+    /// Browser key. Rotating it does not lift the per-person limit.
+    #[serde(default)]
+    pub visitor_key: Option<String>,
 }
 
 fn resolve_wiki_lang(requested: Option<&str>, fallback: &str) -> String {
@@ -410,6 +413,21 @@ async fn start_lane_ingest(
         &state.pool, lane, &subject, body.qid.as_deref()
     ).await.map_err(db_ingest_error)? {
         return Ok(durable_job_started_response(&existing, true));
+    }
+    if let Some(visitor) = body.visitor_key.as_deref().map(str::trim).filter(|key| key.len() >= 8) {
+        let recent_visitor = ingest_jobs::count_visitor_since(&state.pool, visitor, 3600)
+            .await
+            .map_err(db_ingest_error)?;
+        if !ingest_jobs::visitor_research_open(recent_visitor) {
+            return Err((
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(json!({
+                    "error": "ingest_quota",
+                    "scope": "visitor",
+                    "detail": "Trop de recherches ont été lancées depuis ce navigateur. Réessayez dans une heure.",
+                })),
+            ));
+        }
     }
     let recent_identity = ingest_jobs::count_identity_since(
         &state.pool, lane, &subject, body.qid.as_deref(), 3600,

@@ -11,6 +11,38 @@ pub enum PublicAdmission {
     Hold(&'static str),
 }
 
+/// Whether the passage supports this action by this person.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HistoricalStanding {
+    Admit,
+    Review(&'static str),
+}
+
+/// What date the passage actually supports. Independent of publication.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimeStanding {
+    Justified,
+    /// No date was established. The fact may still be admitted.
+    Unknown,
+    /// A year was taken from another sentence and must not be stored.
+    Borrowed,
+}
+
+/// Whether the place can become a map point. Independent of publication.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MapStanding {
+    Eligible,
+    OffMap(&'static str),
+}
+
+/// The three decisions for one extracted fact.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FactDecisions {
+    pub historical: HistoricalStanding,
+    pub time: TimeStanding,
+    pub map: MapStanding,
+}
+
 /// One extracted fact, judged before it can become a canonical event.
 pub struct PublicFact<'a> {
     pub subject: &'a str,
@@ -63,6 +95,25 @@ const ACTION_VERBS: &[&str] = &[
     "painted",
     "peignit",
     "sculpta",
+    "quitte",
+    "quitta",
+    "meurt",
+    "mourut",
+    "nait",
+    "naquit",
+    "installe",
+    "joue",
+    "joua",
+    "intervient",
+    "parait",
+    "paraît",
+    "epouse",
+    "épouse",
+    "married",
+    "died",
+    "born",
+    "lived",
+    "appeared",
 ];
 
 const OPENERS: &[&str] = &[
@@ -90,6 +141,7 @@ const NOTICE_MARKERS: &[&str] = &[
     "publiées par",
     "publiees par",
     "published by",
+    "coll.",
 ];
 
 const LOCALITIES: &[&str] = &[
@@ -104,28 +156,103 @@ const TERRITORIES: &[&str] = &[
     "belgique", "europe", "prussia", "prusse", "royaume de france",
 ];
 
-pub fn admit_to_public_corpus(fact: &PublicFact<'_>) -> PublicAdmission {
-    if fact.time_reading == "inferred_year" || fact.time_reading == "paragraph_context" {
-        return PublicAdmission::Hold("date_not_in_the_passage");
+/// Separate the historical, temporal, and geographic decisions.
+/// A missing date or a missing point does not change the historical one.
+pub fn decide_fact(fact: &PublicFact<'_>, place: Option<&str>) -> FactDecisions {
+    FactDecisions {
+        historical: historical_standing(fact),
+        time: time_standing(fact.time_reading),
+        map: map_standing(place, fact.quote),
     }
+}
+
+pub fn admit_to_public_corpus(fact: &PublicFact<'_>) -> PublicAdmission {
+    match historical_standing(fact) {
+        HistoricalStanding::Admit => PublicAdmission::Publish,
+        HistoricalStanding::Review(reason) => PublicAdmission::Hold(reason),
+    }
+}
+
+fn historical_standing(fact: &PublicFact<'_>) -> HistoricalStanding {
     if is_documentary_notice(&fact.quote) || is_documentary_notice(&fact.summary) {
-        return PublicAdmission::Hold("bibliographic_notice");
+        return HistoricalStanding::Review("bibliographic_notice");
     }
     let passage = format!("{} {}", fact.summary, fact.quote);
     if someone_else_acts(&passage, fact.subject) {
-        return PublicAdmission::Hold("actor_is_not_the_subject");
+        return HistoricalStanding::Review("actor_is_not_the_subject");
     }
     if is_parentage_only(&fact.quote) {
-        return PublicAdmission::Hold("genealogical_context");
+        return HistoricalStanding::Review("genealogical_context");
+    }
+    if is_posterity_naming(&fact.quote) || is_posterity_naming(&fact.summary) {
+        return HistoricalStanding::Review("posterity_not_an_act");
+    }
+    if citation_without_an_act(&fact.quote, fact.subject)
+        || citation_without_an_act(&fact.summary, fact.subject)
+    {
+        return HistoricalStanding::Review("bibliographic_notice");
     }
     if !fact.structured_source && fact.quote.split_whitespace().count() < 4 {
-        return PublicAdmission::Hold("passage_too_thin");
+        return HistoricalStanding::Review("passage_too_thin");
     }
     if !fact.structured_source && !passage_has_an_actor(&fact.quote, fact.subject) {
-        return PublicAdmission::Hold("actor_not_in_the_passage");
+        return HistoricalStanding::Review("actor_not_in_the_passage");
     }
     let _ = fact.event_type;
-    PublicAdmission::Publish
+    HistoricalStanding::Admit
+}
+
+fn citation_without_an_act(text: &str, subject: &str) -> bool {
+    let folded = fold(text);
+    if ACTION_VERBS.iter().any(|verb| folded.contains(verb)) {
+        return false;
+    }
+    let (given, surname) = subject_names(subject);
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let mut index = 0;
+    while index < words.len() {
+        let token = clean_token(words[index]);
+        if token.is_empty() || OPENERS.contains(&token.as_str()) {
+            index += 1;
+            continue;
+        }
+        break;
+    }
+    let Some(first) = words.get(index) else {
+        return false;
+    };
+    if token_is_subject(&clean_token(first), &given, &surname) {
+        return false;
+    }
+    first.chars().next().is_some_and(|ch| ch.is_uppercase())
+}
+
+fn is_posterity_naming(text: &str) -> bool {
+    let folded = fold(text);
+    folded.contains("porte son nom")
+        || folded.contains("porte le nom")
+        || folded.contains("named after her")
+        || folded.contains("named after him")
+        || folded.contains("bears her name")
+        || folded.contains("bears his name")
+}
+
+fn time_standing(reading: &str) -> TimeStanding {
+    match reading {
+        "inferred_year" | "paragraph_context" => TimeStanding::Borrowed,
+        "missing" | "inherited_not_used" => TimeStanding::Unknown,
+        _ => TimeStanding::Justified,
+    }
+}
+
+fn map_standing(place: Option<&str>, quote: &str) -> MapStanding {
+    let Some(place) = place.map(str::trim).filter(|place| !place.is_empty()) else {
+        return MapStanding::OffMap("no_place");
+    };
+    if is_political_territory(place) || quote_names_several_localities(quote) {
+        return MapStanding::OffMap("place_is_not_an_event_point");
+    }
+    MapStanding::Eligible
 }
 
 /// Two cities in one sentence are not one map point.
@@ -356,25 +483,39 @@ mod tests {
     }
 
     #[test]
-    fn a_borrowed_year_is_not_a_public_date() {
-        assert_eq!(
-            admit_to_public_corpus(&fact(
-                "Marceline Desbordes-Valmore",
-                "the young girl somehow made her way back to France",
-                "inferred_year"
-            )),
-            PublicAdmission::Hold("date_not_in_the_passage")
+    fn a_borrowed_year_is_not_stored_but_the_fact_can_remain() {
+        let quote = "the young girl somehow made her way back to France";
+        let borrowed = fact("Marceline Desbordes-Valmore", quote, "inferred_year");
+        let decisions = decide_fact(&borrowed, Some("France"));
+        assert_eq!(decisions.historical, HistoricalStanding::Admit);
+        assert_eq!(decisions.time, TimeStanding::Borrowed);
+        assert_eq!(decisions.map, MapStanding::OffMap("place_is_not_an_event_point"));
+        assert_eq!(admit_to_public_corpus(&borrowed), PublicAdmission::Publish);
+        let undated = decide_fact(
+            &fact("Marceline Desbordes-Valmore", quote, "missing"),
+            Some("France"),
         );
+        assert_eq!(undated.historical, decisions.historical);
+        assert_eq!(undated.time, TimeStanding::Unknown);
+        assert_eq!(undated.map, decisions.map);
+    }
+
+    #[test]
+    fn a_missing_date_or_point_does_not_change_the_historical_decision() {
+        let letter = "Marceline écrit à Prosper Lanchantin une lettre dont la date n'est pas connue.";
+        let dated = fact("Marceline Desbordes-Valmore", letter, "explicit_year");
+        let undated = fact("Marceline Desbordes-Valmore", letter, "missing");
         assert_eq!(
-            admit_to_public_corpus(&fact(
-                "Marceline Desbordes-Valmore",
-                "the young girl somehow made her way back to France",
-                "missing"
-            )),
-            PublicAdmission::Publish
+            decide_fact(&dated, Some("Lyon")).historical,
+            decide_fact(&undated, None).historical
         );
-        assert!(is_political_territory("France"));
-        assert!(!is_political_territory("Douai"));
+        assert_eq!(decide_fact(&undated, None).time, TimeStanding::Unknown);
+        assert_eq!(decide_fact(&undated, None).map, MapStanding::OffMap("no_place"));
+        assert_eq!(
+            decide_fact(&undated, Some("Lyon")).map,
+            MapStanding::Eligible
+        );
+        assert_eq!(admit_to_public_corpus(&undated), PublicAdmission::Publish);
     }
 
     #[test]
@@ -521,6 +662,45 @@ mod tests {
                 "explicit_year"
             )),
             PublicAdmission::Hold("bibliographic_notice")
+        );
+    }
+
+    #[test]
+    fn a_bibliography_line_is_not_her_act() {
+        let notice = "Jeanine Moulin, Marceline Desbordes-Valmore, Paris, Seghers, coll";
+        let medal = "David d'Angers, Marceline Desbordes-Valmore, médaillon en plâtre, Paris, musée de la vie romantique";
+        assert_eq!(
+            admit_to_public_corpus(&fact("Marceline Desbordes-Valmore", notice, "explicit_year")),
+            PublicAdmission::Hold("bibliographic_notice")
+        );
+        assert_eq!(
+            admit_to_public_corpus(&fact("Marceline Desbordes-Valmore", medal, "missing")),
+            PublicAdmission::Hold("bibliographic_notice")
+        );
+    }
+
+    #[test]
+    fn a_street_named_after_her_is_not_her_act() {
+        let street = "Une nouvelle rue de Grenoble dans le quartier Flaubert porte son nom : rue Marceline Desbordes-Valmore";
+        assert_eq!(
+            admit_to_public_corpus(&fact("Marceline Desbordes-Valmore", street, "missing")),
+            PublicAdmission::Hold("posterity_not_an_act")
+        );
+        assert_eq!(
+            admit_to_public_corpus(&fact(
+                "Marceline Desbordes-Valmore",
+                "Le couple s'installe ensuite à Lyon.",
+                "missing"
+            )),
+            PublicAdmission::Publish
+        );
+        assert_eq!(
+            admit_to_public_corpus(&fact(
+                "Marceline Desbordes-Valmore",
+                "Mais la famille Debonne refusant une union avec une ancienne comédienne, Marceline Desbordes quitte définitivement son amant et reprend le chemin du théâtre, à l'Odéon puis à la Monnaie à Bruxelles",
+                "missing"
+            )),
+            PublicAdmission::Publish
         );
     }
 
