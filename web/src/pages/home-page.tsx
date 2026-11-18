@@ -7,6 +7,7 @@ import { EntitySearchBox } from "@/components/search/entity-search-box";
 import { usePersonPicker } from "@/hooks/use-person-picker";
 import { fetchDemoRoster, type DemoRosterItem } from "@/lib/api";
 import { DEMO_ROSTER, type DemoRosterEntry } from "@/lib/demo-roster";
+import { experienceHref } from "@/lib/experiences";
 import { useI18n } from "@/lib/i18n";
 import type { SearchSuggestion } from "@/lib/schemas/entity";
 import { useExplorerStore } from "@/stores/explorer-store";
@@ -44,8 +45,8 @@ export function HomePage() {
   }, []);
 
   function onSelect(item: SearchSuggestion) {
-    selectPerson(item);
-    navigate("/istoria");
+    const entityId = selectPerson(item);
+    navigate(entityId ? experienceHref("istoria", entityId) : "/istoria");
   }
 
   function openFigure(entry: RosterCard, lane: "explorer" | "agora") {
@@ -78,8 +79,11 @@ export function HomePage() {
         >
           <div className="hero__grid">
             <div className="hero__copy">
-              <h1 id="home-hero-title" className="hero__title hero__title--wordmark">
+              <p className="home-hero-mark">
                 <TalariaHeroWordmark />
+              </p>
+              <h1 id="home-hero-title" className="home-hero-title">
+                {t.homeHeroTitle}
               </h1>
               <p className="hero__subtitle">{t.heroSubtitle}</p>
               <div className="mx-auto mt-6 w-full max-w-xl">
@@ -105,7 +109,7 @@ export function HomePage() {
           </div>
         </section>
 
-        <section className="home-visions" aria-labelledby="home-visions-title">
+        <section className="home-visions home-visions--editorial" aria-labelledby="home-visions-title">
           <div className="home-visions__inner">
             <header className="home-visions__header">
               <h2 id="home-visions-title" className="home-visions__title">{t.homeVisionsTitle}</h2>
@@ -227,6 +231,20 @@ export function HomePage() {
             </p>
           </div>
         </section>
+
+        <footer className="home-footer">
+          <nav className="home-footer__nav" aria-label={locale === "fr" ? "Pied de page" : "Footer"}>
+            <Link to="/istoria">Istoria</Link>
+            <Link to="/poreia">Poreia</Link>
+            <Link to="/agora">Agora</Link>
+            <Link to="/about">{locale === "fr" ? "Qui sommes-nous ?" : "About"}</Link>
+          </nav>
+          <p className="home-footer__note">
+            {locale === "fr"
+              ? "La sandale ailée reste l’emblème. Les photographies d’accueil sont des vues méditerranéennes du projet, pas des archives historiques."
+              : "The winged sandal remains the emblem. The home photographs are Mediterranean views from the project, not historical archives."}
+          </p>
+        </footer>
       </main>
     </div>
   );

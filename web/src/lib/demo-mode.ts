@@ -1,3 +1,3 @@
 // web/src/lib/demo-mode.ts
-/** Public visitors browse the curated demo roster only. Flip when open search is ready. */
-export const PUBLIC_PERSON_SEARCH_ENABLED = false;
+/** Public search uses the existing entity service. No account is required. */
+export const PUBLIC_PERSON_SEARCH_ENABLED = true;
