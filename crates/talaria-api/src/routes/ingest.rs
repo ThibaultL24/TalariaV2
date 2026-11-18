@@ -387,6 +387,10 @@ async fn start_lane_ingest(
         body.corpus_limit_total.filter(|value| *value > 0).unwrap_or(120).min(1500),
     );
     body.minimum_per_provider = Some(body.minimum_per_provider.unwrap_or(3).min(30));
+    if body.max_documents.unwrap_or(400) <= 8 {
+        body.corpus_limit_per_provider = Some(body.corpus_limit_per_provider.unwrap_or(4).min(4));
+        body.corpus_limit_total = Some(body.corpus_limit_total.unwrap_or(16).min(16));
+    }
     if body.live && state.offline_only {
         return Err((
             StatusCode::FORBIDDEN,
@@ -406,6 +410,34 @@ async fn start_lane_ingest(
         &state.pool, lane, &subject, body.qid.as_deref()
     ).await.map_err(db_ingest_error)? {
         return Ok(durable_job_started_response(&existing, true));
+    }
+    let recent_identity = ingest_jobs::count_identity_since(
+        &state.pool, lane, &subject, body.qid.as_deref(), 3600,
+    )
+    .await
+    .map_err(db_ingest_error)?;
+    if !ingest_jobs::identity_research_open(recent_identity) {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(json!({
+                "error": "ingest_quota",
+                "scope": "identity",
+                "detail": "Cette personnalité a déjà été recherchée plusieurs fois dans l'heure. La recherche précédente reste disponible.",
+            })),
+        ));
+    }
+    let started_this_minute = ingest_jobs::count_started_since(&state.pool, 60)
+        .await
+        .map_err(db_ingest_error)?;
+    if !ingest_jobs::admission_burst_open(started_this_minute) {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(json!({
+                "error": "ingest_quota",
+                "scope": "burst",
+                "detail": "Trop de recherches viennent d'être lancées. Réessayez dans une minute.",
+            })),
+        ));
     }
     let active = ingest_jobs::count_active(&state.pool).await.map_err(db_ingest_error)?;
     if !ingest_jobs::capacity_open(active) {

@@ -89,8 +89,12 @@ pub fn year_from_nearby_context(
         return Some(clause_years[0]);
     }
 
-    // Look in the full paragraph for contextual years
-    let para_years = scan_years_in_range(full_paragraph, min_year, max_year);
+    // A birth year in a neighboring sentence does not date this one.
+    // "born in 1786 … made her way back to France" must stay undated.
+    let para_years = scan_years_in_range(full_paragraph, min_year, max_year)
+        .into_iter()
+        .filter(|year| birth_year != Some(*year) || clause_states_age(clause_text))
+        .collect::<Vec<_>>();
     if para_years.is_empty() {
         return None;
     }
@@ -166,6 +170,36 @@ pub fn local_context_window<'a>(full: &'a str, clause: &str, radius: usize) -> &
     &full[start..end]
 }
 
+fn clause_states_age(clause: &str) -> bool {
+    stated_age_years(clause).is_some()
+}
+
+fn stated_age_years(clause: &str) -> Option<i32> {
+    let folded = clause.to_lowercase();
+    const WORDS: &[(&str, i32)] = &[
+        ("vingt ans", 20),
+        ("dix-neuf ans", 19),
+        ("dix neuf ans", 19),
+        ("dix-huit ans", 18),
+        ("dix huit ans", 18),
+        ("dix-sept ans", 17),
+        ("dix sept ans", 17),
+        ("seize ans", 16),
+        ("quinze ans", 15),
+        ("quatorze ans", 14),
+        ("treize ans", 13),
+        ("douze ans", 12),
+        ("onze ans", 11),
+        ("dix ans", 10),
+    ];
+    for (phrase, age) in WORDS {
+        if folded.contains(phrase) {
+            return Some(*age);
+        }
+    }
+    None
+}
+
 fn floor_char_boundary(s: &str, mut i: usize) -> usize {
     if i >= s.len() {
         return s.len();
@@ -210,6 +244,10 @@ pub fn infer_approximate_year(
             let year = end.map(|e| (start + e) / 2).unwrap_or(start);
             return Some((year, "section_heading"));
         }
+    }
+
+    if let (Some(age), Some(birth)) = (stated_age_years(clause_text), birth_year) {
+        return Some((birth.saturating_add(age), "stated_age"));
     }
 
     // 2. Try nearby paragraph context
@@ -401,6 +439,34 @@ mod tests {
             Some(1867),
         );
         assert_eq!(result, Some((1857, "paragraph_context")));
+    }
+
+    #[test]
+    fn a_birth_year_does_not_date_a_later_return() {
+        let clause = "the young girl somehow made her way back to France";
+        let paragraph = "Marceline Desbordes-Valmore was born in Douai in 1786. Later, the young girl somehow made her way back to France.";
+        let result = infer_approximate_year(
+            "travel",
+            clause,
+            Some(paragraph),
+            None,
+            Some(1786),
+            Some(1859),
+        );
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn a_stated_age_uses_the_known_birth_year() {
+        let result = infer_approximate_year(
+            "work",
+            "De retour à Douai, elle devient comédienne dès l'âge de seize ans",
+            None,
+            None,
+            Some(1786),
+            Some(1859),
+        );
+        assert_eq!(result, Some((1802, "stated_age")));
     }
 
     #[test]

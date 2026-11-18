@@ -3,10 +3,11 @@
 
 use serde_json::json;
 use talaria_quality::{
-    concise_event_title, event_type_is_map_locus,
-    occurrence_key_for_event, publishes_to_public_corpus, quote_may_attest, read_clause_time,
-    start_time_from_typed, time_to_json, AttributionMatch, CandidateStatus, ClauseTime, GateContext,
-    GateDecision, GroundedItem, RejectionCode, TypedTime,
+    admit_to_public_corpus, clause_identity, concise_event_title, event_type_is_map_locus,
+    is_wikidata_qid, occurrence_key_for_event, publishes_to_public_corpus, quote_may_attest,
+    quote_names_several_localities, read_clause_time, start_time_from_typed, time_to_json,
+    AttributionMatch, CandidateStatus, ClauseTime, GateContext, GateDecision, GroundedItem,
+    PublicAdmission, PublicFact, RejectionCode, TypedTime,
 };
 use talaria_sources::is_plausible_place_label;
 use talaria_store::{
@@ -50,6 +51,47 @@ pub struct PersistMeta<'a> {
 
 fn person_event_fingerprint(entity_id: Uuid, occurrence_key: &str) -> String {
     format!("{entity_id}|{occurrence_key}")
+}
+
+fn death_statement(quote: &str, subject: &str) -> bool {
+    let folded = quote.to_lowercase();
+    let surname = subject.split_whitespace().last().unwrap_or(subject).to_lowercase();
+    if surname.is_empty() || !folded.contains(&surname) {
+        return false;
+    }
+    folded.contains(" meurt")
+        || folded.contains(" died")
+        || folded.contains(" dies")
+        || folded.starts_with("meurt")
+        || folded.starts_with("died")
+}
+
+async fn find_event_with_same_clause(
+    pool: &sqlx::PgPool,
+    entity_id: Uuid,
+    quote: &str,
+) -> anyhow::Result<Option<Uuid>> {
+    let identity = clause_identity(quote);
+    if identity.chars().count() < 24 {
+        return Ok(None);
+    }
+    let id = sqlx::query_scalar(
+        r#"
+        SELECT ce.id
+        FROM canonical_events ce
+        JOIN event_evidence ee ON ee.canonical_event_id = ce.id
+        WHERE ce.entity_id = $1
+          AND ce.is_active
+          AND ce.pipeline = 'person'
+          AND regexp_replace(lower(ee.quoted_text), '[^[:alnum:]]', '', 'g') = $2
+        LIMIT 1
+        "#,
+    )
+    .bind(entity_id)
+    .bind(&identity)
+    .fetch_optional(pool)
+    .await?;
+    Ok(id)
 }
 
 async fn find_existing_person_event(
@@ -190,7 +232,27 @@ pub async fn persist_gated_item(
     place_reading: &str,
 ) -> anyhow::Result<PersistOutcome> {
     let fingerprint = gating::fingerprint_for(subject, item, time, raw_document_id);
-    let status = decision.status();
+    let admission = admit_to_public_corpus(&PublicFact {
+        subject,
+        quote: &item.quoted_text,
+        summary: &item.summary,
+        event_type: &item.event_type,
+        time_reading,
+        structured_source: time_reading == "structured_year",
+    });
+    let hold_reason = match admission {
+        PublicAdmission::Hold(reason) => Some(reason),
+        PublicAdmission::Publish => None,
+    };
+    let status = if hold_reason.is_some() {
+        CandidateStatus::NeedsReview
+    } else {
+        decision.status()
+    };
+    let mut rejection_codes = decision.codes();
+    if let Some(reason) = hold_reason {
+        rejection_codes.push(reason.to_string());
+    }
     let candidate_id = insert_person_candidate(
         pool,
         &PersonCandidateInsert {
@@ -210,18 +272,20 @@ pub async fn persist_gated_item(
             primary_object: None,
             action_role: Some(item.role.clone()),
             status: status.as_str().to_string(),
-            rejection_codes: decision.codes(),
+            rejection_codes,
             judgment_json: json!({
                 "attribution": attribution_label(attribution),
                 "time_reading": time_reading,
                 "place_reading": place_reading,
+                "public_admission": hold_reason.unwrap_or("publish"),
             }),
             raw_document_id,
         },
     )
     .await?;
 
-    let accept_canonical = publishes_to_public_corpus(decision, attribution);
+    let accept_canonical =
+        publishes_to_public_corpus(decision, attribution) && hold_reason.is_none();
     let singleton_reject = matches!(decision, GateDecision::Reject(ref codes)
         if codes.contains(&RejectionCode::SingletonCardinalityViolation));
 
@@ -261,7 +325,38 @@ pub async fn persist_gated_item(
         Some(item.summary.as_str()),
     );
 
+    if death_statement(&item.quoted_text, subject) {
+        if let Some(existing) =
+            find_active_person_singleton_event(pool, entity_id, "death").await?
+        {
+            return attach_evidence_to_existing(
+                pool,
+                existing,
+                candidate_id,
+                item,
+                raw_document_id,
+                coords,
+                place_identity_qid,
+                source_locator,
+            )
+            .await;
+        }
+    }
+
     if let Some(existing) = find_existing_person_event(pool, entity_id, occurrence_key).await? {
+        return attach_evidence_to_existing(
+            pool,
+            existing,
+            candidate_id,
+            item,
+            raw_document_id,
+            coords,
+            place_identity_qid,
+            source_locator,
+        )
+        .await;
+    }
+    if let Some(existing) = find_event_with_same_clause(pool, entity_id, &item.quoted_text).await? {
         return attach_evidence_to_existing(
             pool,
             existing,
@@ -409,6 +504,13 @@ fn event_time(
             },
             "range",
         ),
+        ClauseTime::Open { year, surface } => (
+            TypedTime::Approx {
+                year,
+                surface: Some(surface),
+            },
+            "open_bound",
+        ),
         ClauseTime::Ambiguous { reason } => (
             TypedTime::Unknown {
                 surface: Some(reason.to_string()),
@@ -431,12 +533,26 @@ fn event_time(
             };
             let time =
                 typing::typed_time_from_year_with_context(item.year, &item.event_type, &infer_ctx);
-            let reading = match &time {
-                TypedTime::Approx { .. } => "inferred_year",
-                TypedTime::Exact { .. } => "explicit_year",
-                _ => "missing",
+            let source = match &time {
+                TypedTime::Approx { surface, .. } => surface.clone().unwrap_or_default(),
+                TypedTime::Exact { .. } => "explicit_year".to_string(),
+                _ => "missing".to_string(),
             };
-            (time, reading)
+            // A year taken from another sentence, or from the middle of a life,
+            // is not a date of this fact. Keep the fact undated.
+            if source.contains("paragraph_context") || source.contains("lifespan_education") {
+                (TypedTime::Unknown { surface: None }, "inherited_not_used")
+            } else if source.contains("stated_age") {
+                (time, "stated_age")
+            } else if source.contains("section_heading") {
+                (time, "section_heading")
+            } else if source.contains("death_year_for_burial") {
+                (time, "death_year_for_burial")
+            } else if source == "explicit_year" {
+                (time, "explicit_year")
+            } else {
+                (time, "missing")
+            }
         }
     }
 }
@@ -449,10 +565,12 @@ pub async fn persist_fact_item(
     ctx: &mut GateContext,
     meta: PersistMeta<'_>,
 ) -> anyhow::Result<PersistOutcome> {
+    let several_places = quote_names_several_localities(&item.quoted_text);
     let clean_place = item
         .place_surface
         .as_deref()
-        .filter(|p| is_plausible_place_label(p))
+        .filter(|_| !several_places)
+        .filter(|place| is_plausible_place_label(place) && !is_wikidata_qid(place))
         .map(str::to_string);
     let mut item = item.clone();
     item.place_surface = clean_place;
@@ -1191,6 +1309,191 @@ mod tests {
             .map(|(kind, count)| (kind.as_str(), *count as usize))
             .collect();
         assert!(talaria_quality::suggest_chapters(&sparse_pairs).is_empty());
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn doubtful_lines_do_not_enter_the_public_biography(pool: sqlx::PgPool) {
+        let entity_id = talaria_store::ensure_subject_entity(
+            &pool,
+            "Q466987",
+            "Marceline Desbordes-Valmore",
+        )
+        .await
+        .unwrap();
+        let mut ctx = GateContext {
+            subject_birth_year: Some(1786),
+            subject_death_year: Some(1859),
+            has_active_birth: true,
+            has_active_death: true,
+            fingerprint_exists: false,
+            cross_clause_join_detected: false,
+            place_entity_kind: None,
+            subject_confirmed_alive: false,
+        };
+        let document = "Marceline Desbordes-Valmore was born in Douai in 1786. \
+            the young girl somehow made her way back to France.";
+        let cases = [
+            (
+                "the young girl somehow made her way back to France",
+                "travel",
+                Some("France"),
+                Some((46.2, 2.2)),
+                Some(document),
+            ),
+            (
+                "Sa fille Hyacinthe compose des poèmes et des contes.",
+                "work",
+                None,
+                None,
+                None,
+            ),
+            (
+                "deuxième édition (Poésies de Mme Desbordes-Valmore publiées par Gustave Revilliod) sur Gallica, Genève, Jules Fick, 1873",
+                "commemoration",
+                Some("Genève"),
+                None,
+                None,
+            ),
+            (
+                "Le couple s'installe ensuite à Lyon",
+                "residence",
+                Some("Lyon"),
+                None,
+                None,
+            ),
+            (
+                "Le couple s'installe ensuite à Lyon.",
+                "residence",
+                Some("Lyon"),
+                None,
+                None,
+            ),
+            (
+                "En 1820 paraissent les Poésies de Mme Desbordes-Valmore.",
+                "work",
+                None,
+                None,
+                None,
+            ),
+            (
+                "Après 1823, Marceline Desbordes-Valmore quitte définitivement le théâtre pour se consacrer à l'écriture",
+                "departure",
+                Some("écriture"),
+                None,
+                None,
+            ),
+            (
+                "Après 1823, Marceline Desbordes-Valmore quitte définitivement le théâtre pour se consacrer à l'écriture.",
+                "office",
+                Some("L'écriture"),
+                None,
+                None,
+            ),
+        ];
+        for (index, (quote, event_type, place, coords, document_text)) in cases.into_iter().enumerate() {
+            let url = format!("https://fr.wikipedia.org/wiki/Marceline_Desbordes-Valmore#v311c-{index}");
+            let raw_id = talaria_store::upsert_raw_wikipedia_document(
+                &pool,
+                &url,
+                "Marceline Desbordes-Valmore",
+                "fr",
+                quote,
+            )
+            .await
+            .unwrap();
+            let item = GroundedItem {
+                lane: talaria_quality::Lane::Fact,
+                event_type: event_type.into(),
+                role: "acted".into(),
+                year: None,
+                place_surface: place.map(str::to_string),
+                summary: quote.into(),
+                quoted_text: quote.into(),
+                confidence: 0.8,
+            };
+            persist_fact_item(
+                &pool,
+                entity_id,
+                "Marceline Desbordes-Valmore",
+                &item,
+                &mut ctx,
+                PersistMeta {
+                    raw_document_id: raw_id,
+                    coords,
+                    primary_object: None,
+                    source_locator: &url,
+                    page_title: "Marceline Desbordes-Valmore",
+                    from_followed_page: false,
+                    structured_source: false,
+                    military_subject: false,
+                    aliases: &[],
+                    document_text,
+                    section_heading: None,
+                },
+            )
+            .await
+            .unwrap();
+        }
+
+        let public_bad: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint FROM canonical_events ce \
+             JOIN event_evidence ee ON ee.canonical_event_id = ce.id \
+             WHERE ce.entity_id = $1 AND ce.is_active AND (\
+               ee.quoted_text ILIKE '%Hyacinthe%' OR ee.quoted_text ILIKE '%Gallica%'\
+             )",
+        )
+        .bind(entity_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(public_bad, 0);
+        let france: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint FROM canonical_events \
+             WHERE entity_id = $1 AND is_active AND place_label = 'France' AND map_eligible",
+        )
+        .bind(entity_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(france, 0);
+        let inherited: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint FROM canonical_events \
+             WHERE entity_id = $1 AND is_active AND time_json->>'start' = '1786'",
+        )
+        .bind(entity_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(inherited, 0);
+        let lyon: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint FROM canonical_events \
+             WHERE entity_id = $1 AND is_active AND place_label = 'Lyon'",
+        )
+        .bind(entity_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(lyon <= 1, "lyon rows {lyon}");
+        let writing_place: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint FROM canonical_events \
+             WHERE entity_id = $1 AND is_active AND place_label ILIKE '%criture%'",
+        )
+        .bind(entity_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(writing_place, 0);
+        let poems: serde_json::Value = sqlx::query_scalar(
+            "SELECT time_json FROM canonical_events ce \
+             JOIN event_evidence ee ON ee.canonical_event_id = ce.id \
+             WHERE ce.entity_id = $1 AND ee.quoted_text ILIKE '%Poésies de Mme%'",
+        )
+        .bind(entity_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(poems["kind"], "exact");
+        assert_eq!(poems["start"], "1820");
     }
 
     #[test]

@@ -24,8 +24,8 @@ export function ChapterSuggestions({
       <h2>{fr ? "Suggestions" : "Suggestions"}</h2>
       <p>
         {fr
-          ? "Ces regroupements suivent les faits déjà documentés. Ce ne sont pas des chapitres publiés."
-          : "These groupings follow documented facts. They are not published chapters."}
+          ? "Ces regroupements suivent les faits déjà admis. Ce ne sont pas des chapitres publiés, ni un récit confirmé."
+          : "These groupings follow admitted facts. They are not published chapters, and they are not a confirmed narrative."}
       </p>
       <ul>
         {suggestions.map((item) => (

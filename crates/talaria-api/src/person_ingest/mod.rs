@@ -33,6 +33,9 @@ use crawl_queue::{
 };
 use persist::{PersistMeta, PersistOutcome};
 
+/// How many model calls one page may make. Rules still run on the whole page.
+const MAX_LLM_CHUNKS_PER_PAGE: usize = 4;
+
 /// Run person ingest with optional progress handle for UI updates.
 /// Uses prioritized crawl queue to process core subject pages first, then expand.
 pub async fn run_person_ingest_progressive(
@@ -552,7 +555,8 @@ async fn ingest_wiki_text(
         );
     }
     // Rules used to return here and skip the LLM, so biographies stayed thin.
-    for chunk in extract::split_chunks(text, 3500).into_iter().take(16) {
+    // Four chunks is the budget for one page. A longer article stays partial.
+    for chunk in extract::split_chunks(text, 3500).into_iter().take(MAX_LLM_CHUNKS_PER_PAGE) {
         let extracted = if llm::is_configured() {
             match extract::extract_prose_chunk(pool, raw_id, subject, title, &chunk).await {
                 Ok(items) => items,

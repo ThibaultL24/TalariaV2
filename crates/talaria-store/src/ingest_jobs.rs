@@ -60,6 +60,48 @@ pub async fn count_active(pool: &PgPool) -> Result<i64, sqlx::Error> {
 }
 
 pub const MAX_CONCURRENT_INGESTS: i64 = 8;
+/// One identity can be researched this many times an hour. A finished job does not invite a loop.
+pub const MAX_IDENTITY_RESEARCHES_PER_HOUR: i64 = 3;
+/// New researches admitted in one minute, whatever the identity. Slows a script that rotates names.
+pub const MAX_NEW_RESEARCHES_PER_MINUTE: i64 = 4;
+
+pub fn identity_research_open(recent_for_identity: i64) -> bool {
+    recent_for_identity < MAX_IDENTITY_RESEARCHES_PER_HOUR
+}
+
+pub fn admission_burst_open(started_this_minute: i64) -> bool {
+    started_this_minute < MAX_NEW_RESEARCHES_PER_MINUTE
+}
+
+pub async fn count_identity_since(
+    pool: &PgPool,
+    lane: &str,
+    subject: &str,
+    qid: Option<&str>,
+    seconds: i64,
+) -> Result<i64, sqlx::Error> {
+    let count = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM ingest_jobs \
+         WHERE lane = $1 AND identity_key = $2 AND created_at > now() - make_interval(secs => $3)",
+    )
+    .bind(lane)
+    .bind(identity_key(subject, qid))
+    .bind(seconds as f64)
+    .fetch_one(pool)
+    .await?;
+    Ok(count)
+}
+
+pub async fn count_started_since(pool: &PgPool, seconds: i64) -> Result<i64, sqlx::Error> {
+    let count = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM ingest_jobs \
+         WHERE created_at > now() - make_interval(secs => $1)",
+    )
+    .bind(seconds as f64)
+    .fetch_one(pool)
+    .await?;
+    Ok(count)
+}
 
 /// A new research starts only while fewer than the concurrent limit are already running.
 /// Repeating the same identity still attaches to the job already admitted.
@@ -209,6 +251,15 @@ mod tests {
         assert_eq!(identity_key("Alexandre Dumas",Some("Q193129")), "qid:Q193129");
         assert_eq!(identity_key("  Victor   Hugo ",None),"name:victor hugo");
         assert_ne!(identity_key("Victor Hugo",Some("Q535")),identity_key("Victor Hugo",None));
+    }
+
+    #[test]
+    fn a_repeated_identity_and_a_burst_stop_before_the_global_cap() {
+        assert!(identity_research_open(0));
+        assert!(identity_research_open(MAX_IDENTITY_RESEARCHES_PER_HOUR - 1));
+        assert!(!identity_research_open(MAX_IDENTITY_RESEARCHES_PER_HOUR));
+        assert!(admission_burst_open(0));
+        assert!(!admission_burst_open(MAX_NEW_RESEARCHES_PER_MINUTE));
     }
 
     #[sqlx::test(migrations = "../../migrations")]

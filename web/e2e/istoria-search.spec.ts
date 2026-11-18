@@ -54,5 +54,7 @@ test("selecting Desbordes-Valmore starts a bounded research and keeps the fiche"
 
   await page.reload();
   await expect(page.getByRole("button", { name: "Enrichir le corpus" })).toBeVisible();
+  await expect(page.getByText(/n'est pas une vérification historique/)).toBeVisible();
+  await expect(page.getByText("Biographie vérifiée")).toHaveCount(0);
   await expect(page.getByText(/^\d+%$/)).toHaveCount(0);
 });

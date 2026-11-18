@@ -281,6 +281,11 @@ pub enum ClauseTime {
         end_day: Option<u32>,
         surface: String,
     },
+    /// The year is in the clause, but the wording is open: "after 1823".
+    Open {
+        year: i32,
+        surface: String,
+    },
     /// The clause does not establish one historical date.
     Ambiguous {
         reason: &'static str,
@@ -510,6 +515,21 @@ fn dated_points(lower: &str) -> Vec<DatedPoint> {
     found
 }
 
+fn year_is_open_bound(text: &str, year_start: usize) -> bool {
+    let before = text.get(..year_start).unwrap_or("");
+    let folded = before.to_lowercase();
+    let tail = folded.trim_end();
+    let window = &tail[tail.len().saturating_sub(24)..];
+    window.ends_with("après")
+        || window.ends_with("apres")
+        || window.ends_with("after")
+        || window.ends_with("vers")
+        || window.ends_with("circa")
+        || window.ends_with("c.")
+        || window.ends_with("à partir de")
+        || window.ends_with("a partir de")
+}
+
 fn ranges_overlap(a0: usize, a1: usize, b0: usize, b1: usize) -> bool {
     a0 < b1 && b0 < a1
 }
@@ -555,6 +575,10 @@ pub fn read_clause_time(text: &str) -> ClauseTime {
         };
     }
     match historical.as_slice() {
+        [(year, start, _)] if year_is_open_bound(&masked, *start) => ClauseTime::Open {
+            year: *year,
+            surface: format!("après {year}"),
+        },
         [(year, _, _)] => ClauseTime::Exact {
             year: *year,
             month: None,
@@ -1122,6 +1146,12 @@ mod tests {
                 "Après la victoire à la bataille de Wagram, un traité est signé au château."
             ),
             ClauseTime::Missing
+        ));
+        assert!(matches!(
+            read_clause_time(
+                "Après 1823, Marceline Desbordes-Valmore quitte définitivement le théâtre pour se consacrer à l'écriture."
+            ),
+            ClauseTime::Open { year: 1823, .. }
         ));
     }
 }

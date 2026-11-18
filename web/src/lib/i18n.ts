@@ -15,6 +15,7 @@ export interface AppMessages {
   loading: string;
   loadingMap: string;
   searchInProgress: string;
+  researchUnverified: string;
   noResults: string;
   emptySearch: string;
   close: string;
@@ -351,6 +352,7 @@ const EN: AppMessages = {
   loading: "Loading…",
   loadingMap: "Placing events on the map…",
   searchInProgress: "Search in progress",
+  researchUnverified: "A finished search is not a verified biography. The facts shown are the ones the engine admitted. The other extracts stay in review.",
   noResults: "No matches.",
   emptySearch: "Open a demo figure from the home page to explore a life.",
   close: "Close",
@@ -711,6 +713,7 @@ const FR: AppMessages = {
   loading: "Chargement…",
   loadingMap: "Placement des événements sur la carte…",
   searchInProgress: "Recherche en cours",
+  researchUnverified: "Une recherche terminée n'est pas une vérification historique. Les faits affichés sont ceux que le moteur a admis. Les autres extraits restent en vérification.",
   noResults: "Aucun résultat.",
   emptySearch: "Ouvrez une figure de la démo depuis l’accueil pour explorer une vie.",
   close: "Fermer",

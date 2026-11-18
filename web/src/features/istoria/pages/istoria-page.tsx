@@ -311,6 +311,9 @@ export function IstoriaPage() {
         </p>
       )}
       {entityId && (
+        <p className="v3-note" role="status">{t.researchUnverified}</p>
+      )}
+      {entityId && (
         <ChapterSuggestions
           suggestions={suggestionsQuery.data?.suggestions ?? []}
           locale={locale === "fr" ? "fr" : "en"}

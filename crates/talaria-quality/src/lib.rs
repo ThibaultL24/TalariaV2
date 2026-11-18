@@ -17,6 +17,7 @@ mod occurrence;
 mod overlay;
 mod places;
 mod projections;
+mod public_admission;
 mod resolve;
 mod resume;
 mod time_typed;
@@ -71,6 +72,10 @@ pub use overlay::{
 };
 pub use places::{place_query, PlaceQuery};
 pub use projections::{BuildProjections, DerivedLabelProjections, ProjectionEvent};
+pub use public_admission::{
+    admit_to_public_corpus, clause_identity, is_political_territory, locality_count,
+    quote_names_several_localities, PublicAdmission, PublicFact,
+};
 pub use resolve::{
     gazetteer_place_in_text, resolve_mentions, GazetteerResolver, MentionResolver, ResolvedMentions,
 };

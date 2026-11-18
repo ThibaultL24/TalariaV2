@@ -561,6 +561,14 @@ pub struct EventPlacePoint {
 }
 
 pub fn event_place_point(role: &str, label: &str, given: Option<(f64, f64)>) -> EventPlacePoint {
+    if talaria_quality::is_political_territory(label) {
+        return EventPlacePoint {
+            lat: None,
+            lon: None,
+            qid: None,
+            reason: "political_territory_is_not_a_point",
+        };
+    }
     decide_event_place(role, &gazetteer_exact_identities(label), given)
 }
 
@@ -878,6 +886,15 @@ mod tests {
                 "{name} should have QID {expected_qid}"
             );
         }
+    }
+
+    #[test]
+    fn a_country_name_does_not_become_a_map_point() {
+        let point = event_place_point("locus", "France", Some((46.2, 2.2)));
+        assert!(point.lat.is_none());
+        assert_eq!(point.reason, "political_territory_is_not_a_point");
+        let paris = event_place_point("locus", "Paris", None);
+        assert!(paris.lat.is_some());
     }
 
     #[test]
