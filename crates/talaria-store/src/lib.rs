@@ -150,9 +150,9 @@ pub use person_events::{
     insert_person_quote_evidence, person_density_counts, person_extended_density_counts,
     resolve_active_person_event, resolve_person_event, revert_person_supersession,
     supersede_person_event, upsert_raw_corpus_document, upsert_raw_wikidata_document,
-    upsert_raw_wikipedia_document, ExtendedDensityCounts, PersonCandidateInsert, PersonEvent,
-    PersonEventInsert, PersonEventResolution, PersonSupersession, FILIATION_NONE,
-    FILIATION_UNVERIFIED, FILIATION_VERIFIED,
+    upsert_raw_wikipedia_article, upsert_raw_wikipedia_document, ExtendedDensityCounts,
+    PersonCandidateInsert, PersonEvent, PersonEventInsert, PersonEventResolution,
+    PersonSupersession, FILIATION_NONE, FILIATION_UNVERIFIED, FILIATION_VERIFIED,
 };
 pub use phrase_candidates::{
     insert_phrase_candidate, list_pending_candidates, update_candidate_status, PendingCandidateRow,

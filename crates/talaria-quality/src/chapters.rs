@@ -1,6 +1,7 @@
 // crates/talaria-quality/src/chapters.rs
 //! Deterministic chapter suggestions from documented event types.
 //! A suggestion is not a draft and not a published chapter.
+//! Six events of one type is only the activity threshold. Sections and places are separate.
 
 pub const MIN_CHAPTER_EVENTS: usize = 6;
 pub const SUGGESTION: &str = "suggestion";
@@ -25,16 +26,66 @@ struct Theme {
 }
 
 const THEMES: &[Theme] = &[
-    Theme { slug: "formation", title_fr: "Formation", title_en: "Education", types: &["education"] },
-    Theme { slug: "works", title_fr: "Œuvres", title_en: "Works", types: &["publication", "work", "creation"] },
-    Theme { slug: "discoveries", title_fr: "Découvertes", title_en: "Discoveries", types: &["discovery", "invention"] },
-    Theme { slug: "research", title_fr: "Recherches", title_en: "Research", types: &["research", "study"] },
-    Theme { slug: "campaigns", title_fr: "Campagnes", title_en: "Campaigns", types: &["battle", "siege", "military_campaign"] },
-    Theme { slug: "travel", title_fr: "Voyages", title_en: "Journeys", types: &["travel", "visit"] },
-    Theme { slug: "relations", title_fr: "Relations", title_en: "Relations", types: &["marriage", "meeting"] },
-    Theme { slug: "politics", title_fr: "Engagements politiques", title_en: "Political life", types: &["office", "diplomatic", "treaty"] },
-    Theme { slug: "exile", title_fr: "Exils", title_en: "Exiles", types: &["exile"] },
-    Theme { slug: "residences", title_fr: "Résidences", title_en: "Residences", types: &["residence", "lived"] },
+    Theme {
+        slug: "formation",
+        title_fr: "Formation",
+        title_en: "Education",
+        types: &["education"],
+    },
+    Theme {
+        slug: "works",
+        title_fr: "Œuvres",
+        title_en: "Works",
+        types: &["publication", "work", "creation"],
+    },
+    Theme {
+        slug: "discoveries",
+        title_fr: "Découvertes",
+        title_en: "Discoveries",
+        types: &["discovery", "invention"],
+    },
+    Theme {
+        slug: "research",
+        title_fr: "Recherches",
+        title_en: "Research",
+        types: &["research", "study"],
+    },
+    Theme {
+        slug: "campaigns",
+        title_fr: "Campagnes",
+        title_en: "Campaigns",
+        types: &["battle", "siege", "military_campaign"],
+    },
+    Theme {
+        slug: "travel",
+        title_fr: "Voyages",
+        title_en: "Journeys",
+        types: &["travel", "visit"],
+    },
+    Theme {
+        slug: "relations",
+        title_fr: "Relations",
+        title_en: "Relations",
+        types: &["marriage", "meeting"],
+    },
+    Theme {
+        slug: "politics",
+        title_fr: "Engagements politiques",
+        title_en: "Political life",
+        types: &["office", "diplomatic", "treaty"],
+    },
+    Theme {
+        slug: "exile",
+        title_fr: "Exils",
+        title_en: "Exiles",
+        types: &["exile"],
+    },
+    Theme {
+        slug: "residences",
+        title_fr: "Résidences",
+        title_en: "Residences",
+        types: &["residence", "lived"],
+    },
 ];
 
 /// Group only the types that are actually documented. A thin corpus stays without a chapter.
@@ -178,10 +229,7 @@ fn split_on_a_quiet_interval(
 const BUSY_YEAR_EVENTS: usize = 8;
 
 /// A year with many facts is its own episode. Quieter years stay together.
-fn split_busy_years(
-    group: Vec<(usize, i32, Option<String>)>,
-    periods: &mut Vec<LifePeriod>,
-) {
+fn split_busy_years(group: Vec<(usize, i32, Option<String>)>, periods: &mut Vec<LifePeriod>) {
     let mut quiet = Vec::new();
     let mut index = 0;
     while index < group.len() {
@@ -286,11 +334,132 @@ fn format_year(year: i32, french: bool) -> String {
     }
 }
 
+pub const MIN_SECTION_EVENTS: usize = 2;
+pub const MIN_PLACE_EVENTS: usize = 4;
+
+/// One fact already tied to the heading it was read from.
+#[derive(Debug, Clone)]
+pub struct SectionFact {
+    pub section: String,
+    pub event_title: String,
+}
+
+/// A suggested grouping. Members are event titles, not a published chapter.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NamedChapter {
+    pub slug: String,
+    pub title: String,
+    pub event_count: usize,
+    pub members: Vec<String>,
+    pub basis_fr: String,
+    pub basis_en: String,
+}
+
+/// Group facts that share a source heading. Two facts are enough to show the heading.
+pub fn suggest_section_chapters(facts: &[SectionFact]) -> Vec<NamedChapter> {
+    let mut grouped: Vec<(String, Vec<String>)> = Vec::new();
+    for fact in facts {
+        let section = fact.section.trim();
+        if section.is_empty() {
+            continue;
+        }
+        if let Some((_, members)) = grouped.iter_mut().find(|(name, _)| name == section) {
+            if !members.iter().any(|title| title == &fact.event_title) {
+                members.push(fact.event_title.clone());
+            }
+        } else {
+            grouped.push((section.to_string(), vec![fact.event_title.clone()]));
+        }
+    }
+    grouped
+        .into_iter()
+        .filter_map(|(title, members)| {
+            named_chapter(
+                &title,
+                members,
+                MIN_SECTION_EVENTS,
+                "faits lus dans la section",
+                "facts read in the section",
+            )
+        })
+        .collect()
+}
+
+/// A place with several facts is a concentration, not a route between places.
+pub fn suggest_place_chapters(places: &[(&str, Vec<String>)]) -> Vec<NamedChapter> {
+    let mut chapters = Vec::new();
+    for (place, members) in places {
+        let place = place.trim();
+        if place.chars().count() < 3
+            || crate::is_wikidata_qid(place)
+            || super::public_admission::is_political_territory(place)
+        {
+            continue;
+        }
+        if let Some(chapter) = named_chapter(
+            place,
+            members.clone(),
+            MIN_PLACE_EVENTS,
+            "faits situés à",
+            "facts located at",
+        ) {
+            chapters.push(chapter);
+        }
+    }
+    chapters.sort_by(|left, right| right.event_count.cmp(&left.event_count));
+    chapters
+}
+
+fn named_chapter(
+    title: &str,
+    members: Vec<String>,
+    minimum: usize,
+    basis_fr: &str,
+    basis_en: &str,
+) -> Option<NamedChapter> {
+    if members.len() < minimum {
+        return None;
+    }
+    let count = members.len();
+    let shown = members.into_iter().take(8).collect();
+    Some(NamedChapter {
+        slug: slugify(title),
+        title: title.to_string(),
+        event_count: count,
+        members: shown,
+        basis_fr: format!(
+            "{count} {basis_fr} « {title} ». Ce regroupement n'est pas un chapitre publié."
+        ),
+        basis_en: format!(
+            "{count} {basis_en} \"{title}\". This grouping is not a published chapter."
+        ),
+    })
+}
+
+fn slugify(value: &str) -> String {
+    let mut slug = String::new();
+    let mut dash = false;
+    for ch in value.chars() {
+        if ch.is_ascii_alphanumeric() {
+            slug.push(ch.to_ascii_lowercase());
+            dash = false;
+        } else if !dash && !slug.is_empty() {
+            slug.push('-');
+            dash = true;
+        }
+    }
+    slug.trim_matches('-').to_string()
+}
+
 fn year_span(start: i32, end: i32, french: bool) -> String {
     if start == end {
         format_year(start, french)
     } else {
-        format!("{}–{}", format_year(start, french), format_year(end, french))
+        format!(
+            "{}–{}",
+            format_year(start, french),
+            format_year(end, french)
+        )
     }
 }
 
@@ -300,7 +469,8 @@ mod tests {
 
     #[test]
     fn a_campaign_corpus_suggests_campaigns_and_not_a_life_chapter() {
-        let suggestions = suggest_chapters(&[("battle", 12), ("siege", 2), ("birth", 1), ("death", 1)]);
+        let suggestions =
+            suggest_chapters(&[("battle", 12), ("siege", 2), ("birth", 1), ("death", 1)]);
         assert_eq!(suggestions.len(), 1);
         assert_eq!(suggestions[0].slug, "campaigns");
         assert_eq!(suggestions[0].event_count, 14);
@@ -310,7 +480,10 @@ mod tests {
     #[test]
     fn a_publication_count_can_suggest_works_without_naming_a_person() {
         let suggestions = suggest_chapters(&[("publication", 8), ("birth", 1), ("death", 1)]);
-        assert_eq!(suggestions.iter().map(|item| item.slug).collect::<Vec<_>>(), vec!["works"]);
+        assert_eq!(
+            suggestions.iter().map(|item| item.slug).collect::<Vec<_>>(),
+            vec!["works"]
+        );
         assert!(suggestions[0].basis_en.contains("publication"));
         assert!(!suggestions[0].basis_en.contains("battle"));
     }
@@ -329,7 +502,10 @@ mod tests {
     }
 
     fn dated(year: i32, place: &str) -> DatedFact {
-        DatedFact { year, place: Some(place.to_string()) }
+        DatedFact {
+            year,
+            place: Some(place.to_string()),
+        }
     }
 
     #[test]
@@ -356,7 +532,9 @@ mod tests {
         assert!(periods.iter().any(|period| period.end_year >= 1815));
         assert!(periods.iter().any(|period| period.start_year <= 1769));
         assert!(periods.iter().all(|period| period.event_count <= 12));
-        assert!(periods.iter().all(|period| !period.title_en.contains("Campaign of Italy")));
+        assert!(periods
+            .iter()
+            .all(|period| !period.title_en.contains("Campaign of Italy")));
         assert!(periods.iter().all(|period| !period.members.is_empty()));
         let categories = suggest_chapters(&[("battle", 192)]);
         assert_eq!(categories[0].slug, "campaigns");
@@ -378,8 +556,12 @@ mod tests {
             dated(1872, "Paris"),
         ];
         let hugo_periods = suggest_life_periods(&hugo);
-        assert!(hugo_periods.iter().any(|period| period.title_en.contains("Guernsey")));
-        assert!(hugo_periods.iter().any(|period| period.title_en.contains("Paris")));
+        assert!(hugo_periods
+            .iter()
+            .any(|period| period.title_en.contains("Guernsey")));
+        assert!(hugo_periods
+            .iter()
+            .any(|period| period.title_en.contains("Paris")));
         let curie = vec![
             dated(1891, "Paris"),
             dated(1898, "Paris"),
@@ -414,8 +596,49 @@ mod tests {
         let periods = suggest_life_periods(&battles);
         assert_eq!(periods.len(), 2);
         assert!(periods.iter().all(|period| period.event_count >= 2));
-        let continuous: Vec<DatedFact> = (0..20).map(|index| dated(1800 + index / 10, "Leipzig")).collect();
+        let continuous: Vec<DatedFact> = (0..20)
+            .map(|index| dated(1800 + index / 10, "Leipzig"))
+            .collect();
         let one = suggest_life_periods(&continuous);
         assert_eq!(one.len(), 1);
+    }
+
+    #[test]
+    fn section_and_place_chapters_do_not_invent_a_route() {
+        let sections = suggest_section_chapters(&[
+            SectionFact {
+                section: "Italian campaign".into(),
+                event_title: "Montenotte".into(),
+            },
+            SectionFact {
+                section: "Italian campaign".into(),
+                event_title: "Lodi".into(),
+            },
+            SectionFact {
+                section: "References".into(),
+                event_title: "A note".into(),
+            },
+        ]);
+        assert_eq!(sections.len(), 1);
+        assert_eq!(sections[0].title, "Italian campaign");
+        assert_eq!(
+            sections[0].members,
+            vec!["Montenotte".to_string(), "Lodi".to_string()]
+        );
+        assert!(sections[0].basis_en.contains("not a published chapter"));
+        let places = suggest_place_chapters(&[
+            (
+                "Paris",
+                vec!["A".into(), "B".into(), "C".into(), "D".into()],
+            ),
+            (
+                "France",
+                vec!["A".into(), "B".into(), "C".into(), "D".into()],
+            ),
+            ("Lodi", vec!["A".into(), "B".into()]),
+        ]);
+        assert_eq!(places.len(), 1);
+        assert_eq!(places[0].title, "Paris");
+        assert!(places[0].basis_en.contains("not a published chapter"));
     }
 }

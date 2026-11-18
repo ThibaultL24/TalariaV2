@@ -358,6 +358,39 @@ pub async fn upsert_raw_wikipedia_document(
     Ok(id)
 }
 
+/// The whole article, its revision, and the section index. Passages stay on the evidence row.
+pub async fn upsert_raw_wikipedia_article(
+    pool: &PgPool,
+    uri: &str,
+    title: &str,
+    language: &str,
+    text: &str,
+    revision: Option<i64>,
+    sections: &serde_json::Value,
+) -> anyhow::Result<Uuid> {
+    let id = sqlx::query_scalar(
+        r#"
+        INSERT INTO raw_documents (source_type, source_uri, title, language, payload)
+        VALUES (
+            'wikipedia', $1, $2, $3,
+            jsonb_build_object('text', $4::text, 'revision', $5::bigint, 'sections', $6::jsonb)
+        )
+        ON CONFLICT (source_type, source_uri)
+        DO UPDATE SET payload = EXCLUDED.payload, title = EXCLUDED.title
+        RETURNING id
+        "#,
+    )
+    .bind(uri)
+    .bind(title)
+    .bind(language)
+    .bind(text)
+    .bind(revision)
+    .bind(sections)
+    .fetch_one(pool)
+    .await?;
+    Ok(id)
+}
+
 pub async fn upsert_raw_wikidata_document(
     pool: &PgPool,
     uri: &str,

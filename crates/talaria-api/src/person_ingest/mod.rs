@@ -1,9 +1,7 @@
 // crates/talaria-api/src/person_ingest/mod.rs
-//! One ingest: dump Wikipedia → grounded LLM → pipeline='person' facts + Agora debates.
+//! Encyclopedic biography: Wikidata, one Wikipedia article, its sections, then places.
 
 mod collect;
-pub mod corpus_evidence;
-pub mod crawl_queue;
 mod extract;
 mod gating;
 mod grounding;
@@ -17,27 +15,23 @@ use serde_json::{json, Value};
 use talaria_core::AppConfig;
 use talaria_quality::{GateContext, Lane};
 use talaria_sources::has_military_signal;
-use talaria_sources::load_seed_titles;
 use talaria_sources::wdqs::fetch_events_for_person;
 use talaria_store::{
     connect, quality_lifespan_years, run_migrations, update_entity_authority_ids,
-    upsert_person_by_qid, upsert_raw_wikidata_document, upsert_raw_wikipedia_document,
+    upsert_person_by_qid, upsert_raw_wikidata_document, upsert_raw_wikipedia_article,
+    upsert_raw_wikipedia_document,
 };
 use uuid::Uuid;
 
 use crate::llm;
 use crate::routes::ingest::ProgressHandle;
-use crawl_queue::{
-    crawl_items_from_page_links, crawl_items_from_seed_list, crawl_items_from_wdqs,
-    CrawlPriority, PriorityCrawlQueue,
-};
 use persist::{PersistMeta, PersistOutcome};
 
 /// How many model calls one page may make. Rules still run on the whole page.
 const MAX_LLM_CHUNKS_PER_PAGE: usize = 4;
 
 /// Run person ingest with optional progress handle for UI updates.
-/// Uses prioritized crawl queue to process core subject pages first, then expand.
+/// Reads the subject's own Wikipedia article. Linked pages and academic catalogs stay out.
 pub async fn run_person_ingest_progressive(
     config: &AppConfig,
     subject: &str,
@@ -47,8 +41,16 @@ pub async fn run_person_ingest_progressive(
     seed_list: Option<&Path>,
     progress: Option<ProgressHandle>,
 ) -> anyhow::Result<Value> {
-    run_person_ingest_inner(config, subject, qid, wiki_lang, max_documents, seed_list, progress)
-        .await
+    run_person_ingest_inner(
+        config,
+        subject,
+        qid,
+        wiki_lang,
+        max_documents,
+        seed_list,
+        progress,
+    )
+    .await
 }
 
 /// Run person ingest without progress tracking (backward compatibility).
@@ -60,7 +62,16 @@ pub async fn run_person_ingest(
     max_documents: u32,
     seed_list: Option<&Path>,
 ) -> anyhow::Result<Value> {
-    run_person_ingest_inner(config, subject, qid, wiki_lang, max_documents, seed_list, None).await
+    run_person_ingest_inner(
+        config,
+        subject,
+        qid,
+        wiki_lang,
+        max_documents,
+        seed_list,
+        None,
+    )
+    .await
 }
 
 /// Internal implementation with optional progress tracking and prioritized crawl queue.
@@ -87,17 +98,22 @@ async fn run_person_ingest_inner(
     let mut dropped = 0u32;
     let mut wiki_pages = 0u32;
     let mut wdqs_events = 0u32;
-    let mut crawl_queue = PriorityCrawlQueue::new();
     let mut primary_title = subject.to_string();
     let mut aliases = collect::subject_aliases(subject);
-    let follow_cap = collect::follow_budget(max_documents);
+    let mut sections_read = 0u32;
+    let mut sections_kept = 0u32;
+    let mut article_revision: Option<i64> = None;
 
     if let Some(ref p) = progress {
         p.set_phase("wikidata").await;
     }
 
-    let wd_meta = match crate::lot_e::fetch_wikidata_subject_meta(&resolved_qid, wiki_lang, Some(&pool))
-        .await
+    let wd_meta = match crate::lot_e::fetch_wikidata_subject_meta(
+        &resolved_qid,
+        wiki_lang,
+        Some(&pool),
+    )
+    .await
     {
         Ok(meta) => Some(meta),
         Err(err) => {
@@ -217,50 +233,91 @@ async fn run_person_ingest_inner(
         }
     }
 
-    // Phase 1: Core subject pages (Core priority - processed immediately)
     if let Some(ref p) = progress {
-        p.set_phase("core_extract").await;
+        p.set_phase("wikipedia").await;
     }
 
     for lang in collect::wiki_langs(wiki_lang) {
-        match collect::fetch_wiki_extract(&lang, subject).await {
-            Ok((title, text, links)) => {
-                // Key by lang+title so EN and FR subject pages both ingest
-                // (same display title must not skip the other language).
-                let lang_title_key = format!("{lang}:{title}");
-                if crawl_queue.is_seen(&lang_title_key) {
-                    continue;
-                }
-                crawl_queue.mark_seen(&lang_title_key);
-                crawl_queue.mark_seen(&title);
-                if wiki_pages == 0 {
-                    primary_title = title.clone();
-                }
-                wiki_pages += 1;
-                if let Some(ref p) = progress {
-                    p.set_phase_with_page("core_extract", &title).await;
-                    p.increment_wiki_pages().await;
-                }
-                // Add page links to queue with appropriate priorities
-                crawl_queue.extend(crawl_items_from_page_links(&links, &title, subject, follow_cap));
-                let (ins, re, deb, drop) = ingest_wiki_text(
-                    &pool,
-                    entity_id,
-                    subject,
-                    &lang,
-                    &title,
-                    &text,
-                    &mut ctx,
-                    &aliases,
-                    military_subject,
-                )
-                .await?;
-                facts_inserted += ins;
-                facts_reinforced += re;
-                debates_inserted += deb;
-                dropped += drop;
+        let article = match collect::fetch_wiki_article(&lang, &wiki_title).await {
+            Ok(article) => article,
+            Err(err) => {
+                tracing::warn!(lang, error = %err, "wikipedia article failed");
+                continue;
             }
-            Err(err) => tracing::warn!(lang, error = %err, "wikipedia extract failed"),
+        };
+        if wiki_pages == 0 {
+            primary_title = article.title.clone();
+            article_revision = article.revision;
+        }
+        wiki_pages += 1;
+        let uri = format!(
+            "https://{lang}.wikipedia.org/wiki/{}",
+            article.title.replace(' ', "_")
+        );
+        let full_plain = article
+            .sections
+            .iter()
+            .map(|section| section.plain.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        let section_index = json!(article
+            .sections
+            .iter()
+            .map(|section| {
+                json!({
+                    "heading": section.heading,
+                    "anchor": section.anchor,
+                    "kind": section.kind.as_str(),
+                })
+            })
+            .collect::<Vec<_>>());
+        let raw_id = match upsert_raw_wikipedia_article(
+            &pool,
+            &uri,
+            &article.title,
+            &lang,
+            &full_plain,
+            article.revision,
+            &section_index,
+        )
+        .await
+        {
+            Ok(id) => id,
+            Err(err) => {
+                tracing::warn!(lang, error = %err, "wikipedia article was not stored");
+                continue;
+            }
+        };
+        if let Some(ref p) = progress {
+            p.set_phase_with_page("sections", &article.title).await;
+            p.increment_wiki_pages().await;
+        }
+        for section in &article.sections {
+            sections_read += 1;
+            if !section.kind.admits_events() {
+                continue;
+            }
+            sections_kept += 1;
+            let (ins, re, deb, drop) = ingest_wiki_text(
+                &pool,
+                entity_id,
+                subject,
+                &lang,
+                &article.title,
+                &section.plain,
+                &mut ctx,
+                &aliases,
+                military_subject,
+                Some(raw_id),
+                Some(&section.heading),
+                Some(&section.anchor),
+                section.anchor == "lead",
+            )
+            .await?;
+            facts_inserted += ins;
+            facts_reinforced += re;
+            debates_inserted += deb;
+            dropped += drop;
         }
     }
 
@@ -334,152 +391,34 @@ async fn run_person_ingest_inner(
             .await?;
             facts_inserted += wdqs_ins;
             facts_reinforced += wdqs_re;
-            // WDQS events get High priority - direct subject participation
-            crawl_queue.extend(crawl_items_from_wdqs(&events, subject, follow_cap));
         }
         Err(err) => tracing::warn!(error = %err, "wdqs participation harvest failed"),
     }
 
-    // Add seed list items with appropriate priorities
-    if let Some(path) = seed_list {
-        match load_seed_titles(path) {
-            Ok(seeds) => {
-                crawl_queue.extend(crawl_items_from_seed_list(seeds, subject));
-            }
-            Err(err) => tracing::debug!(error = %err, "seed list not loaded"),
-        }
-    }
-
-    // Sort queue by priority before processing follow pages
-    crawl_queue.sort_by_priority();
-
-    // Update progress with queue stats
     if let Some(ref p) = progress {
-        p.set_priority_counts(crawl_queue.count_by_priority()).await;
-    }
-
-    // Phase 2+3: Process follow pages in priority order
-    // High priority pages (birth/death places, WDQS events) first,
-    // then Medium (battles, treaties), then Low (generic links)
-    let extra = follow_cap.saturating_sub(wiki_pages);
-    let mut followed = 0u32;
-    let mut fetched = wiki_pages;
-    let mut attempts = 0u32;
-    let attempt_cap = extra.saturating_mul(4).max(extra);
-    let mut current_priority: Option<CrawlPriority> = None;
-
-    while let Some(item) = crawl_queue.pop() {
-        if followed >= extra || attempts >= attempt_cap {
-            break;
-        }
-
-        // Update phase when priority tier changes
-        if current_priority != Some(item.priority) {
-            current_priority = Some(item.priority);
-            let phase = item.priority.phase_name();
-            if let Some(ref p) = progress {
-                p.set_phase(phase).await;
-                p.set_priority_counts(crawl_queue.count_by_priority()).await;
-            }
-        }
-
-        if !collect::should_pin_follow_title(&item.title) {
-            continue;
-        }
-
-        if let Some(ref p) = progress {
-            p.set_phase_with_page(
-                current_priority.map_or("expand_links", |pr| pr.phase_name()),
-                &item.title,
-            )
-            .await;
-            p.set_sources_pending(crawl_queue.remaining() as u32).await;
-        }
-
-        attempts += 1;
-        fetched += 1;
-        match ingest_follow_page(
-            &pool,
-            entity_id,
-            subject,
-            wiki_lang,
-            &item.title,
-            &mut ctx,
-            &aliases,
-            military_subject,
-        )
-        .await
-        {
-            Ok((ins, re)) => {
-                if ins + re > 0 {
-                    followed += 1;
-                    wiki_pages += 1;
-                    if let Some(ref p) = progress {
-                        p.increment_wiki_pages().await;
-                    }
-                }
-                facts_inserted += ins;
-                facts_reinforced += re;
-            }
-            Err(err) => tracing::debug!(title = %item.title, error = %err, "follow wikipedia page skipped"),
-        }
-    }
-
-    if let Some(ref p) = progress {
-        p.set_phase("grounding").await;
+        p.set_phase("places").await;
     }
 
     typing::backfill_person_geocodes(&pool, entity_id).await?;
 
-    if let Some(ref p) = progress {
-        p.set_phase("corpus_enrichment").await;
-    }
-
-    // Catalog discovery records document candidates. A bibliographic notice is not
-    // event evidence and does not reinforce an event it does not narrate.
-    let corpus_stats = {
-        let resolved_subject = talaria_sources::ResolvedSubject {
-            entity_id: Some(entity_id),
-            qid: Some(resolved_qid.clone()),
-            label: subject.to_string(),
-            languages: vec![wiki_lang.to_string()],
-            birth_year: ctx.subject_birth_year,
-            death_year: ctx.subject_death_year,
-            countries: vec![],
-            occupations: wd_meta
-                .as_ref()
-                .map(|m| m.occupations.clone())
-                .unwrap_or_default(),
-            known_identifiers: vec![],
-        };
-        let corpus_config = corpus_evidence::CorpusEnrichmentConfig::default();
-        match corpus_evidence::enrich_with_corpus_evidence(
-            &pool,
-            entity_id,
-            &resolved_subject,
-            &corpus_config,
-        )
-        .await
-        {
-            Ok(stats) => Some(stats),
-            Err(e) => {
-                tracing::warn!(error = %e, "corpus evidence enrichment failed");
-                None
-            }
-        }
-    };
-
     Ok(json!({
         "lane": "explorer",
         "pipeline": "person",
+        "steps": ["wikidata", "wikipedia", "sections", "events", "places"],
         "subject": subject,
         "qid": resolved_qid,
         "entity_id": entity_id,
         "wikipedia_title": primary_title,
+        "wikipedia_revision": article_revision,
         "wiki_pages": wiki_pages,
-        "documents_fetched": fetched,
+        "sections_read": sections_read,
+        "sections_kept": sections_kept,
+        "documents_fetched": wiki_pages,
         "documents_used": wiki_pages,
-        "follow_attempts": attempts,
+        "document_budget": max_documents,
+        "seed_list_received": seed_list.is_some(),
+        "seed_list_applied": false,
+        "follow_attempts": 0,
         "wdqs_events": wdqs_events,
         "facts_inserted": facts_inserted,
         "facts_reinforced": facts_reinforced,
@@ -487,22 +426,13 @@ async fn run_person_ingest_inner(
         "llm_configured": llm::is_configured(),
         "llm_model": llm::model(),
         "dropped_chunks": dropped,
-        "corpus_enrichment": corpus_stats.map(|s| json!({
-            "sources_queried": s.sources_queried,
-            "documents_discovered": s.documents_discovered,
-            "documents_matched": s.documents_matched,
-            "evidence_added": s.evidence_added,
-            "candidate_links_added": s.candidate_links_added,
-            "errors": s.errors,
-        })),
+        "corpus_enrichment": Value::Null,
     }))
 }
 
 fn tally(outcome: PersistOutcome, inserted: &mut u32, reinforced: &mut u32) {
     match outcome {
-        PersistOutcome::Canonical {
-            inserted: true, ..
-        } => *inserted += 1,
+        PersistOutcome::Canonical { inserted: true, .. } => *inserted += 1,
         PersistOutcome::Canonical {
             inserted: false, ..
         } => *reinforced += 1,
@@ -520,13 +450,27 @@ pub(crate) async fn ingest_wiki_text(
     ctx: &mut GateContext,
     aliases: &[String],
     military_subject: bool,
+    raw_document_id: Option<Uuid>,
+    section_heading: Option<&str>,
+    section_anchor: Option<&str>,
+    allow_model: bool,
 ) -> anyhow::Result<(u32, u32, u32, u32)> {
     let uri = format!(
         "https://{lang}.wikipedia.org/wiki/{}",
         title.replace(' ', "_")
     );
-    let raw_id = upsert_raw_wikipedia_document(pool, &uri, title, lang, text).await?;
-    let locator = grounding::text_span_locator(&uri, title);
+    let raw_id = match raw_document_id {
+        Some(id) => id,
+        None => upsert_raw_wikipedia_document(pool, &uri, title, lang, text).await?,
+    };
+    let mut locator_value = json!({ "kind": "text_span", "uri": uri, "title": title });
+    if let Some(heading) = section_heading {
+        locator_value["section"] = json!(heading);
+    }
+    if let Some(anchor) = section_anchor {
+        locator_value["anchor"] = json!(anchor);
+    }
+    let locator = locator_value.to_string();
     let mut inserted = 0u32;
     let mut reinforced = 0u32;
     let mut debates = 0u32;
@@ -554,7 +498,7 @@ pub(crate) async fn ingest_wiki_text(
                     military_subject,
                     aliases,
                     document_text: Some(text),
-                    section_heading: None,
+                    section_heading,
                 },
             )
             .await?,
@@ -564,7 +508,13 @@ pub(crate) async fn ingest_wiki_text(
     }
     // Rules used to return here and skip the LLM, so biographies stayed thin.
     // Four chunks is the budget for one page. A longer article stays partial.
-    for chunk in extract::split_chunks(text, 3500).into_iter().take(MAX_LLM_CHUNKS_PER_PAGE) {
+    // Only the lead may call a model, and only when calls were opened explicitly.
+    let model_chunks = if allow_model {
+        extract::split_chunks(text, 3500)
+    } else {
+        Vec::new()
+    };
+    for chunk in model_chunks.into_iter().take(MAX_LLM_CHUNKS_PER_PAGE) {
         let extracted = if llm::is_configured() {
             match extract::extract_prose_chunk(pool, raw_id, subject, title, &chunk).await {
                 Ok(items) => items,
@@ -602,7 +552,7 @@ pub(crate) async fn ingest_wiki_text(
                                 military_subject,
                                 aliases,
                                 document_text: Some(&chunk),
-                                section_heading: None,
+                                section_heading,
                             },
                         )
                         .await?,
@@ -614,107 +564,6 @@ pub(crate) async fn ingest_wiki_text(
         }
     }
     Ok((inserted, reinforced, debates, dropped))
-}
-
-async fn ingest_follow_page(
-    pool: &sqlx::PgPool,
-    entity_id: Uuid,
-    subject: &str,
-    lang: &str,
-    title: &str,
-    ctx: &mut GateContext,
-    aliases: &[String],
-    military_subject: bool,
-) -> anyhow::Result<(u32, u32)> {
-    let (resolved, text, wiki_xy) = collect::fetch_wiki_page(lang, title).await?;
-    let Some((doc, raw, mut xy)) = extract::follow_page_to_extract(
-        subject,
-        &resolved,
-        &text,
-        wiki_xy,
-        military_subject,
-    )
-    else {
-        return Ok((0, 0));
-    };
-    if xy.is_none() {
-        xy = typing::geocode_place(raw.place_surface.as_deref())
-            .await
-            .map(|g| (g.lat, g.lon));
-    }
-    let uri = format!(
-        "https://{lang}.wikipedia.org/wiki/{}",
-        resolved.replace(' ', "_")
-    );
-    let raw_id = upsert_raw_wikipedia_document(pool, &uri, &resolved, lang, &doc).await?;
-    let locator = grounding::text_span_locator(&uri, &resolved);
-    let mut inserted = 0u32;
-    let mut reinforced = 0u32;
-    for item in grounding::ground_prose(subject, &doc, [raw]) {
-        if item.lane != Lane::Fact {
-            continue;
-        }
-        tally(
-            persist::persist_fact_item(
-                pool,
-                entity_id,
-                subject,
-                &item,
-                ctx,
-                PersistMeta {
-                    raw_document_id: raw_id,
-                    coords: xy,
-                    primary_object: Some(resolved.as_str()),
-                    source_locator: &locator,
-                    page_title: resolved.as_str(),
-                    from_followed_page: true,
-                    structured_source: false,
-                    military_subject,
-                    aliases,
-                    document_text: Some(&doc),
-                    section_heading: None,
-                },
-            )
-            .await?,
-            &mut inserted,
-            &mut reinforced,
-        );
-    }
-    for item in grounding::ground_prose(
-        subject,
-        &doc,
-        extract::extract_wiki_rules(subject, &resolved, &doc, ctx.subject_death_year),
-    ) {
-        if item.lane != Lane::Fact {
-            continue;
-        }
-        tally(
-            persist::persist_fact_item(
-                pool,
-                entity_id,
-                subject,
-                &item,
-                ctx,
-                PersistMeta {
-                    raw_document_id: raw_id,
-                    coords: None,
-                    primary_object: Some(resolved.as_str()),
-                    source_locator: &locator,
-                    page_title: resolved.as_str(),
-                    from_followed_page: true,
-                    structured_source: false,
-                    military_subject,
-                    aliases,
-                    document_text: Some(&doc),
-                    section_heading: None,
-                },
-            )
-            .await?,
-            &mut inserted,
-            &mut reinforced,
-        );
-    }
-    Ok((inserted, reinforced))
 }
 
 async fn persist_wdqs_events(
@@ -796,7 +645,10 @@ mod qualification {
         }
         let when = parts[3];
         let year = when.chars().take(4).collect::<String>().parse::<i32>().ok();
-        let place = parts.get(4).map(|value| value.trim()).filter(|value| !value.is_empty());
+        let place = parts
+            .get(4)
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty());
         Some(RawExtractItem {
             lane: "fact".into(),
             event_type: parts[1].to_string(),
@@ -812,11 +664,15 @@ mod qualification {
     async fn replay_once(pool: &sqlx::PgPool, entity_id: Uuid, ctx: &mut GateContext) {
         for (uri, text) in [
             ("https://www.wikidata.org/wiki/Q466987", WD),
-            ("https://www.wikidata.org/wiki/Q466987#participation", WD_PART),
+            (
+                "https://www.wikidata.org/wiki/Q466987#participation",
+                WD_PART,
+            ),
         ] {
-            let raw_id = upsert_raw_wikidata_document(pool, uri, "Marceline Desbordes-Valmore", text)
-                .await
-                .unwrap();
+            let raw_id =
+                upsert_raw_wikidata_document(pool, uri, "Marceline Desbordes-Valmore", text)
+                    .await
+                    .unwrap();
             let items: Vec<RawExtractItem> = text.lines().filter_map(pipe_item).collect();
             for item in grounding::ground_structured(
                 "Marceline Desbordes-Valmore",
@@ -862,6 +718,10 @@ mod qualification {
                 ctx,
                 &[],
                 false,
+                None,
+                None,
+                None,
+                true,
             )
             .await
             .unwrap();
@@ -875,14 +735,14 @@ mod qualification {
         for key in ["OPENAI_API_KEY", "OPENROUTER_API_KEY", "LLM_API_KEY"] {
             unsafe { std::env::remove_var(key) };
         }
-        assert!(!crate::llm::is_configured(), "the comparison stays on the rules, not a model");
-        let entity_id = talaria_store::ensure_subject_entity(
-            &pool,
-            "Q466987",
-            "Marceline Desbordes-Valmore",
-        )
-        .await
-        .unwrap();
+        assert!(
+            !crate::llm::is_configured(),
+            "the comparison stays on the rules, not a model"
+        );
+        let entity_id =
+            talaria_store::ensure_subject_entity(&pool, "Q466987", "Marceline Desbordes-Valmore")
+                .await
+                .unwrap();
         let mut ctx = GateContext {
             subject_birth_year: Some(1786),
             subject_death_year: Some(1859),
@@ -906,7 +766,10 @@ mod qualification {
         .fetch_one(&pool)
         .await
         .unwrap();
-        assert_eq!(first, second, "a second pass must not create new public facts");
+        assert_eq!(
+            first, second,
+            "a second pass must not create new public facts"
+        );
 
         let bad: Vec<String> = sqlx::query_scalar(
             "SELECT left(ee.quoted_text, 240) FROM canonical_events ce \
@@ -969,7 +832,10 @@ mod qualification {
         .fetch_one(&pool)
         .await
         .unwrap();
-        assert_eq!(dated_voyage, 0, "the mother's death must not date the voyage");
+        assert_eq!(
+            dated_voyage, 0,
+            "the mother's death must not date the voyage"
+        );
         let two_theatres: i64 = sqlx::query_scalar(
             "SELECT count(*)::bigint FROM canonical_events ce \
              JOIN event_evidence ee ON ee.canonical_event_id = ce.id \
@@ -1043,10 +909,15 @@ mod qualification {
             audit.push_str(&format!("candidates {status} {count}\n"));
         }
         for suggestion in &suggestions {
-            audit.push_str(&format!("chapter {} {}\n", suggestion.slug, suggestion.event_count));
+            audit.push_str(&format!(
+                "chapter {} {}\n",
+                suggestion.slug, suggestion.event_count
+            ));
         }
         for (kind, place, time_json, start, mapped, quote) in &rows {
-            audit.push_str(&format!("{kind}\t{place}\t{start:?}\t{mapped}\t{time_json}\t{quote}\n"));
+            audit.push_str(&format!(
+                "{kind}\t{place}\t{start:?}\t{mapped}\t{time_json}\t{quote}\n"
+            ));
         }
         let watched: Vec<(String, String)> = sqlx::query_as(
             "SELECT status, coalesce(judgment_json->>'public_admission','') || ' ' || coalesce(judgment_json->>'attribution','') || ' ' || left(evidence_ptrs::text, 120) \
@@ -1081,13 +952,10 @@ mod qualification {
             unsafe { std::env::remove_var(key) };
         }
         let pool = sqlx::PgPool::connect(&url).await.unwrap();
-        let entity_id = talaria_store::ensure_subject_entity(
-            &pool,
-            "Q466987",
-            "Marceline Desbordes-Valmore",
-        )
-        .await
-        .unwrap();
+        let entity_id =
+            talaria_store::ensure_subject_entity(&pool, "Q466987", "Marceline Desbordes-Valmore")
+                .await
+                .unwrap();
         let mut ctx = GateContext {
             subject_birth_year: Some(1786),
             subject_death_year: Some(1859),

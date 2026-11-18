@@ -694,7 +694,7 @@ async fn run_agora_lane(
 fn lane_purpose(lane: &str) -> &'static str {
     match lane {
         LANE_EXPLORER => {
-            "Wikipedia, Wikidata, Wikisource and Commons — dated life facts for the map and timeline"
+            "Wikidata, the Wikipedia article and its sections, then places — dated life facts for the map and timeline"
         }
         LANE_AGORA => {
             "Theories, controversies, opinions, analyses, and academic works about the person"

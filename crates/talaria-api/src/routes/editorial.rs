@@ -356,11 +356,96 @@ pub async fn chapter_suggestions(
             })
         })
         .collect();
+    let located: Result<Vec<(String, Option<String>)>, sqlx::Error> = sqlx::query_as(
+        "SELECT title, place_label \
+         FROM canonical_events \
+         WHERE entity_id = $1 AND pipeline = 'person' AND is_active \
+         ORDER BY start_time NULLS LAST \
+         LIMIT 800",
+    )
+    .bind(entity)
+    .fetch_all(&state.pool)
+    .await;
+    let located = match located {
+        Ok(located) => located,
+        Err(reason) => {
+            tracing::error!(error = %reason, "chapter place rows failed");
+            return error(StatusCode::INTERNAL_SERVER_ERROR, "database_error");
+        }
+    };
+    let mut place_members: Vec<(String, Vec<String>)> = Vec::new();
+    for (title, place) in located {
+        let Some(place) = place.filter(|label| !label.trim().is_empty()) else {
+            continue;
+        };
+        if let Some((_, members)) = place_members.iter_mut().find(|(name, _)| name == &place) {
+            members.push(title);
+        } else {
+            place_members.push((place, vec![title]));
+        }
+    }
+    let place_refs: Vec<(&str, Vec<String>)> = place_members
+        .iter()
+        .map(|(place, members)| (place.as_str(), members.clone()))
+        .collect();
+    let places = talaria_quality::suggest_place_chapters(&place_refs);
+    let traced: Result<Vec<(String, String)>, sqlx::Error> = sqlx::query_as(
+        "SELECT ce.title, ee.source_locator \
+         FROM canonical_events ce \
+         JOIN event_evidence ee ON ee.canonical_event_id = ce.id \
+         WHERE ce.entity_id = $1 AND ce.pipeline = 'person' AND ce.is_active \
+           AND ee.source_locator LIKE '%\"section\"%' \
+         LIMIT 1500",
+    )
+    .bind(entity)
+    .fetch_all(&state.pool)
+    .await;
+    let traced = match traced {
+        Ok(traced) => traced,
+        Err(reason) => {
+            tracing::error!(error = %reason, "chapter section rows failed");
+            return error(StatusCode::INTERNAL_SERVER_ERROR, "database_error");
+        }
+    };
+    let section_facts: Vec<talaria_quality::SectionFact> = traced
+        .iter()
+        .filter_map(|(title, locator)| {
+            let section = serde_json::from_str::<Value>(locator)
+                .ok()
+                .and_then(|value| value.get("section")?.as_str().map(str::to_string))?;
+            Some(talaria_quality::SectionFact {
+                section,
+                event_title: title.clone(),
+            })
+        })
+        .collect();
+    let sections = talaria_quality::suggest_section_chapters(&section_facts);
     Json(json!({
         "standing": talaria_quality::SUGGESTION,
         "published": false,
+        "method": "Activities still need six facts of one type. Sections and places use the admitted facts themselves.",
         "suggestions": body,
         "periods": period_body,
+        "sections": named_body(&sections),
+        "places": named_body(&places),
     }))
     .into_response()
+}
+
+fn named_body(chapters: &[talaria_quality::NamedChapter]) -> Vec<Value> {
+    chapters
+        .iter()
+        .map(|item| {
+            json!({
+                "slug": item.slug,
+                "title_fr": item.title,
+                "title_en": item.title,
+                "event_count": item.event_count,
+                "standing": talaria_quality::SUGGESTION,
+                "basis_fr": item.basis_fr,
+                "basis_en": item.basis_en,
+                "members": item.members,
+            })
+        })
+        .collect()
 }

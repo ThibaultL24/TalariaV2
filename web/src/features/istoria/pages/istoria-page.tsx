@@ -343,6 +343,8 @@ export function IstoriaPage() {
         <ChapterSuggestions
           suggestions={suggestionsQuery.data?.suggestions ?? []}
           periods={suggestionsQuery.data?.periods ?? []}
+          sections={suggestionsQuery.data?.sections ?? []}
+          places={suggestionsQuery.data?.places ?? []}
           locale={locale === "fr" ? "fr" : "en"}
         />
       )}

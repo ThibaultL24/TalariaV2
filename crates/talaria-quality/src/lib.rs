@@ -36,8 +36,9 @@ pub use attribution::{
     publishes_to_public_corpus, AttributionInput, AttributionMatch,
 };
 pub use chapters::{
-    suggest_chapters, suggest_life_periods, ChapterSuggestion, DatedFact, LifePeriod,
-    MIN_CHAPTER_EVENTS, SUGGESTION,
+    suggest_chapters, suggest_life_periods, suggest_place_chapters, suggest_section_chapters,
+    ChapterSuggestion, DatedFact, LifePeriod, NamedChapter, SectionFact, MIN_CHAPTER_EVENTS,
+    MIN_PLACE_EVENTS, MIN_SECTION_EVENTS, SUGGESTION,
 };
 pub use context_year::{
     approx_typed_time, infer_approximate_year, is_approx_eligible_type, local_context_window,
