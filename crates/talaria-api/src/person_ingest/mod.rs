@@ -862,7 +862,8 @@ mod qualification {
 
     #[sqlx::test(migrations = "../../migrations")]
     async fn the_original_desbordes_documents_replay_without_the_old_errors(pool: sqlx::PgPool) {
-        std::env::set_var("TALARIA_OFFLINE_PLACES", "1");
+        std::env::remove_var("TALARIA_OFFLINE_PLACES");
+        std::env::set_var("TALARIA_GEOCODE_BUDGET", "4");
         for key in ["OPENAI_API_KEY", "OPENROUTER_API_KEY", "LLM_API_KEY"] {
             unsafe { std::env::remove_var(key) };
         }
@@ -899,8 +900,8 @@ mod qualification {
         .unwrap();
         assert_eq!(first, second, "a second pass must not create new public facts");
 
-        let bad: i64 = sqlx::query_scalar(
-            "SELECT count(*)::bigint FROM canonical_events ce \
+        let bad: Vec<String> = sqlx::query_scalar(
+            "SELECT left(ee.quoted_text, 240) FROM canonical_events ce \
              JOIN event_evidence ee ON ee.canonical_event_id = ce.id \
              WHERE ce.entity_id = $1 AND ce.is_active AND (\
                ee.quoted_text ILIKE '%Hyacinthe%' \
@@ -912,10 +913,10 @@ mod qualification {
              )",
         )
         .bind(entity_id)
-        .fetch_one(&pool)
+        .fetch_all(&pool)
         .await
         .unwrap();
-        assert_eq!(bad, 0);
+        assert!(bad.is_empty(), "{bad:?}");
         let mapped_country: i64 = sqlx::query_scalar(
             "SELECT count(*)::bigint FROM canonical_events \
              WHERE entity_id = $1 AND is_active AND map_eligible AND place_label = 'France'",
@@ -937,6 +938,55 @@ mod qualification {
         .await
         .unwrap();
         assert_eq!(borrowed_birth, 0);
+        let elegies: i64 = sqlx::query_scalar(
+            "SELECT count(DISTINCT ce.id)::bigint FROM canonical_events ce \
+             JOIN event_evidence ee ON ee.canonical_event_id = ce.id \
+             WHERE ce.entity_id = $1 AND ce.is_active \
+               AND (ee.quoted_text ILIKE '%élégies et romances%' \
+                 OR ee.quoted_text ILIKE '%elegies et romances%')",
+        )
+        .bind(entity_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(elegies <= 1, "one publication must stay one event");
+        let dated_voyage: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint FROM canonical_events ce \
+             JOIN event_evidence ee ON ee.canonical_event_id = ce.id \
+             WHERE ce.entity_id = $1 AND ce.is_active \
+               AND ee.quoted_text ILIKE '%Guadeloupe%' \
+               AND coalesce(ce.time_json->>'start', '') LIKE '1802%'",
+        )
+        .bind(entity_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(dated_voyage, 0, "the mother's death must not date the voyage");
+        let two_theatres: i64 = sqlx::query_scalar(
+            "SELECT count(*)::bigint FROM canonical_events ce \
+             JOIN event_evidence ee ON ee.canonical_event_id = ce.id \
+             WHERE ce.entity_id = $1 AND ce.is_active AND ce.map_eligible \
+               AND ee.quoted_text ILIKE '%déon%' AND ee.quoted_text ILIKE '%Bruxelles%'",
+        )
+        .bind(entity_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(two_theatres, 0, "two theatres are not one departure point");
+        let places: Vec<(String, bool, Option<f64>)> = sqlx::query_as(
+            "SELECT coalesce(place_label, ''), map_eligible, ST_Y(geom::geometry) \
+             FROM canonical_events WHERE entity_id = $1 AND is_active",
+        )
+        .bind(entity_id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert!(
+            places.iter().any(|(place, mapped, _)| {
+                *mapped && matches!(place.as_str(), "Douai" | "Lyon" | "Paris")
+            }),
+            "a demonstrated city must be mapped: {places:?}"
+        );
 
         let rows: Vec<(String, String, String, Option<String>, bool, String)> = sqlx::query_as(
             "SELECT ce.event_type, coalesce(ce.place_label, ''), ce.time_json::text, \
@@ -991,7 +1041,7 @@ mod qualification {
             audit.push_str(&format!("{kind}\t{place}\t{start:?}\t{mapped}\t{time_json}\t{quote}\n"));
         }
         let watched: Vec<(String, String)> = sqlx::query_as(
-            "SELECT status, left(coalesce(evidence_ptrs::text, '') || ' ' || coalesce(judgment_json::text, ''), 180) \
+            "SELECT status, coalesce(judgment_json->>'public_admission','') || ' ' || coalesce(judgment_json->>'attribution','') || ' ' || left(evidence_ptrs::text, 120) \
              FROM event_candidates WHERE subject_entity_id = $1 AND (\
                evidence_ptrs::text ILIKE '%louette%' OR judgment_json::text ILIKE '%louette%' \
                OR evidence_ptrs::text ILIKE '%Poésies de Mme%' OR judgment_json::text ILIKE '%Poésies de Mme%' \
@@ -1005,7 +1055,7 @@ mod qualification {
         for (status, excerpt) in &watched {
             audit.push_str(&format!("watched {status} {excerpt}\n"));
         }
-        std::fs::write("/tmp/v311d-desbordes-audit.txt", &audit).unwrap();
+        std::fs::write("/tmp/v311e-desbordes-audit.txt", &audit).unwrap();
         assert!(first > 0, "the replay published nothing\n{audit}");
     }
 
@@ -1014,10 +1064,11 @@ mod qualification {
         let Ok(url) = std::env::var("TALARIA_QUALIFICATION_DB") else {
             return;
         };
-        if !url.contains("v311d_ephemeral") {
+        if !url.contains("v311e_ephemeral") {
             return;
         }
-        std::env::set_var("TALARIA_OFFLINE_PLACES", "1");
+        std::env::remove_var("TALARIA_OFFLINE_PLACES");
+        std::env::set_var("TALARIA_GEOCODE_BUDGET", "4");
         for key in ["OPENAI_API_KEY", "OPENROUTER_API_KEY", "LLM_API_KEY"] {
             unsafe { std::env::remove_var(key) };
         }

@@ -272,6 +272,12 @@ const LEGACY_ALIASES: &[(&str, f64, f64, &str)] = &[
     ("cannes", 43.5528, 7.0174, "exact"),
     ("grenoble", 45.1885, 5.7245, "exact"),
     ("lyon", 45.764, 4.8357, "exact"),
+    ("douai", 50.3708, 3.0799, "exact"),
+    ("bruxelles", 50.8503, 4.3517, "exact"),
+    ("brussels", 50.8503, 4.3517, "exact"),
+    ("stagira", 40.5917, 23.7944, "approximate"),
+    ("stagire", 40.5917, 23.7944, "approximate"),
+    ("stageira", 40.5917, 23.7944, "approximate"),
     ("auxerre", 47.7982, 3.5733, "exact"),
     ("boulogne", 50.7264, 1.6147, "exact"),
     ("corsica", 42.0396, 9.0129, "centroid"),
@@ -617,6 +623,19 @@ fn decide_event_place(
             reason: "unique_exact_identity",
         };
     }
+    let cities: Vec<&GazetteerIdentity> = identities
+        .iter()
+        .filter(|identity| identity.precision == "city")
+        .collect();
+    if cities.len() == 1 {
+        let identity = cities[0];
+        return EventPlacePoint {
+            lat: Some(identity.lat),
+            lon: Some(identity.lon),
+            qid: identity.qid.clone(),
+            reason: "named_city",
+        };
+    }
     if identities
         .iter()
         .any(|identity| identity.precision == "approximate" || identity.precision == "centroid")
@@ -781,6 +800,15 @@ mod tests {
         let named = event_place_point("mention", "Lodi", Some((45.314, 9.503)));
         assert!(named.lat.is_none());
         assert_eq!(named.reason, "place_is_not_the_event_locus");
+        let douai = event_place_point("locus", "Douai", None);
+        assert_eq!(douai.reason, "unique_exact_identity");
+        assert!((douai.lat.unwrap() - 50.3708).abs() < 0.01);
+        let france = event_place_point("locus", "France", Some((46.2, 2.2)));
+        assert!(france.lat.is_none());
+        let stagira = event_place_point("locus", "Stagira", None);
+        assert_eq!(stagira.reason, "named_city");
+        let guernsey = event_place_point("locus", "Guernsey", None);
+        assert_eq!(guernsey.reason, "named_city");
     }
 
     #[test]

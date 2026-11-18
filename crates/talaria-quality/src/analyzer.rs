@@ -280,6 +280,7 @@ fn classify_predicate(clause: &str) -> Option<(&'static str, &'static str)> {
                 "death of",
                 "passed away",
                 "mourut",
+                "meurt ",
                 "morte à",
                 "mort à",
                 "décédée",

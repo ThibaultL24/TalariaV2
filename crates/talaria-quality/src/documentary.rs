@@ -93,6 +93,7 @@ fn is_direct_passage(quote: &str, focus: Option<&str>) -> bool {
         "siège de ",
         " was born",
         " died ",
+        " meurt",
         " naît",
         " nait ",
         "publia",

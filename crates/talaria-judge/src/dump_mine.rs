@@ -203,6 +203,7 @@ const VERB_CUES: &[(&str, &str)] = &[
     ("né à", "born"),
     ("née à", "born"),
     ("mourut", "died"),
+    ("meurt ", "died"),
     ("mort le", "died"),
     ("morte le", "died"),
     ("traité de", "signed"),

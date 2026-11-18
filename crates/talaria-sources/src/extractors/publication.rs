@@ -28,6 +28,9 @@ impl CandidateExtractor for PublicationExtractor {
                 || lower.contains("publie")
                 || lower.contains("parut")
                 || lower.contains("parution")
+                || lower.contains("paraît")
+                || lower.contains("parait")
+                || lower.contains("paraissent")
                 || lower.contains("édita")
                 || lower.contains("edita"))
             {
@@ -78,5 +81,14 @@ mod tests {
         assert_eq!(raws[0].event_type, "publication");
         assert_eq!(raws[0].time_surface.as_deref(), Some("1857"));
         assert_eq!(raws[0].place_surface.as_deref(), Some("Paris"));
+        let poems = PublicationExtractor.extract(&ExtractorInput {
+            text: "En 1820 paraissent les Poésies de Mme Desbordes-Valmore.".into(),
+            page_title: Some("Marceline Desbordes-Valmore".into()),
+            subject_label: Some("Marceline Desbordes-Valmore".into()),
+            document_type: "article".into(),
+            ..Default::default()
+        });
+        assert_eq!(poems.len(), 1);
+        assert_eq!(poems[0].time_surface.as_deref(), Some("1820"));
     }
 }

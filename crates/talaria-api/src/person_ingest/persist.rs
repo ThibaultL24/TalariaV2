@@ -141,6 +141,145 @@ fn place_role(item: &GroundedItem) -> talaria_ai::PlaceRole {
     talaria_ai::classify_place_role(&record)
 }
 
+fn fold_title(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| match ch {
+            'à' | 'á' | 'â' | 'ä' => 'a',
+            'é' | 'è' | 'ê' | 'ë' => 'e',
+            'î' | 'ï' => 'i',
+            'ô' | 'ö' => 'o',
+            'ù' | 'û' | 'ü' => 'u',
+            'ç' => 'c',
+            other => other,
+        })
+        .flat_map(|ch| ch.to_lowercase())
+        .collect()
+}
+
+/// A shared book title, so a French sentence and an English sentence of the
+/// same publication do not become two events. A different title stays separate.
+fn publication_title_key(quote: &str) -> Option<String> {
+    let mut best: Option<String> = None;
+    let mut current: Vec<String> = Vec::new();
+    let flush = |current: &mut Vec<String>, best: &mut Option<String>| {
+        if current.is_empty() {
+            return;
+        }
+        let key = current.join(" ");
+        let letters = key.chars().filter(|ch| ch.is_alphabetic()).count();
+        let about_the_person = key.contains("marceline") || key.contains("desbordes");
+        if letters >= 8 && !about_the_person {
+            if best.as_ref().map(|old| old.len()).unwrap_or(0) < key.len() {
+                *best = Some(key);
+            }
+        }
+        current.clear();
+    };
+    for raw in quote.split_whitespace() {
+        let token = raw.trim_matches(|ch: char| !ch.is_alphabetic() && ch != '-');
+        if token.is_empty() {
+            continue;
+        }
+        let link = matches!(
+            fold_title(token).as_str(),
+            "et" | "and" | "de" | "of" | "des" | "du"
+        );
+        let titled = token.chars().next().is_some_and(|ch| ch.is_uppercase());
+        if titled || (link && !current.is_empty()) {
+            current.push(fold_title(token));
+        } else if !current.is_empty() {
+            flush(&mut current, &mut best);
+        }
+    }
+    flush(&mut current, &mut best);
+    best
+}
+
+fn typed_year(time: &TypedTime) -> Option<i32> {
+    match time {
+        TypedTime::Exact { year, .. } | TypedTime::Approx { year, .. } => Some(*year),
+        TypedTime::Range { start_year, .. } => Some(*start_year),
+        TypedTime::Unknown { .. } => None,
+    }
+}
+
+fn stored_year(time_json: &serde_json::Value) -> Option<i32> {
+    let start = time_json.get("start")?.as_str()?;
+    start.get(..4)?.parse().ok()
+}
+
+async fn find_same_publication(
+    pool: &sqlx::PgPool,
+    entity_id: Uuid,
+    item: &GroundedItem,
+    time: &TypedTime,
+) -> anyhow::Result<Option<Uuid>> {
+    if !matches!(item.event_type.as_str(), "publication" | "work") {
+        return Ok(None);
+    }
+    let Some(key) = publication_title_key(&item.quoted_text) else {
+        return Ok(None);
+    };
+    let rows: Vec<(Uuid, String, serde_json::Value)> = sqlx::query_as(
+        "SELECT ce.id, ee.quoted_text, ce.time_json \
+         FROM canonical_events ce \
+         JOIN event_evidence ee ON ee.canonical_event_id = ce.id \
+         WHERE ce.entity_id = $1 AND ce.is_active \
+           AND ce.event_type IN ('publication', 'work')",
+    )
+    .bind(entity_id)
+    .fetch_all(pool)
+    .await?;
+    let incoming = typed_year(time);
+    for (id, quote, stored) in rows {
+        if publication_title_key(&quote).as_deref() != Some(key.as_str()) {
+            continue;
+        }
+        let previous = stored_year(&stored);
+        if incoming.is_none() || previous.is_none() || incoming == previous {
+            return Ok(Some(id));
+        }
+    }
+    Ok(None)
+}
+
+async fn refine_singleton_date(
+    pool: &sqlx::PgPool,
+    event_id: Uuid,
+    quote: &str,
+) -> anyhow::Result<()> {
+    let ClauseTime::Exact {
+        year,
+        month: Some(month),
+        day: Some(day),
+        surface,
+    } = read_clause_time(quote)
+    else {
+        return Ok(());
+    };
+    let time = TypedTime::Exact {
+        year,
+        month: Some(month),
+        day: Some(day),
+        surface: Some(surface),
+    };
+    let _ = sqlx::query(
+        "UPDATE canonical_events \
+         SET time_json = $2, start_time = $3 \
+         WHERE id = $1 AND is_active \
+           AND coalesce(time_json->>'precision', 'year') = 'year' \
+           AND left(coalesce(time_json->>'start', ''), 4) = $4",
+    )
+    .bind(event_id)
+    .bind(time_to_json(&time))
+    .bind(start_time_from_typed(&time))
+    .bind(format!("{year:04}"))
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 fn life_singleton_type(event_type: &str) -> bool {
     matches!(event_type, "birth" | "death")
 }
@@ -193,6 +332,9 @@ async fn attach_evidence_to_existing(
             map_ok,
         )
         .await?;
+    }
+    if life_singleton_type(&item.event_type) {
+        refine_singleton_date(pool, existing, &item.quoted_text).await?;
     }
     insert_person_quote_evidence(
         pool,
@@ -344,6 +486,19 @@ pub async fn persist_gated_item(
     }
 
     if let Some(existing) = find_existing_person_event(pool, entity_id, occurrence_key).await? {
+        return attach_evidence_to_existing(
+            pool,
+            existing,
+            candidate_id,
+            item,
+            raw_document_id,
+            coords,
+            place_identity_qid,
+            source_locator,
+        )
+        .await;
+    }
+    if let Some(existing) = find_same_publication(pool, entity_id, item, time).await? {
         return attach_evidence_to_existing(
             pool,
             existing,
@@ -602,7 +757,17 @@ pub async fn persist_fact_item(
 
     // Full place grounding: identity resolution (TGN/WHG) + geocoding
     let grounding = typing::ground_place_full(item.place_surface.as_deref(), meta.coords).await;
-    let role = place_role(item);
+    let mut role = place_role(item);
+    // Birth, death, a residence and a journey name the place of the action.
+    // A publication place stays a mention: it is often only the imprint.
+    if role == talaria_ai::PlaceRole::Mention
+        && matches!(
+            item.event_type.as_str(),
+            "birth" | "death" | "residence" | "travel" | "exile"
+        )
+    {
+        role = talaria_ai::PlaceRole::Locus;
+    }
     let point = talaria_sources::event_place_point(
         role.as_str(),
         item.place_surface.as_deref().unwrap_or(""),

@@ -32,6 +32,9 @@ impl CandidateExtractor for KeywordMineExtractor {
             let mined = mine_sentence_with_carry(&sentence, page, &carry);
             for hit in mined {
                 let (event_type, predicate) = verb_to_event(&hit.verb);
+                if matches!(event_type, "birth" | "death") && !sentence_names_subject(&sentence, &person) {
+                    continue;
+                }
                 let end = offset + sentence.len() as i32;
                 let proposed = hit.place.as_str();
                 let place_surface = if event_type == "historical_fact" {
@@ -63,6 +66,13 @@ impl CandidateExtractor for KeywordMineExtractor {
         }
         out
     }
+}
+
+fn sentence_names_subject(sentence: &str, subject: &str) -> bool {
+    let Some(surname) = subject.split_whitespace().last() else {
+        return false;
+    };
+    surname.chars().count() >= 4 && sentence.to_lowercase().contains(&surname.to_lowercase())
 }
 
 fn verb_to_event(verb: &str) -> (&'static str, &'static str) {

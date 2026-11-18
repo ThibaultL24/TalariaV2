@@ -117,6 +117,16 @@ fn offline_places() -> bool {
     std::env::var("TALARIA_OFFLINE_PLACES").ok().as_deref() == Some("1")
 }
 
+fn live_geocode_budget_open() -> bool {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static USED: AtomicU32 = AtomicU32::new(0);
+    let budget = std::env::var("TALARIA_GEOCODE_BUDGET")
+        .ok()
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(8);
+    USED.fetch_add(1, Ordering::Relaxed) < budget
+}
+
 pub async fn geocode_identity(
     identity: &PlaceIdentity,
 ) -> Option<talaria_sources::PlaceResolution> {
@@ -195,7 +205,7 @@ pub async fn geocode_place(label: Option<&str>) -> Option<talaria_sources::Place
             return Some(res);
         }
     }
-    if offline_places() {
+    if offline_places() || !live_geocode_budget_open() {
         return None;
     }
 

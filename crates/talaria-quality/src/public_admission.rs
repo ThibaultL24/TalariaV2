@@ -147,6 +147,7 @@ const NOTICE_MARKERS: &[&str] = &[
 const LOCALITIES: &[&str] = &[
     "paris", "lyon", "douai", "rouen", "bruxelles", "brussels", "genève", "geneve", "geneva",
     "guernsey", "guernesey", "ajaccio", "marseille", "rome", "london", "londres", "waterloo",
+    "odéon", "odeon",
     "mantua", "mantoue", "cherasco", "arcole", "castiglione",
 ];
 
@@ -318,6 +319,13 @@ fn notice_names_another_maker(folded: &str, subject: &str) -> bool {
     if surname.is_empty() {
         return false;
     }
+    // The subject publishes the poem. Someone else only writes the music.
+    if folded.contains("publication")
+        && folded.contains(&surname)
+        && (folded.contains("partition") || folded.contains("composed by"))
+    {
+        return false;
+    }
     for marker in [
         "publiées par ",
         "publiees par ",
@@ -426,7 +434,7 @@ fn token_is_subject(token: &str, given: &str, surname: &str) -> bool {
 
 fn contains_word(folded: &str, word: &str) -> bool {
     folded
-        .split(|ch: char| !ch.is_alphabetic() && ch != '-' && ch != '\'')
+        .split(|ch: char| !ch.is_alphabetic() && ch != '-')
         .any(|token| token == word)
 }
 
@@ -455,6 +463,35 @@ mod tests {
             time_reading: reading,
             structured_source: false,
         }
+    }
+
+    #[test]
+    fn a_composer_does_not_erase_the_subjects_poem() {
+        let billet = "la première publication connue d'un poème de Marceline Desbordes-Valmore est « Le Billet », avec une partition composée par Joseph-Henri Mees publiée en 1807";
+        assert_eq!(
+            admit_to_public_corpus(&fact("Marceline Desbordes-Valmore", billet, "missing")),
+            PublicAdmission::Publish
+        );
+        let full = "la première publication connue d'un poème de Marceline Desbordes-Valmore est « Le Billet », avec une partition composée par Joseph-Henri Mees publiée en 1807 ;";
+        let short: String = full.chars().take(120).collect();
+        let summary = format!("{short}…");
+        assert_eq!(
+            admit_to_public_corpus(&PublicFact {
+                subject: "Marceline Desbordes-Valmore",
+                quote: full,
+                summary: &summary,
+                event_type: "publication",
+                time_reading: "missing",
+                structured_source: false,
+            }),
+            PublicAdmission::Publish,
+            "{summary}"
+        );
+        let louise = "parmi les dix romances composées par Louise de Caumont Dadde on trouve cinq mises en musique de poèmes de Marceline Desbordes-Valmore";
+        assert_eq!(
+            admit_to_public_corpus(&fact("Marceline Desbordes-Valmore", louise, "missing")),
+            PublicAdmission::Hold("actor_is_not_the_subject")
+        );
     }
 
     #[test]

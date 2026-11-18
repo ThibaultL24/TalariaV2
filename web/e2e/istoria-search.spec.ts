@@ -33,7 +33,6 @@ test("a name with no Wikidata hit creates no fiche", async ({ page }) => {
 });
 
 test("selecting Desbordes-Valmore starts a bounded research and keeps the fiche", async ({ page }) => {
-  test.skip(test.info().project.name === "mobile", "The research itself is exercised once, on desktop.");
   await page.goto("/istoria");
   const search = page.getByRole("combobox", { name: "Recherche de personnalité" });
   await search.fill("Marceline Desbordes-Valmore");

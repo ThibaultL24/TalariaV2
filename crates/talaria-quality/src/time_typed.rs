@@ -574,7 +574,20 @@ pub fn read_clause_time(text: &str) -> ClauseTime {
             surface,
         };
     }
+    let historical = if historical.len() > 1
+        && historical.iter().all(|(year, _, _)| *year == historical[0].0)
+    {
+        vec![historical[0]]
+    } else {
+        historical
+    };
     match historical.as_slice() {
+        [(year, start, _)]
+            if year_dates_another_actor(&masked, *start)
+                || year_dates_a_collaborator(&masked, *start) =>
+        {
+            ClauseTime::Missing
+        }
         [(year, start, _)] if year_is_open_bound(&masked, *start) => ClauseTime::Open {
             year: *year,
             surface: format!("après {year}"),
@@ -668,7 +681,7 @@ fn four_digit_years(text: &str) -> Vec<(i32, usize, usize)> {
             }
             if index - start == 4 {
                 if let Ok(year) = text[start..index].parse::<i32>() {
-                    if (1000..=2100).contains(&year) {
+                    if (1000..=2100).contains(&year) && !followed_by_quantity(text, index) {
                         found.push((year, start, index));
                     }
                 }
@@ -678,6 +691,42 @@ fn four_digit_years(text: &str) -> Vec<(i32, usize, usize)> {
         index += 1;
     }
     found
+}
+
+fn followed_by_quantity(text: &str, end: usize) -> bool {
+    let rest = text[end..].trim_start().to_lowercase();
+    ["exemplaire", "copie", "copy", "copies", "page", "vers ", "homme", "soldier"]
+        .iter()
+        .any(|unit| rest.starts_with(unit))
+}
+
+/// The year sits on another person's death, not on the sentence's main action.
+fn char_window(text: &str, start: usize, before: usize, after: usize) -> String {
+    let mut from = start.saturating_sub(before);
+    let mut to = (start + after).min(text.len());
+    while from > 0 && !text.is_char_boundary(from) {
+        from -= 1;
+    }
+    while to < text.len() && !text.is_char_boundary(to) {
+        to += 1;
+    }
+    text.get(from..to).unwrap_or("").to_lowercase()
+}
+
+fn year_dates_another_actor(text: &str, start: usize) -> bool {
+    let window = char_window(text, start, 64, 64);
+    let death = ["emporte", "meurt", "décède", "decede", "mourut", "died", "dies"];
+    let other = ["mère", "mere", "mother", "père", "pere", "father"];
+    death.iter().any(|word| window.contains(word)) && other.iter().any(|word| window.contains(word))
+}
+
+/// The year follows a collaborator's score, not the subject's own publication.
+fn year_dates_a_collaborator(text: &str, start: usize) -> bool {
+    let folded = char_window(text, start, 90, 0);
+    folded.contains("partition")
+        || folded.contains("composée par")
+        || folded.contains("composee par")
+        || folded.contains("composed by")
 }
 
 fn year_is_parenthetical(text: &str, start: usize) -> bool {
@@ -1152,6 +1201,28 @@ mod tests {
                 "Après 1823, Marceline Desbordes-Valmore quitte définitivement le théâtre pour se consacrer à l'écriture."
             ),
             ClauseTime::Open { year: 1823, .. }
+        ));
+    }
+
+    #[test]
+    fn a_print_run_and_another_persons_death_are_not_the_events_date() {
+        assert!(matches!(
+            read_clause_time(
+                "En 1819, Marceline Desbordes-Valmore publie à 1100 exemplaires son premier recueil, Élégies et Romances."
+            ),
+            ClauseTime::Exact { year: 1819, month: None, .. }
+        ));
+        assert!(matches!(
+            read_clause_time(
+                "Le voyage entrepris vers la Guadeloupe emporte, en mai 1802, la mère de Marceline."
+            ),
+            ClauseTime::Missing
+        ));
+        assert!(matches!(
+            read_clause_time(
+                "Le Billet, avec une partition composée par Joseph-Henri Mees publiée en 1807."
+            ),
+            ClauseTime::Missing
         ));
     }
 }

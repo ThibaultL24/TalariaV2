@@ -135,6 +135,9 @@ export function EntityMap({
           {error}
         </p>
       )}
+      {data && data.features.length === 0 && !error ? (
+        <p className="v3-map-error" role="status">{t.mapWithoutPoints}</p>
+      ) : null}
       {mode === "fullscreen" ? (
         <button
           type="button"
