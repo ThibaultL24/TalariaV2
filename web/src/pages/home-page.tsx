@@ -15,6 +15,26 @@ interface RosterCard extends DemoRosterEntry {
   stats?: DemoRosterItem;
 }
 
+function MediterraneanHeroLoop() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const controller = new AbortController();
+    void fetch("/media/home/mediterranean-loop.webm", { method: "HEAD", signal: controller.signal })
+      .then((response) => {
+        if (response.ok) setReady(true);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+  if (!ready) return null;
+  return (
+    <video className="v43-hero__sea" autoPlay muted loop playsInline poster="/brand/hero-aegean-day.jpg">
+      <source src="/media/home/mediterranean-loop.webm" type="video/webm" />
+    </video>
+  );
+}
+
 export function HomePage() {
   const { t, locale } = useI18n();
   const navigate = useNavigate();
@@ -83,6 +103,7 @@ export function HomePage() {
         <section className="v43-hero" aria-labelledby="home-hero-title">
           <div className="v43-hero__plate" aria-hidden="true">
             <img className="v43-hero__sea" alt="" src="/brand/hero-aegean-day.jpg" />
+            <MediterraneanHeroLoop />
             <img className="v43-hero__fresco" alt="" src="/media/home/school-of-athens.jpg" />
           </div>
           <div className="v43-hero__copy">
@@ -113,8 +134,8 @@ export function HomePage() {
             </div>
             <p className="v43-credit">
               {fr
-                ? "La boucle filmée n’est pas encore déposée. Le fond assemble une vue méditerranéenne du projet et L’École d’Athènes de Raphaël, domaine public. Ce n’est pas une archive de survol."
-                : "The filmed loop is not in place yet. The background joins a project view of the Mediterranean with Raphael’s School of Athens, public domain. It is not a flyover archive."}
+                ? "Raphaël, L’École d’Athènes, domaine public, devant une vue méditerranéenne."
+                : "Raphael, The School of Athens, public domain, over a Mediterranean view."}
             </p>
           </div>
         </section>
