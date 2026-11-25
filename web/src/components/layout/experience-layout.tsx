@@ -35,6 +35,7 @@ export function ExperienceLayout({
   children,
 }: ExperienceLayoutProps) {
   const { t } = useI18n();
+  const lens = experience === "poreia" ? t.poreiaPromise : t.istoriaPromise;
   const shell = [
     "v3-shell",
     `v3-shell--${experience}`,
@@ -64,7 +65,13 @@ export function ExperienceLayout({
         <Navbar />
       )}
       <main className={`v3-main${immersive ? " v3-main--immersive" : ""}`}>
-        {!immersive && <ExperienceNavigation entityId={entityId || undefined} compact={Boolean(entityId)} />}
+        {!immersive && (
+          <ExperienceNavigation
+            entityId={entityId || undefined}
+            compact={Boolean(entityId)}
+            subjectLabel={label}
+          />
+        )}
         {!immersive && (
           <section className={showHeroBand ? "v3-overview-hero" : undefined}>
             <EntityHeader experience={experience} entityId={entityId || undefined} label={label} />
@@ -77,16 +84,7 @@ export function ExperienceLayout({
         {immersive && entityId && !mobileStage && (
           <div className="v3-immersive-bar">
             <h1 className="v3-immersive-title">{label ?? "Loading…"}</h1>
-            <span className="talaria-experience__subtitle">
-              {experience === "istoria" ? "Faits & anecdotes" : "Tourisme patrimonial"}
-            </span>
-          </div>
-        )}
-        {entityId && !immersive && (
-          <div className="v3-lens-row">
-            <span className="talaria-experience__subtitle">
-              {experience === "istoria" ? "Faits & anecdotes" : "Tourisme patrimonial"}
-            </span>
+            <span className="talaria-experience__subtitle">{lens}</span>
           </div>
         )}
         {entityId ? <ExperienceSubnav experience={experience} entityId={entityId} /> : null}

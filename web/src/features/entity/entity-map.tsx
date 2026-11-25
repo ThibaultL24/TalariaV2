@@ -6,6 +6,7 @@ import { spreadStackedMapPoints } from "@/lib/geo";
 import { MapCanvas } from "@/components/map/map-canvas";
 import { MapSourceManager } from "@/components/map/map-source-manager";
 import { MapLayers } from "@/components/map/map-layers";
+import { MapLifeTrail } from "@/components/map/map-life-trail";
 import { MapInteractions, type MapHoverPreview } from "@/components/map/map-interactions";
 import { getEntityView, type MapPage } from "@/lib/entity-views";
 import { useI18n } from "@/lib/i18n";
@@ -17,6 +18,8 @@ export function EntityMap({
   focus,
   onSelect,
   mode = "desktop",
+  revealedIds = null,
+  trail = [],
 }: {
   id: string;
   filters: string;
@@ -24,6 +27,8 @@ export function EntityMap({
   focus?: { eventId: string; lat: number; lon: number };
   onSelect: (id: string) => void;
   mode?: "desktop" | "fullscreen";
+  revealedIds?: ReadonlySet<string> | null;
+  trail?: [number, number][][];
 }) {
   const { locale, t } = useI18n();
   const [map, setMap] = useState<Map | null>(null);
@@ -31,7 +36,16 @@ export function EntityMap({
   const [data, setData] = useState<TalariaFeatureCollection>();
   const [keys, setKeys] = useState<LegendKey[]>([]);
   const presentKeys = useMemo(() => [...new Set((data?.features ?? []).map(f => legendKeyForEventType(String(f.properties.event_type))))], [data]);
-  const visible = useMemo(() => data ? { ...data, features: data.features.filter(f => eventMatchesLegendFilter(String(f.properties.event_type), keys)) } : undefined, [data, keys]);
+  const visible = useMemo(() => {
+    if (!data) return undefined;
+    const features = data.features.filter((feature) => {
+      if (!eventMatchesLegendFilter(String(feature.properties.event_type), keys)) return false;
+      if (!revealedIds) return true;
+      const featureId = String(feature.properties.id ?? feature.id ?? "");
+      return revealedIds.has(featureId);
+    });
+    return { ...data, features };
+  }, [data, keys, revealedIds]);
   const [error, setError] = useState("");
   const [hover, setHover] = useState<MapHoverPreview | null>(null);
   useEffect(() => { setData(undefined); setKeys([]); }, [id, filters]);
@@ -120,6 +134,7 @@ export function EntityMap({
       <div className="v3-map">
       <MapCanvas onReady={setMap} />
       <MapSourceManager map={map} data={visible} />
+      <MapLifeTrail map={map} segments={trail} />
       <MapLayers map={map} data={visible} selectedEventId={selected} />
       <MapInteractions map={map} onSelectEvent={onSelect} onPreview={setHover} />
       {hover && (

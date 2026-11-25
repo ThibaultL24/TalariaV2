@@ -20,6 +20,9 @@ import { COMPACT_VIEWPORT_MQ } from "@/lib/breakpoints";
 import { fetchChapterEventPage, fetchChapterSuggestions, fetchEntityGroup, fetchEntityGroups, getEntityView, type EntityOverview } from "@/lib/entity-views";
 import { ChapterReading } from "@/features/istoria/chapter-reading";
 import { ChapterSuggestions } from "@/features/istoria/chapter-suggestions";
+import { LifeReader } from "@/features/istoria/life-reader";
+import { useLifePlayback } from "@/features/istoria/use-life-playback";
+import { WikipediaReading } from "@/features/istoria/wikipedia-reading";
 import { IdentityOffer } from "@/features/istoria/identity-offer";
 import { biographyFilters } from "@/features/istoria/biography-filters";
 import { useI18n } from "@/lib/i18n";
@@ -210,6 +213,19 @@ export function IstoriaPage() {
     else copy.delete("event");
     setParams(copy);
   }, [params, setParams]);
+  const playback = useLifePlayback({
+    events,
+    selectedId: eventId ?? undefined,
+    onSelect: (id) => select(id),
+  });
+  const revealedIds = useMemo(
+    () => (playback.showAll ? null : new Set(playback.revealed.map((item) => item.id))),
+    [playback.showAll, playback.revealed],
+  );
+  useEffect(() => {
+    if (!needsTimeline || !timeline.hasMore || timeline.isFetchingNextPage || timeline.error) return;
+    void timeline.loadMore();
+  }, [needsTimeline, timeline.hasMore, timeline.isFetchingNextPage, timeline.error, timeline.loadMore, events.length]);
 
   const selectChapter = useCallback((slug: string) => {
     const copy = new URLSearchParams(params);
@@ -339,7 +355,12 @@ export function IstoriaPage() {
       {entityId && view === "overview" && (
         <p className="v3-note" role="status">{t.researchUnverified}</p>
       )}
+      {entityId && view === "overview" && overview?.entity.qid && (
+        <WikipediaReading qid={overview.entity.qid} locale={locale === "fr" ? "fr" : "en"} entityId={entityId} />
+      )}
       {entityId && view === "overview" && (
+        <details className="istoria-corpus">
+          <summary>{locale === "fr" ? "Regroupements du corpus admis" : "Groupings of the admitted corpus"}</summary>
         <ChapterSuggestions
           suggestions={suggestionsQuery.data?.suggestions ?? []}
           periods={suggestionsQuery.data?.periods ?? []}
@@ -347,6 +368,7 @@ export function IstoriaPage() {
           places={suggestionsQuery.data?.places ?? []}
           locale={locale === "fr" ? "fr" : "en"}
         />
+        </details>
       )}
       {entityId && view !== "overview" && ((suggestionsQuery.data?.periods?.length ?? 0) + (suggestionsQuery.data?.suggestions?.length ?? 0) > 0) && (
         <p className="v3-note">
@@ -395,6 +417,8 @@ export function IstoriaPage() {
         </p>
       )}
       {view === "overview" && overview && !chapterQuery.data && (
+        <details className="istoria-corpus">
+          <summary>{locale === "fr" ? "Chiffres du corpus admis" : "Admitted corpus figures"}</summary>
         <section className="v3-stats">
           {Object.entries(overview.stats).map(([key, value]) => (
             <article key={key}>
@@ -403,6 +427,7 @@ export function IstoriaPage() {
             </article>
           ))}
         </section>
+        </details>
       )}
       <div className={immersive ? "v3-explorer-stage" : undefined}>
         {entityId && needsTimeline && (
@@ -444,14 +469,39 @@ export function IstoriaPage() {
         )}
         {view === "map" && entityId && (
           <Suspense fallback={<p role="status">{t.loading}</p>}>
+          <div className="life-atlas">
           <EntityMap
             id={entityId}
             filters={filterString}
             selected={activeEventId}
-            focus={mapFocus}
+            focus={!playback.showAll && playback.point && playback.active
+              ? { eventId: playback.active.id, lat: playback.point[1], lon: playback.point[0] }
+              : mapFocus}
             onSelect={select}
-            mode={mobileStage ? "fullscreen" : "desktop"}
+            mode="fullscreen"
+            revealedIds={revealedIds}
+            trail={playback.showAll ? [] : playback.trail}
           />
+          <LifeReader
+            locale={locale === "fr" ? "fr" : "en"}
+            playing={playback.playing}
+            showAll={playback.showAll}
+            speed={playback.speed}
+            bands={playback.bands}
+            band={playback.band}
+            index={playback.index}
+            total={playback.scoped.length}
+            undated={playback.undated}
+            active={playback.active}
+            onPlay={playback.play}
+            onPause={playback.pause}
+            onStep={playback.step}
+            onRestart={playback.restart}
+            onSpeed={playback.setSpeed}
+            onShowAll={playback.showEveryEvent}
+            onBand={playback.chooseBand}
+          />
+          </div>
           </Suspense>
         )}
         {view === "timeline" && overview && (
@@ -465,6 +515,25 @@ export function IstoriaPage() {
                   : " Moments load progressively."
                 : ""}
             </p>
+            <LifeReader
+              locale={locale === "fr" ? "fr" : "en"}
+              playing={playback.playing}
+              showAll={playback.showAll}
+              speed={playback.speed}
+              bands={playback.bands}
+              band={playback.band}
+              index={playback.index}
+              total={playback.scoped.length}
+              undated={playback.undated}
+              active={playback.active}
+              onPlay={playback.play}
+              onPause={playback.pause}
+              onStep={playback.step}
+              onRestart={playback.restart}
+              onSpeed={playback.setSpeed}
+              onShowAll={playback.showEveryEvent}
+              onBand={playback.chooseBand}
+            />
             <HistoricalTimeline
             key={entityId}
             events={events}
