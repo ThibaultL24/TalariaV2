@@ -12,6 +12,24 @@ function fold(value: string): string {
   return value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim().replace(/\s+/g, " ");
 }
 
+function isEventPhrase(label: string): boolean {
+  return /\b(battle|retreat|army|attack|treaty|siege|campaign|plan of)\b/i.test(label) || label.length > 80;
+}
+
+function isNotAPersonRecord(item: SearchSuggestion): boolean {
+  const label = item.label.trim();
+  if (/^(avenue|rue|boulevard|chemin|quai|impasse|place|road|street)\b/i.test(label)) return true;
+  const hasQid = Boolean(item.qid && /^Q\d+$/.test(item.qid));
+  if (isEventPhrase(label) && !hasQid) return true;
+  if (!hasQid && fold(label) === fold(item.description ?? label)) return true;
+  return false;
+}
+
+function isRecordedPlaceOrName(description?: string | null): boolean {
+  const text = (description ?? "").toLowerCase();
+  return /human settlement|family name|given name|genus|higher education|city in|county seat|wikimedia|taxon|\bband\b/.test(text);
+}
+
 function relevance(query: string, label: string): number {
   const name = fold(label);
   if (name === query) return 0;
@@ -19,6 +37,13 @@ function relevance(query: string, label: string): number {
   if (name.includes(query)) return 2;
   if (query.includes(name)) return 3;
   return 4;
+}
+
+/** A known fiche opens at once. A selected QID may be researched. A bare name may not. */
+export function researchDecision(item: SearchSuggestion): "open" | "offer" | "unresolved" {
+  if (item.known_locally && item.entity_id) return "open";
+  if (item.qid && /^Q\d+$/.test(item.qid)) return "offer";
+  return "unresolved";
 }
 
 /** Preserve distinct Wikidata identities; never merge on label or event density. */
@@ -31,7 +56,9 @@ export function rankPersonSuggestions(
   if (q.length < 2) return [];
   const candidates = items
     .filter((item) => !isPersonSearchNoise(item.label))
+    .filter((item) => !isNotAPersonRecord(item))
     .sort((a, b) =>
+      Number(isRecordedPlaceOrName(a.description)) - Number(isRecordedPlaceOrName(b.description)) ||
       relevance(q, a.label) - relevance(q, b.label) ||
       Number(Boolean(b.known_locally)) - Number(Boolean(a.known_locally)) ||
       (b.event_count ?? 0) - (a.event_count ?? 0) ||

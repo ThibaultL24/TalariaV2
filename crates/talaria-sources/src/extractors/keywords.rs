@@ -32,13 +32,22 @@ impl CandidateExtractor for KeywordMineExtractor {
             let mined = mine_sentence_with_carry(&sentence, page, &carry);
             for hit in mined {
                 let (event_type, predicate) = verb_to_event(&hit.verb);
+                if matches!(event_type, "birth" | "death") && !sentence_names_subject(&sentence, &person) {
+                    continue;
+                }
                 let end = offset + sentence.len() as i32;
+                let proposed = hit.place.as_str();
+                let place_surface = if event_type == "historical_fact" {
+                    None
+                } else {
+                    talaria_quality::anchored_action_place(&sentence, event_type, proposed)
+                };
                 out.push(RawCandidate {
                     event_type: event_type.into(),
                     predicate: predicate.into(),
                     subject_surface: person.clone(),
                     time_surface: Some(hit.time),
-                    place_surface: Some(hit.place),
+                    place_surface,
                     object_surface: None,
                     participant_surfaces: vec![],
                     clause_text: sentence.clone(),
@@ -59,6 +68,13 @@ impl CandidateExtractor for KeywordMineExtractor {
     }
 }
 
+fn sentence_names_subject(sentence: &str, subject: &str) -> bool {
+    let Some(surname) = subject.split_whitespace().last() else {
+        return false;
+    };
+    surname.chars().count() >= 4 && sentence.to_lowercase().contains(&surname.to_lowercase())
+}
+
 fn verb_to_event(verb: &str) -> (&'static str, &'static str) {
     match verb {
         "born" => ("birth", "born_in"),
@@ -73,6 +89,11 @@ fn verb_to_event(verb: &str) -> (&'static str, &'static str) {
         "visited" => ("travel", "visited"),
         "met" => ("meeting", "met"),
         "published" => ("publication", "published"),
+        "painted" => ("creation", "created"),
+        "discovered" | "invented" => ("discovery", "discovered"),
+        "appointed" => ("office", "held_office"),
+        "taught" => ("education", "taught_at"),
+        "awarded" => ("award", "awarded"),
         "anecdoted" => ("anecdote", "anecdoted"),
         other if other == "sailed" => ("travel", "sailed"),
         _ => ("historical_fact", "occurred_at"),

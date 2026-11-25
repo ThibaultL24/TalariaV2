@@ -56,13 +56,14 @@ pub use person_profile::{
     keep_military_typed_event, profile_for, rank_wikipedia_title, rank_wikipedia_title_for_classes,
     IngestProfile, PersonClass,
 };
-pub use place_quality::is_plausible_place_label;
 pub use place_identity::{
     CompositeIdentityResolver, PlaceIdentity, PlaceIdentityResolver, TgnResolver, WhgResolver,
 };
+pub use place_quality::{is_plausible_place_label, place_is_the_named_work};
 pub use places::{
-    gazetteer_entry_count, gazetteer_qid_count, place_hint_from_title, place_query_variants,
-    resolve_place_offline, PlaceResolution,
+    event_place_point, gazetteer_entry_count, gazetteer_exact_identities,
+    gazetteer_identities_for_qid, gazetteer_qid_count, place_hint_from_title, place_query_variants,
+    resolve_place_offline, EventPlacePoint, GazetteerIdentity, PlaceResolution,
 };
 pub use plan::{plan_sources, PlannedSource, ResolvedSubject, SourcePlan};
 pub use registry::{ConnectorRegistration, SourceRegistry};
@@ -75,15 +76,39 @@ pub use types::{DiscoveredDocument, ExternalEntityRef, SourceMetadata, TypedTime
 pub use wiki_fragments::{fragment_inserts, fragment_inserts_with_titles};
 
 pub use connectors::{
-    normalize_bnf_notice, normalize_europeana_item, normalize_ia_item, normalize_openalex_work,
-    normalize_these_detail, normalize_wikisource, parse_mediainfo, parse_p18_filenames,
-    parse_wiki_page_images, file_titles_from_wikitext, commonswiki_file_sitelink,
-    listed_files_from_commons_sitelink, BnfConfig,
-    BnfConnector, CommonsAsset, CommonsConnector, CorpusConnectors, EuropeanaConfig,
-    EuropeanaConnector, InternetArchiveConfig, InternetArchiveConnector, OpenAlexConfig,
-    OpenAlexConnector, ThesesFrConfig, ThesesFrConnector,
+    commonswiki_file_sitelink,
+    file_titles_from_wikitext,
+    listed_files_from_commons_sitelink,
+    normalize_bnf_notice,
+    normalize_europeana_item,
+    normalize_ia_item,
+    normalize_openalex_work,
+    normalize_these_detail,
+    normalize_wikisource,
+    parse_mediainfo,
+    parse_p18_filenames,
+    parse_wiki_page_images,
+    BnfConfig,
+    BnfConnector,
+    CommonsAsset,
+    CommonsConnector,
+    CorpusConnectors,
+    DeutscheBiographieConfig,
+    DeutscheBiographieConnector,
+    EuropeanaConfig,
+    EuropeanaConnector,
+    FaPersonRecord,
     // Vague B: structured life facts connectors (document sources)
-    FranceArchivesConfig, FranceArchivesConnector, FaPersonRecord,
-    DeutscheBiographieConfig, DeutscheBiographieConnector, GndPersonRecord,
-    PopMerimeeConfig, PopMerimeeConnector, MerimeeRecord,
+    FranceArchivesConfig,
+    FranceArchivesConnector,
+    GndPersonRecord,
+    InternetArchiveConfig,
+    InternetArchiveConnector,
+    MerimeeRecord,
+    OpenAlexConfig,
+    OpenAlexConnector,
+    PopMerimeeConfig,
+    PopMerimeeConnector,
+    ThesesFrConfig,
+    ThesesFrConnector,
 };

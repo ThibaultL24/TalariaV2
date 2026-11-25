@@ -27,13 +27,15 @@ cp .env.example .env
 docker compose up -d
 
 cargo run -p talaria-api -- data-init
-cargo run -p talaria-api -- migrate
+TALARIA_APPLY_MIGRATIONS=1 cargo run -p talaria-api -- migrate
 cargo run -p talaria-api -- serve
 # → http://localhost:8080/health
 
 cd web && npm install && npm run dev
 # → http://localhost:5173 (proxies /api → :8080)
 ```
+
+`serve` does not change the schema. A pending migration applies only when `TALARIA_APPLY_MIGRATIONS=1`. On `talaria_engine_development`, inspected read-only on 2026-11-16, versions 001 through 054 are applied. `055_editorial_assertions` is not applied.
 
 Build the UI into the API binary's static fallback:
 

@@ -92,8 +92,10 @@ export function PoreiaItineraryView({
         <p className="poreia-route__metrics">
           {t.calculatedRoute(result.route_distance_km?.toLocaleString(locale === "fr" ? "fr-FR" : "en-GB", { maximumFractionDigits: 1 }) ?? "", result.travel_minutes)}
         </p>
+      ) : result && result.stops.length === 0 ? (
+        <p role="status">{result.message || t.onlyAssociatedSites}</p>
       ) : result?.stops.length ? (
-        <p className="v3-note">{t.geoSequence}</p>
+        <p className="v3-note">{t.indicativeRoute} {t.geoSequence}</p>
       ) : null}
       {error && <p role="alert">{error}</p>}
       {!result && !error && <p role="status">{t.loadingItinerary}</p>}

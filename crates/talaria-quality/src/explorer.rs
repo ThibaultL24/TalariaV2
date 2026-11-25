@@ -1,19 +1,17 @@
 // crates/talaria-quality/src/explorer.rs
 //! What the explorer may show as an event: a dated occurrence, not a QID stub.
 
+use crate::documentary::is_bibliographic_quote;
 use crate::gates::event_type_is_map_locus;
 
 pub fn is_wikidata_qid(value: &str) -> bool {
     let value = value.trim();
-    value.len() >= 2
-        && value.starts_with('Q')
-        && value[1..].bytes().all(|b| b.is_ascii_digit())
+    value.len() >= 2 && value.starts_with('Q') && value[1..].bytes().all(|b| b.is_ascii_digit())
 }
 
 pub fn is_statement_blob(text: &str) -> bool {
     let text = text.trim();
-    text.starts_with("STATEMENT")
-        || (text.contains(" | ") && text.matches('|').count() >= 2)
+    text.starts_with("STATEMENT") || (text.contains(" | ") && text.matches('|').count() >= 2)
 }
 
 pub fn is_human_place_label(place: &str) -> bool {
@@ -57,19 +55,12 @@ fn type_cues(event_type: &str, text: &str) -> bool {
     let text = text.to_ascii_lowercase();
     match event_type {
         "birth" => text.contains("born") || text.contains("naît") || text.contains("nait"),
-        "death" => {
-            text.contains("died") || text.contains("mort") || text.contains("décès")
-        }
+        "death" => text.contains("died") || text.contains("mort") || text.contains("décès"),
         "marriage" | "wedding" => {
             text.contains("married") || text.contains("marié") || text.contains("wedding")
         }
         "battle" | "siege" => [
-            "battle",
-            "fought",
-            "siege",
-            "bataille",
-            "combat",
-            "defeated",
+            "battle", "fought", "siege", "bataille", "combat", "defeated",
         ]
         .iter()
         .any(|cue| text.contains(cue)),
@@ -79,14 +70,23 @@ fn type_cues(event_type: &str, text: &str) -> bool {
         "education" => ["studied", "school", "université", "college", "étudiant"]
             .iter()
             .any(|cue| text.contains(cue)),
-        "office" => ["elected", "president", "king", "inaugur", "crowned", "empereur"]
-            .iter()
-            .any(|cue| text.contains(cue)),
+        "office" => [
+            "elected",
+            "president",
+            "king",
+            "inaugur",
+            "crowned",
+            "empereur",
+        ]
+        .iter()
+        .any(|cue| text.contains(cue)),
         "diplomatic" => ["treaty", "accord", "negotiat", "diplom", "signed the"]
             .iter()
             .any(|cue| text.contains(cue)),
         "travel" | "arrival" | "departure" | "passage" => {
-            ["visited", "arrived", "left", "travel", "voyage"].iter().any(|cue| text.contains(cue))
+            ["visited", "arrived", "left", "travel", "voyage"]
+                .iter()
+                .any(|cue| text.contains(cue))
         }
         _ => true,
     }
@@ -209,6 +209,100 @@ pub fn explorer_headline(
     }
 }
 
+/// A short title for a new event. A raw quotation stays in the evidence.
+pub fn concise_event_title(
+    person: &str,
+    event_type: &str,
+    year: Option<i32>,
+    place: Option<&str>,
+    quote: Option<&str>,
+    summary: Option<&str>,
+) -> String {
+    if let Some(name) =
+        named_action(quote.unwrap_or("")).or_else(|| named_action(summary.unwrap_or("")))
+    {
+        return match year {
+            Some(year) => format!("{name} ({year})"),
+            None => name,
+        };
+    }
+    let quote_len = quote.unwrap_or("").chars().count();
+    if quote_len > 80 {
+        return explorer_headline(person, event_type, year, place, None, None);
+    }
+    explorer_headline(person, event_type, year, place, quote, summary)
+}
+
+fn named_action(text: &str) -> Option<String> {
+    let lower = text.to_lowercase();
+    for prefix in [
+        "battle of ",
+        "siege of ",
+        "treaty of ",
+        "bataille de ",
+        "bataille d'",
+        "siège de ",
+        "siège d'",
+        "siege de ",
+        "siege d'",
+    ] {
+        let Some(at) = lower.find(prefix) else {
+            continue;
+        };
+        let rest = &text[at..];
+        let end = [" was ", " were ", " on ", " in ", " a ", ",", ".", ";", ":"]
+            .iter()
+            .filter_map(|mark| rest.find(mark))
+            .min()
+            .unwrap_or(rest.len());
+        let name = rest[..end].trim();
+        if (prefix.len() + 2..=60).contains(&name.chars().count()) {
+            return Some(name.to_string());
+        }
+    }
+    None
+}
+
+/// A type is held for review only when the text itself shows the mismatch.
+pub fn candidate_needs_type_review(
+    event_type: &str,
+    quote: &str,
+    summary: &str,
+) -> Option<&'static str> {
+    let text = format!("{quote} {summary}").to_lowercase();
+    if is_bibliographic_quote(quote) || is_documentary_notice(&text) {
+        return Some("documentary_notice_is_not_an_event");
+    }
+    if event_type == "battle" || event_type == "siege" {
+        let honorific = ["duke of ", "duc de ", "duchess of ", "duchesse de "]
+            .iter()
+            .any(|prefix| text.contains(prefix));
+        let action = text.contains("battle of ")
+            || text.contains("bataille de ")
+            || text.contains("fought")
+            || text.contains("defeated")
+            || text.contains("commanded")
+            || text.contains("siege of ");
+        if honorific && !action {
+            return Some("honorific_title_is_not_a_battle");
+        }
+    }
+    None
+}
+
+fn is_documentary_notice(text: &str) -> bool {
+    [
+        "osprey",
+        "jeu de ",
+        "board game",
+        "isbn",
+        "contribution à l'histoire",
+        "contribution a l'histoire",
+    ]
+    .iter()
+    .any(|cue| text.contains(cue))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,8 +319,21 @@ mod tests {
     }
 
     #[test]
+    fn a_catalog_notice_is_not_a_battle_event() {
+        let notice = "[HAL] Napoléon et Milan : mise en scène, réception et délégation";
+        assert_eq!(
+            candidate_needs_type_review("battle", notice, "Battle of Lonato"),
+            Some("documentary_notice_is_not_an_event")
+        );
+        let passage = "The Battle of Lonato was fought on 3 and 4 August 1796.";
+        assert_eq!(candidate_needs_type_review("battle", passage, ""), None);
+    }
+
+    #[test]
     fn statement_and_predicates_are_not_prose() {
-        assert!(!is_occurrence_prose("Trump | notable_event | occurred | 2024 | Q127421251"));
+        assert!(!is_occurrence_prose(
+            "Trump | notable_event | occurred | 2024 | Q127421251"
+        ));
         assert!(!is_occurrence_prose("born_in"));
         assert!(!is_occurrence_prose("married Q432473"));
         assert!(is_occurrence_prose(
@@ -257,7 +364,9 @@ mod tests {
         assert!(!is_explorer_map_event(
             "military_campaign",
             Some("Latin America"),
-            Some("Trump began his second presidency by initiating mass layoffs of federal workers."),
+            Some(
+                "Trump began his second presidency by initiating mass layoffs of federal workers."
+            ),
             None,
         ));
         assert!(!is_explorer_map_event(
@@ -336,5 +445,71 @@ mod tests {
             ),
             "notable event · 2024"
         );
+    }
+
+    #[test]
+    fn a_quotation_becomes_a_short_title_and_a_notice_stays_out() {
+        assert_eq!(
+            concise_event_title(
+                "Napoleon",
+                "battle",
+                Some(1796),
+                Some("Lodi"),
+                Some("The Battle of Lodi was fought on 10 May 1796 at Lodi."),
+                Some("The Battle of Lodi was fought on 10 May 1796 at Lodi."),
+            ),
+            "Battle of Lodi (1796)"
+        );
+        assert_eq!(
+            concise_event_title(
+                "Napoleon",
+                "office",
+                Some(1804),
+                Some("Q5373953"),
+                None,
+                Some("office · 1804"),
+            ),
+            "office · 1804"
+        );
+        assert_eq!(
+            candidate_needs_type_review(
+                "battle",
+                "In 1808 he was ennobled and became Duke of Valmy.",
+                "Duke of Valmy",
+            ),
+            Some("honorific_title_is_not_a_battle")
+        );
+        assert_eq!(
+            candidate_needs_type_review(
+                "battle",
+                "Napoleon Saga: Waterloo (2016), a board game.",
+                "Napoleon Saga",
+            ),
+            Some("documentary_notice_is_not_an_event")
+        );
+        assert!(candidate_needs_type_review(
+            "battle",
+            "Napoleon defeated the Austrian army at the Battle of Lodi on 10 May 1796.",
+            "Battle of Lodi",
+        )
+        .is_none());
+        assert!(candidate_needs_type_review(
+            "historical_fact",
+            "Napoleon crossed the Alps in 1800.",
+            "historical fact",
+        )
+        .is_none());
+        assert!(candidate_needs_type_review(
+            "battle",
+            "Napoleon's French army was defeated by the Duke of Wellington.",
+            "Battle of Waterloo",
+        )
+        .is_none());
+        assert!(candidate_needs_type_review(
+            "battle",
+            "Napoleon defeated the Austrian army at Lodi on 10 May 1796.",
+            "Lodi",
+        )
+        .is_none());
     }
 }

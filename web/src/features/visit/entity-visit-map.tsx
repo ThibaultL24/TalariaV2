@@ -10,46 +10,89 @@ import {
   type LegendKey,
 } from "@/lib/event-legend";
 import { spreadStackedMapPoints } from "@/lib/geo";
-import { fetchVisitHeritageGeojson, fetchVisitNowGeojson, fetchVisitSitesGeojson } from "@/lib/entity-views";
+import { fetchVisitHeritageGeojson, fetchVisitNowGeojson, fetchVisitSitesGeojson, type PoreiaCatalogSite } from "@/lib/entity-views";
 import { MapCanvas } from "@/components/map/map-canvas";
 import { MapSourceManager } from "@/components/map/map-source-manager";
 import { MapLayers } from "@/components/map/map-layers";
 import { MapInteractions } from "@/components/map/map-interactions";
 import type { GeoJsonFeatureCollection } from "@/lib/api";
-import type { TalariaFeatureCollection } from "@/lib/schemas/geojson";
+import type { TalariaFeature, TalariaFeatureCollection } from "@/lib/schemas/geojson";
 import { useI18n } from "@/lib/i18n";
+
+function catalogEventType(kind: string): string {
+  if (kind === "museum" || kind === "cultural_institution") return "museum";
+  if (kind === "memorial" || kind === "burial_site") return "memorial";
+  if (kind === "monument" || kind === "bridge") return "statue";
+  return "residence";
+}
+
+function catalogFeature(site: PoreiaCatalogSite): TalariaFeature {
+  const link = site.historical_links[0];
+  const eventType = catalogEventType(site.kind);
+  return {
+    type: "Feature",
+    id: site.id,
+    geometry: { type: "Point", coordinates: [site.coordinates.lon, site.coordinates.lat] },
+    properties: {
+      id: site.id,
+      title: site.label,
+      event_type: eventType,
+      legend_key: legendKeyForEventType(eventType),
+      visit_layer: "heritage_site",
+      kind: site.kind,
+      wikidata_qid: site.wikidata_qid,
+      relation_pid: link?.relation_pid ?? undefined,
+      visitability: site.visitability,
+      summary: link?.summary,
+      association_source_url: link?.source_url ?? site.source_url,
+      opening_hours: site.opening_hours,
+      hours_checked_at: site.hours_checked_at,
+    },
+  };
+}
 
 export function EntityVisitMap({
   id,
   selected,
   focus,
+  catalogSites = [],
   onSelect,
   onView,
 }: {
   id: string;
   selected?: string;
   focus?: { eventId: string; lat: number; lon: number };
+  catalogSites?: PoreiaCatalogSite[];
   onSelect: (id: string) => void;
   onView?: (view: { features: TalariaFeatureCollection["features"]; loading: boolean }) => void;
 }) {
   const [map, setMap] = useState<Map | null>(null);
   const [data, setData] = useState<TalariaFeatureCollection>();
   const [keys, setKeys] = useState<LegendKey[]>([]);
+  const drawn = useMemo(() => {
+    if (!data) return undefined;
+    const seen = new Set(data.features.map((feature) => String(feature.properties.id ?? feature.id ?? "")));
+    const extras = catalogSites
+      .filter((site) => !seen.has(site.id))
+      .map((site) => catalogFeature(site));
+    if (!extras.length) return data;
+    return { ...data, features: [...data.features, ...extras] };
+  }, [data, catalogSites]);
   const presentKeys = useMemo(
-    () => [...new Set((data?.features ?? []).map((f) => legendKeyForEventType(String(f.properties.event_type))))],
-    [data],
+    () => [...new Set((drawn?.features ?? []).map((f) => legendKeyForEventType(String(f.properties.event_type))))],
+    [drawn],
   );
   const visible = useMemo(
     () =>
-      data
+      drawn
         ? {
-            ...data,
-            features: data.features.filter((f) =>
+            ...drawn,
+            features: drawn.features.filter((f) =>
               eventMatchesLegendFilter(String(f.properties.event_type), keys),
             ),
           }
         : undefined,
-    [data, keys],
+    [drawn, keys],
   );
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);

@@ -1,0 +1,637 @@
+{
+  "caps": {
+    "catalog_rows": 5,
+    "sources": [
+      "wikipedia extracts",
+      "wikidata labels",
+      "hal",
+      "openalex"
+    ],
+    "wikipedia_extract_chars_battle": 4000,
+    "wikipedia_extract_chars_biography": 20000
+  },
+  "cost": 0,
+  "database": "not opened",
+  "elapsed_ms": 64862,
+  "identity_check": "Napoleon",
+  "measured_at": "2026-11-16",
+  "paid_model": "not called",
+  "people": [
+    {
+      "anecdote_candidates": [],
+      "anecdotes_validated": 0,
+      "candidate_rows": 25,
+      "catalog_direct_titles": 0,
+      "catalog_notices_or_context": 0,
+      "catalog_off_topic": 6,
+      "catalog_sample": [
+        "Lawsonite et aragonite dans les unités océaniques de la zone du Combin (Alpes occidentales): implications tectoniques",
+        "Napoleon and the Transformation of Europe",
+        "Napoleon: a political life",
+        "Napoleon the Great",
+        "Napoleon and English Romanticism",
+        "Napoleon's Integration of Europe."
+      ],
+      "catalog_titles": 6,
+      "dropped_before_attest": 162,
+      "examples": [
+        {
+          "clause": "The Battle of Montenotte was fought on 12 April 1796, near Montenotte Superiore (then in the Kingdom of Sardinia, now in Italy), being the opening engagement of Napoleon Bonaparte's Italian Campaign and the second engagement of the Montenot",
+          "extractor": "military_campaign",
+          "page": "Battle of Montenotte",
+          "place": "Montenotte",
+          "type": "battle",
+          "year": 1796
+        },
+        {
+          "clause": "The Battle of Montenotte was fought on 12 April 1796, near Montenotte Superiore (then in the Kingdom of Sardinia, now in Italy), being the opening engagement of Napoleon Bonaparte's Italian Campaign and the second engagement of the Montenot",
+          "extractor": "dense_clause",
+          "page": "Battle of Montenotte",
+          "place": "Montenotte Superiore (then",
+          "type": "battle",
+          "year": 1796
+        },
+        {
+          "clause": "The Battle of Montenotte was fought on 12 April 1796, near Montenotte Superiore (then in the Kingdom of Sardinia, now in Italy), being the opening engagement of Napoleon Bonaparte's Italian Campaign and the second engagement of the Montenot",
+          "extractor": "dump_keywords",
+          "page": "Battle of Montenotte",
+          "place": "Sardinia",
+          "type": "battle",
+          "year": 1796
+        },
+        {
+          "clause": "The Battle of Millesimo, fought on 13 and 14 April 1796, was the name that Napoleon Bonaparte gave in his correspondence to one of a series of small battles that were fought in Liguria, Northern Italy between the armies of France and the al",
+          "extractor": "military_campaign",
+          "page": "Battle of Millesimo",
+          "place": "Millesimo",
+          "type": "battle",
+          "year": 1796
+        },
+        {
+          "clause": "The Battle of Millesimo, fought on 13 and 14 April 1796, was the name that Napoleon Bonaparte gave in his correspondence to one of a series of small battles that were fought in Liguria, Northern Italy between the armies of France and the al",
+          "extractor": "dense_clause",
+          "page": "Battle of Millesimo",
+          "place": "One Of A Series Of Small Battles That Were Fought",
+          "type": "battle",
+          "year": 1796
+        },
+        {
+          "clause": "The Battle of Millesimo, fought on 13 and 14 April 1796, was the name that Napoleon Bonaparte gave in his correspondence to one of a series of small battles that were fought in Liguria, Northern Italy between the armies of France and the al",
+          "extractor": "dump_keywords",
+          "page": "Battle of Millesimo",
+          "place": "Sardinia",
+          "type": "battle",
+          "year": 1796
+        },
+        {
+          "clause": "The Battle of Mondovì was fought on 21 April 1796 between the French army of Napoleon Bonaparte and the army of the Kingdom of Sardinia-Piedmont led by Michelangelo Alessandro Colli-Marchi",
+          "extractor": "military_campaign",
+          "page": "Battle of Mondovì",
+          "place": "Mondovì",
+          "type": "battle",
+          "year": 1796
+        },
+        {
+          "clause": "The Battle of Mondovì was fought on 21 April 1796 between the French army of Napoleon Bonaparte and the army of the Kingdom of Sardinia-Piedmont led by Michelangelo Alessandro Colli-Marchi",
+          "extractor": "dense_clause",
+          "page": "Battle of Mondovì",
+          "place": "",
+          "type": "battle",
+          "year": 1796
+        }
+      ],
+      "label": "Napoleon",
+      "page_errors": [
+        "error sending request for url (https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&titles=Battle+of+Arcole&redirects=1&format=json)"
+      ],
+      "pages_fetched": 10,
+      "qid": "Q517",
+      "reference_found": [
+        "montenotte",
+        "millesimo",
+        "mondovi",
+        "lodi",
+        "lonato",
+        "castiglione",
+        "mantua",
+        "spring-1796"
+      ],
+      "reference_missing": [
+        "arcole",
+        "rivoli",
+        "campo-formio",
+        "cherasco",
+        "mombello"
+      ],
+      "trap_hits": 0,
+      "unique_candidates": 19
+    },
+    {
+      "anecdote_candidates": [],
+      "anecdotes_validated": 0,
+      "candidate_rows": 48,
+      "catalog_direct_titles": 0,
+      "catalog_notices_or_context": 2,
+      "catalog_off_topic": 14,
+      "catalog_sample": [
+        "Victor Hugo entre réception patrimoniale et réception politique (1902-1944)",
+        "Víctor Hugo entre recepción patrimonial y recepción política (1902-1944)",
+        "Victor Hugo between heritage and political receptions (1902-1944)",
+        "Vox populi dans les œuvres dramaturgiques de Victor Hugo, Aimé Césaire et Vincent Placoly",
+        "Vox populi in Victor Hugo’s, Aimé Césaire’s et Vincent Placoly’s plays",
+        "L'Édition Nationale des Œuvres complètes de Victor Hugo (1885-1895). Illustrer, raconter, célébrer"
+      ],
+      "catalog_titles": 16,
+      "dropped_before_attest": 98,
+      "examples": [
+        {
+          "clause": "Soon, Hugo's father was called to Spain to fight the Peninsular War. Madame Hugo and her children were sent back to Paris in 1808, where they moved to an old convent, 12 Impasse des Feuillantines, an isolated mansion in a deserted quarter o",
+          "extractor": "itinerary",
+          "page": "Victor Hugo",
+          "place": "Paris",
+          "type": "arrival",
+          "year": 1808
+        },
+        {
+          "clause": "In February 1815, Hugo and Eugène were taken away from their mother and placed by their father in the Pension Cordier, a private boarding school in Paris, where Hugo and Eugène remained for three years while also attending lectures at Lycée",
+          "extractor": "education_life",
+          "page": "Victor Hugo",
+          "place": "Louis le Grand",
+          "type": "education",
+          "year": 1815
+        },
+        {
+          "clause": "On the nomination of King Louis Philippe I, Hugo entered the Upper Chamber of Parliament as a pair de France in 1845, where he spoke against the death penalty and social injustice, and in favour of freedom of the press and self-government f",
+          "extractor": "education_life",
+          "page": "Victor Hugo",
+          "place": "",
+          "type": "education",
+          "year": 1845
+        },
+        {
+          "clause": "Hugo died on 22 May 1885, aged 83",
+          "extractor": "dense_clause",
+          "page": "Victor Hugo",
+          "place": "",
+          "type": "death",
+          "year": 1885
+        },
+        {
+          "clause": "Victor-Marie Hugo was born on 26 February 1802 (7 Ventôse, year X of the Republic) in Besançon in Eastern France",
+          "extractor": "dense_clause",
+          "page": "Victor Hugo",
+          "place": "Eastern France",
+          "type": "birth",
+          "year": 1802
+        },
+        {
+          "clause": "They met in Châteaubriant in 1796 and married the following year",
+          "extractor": "dense_clause",
+          "page": "Victor Hugo",
+          "place": "Châteaubriant",
+          "type": "marriage",
+          "year": 1796
+        },
+        {
+          "clause": "Dedicated to the channel island of Guernsey, where Hugo spent 15 years of exile, the novel tells of a man who attempts to win the approval of his beloved's father by rescuing his ship, intentionally marooned by its captain who hopes to esca",
+          "extractor": "dense_clause",
+          "page": "Victor Hugo",
+          "place": "Escape With A Treasure Of Money It Is Transporting",
+          "type": "battle",
+          "year": null
+        },
+        {
+          "clause": "\" In 1859, he wrote a letter asking the United States government, for the sake of their own reputation in the future, to spare abolitionist John Brown's life, Hugo justified Brown's actions by these words: \"Assuredly, if insurrection is eve",
+          "extractor": "dense_clause",
+          "page": "Victor Hugo",
+          "place": "Spare Abolitionist John Brown's Life",
+          "type": "office",
+          "year": 1859
+        }
+      ],
+      "label": "Victor Hugo",
+      "page_errors": [],
+      "pages_fetched": 1,
+      "qid": "Q535",
+      "reference_found": [
+        "birth",
+        "contemplations",
+        "miserables",
+        "exile-span"
+      ],
+      "reference_missing": [
+        "marriage",
+        "leopoldine",
+        "jersey",
+        "guernsey",
+        "return",
+        "marine-terrace"
+      ],
+      "trap_hits": 0,
+      "unique_candidates": 46
+    },
+    {
+      "anecdote_candidates": [],
+      "anecdotes_validated": 0,
+      "candidate_rows": 35,
+      "catalog_direct_titles": 0,
+      "catalog_notices_or_context": 0,
+      "catalog_off_topic": 11,
+      "catalog_sample": [
+        "Marie Curie, la radiologie et la guerre, 1914-1918",
+        "Marie Curie, Radiology and War (1914-1918)",
+        "Calcul des partitions optimales d'un critère d'adéquation à une préordonnance.",
+        "About the strong EULER-GOLDBACH conjecture",
+        "Microinjection of a serotonin3 receptor agonist into the NTS of unanesthetized rats inhibits the bradycardia evoked by activation of the baro- and chemoreflexes",
+        "Honour and Rebellion: The surrender of the Market of Meaux, 1422"
+      ],
+      "catalog_titles": 11,
+      "dropped_before_attest": 96,
+      "examples": [
+        {
+          "clause": "Their mutual passion for science brought them increasingly closer, and they began to develop feelings for one another. Eventually, Pierre proposed marriage, but at first Skłodowska did not accept as she was still planning to go back to her ",
+          "extractor": "itinerary",
+          "page": "Marie Curie",
+          "place": "Warsaw",
+          "type": "arrival",
+          "year": 1894
+        },
+        {
+          "clause": "Curie was born in Warsaw, Russian Empire, where she studied at the clandestine Flying University and began her practical scientific training",
+          "extractor": "education_life",
+          "page": "Marie Curie",
+          "place": "Warsaw Russian Empire",
+          "type": "education",
+          "year": null
+        },
+        {
+          "clause": "She worked as a tutor, studied at the Flying University, and began her practical scientific training (1890–1891) in a chemistry laboratory at the Museum of Industry and Agriculture at Krakowskie Przedmieście 66, near Warsaw's Old Town",
+          "extractor": "education_life",
+          "page": "Marie Curie",
+          "place": "Flying University",
+          "type": "education",
+          "year": 1890
+        },
+        {
+          "clause": "In Paris, Maria (or Marie, as she would be known in France) briefly found shelter with her sister and brother-in-law before renting a garret closer to the university, in the Latin Quarter, and proceeding with her studies of physics, chemist",
+          "extractor": "education_life",
+          "page": "Marie Curie",
+          "place": "Paris",
+          "type": "education",
+          "year": 1891
+        },
+        {
+          "clause": "On both the paternal and maternal sides, the family had lost their property and fortunes through patriotic involvements in Polish national uprisings aimed at restoring Poland's independence (the most recent had been the January Uprising of ",
+          "extractor": "anecdote_life",
+          "page": "Marie Curie",
+          "place": "",
+          "type": "political_event",
+          "year": 1863
+        },
+        {
+          "clause": "In connection with this, Maria took a position first as a home tutor in Warsaw, then for two years as a governess in Szczuki with a landed family, the Żorawskis, who were relatives of her father, all while continuing to study in her free ti",
+          "extractor": "anecdote_life",
+          "page": "Marie Curie",
+          "place": "",
+          "type": "meeting",
+          "year": null
+        },
+        {
+          "clause": "Curie was born in Warsaw, Russian Empire, where she studied at the clandestine Flying University and began her practical scientific training",
+          "extractor": "dense_clause",
+          "page": "Marie Curie",
+          "place": "The Clandestine Flying University And Began Her Practical Scientific Training",
+          "type": "birth",
+          "year": null
+        },
+        {
+          "clause": "Curie died in 1934, aged 66, at the Sancellemoz sanatorium in Passy, Haute-Savoie, France, of aplastic anaemia likely from exposure to radiation in the course of her scientific research and in the course of her radiological work at field ho",
+          "extractor": "dense_clause",
+          "page": "Marie Curie",
+          "place": "Radiation",
+          "type": "death",
+          "year": 1934
+        }
+      ],
+      "label": "Marie Curie",
+      "page_errors": [],
+      "pages_fetched": 1,
+      "qid": "Q7186",
+      "reference_found": [
+        "nobel-physics",
+        "pierre-death",
+        "death"
+      ],
+      "reference_missing": [
+        "birth",
+        "polonium",
+        "radium",
+        "nobel-chemistry",
+        "laboratory",
+        "research-1890s"
+      ],
+      "trap_hits": 0,
+      "unique_candidates": 31
+    },
+    {
+      "anecdote_candidates": [],
+      "anecdotes_validated": 0,
+      "candidate_rows": 47,
+      "catalog_direct_titles": 0,
+      "catalog_notices_or_context": 5,
+      "catalog_off_topic": 0,
+      "catalog_sample": [
+        "error:error sending request for url (https://api.hal.science/search/?q=leonardo+da+vinci&fl=title_s&wt=json&rows=5)",
+        "LEONARDO DA VINCI: A MEMORY OF HIS CHILDHOOD",
+        "Leonardo da Vinci and the sinuses of Valsalva",
+        "The Notebooks of Leonardo da Vinci",
+        "The Notebooks of Leonardo Da Vinci",
+        "Leonardo da Vinci's contributions to neuroscience"
+      ],
+      "catalog_titles": 6,
+      "dropped_before_attest": 85,
+      "examples": [
+        {
+          "clause": "When Ludovico Sforza was overthrown by France in 1500, Leonardo fled Milan for Venice, accompanied by his assistant Salaì and friend, the mathematician Luca Pacioli. In Venice, Leonardo was employed as a military architect and engineer, dev",
+          "extractor": "itinerary",
+          "page": "Leonardo da Vinci",
+          "place": "Florence",
+          "type": "arrival",
+          "year": 1500
+        },
+        {
+          "clause": "In March 1513, Lorenzo de' Medici's son Giovanni assumed the papacy (as Leo X); Leonardo went to Rome that September, where he was received by the pope's brother Giuliano. From September 1513 to 1516, Leonardo spent much of his time living ",
+          "extractor": "itinerary",
+          "page": "Leonardo da Vinci",
+          "place": "Francis's",
+          "type": "arrival",
+          "year": 1513
+        },
+        {
+          "clause": "Leonardo da Vinci, properly named Leonardo di ser Piero da Vinci (\"Leonardo, son of ser Piero from Vinci\"), was born on 15 April 1452 in, or close to, the Tuscan hill town of Vinci, about 35 kilometres (22 miles) from Florence",
+          "extractor": "dense_clause",
+          "page": "Leonardo da Vinci",
+          "place": "",
+          "type": "birth",
+          "year": 1452
+        },
+        {
+          "clause": "He was born out of wedlock to Caterina di Meo Lippi (c",
+          "extractor": "dense_clause",
+          "page": "Leonardo da Vinci",
+          "place": "Caterina Di Meo Lippi (c",
+          "type": "birth",
+          "year": null
+        },
+        {
+          "clause": "It remains uncertain where Leonardo was born",
+          "extractor": "dense_clause",
+          "page": "Leonardo da Vinci",
+          "place": "",
+          "type": "birth",
+          "year": null
+        },
+        {
+          "clause": "the traditional account, from a local oral tradition recorded by the historian Emanuele Repetti, is that he was born in Anchiano, a country hamlet that would have offered sufficient privacy for the illegitimate birth, though it is still pos",
+          "extractor": "dense_clause",
+          "page": "Leonardo da Vinci",
+          "place": "Florence That Ser Piero Almost Certainly Had",
+          "type": "birth",
+          "year": null
+        },
+        {
+          "clause": "Caterina –  who later appears in Leonardo's notes as only \"Caterina\" or \"Catelina\" –  is usually identified as the Caterina Buti del Vacca, who married the local artisan Antonio di Piero Buti del Vacca, nicknamed L'Accattabriga, 'the quarre",
+          "extractor": "dense_clause",
+          "page": "Leonardo da Vinci",
+          "place": "Leonardo's Notes As Only \"caterina\" Or \"catelina\" –  Is Usually Identified As The Caterina Buti Del Vacca",
+          "type": "marriage",
+          "year": null
+        },
+        {
+          "clause": "From all the marriages, Leonardo eventually had 16 half-siblings (of whom 11 survived infancy) who were much younger than him (the last was born when Leonardo was 46 years old) and with whom he had very little contact",
+          "extractor": "dense_clause",
+          "page": "Leonardo da Vinci",
+          "place": "",
+          "type": "birth",
+          "year": null
+        }
+      ],
+      "label": "Leonardo da Vinci",
+      "page_errors": [],
+      "pages_fetched": 1,
+      "qid": "Q762",
+      "reference_found": [
+        "birth",
+        "mona-lisa"
+      ],
+      "reference_missing": [
+        "last-supper",
+        "france",
+        "death",
+        "vitruvian"
+      ],
+      "trap_hits": 0,
+      "unique_candidates": 43
+    },
+    {
+      "anecdote_candidates": [],
+      "anecdotes_validated": 0,
+      "candidate_rows": 21,
+      "catalog_direct_titles": 0,
+      "catalog_notices_or_context": 0,
+      "catalog_off_topic": 10,
+      "catalog_sample": [
+        "Applications of Thin Films in Ophthalmology",
+        "Aristotle on justice in exchange: commensurability by fiat",
+        "Aristotle With Prime Matter1",
+        "Self-Knowledge: Based on Knowledge of the First Cause of Creation (Aristotle’s Conception of the Soul)",
+        "La botanique d’Aristote",
+        "Aristotle and the Virtues"
+      ],
+      "catalog_titles": 10,
+      "dropped_before_attest": 88,
+      "examples": [
+        {
+          "clause": "He was born in the city of Stagira in Chalkidiki (northern Greece) during the Classical period",
+          "extractor": "dense_clause",
+          "page": "Aristotle",
+          "place": "Chalkidiki (northern Greece) During The Classical Period",
+          "type": "birth",
+          "year": null
+        },
+        {
+          "clause": "His father, Nicomachus, died when Aristotle was a child, and he was brought up by a guardian",
+          "extractor": "dense_clause",
+          "page": "Aristotle",
+          "place": "",
+          "type": "death",
+          "year": null
+        },
+        {
+          "clause": "Aristotle was born in 384 BC in Stagira, Chalcidice, about 55 km (34 miles) east of modern-day Thessaloniki",
+          "extractor": "dense_clause",
+          "page": "Aristotle",
+          "place": "Stagira",
+          "type": "birth",
+          "year": -384
+        },
+        {
+          "clause": "Both of Aristotle's parents died when he was still at a young age and Proxenus of Atarneus became his guardian",
+          "extractor": "dense_clause",
+          "page": "Aristotle",
+          "place": "A Young Age And Proxenus Of Atarneus Became His Guardian",
+          "type": "death",
+          "year": null
+        },
+        {
+          "clause": "While in Athens, his wife Pythias died and Aristotle became involved with Herpyllis of Stagira",
+          "extractor": "dense_clause",
+          "page": "Aristotle",
+          "place": "Athens",
+          "type": "death",
+          "year": null
+        },
+        {
+          "clause": "He died in Chalcis, Euboea of natural causes later that same year, having named his student Antipater as his chief executor and left a will in which he asked to be buried next to his wife",
+          "extractor": "dense_clause",
+          "page": "Aristotle",
+          "place": "His Wife",
+          "type": "death",
+          "year": null
+        },
+        {
+          "clause": ", matter and form), Aristotle tries to solve the problem of the unity of the beings, for example, \"what is it that makes a man one\"? Since, according to Plato there are two Ideas: animal and biped, how then is man a unity? However, accordin",
+          "extractor": "dense_clause",
+          "page": "Aristotle",
+          "place": "Aristotle",
+          "type": "birth",
+          "year": null
+        },
+        {
+          "clause": "He was born in the city of Stagira in Chalkidiki (northern Greece) during the Classical period",
+          "extractor": "dump_keywords",
+          "page": "Aristotle",
+          "place": "Athens",
+          "type": "birth",
+          "year": -322
+        }
+      ],
+      "label": "Aristotle",
+      "page_errors": [],
+      "pages_fetched": 1,
+      "qid": "Q868",
+      "reference_found": [
+        "birth",
+        "death"
+      ],
+      "reference_missing": [
+        "academy",
+        "alexander",
+        "lyceum"
+      ],
+      "trap_hits": 0,
+      "unique_candidates": 17
+    },
+    {
+      "anecdote_candidates": [],
+      "anecdotes_validated": 0,
+      "candidate_rows": 9,
+      "catalog_direct_titles": 0,
+      "catalog_notices_or_context": 0,
+      "catalog_off_topic": 14,
+      "catalog_sample": [
+        "L’atelier des Pleurs de Marceline Desbordes-Valmore",
+        "Pleurs’ studio of Marceline Desbordes-Valmore",
+        "Marceline Desbordes-Valmore, « Indigente glaneuse » et fière de l’être",
+        "Marceline Desbordes-Valmore, proud to be an \"indigente glaneuse",
+        "Marceline Desbordes-Valmore : poétesse marginale, centrale « pourtant »",
+        "Marceline Desbordes-Valmore : neglected, \"yet\" essential poet"
+      ],
+      "catalog_titles": 14,
+      "dropped_before_attest": 13,
+      "examples": [
+        {
+          "clause": "Desbordes-Valmore was born in Douai",
+          "extractor": "dense_clause",
+          "page": "Marceline Desbordes-Valmore",
+          "place": "Douai",
+          "type": "birth",
+          "year": null
+        },
+        {
+          "clause": "Marceline's mother died of yellow fever there, and the young girl somehow made her way back to France",
+          "extractor": "dense_clause",
+          "page": "Marceline Desbordes-Valmore",
+          "place": "France",
+          "type": "death",
+          "year": null
+        },
+        {
+          "clause": "Marceline's mother died of yellow fever there, and the young girl somehow made her way back to France",
+          "extractor": "dump_keywords",
+          "page": "Marceline Desbordes-Valmore",
+          "place": "",
+          "type": "historical_fact",
+          "year": 1859
+        },
+        {
+          "clause": "Desbordes-Valmore published Élégies et Romances, her first poetic work, in 1819",
+          "extractor": "dump_keywords",
+          "page": "Marceline Desbordes-Valmore",
+          "place": "France",
+          "type": "publication",
+          "year": 1819
+        },
+        {
+          "clause": "In 1821 she published the narrative work Veillées des Antilles",
+          "extractor": "dump_keywords",
+          "page": "Marceline Desbordes-Valmore",
+          "place": "France",
+          "type": "publication",
+          "year": 1821
+        },
+        {
+          "clause": "She is the only female writer included in the famous Les Poètes maudits anthology published by Paul Verlaine in 1884",
+          "extractor": "dump_keywords",
+          "page": "Marceline Desbordes-Valmore",
+          "place": "Brussels",
+          "type": "publication",
+          "year": 1884
+        },
+        {
+          "clause": "Desbordes-Valmore published Élégies et Romances, her first poetic work, in 1819",
+          "extractor": "publication",
+          "page": "Marceline Desbordes-Valmore",
+          "place": "",
+          "type": "publication",
+          "year": 1819
+        },
+        {
+          "clause": "In 1821 she published the narrative work Veillées des Antilles",
+          "extractor": "publication",
+          "page": "Marceline Desbordes-Valmore",
+          "place": "",
+          "type": "publication",
+          "year": 1821
+        }
+      ],
+      "label": "Marceline Desbordes-Valmore",
+      "page_errors": [],
+      "pages_fetched": 1,
+      "qid": "Q466987",
+      "reference_found": [
+        "elegies"
+      ],
+      "reference_missing": [
+        "birth",
+        "guadeloupe",
+        "rochefort",
+        "mother-death",
+        "death"
+      ],
+      "trap_hits": 0,
+      "unique_candidates": 9
+    }
+  ],
+  "writes": "none"
+}

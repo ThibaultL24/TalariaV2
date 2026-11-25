@@ -140,6 +140,36 @@ pub fn person_search_score(label: &str, description: Option<&str>) -> i32 {
     score
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PersonResolution {
+    Resolved(String),
+    Ambiguous(Vec<String>),
+    Unresolved,
+}
+
+/// Do not take the first search row. A tie, or a top hit that is not a person, stays unresolved.
+pub fn resolve_person_hits(hits: &[WikidataSearchHit], known_qids: &[String]) -> PersonResolution {
+    if hits.is_empty() {
+        return PersonResolution::Unresolved;
+    }
+    let sorted = sort_person_search_hits(hits.to_vec(), known_qids);
+    let top = &sorted[0];
+    if known_qids.iter().any(|qid| qid == &top.qid) {
+        return PersonResolution::Resolved(top.qid.clone());
+    }
+    let top_score = person_search_score(&top.label, top.description.as_deref());
+    if top_score < 50 {
+        return PersonResolution::Ambiguous(sorted.iter().take(3).map(|hit| hit.qid.clone()).collect());
+    }
+    if let Some(second) = sorted.get(1) {
+        let second_score = person_search_score(&second.label, second.description.as_deref());
+        if second_score == top_score {
+            return PersonResolution::Ambiguous(vec![top.qid.clone(), second.qid.clone()]);
+        }
+    }
+    PersonResolution::Resolved(top.qid.clone())
+}
+
 pub fn sort_person_search_hits(mut hits: Vec<WikidataSearchHit>, known_qids: &[String]) -> Vec<WikidataSearchHit> {
     hits.sort_by(|a, b| {
         let a_local = known_qids.iter().any(|q| q == &a.qid);
@@ -171,6 +201,31 @@ mod tests {
         let taxon = person_search_score("Curie", Some("species of beetle"));
         let painting = person_search_score("Marie Curie", Some("painting by a student"));
         assert!(human > taxon && human > painting, "human={human} taxon={taxon} painting={painting}");
+    }
+
+    #[test]
+    fn tied_humans_are_not_resolved_by_search_order() {
+        let hits = vec![
+            WikidataSearchHit { qid: "Q1".into(), label: "Camille".into(), description: Some("French painter".into()) },
+            WikidataSearchHit { qid: "Q2".into(), label: "Camille".into(), description: Some("French writer".into()) },
+        ];
+        assert!(matches!(
+            resolve_person_hits(&hits, &[]),
+            PersonResolution::Ambiguous(_)
+        ));
+    }
+
+    #[test]
+    fn a_statue_is_not_accepted_as_the_person() {
+        let hits = vec![WikidataSearchHit {
+            qid: "Q9".into(),
+            label: "Napoléon".into(),
+            description: Some("statue located in Paris".into()),
+        }];
+        assert!(matches!(
+            resolve_person_hits(&hits, &[]),
+            PersonResolution::Ambiguous(_)
+        ));
     }
 
     #[test]

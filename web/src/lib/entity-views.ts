@@ -1,4 +1,5 @@
 import type { TimelineEvent, GeoJsonFeatureCollection } from "./api";
+import { localizedDateSurface } from "./localize-event-copy";
 
 export interface EntityOverview {
   entity: { id: string; label: string; qid?: string | null };
@@ -88,6 +89,123 @@ export async function fetchVisitHeritageGeojson(
   return response.json() as Promise<GeoJsonFeatureCollection>;
 }
 
+export interface EditorialGroupSummary {
+  id: string;
+  slug: string;
+  title: string;
+  group_kind: string;
+  summary?: string | null;
+  summary_origin?: string | null;
+  display_order: number;
+}
+
+export interface ChapterCoverage {
+  members: number;
+  established: number;
+  attested: number;
+  in_review: number;
+  without_coordinates: number;
+  time_not_exact: number;
+  with_evidence: number;
+  evidence_rows: number;
+  independent_sources: number;
+  scope_defined: boolean;
+  completeness_rate: null;
+}
+
+export interface ChapterEvent {
+  id: string;
+  logical_event_id: string;
+  editorial_role: string;
+  display_order: number;
+  event_type: string;
+  epistemic_status: string;
+  title: string;
+  time: TimelineEvent["time"];
+  place_label?: string | null;
+  map_eligible: boolean;
+  coordinates?: { lat: number; lon: number } | null;
+  coord_precision_level?: string | null;
+  uncertainty_radius_m?: number | null;
+  evidence_count: number;
+}
+
+export function groupChapterEvents(events: ChapterEvent[]) {
+  return {
+    primary: events.filter((event) => event.editorial_role === "primary"),
+    supporting: events.filter((event) => event.editorial_role === "supporting"),
+    context: events.filter((event) => event.editorial_role === "context"),
+  };
+}
+
+export interface ChapterSuggestionView {
+  slug: string;
+  title_fr: string;
+  title_en: string;
+  event_count: number;
+  standing: string;
+  basis_fr: string;
+  basis_en: string;
+  members?: string[];
+}
+
+export async function fetchChapterSuggestions(
+  id: string,
+  signal?: AbortSignal,
+): Promise<{
+  standing: string;
+  published: boolean;
+  suggestions: ChapterSuggestionView[];
+  periods?: ChapterSuggestionView[];
+  sections?: ChapterSuggestionView[];
+  places?: ChapterSuggestionView[];
+}> {
+  const response = await fetch(`/api/v1/entities/${encodeURIComponent(id)}/chapter-suggestions`, { signal });
+  if (!response.ok) throw new Error(`Request failed (${response.status})`);
+  return response.json();
+}
+
+export async function fetchEntityGroups(
+  id: string,
+  signal?: AbortSignal,
+): Promise<{ groups: EditorialGroupSummary[] }> {
+  const response = await fetch(`/api/v1/entities/${encodeURIComponent(id)}/groups?limit=100`, { signal });
+  if (!response.ok) throw new Error(`Request failed (${response.status})`);
+  return response.json() as Promise<{ groups: EditorialGroupSummary[] }>;
+}
+
+export async function fetchEntityGroup(
+  id: string,
+  slug: string,
+  signal?: AbortSignal,
+): Promise<{ group: EditorialGroupSummary; coverage: ChapterCoverage }> {
+  const response = await fetch(
+    `/api/v1/entities/${encodeURIComponent(id)}/groups/${encodeURIComponent(slug)}`,
+    { signal },
+  );
+  if (!response.ok) throw new Error(`Request failed (${response.status})`);
+  return response.json() as Promise<{ group: EditorialGroupSummary; coverage: ChapterCoverage }>;
+}
+
+export async function fetchChapterEventPage(
+  id: string,
+  slug: string,
+  cursor: string | null,
+  signal?: AbortSignal,
+): Promise<{ events: ChapterEvent[]; pagination: { next_cursor: string | null } }> {
+  const params = new URLSearchParams({ limit: "100" });
+  if (cursor) params.set("cursor", cursor);
+  const response = await fetch(
+    `/api/v1/entities/${encodeURIComponent(id)}/groups/${encodeURIComponent(slug)}/events?${params}`,
+    { signal },
+  );
+  if (!response.ok) throw new Error(`Request failed (${response.status})`);
+  return response.json() as Promise<{
+    events: ChapterEvent[];
+    pagination: { next_cursor: string | null };
+  }>;
+}
+
 export async function getEntityView<T>(
   id: string,
   view: string,
@@ -101,10 +219,10 @@ export async function getEntityView<T>(
   if (!response.ok) throw new Error(`Request failed (${response.status})`);
   return response.json() as Promise<T>;
 }
-export function eventDate(event: TimelineEvent): string {
+export function eventDate(event: TimelineEvent, locale: "fr" | "en" = "en"): string {
   const time = event.time;
-  if (!time || time.kind === "unknown") return "Date unknown";
-  if (time.surface) return time.surface;
+  if (!time || time.kind === "unknown") return locale === "fr" ? "Date inconnue" : "Date unknown";
+  if (time.surface) return localizedDateSurface(time.surface, locale);
   if (time.kind === "range") return `${time.start ?? "?"} – ${time.end ?? "?"}`;
   return `${time.kind === "approx" ? "≈ " : ""}${time.start ?? "?"}`;
 }
@@ -183,6 +301,76 @@ export interface PoreiaDestination {
   coordinates: { lat: number; lon: number };
   source_url: string;
 }
+export interface PoreiaHistoricalLink {
+  relation_role: string;
+  relation_pid?: string | null;
+  subject_qid?: string | null;
+  summary: string;
+  source_url: string;
+}
+
+export interface PoreiaCatalogSite {
+  id: string;
+  wikidata_qid: string;
+  label: string;
+  kind: string;
+  visitability: VisitSite["visitability"];
+  coordinates: { lat: number; lon: number };
+  historical_links: PoreiaHistoricalLink[];
+  media: { author?: string; license?: string; attribution?: string; source_url: string }[];
+  source_url: string;
+  opening_hours?: string;
+  hours_checked_at?: string;
+}
+
+export interface PoreiaOccurrenceItem {
+  id: string;
+  kind: string;
+  title: string;
+  summary?: string | null;
+  venue_label?: string | null;
+  occurs_on?: string;
+  ends_on?: string;
+  time_precision: "day" | "month" | "year";
+  source_url: string;
+  coordinates?: { lat: number; lon: number };
+}
+
+export async function fetchPoreiaSites(
+  input: { lat: number; lon: number; radiusKm: number; offset?: number; lang?: "fr" | "en" },
+  signal?: AbortSignal,
+): Promise<{ items: PoreiaCatalogSite[]; has_more: boolean }> {
+  const params = new URLSearchParams({
+    lat: String(input.lat),
+    lon: String(input.lon),
+    radius_km: String(input.radiusKm),
+    limit: "50",
+    offset: String(input.offset ?? 0),
+    lang: input.lang ?? "fr",
+  });
+  const response = await fetch(`/api/v1/poreia/sites?${params}`, { signal });
+  if (!response.ok) throw new Error(`Request failed (${response.status})`);
+  return response.json() as Promise<{ items: PoreiaCatalogSite[]; has_more: boolean }>;
+}
+
+export async function fetchPoreiaOccurrences(
+  input: { lat: number; lon: number; radiusKm: number; from: string; to: string },
+  signal?: AbortSignal,
+): Promise<{ items: PoreiaOccurrenceItem[] }> {
+  const params = new URLSearchParams({
+    lat: String(input.lat),
+    lon: String(input.lon),
+    radius_km: String(input.radiusKm),
+    from: input.from,
+    to: input.to,
+    limit: "30",
+    offset: "0",
+  });
+  const response = await fetch(`/api/v1/poreia/occurrences?${params}`, { signal });
+  if (!response.ok) throw new Error(`Request failed (${response.status})`);
+  return response.json() as Promise<{ items: PoreiaOccurrenceItem[] }>;
+}
+
 export async function findPoreiaDestinations(
   query: string, lang: "fr" | "en" = "fr", signal?: AbortSignal,
 ): Promise<PoreiaDestination[]> {

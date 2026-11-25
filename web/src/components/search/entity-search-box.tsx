@@ -9,6 +9,8 @@ interface EntitySearchBoxProps {
   onSubmitQuery: (trimmedQuery: string) => void;
   onSelect: (item: SearchSuggestion) => void;
   isLoading?: boolean;
+  /** Istoria opens search. Other public pages stay on the curated roster. */
+  enabled?: boolean;
 }
 
 export function EntitySearchBox({
@@ -16,9 +18,10 @@ export function EntitySearchBox({
   onSubmitQuery,
   onSelect,
   isLoading,
+  enabled = PUBLIC_PERSON_SEARCH_ENABLED,
 }: EntitySearchBoxProps) {
   const { t } = useI18n();
-  const searchEnabled = PUBLIC_PERSON_SEARCH_ENABLED;
+  const searchEnabled = enabled;
   const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -109,7 +112,7 @@ export function EntitySearchBox({
 
       {showPanel ? (
         <div
-          className="absolute top-full right-0 left-0 z-30 mt-1.5 overflow-hidden rounded-xl border border-(--color-border-strong) bg-(--color-bg-surface) shadow-lg"
+          className="absolute top-full right-0 left-0 z-30 mt-1.5 overflow-visible rounded-xl border border-(--color-border-strong) bg-(--color-bg-surface) shadow-lg"
           role="listbox"
           id={listId}
         >
@@ -142,9 +145,6 @@ export function EntitySearchBox({
                         <div className="text-xs opacity-70">{item.description}</div>
                       ) : null}
                     </div>
-                    {item.qid ? (
-                      <span className="shrink-0 text-[10px] text-(--color-text-muted)">{item.qid}</span>
-                    ) : null}
                   </div>
                 </button>
               ))

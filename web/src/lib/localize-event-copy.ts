@@ -218,7 +218,7 @@ export function localizedEventTitle(
   if (event.event_type === "birth" || event.event_type === "death") {
     return bornDiedHeadline(locale, event.event_type === "birth", year, place);
   }
-  return [eventTypeLabel(event.event_type, locale), year, place]
+  return [eventTypeLabel(event.event_type, locale), place]
     .filter((part) => part != null && part !== "")
     .join(" · ");
 }

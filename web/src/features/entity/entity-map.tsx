@@ -34,7 +34,7 @@ export function EntityMap({
   const visible = useMemo(() => data ? { ...data, features: data.features.filter(f => eventMatchesLegendFilter(String(f.properties.event_type), keys)) } : undefined, [data, keys]);
   const [error, setError] = useState("");
   const [hover, setHover] = useState<MapHoverPreview | null>(null);
-  useEffect(() => { setData(undefined); setKeys([]); }, [id]);
+  useEffect(() => { setData(undefined); setKeys([]); }, [id, filters]);
   useEffect(() => {
     if (!map) return;
     let controller: AbortController | undefined;
@@ -135,6 +135,9 @@ export function EntityMap({
           {error}
         </p>
       )}
+      {data && data.features.length === 0 && !error ? (
+        <p className="v3-map-error" role="status">{t.mapWithoutPoints}</p>
+      ) : null}
       {mode === "fullscreen" ? (
         <button
           type="button"

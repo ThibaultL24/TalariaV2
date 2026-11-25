@@ -55,11 +55,12 @@ export function useProgressiveIngest(opts: UseProgressiveIngestOptions = {}) {
     try {
       const status = await fetchExplorerStatus(jobId);
       
+      const failed = status.status === "failed";
       setState((prev) => ({
         ...prev,
         status,
-        isRunning: !status.is_done,
-        error: status.error ?? null,
+        isRunning: !status.is_done && !failed,
+        error: status.error ?? (failed ? "failed" : null),
       }));
 
       if (status.entity_id && opts.onEntityResolved) {
@@ -114,6 +115,7 @@ export function useProgressiveIngest(opts: UseProgressiveIngestOptions = {}) {
       subject: string;
       qid?: string | null;
       wikiLang: string;
+      maxDocuments?: number;
     }) => {
       stopPolling();
       setState({
@@ -129,7 +131,7 @@ export function useProgressiveIngest(opts: UseProgressiveIngestOptions = {}) {
           subject: input.subject,
           qid: input.qid,
           live: true,
-          maxDocuments: EXPLORER_INGEST_MAX_DOCUMENTS,
+          maxDocuments: input.maxDocuments ?? EXPLORER_INGEST_MAX_DOCUMENTS,
           wikiLang: input.wikiLang,
         });
 

@@ -23,7 +23,10 @@ pub struct WdqsEvent {
 }
 
 pub fn parse_sparql_bindings(payload: &Value, default_type: Option<&str>) -> Vec<WdqsEvent> {
-    let Some(bindings) = payload.pointer("/results/bindings").and_then(|v| v.as_array()) else {
+    let Some(bindings) = payload
+        .pointer("/results/bindings")
+        .and_then(|v| v.as_array())
+    else {
         return vec![];
     };
     let mut out = Vec::new();
@@ -43,7 +46,11 @@ pub fn parse_sparql_bindings(payload: &Value, default_type: Option<&str>) -> Vec
             .filter(|s| !s.is_empty())
             .or_else(|| default_type.map(str::to_string))
             .unwrap_or_else(|| "historical_fact".into());
-        let event_type = classify_event(&ev_type, &label);
+        let mut event_type = classify_event(&ev_type, &label);
+        let has_place = place_qid.is_some() || place_label.is_some();
+        if event_type == "coronation" && (date.is_none() || !has_place) {
+            event_type = "historical_fact".into();
+        }
         let (lat, lon) = parse_geo(row);
         let dated_required = !matches!(
             event_type.as_str(),
@@ -85,7 +92,11 @@ pub fn merge_events_for_person(
         }
         out.push(ev.clone());
     }
-    out.sort_by(|a, b| a.date.cmp(&b.date).then_with(|| a.event_qid.cmp(&b.event_qid)));
+    out.sort_by(|a, b| {
+        a.date
+            .cmp(&b.date)
+            .then_with(|| a.event_qid.cmp(&b.event_qid))
+    });
     out
 }
 
@@ -157,15 +168,15 @@ LIMIT {lim}
 }
 
 pub fn parse_culture_bindings(payload: &Value) -> Vec<WdqsCultureItem> {
-    let Some(bindings) = payload.pointer("/results/bindings").and_then(|v| v.as_array()) else {
+    let Some(bindings) = payload
+        .pointer("/results/bindings")
+        .and_then(|v| v.as_array())
+    else {
         return vec![];
     };
     let mut out = Vec::new();
     for row in bindings {
-        let Some(item_qid) = binding_str(row, "item")
-            .as_deref()
-            .and_then(qid_from_uri)
-        else {
+        let Some(item_qid) = binding_str(row, "item").as_deref().and_then(qid_from_uri) else {
             continue;
         };
         let label = binding_str(row, "itemLabel").unwrap_or_else(|| item_qid.clone());
@@ -379,12 +390,37 @@ fn event_id_from_uri(uri: &str) -> Option<String> {
 }
 
 fn normalize_date(raw: &str) -> Option<String> {
-    let t = raw.trim().trim_start_matches('+');
-    let day = t.split('T').next()?.get(..10)?;
-    if day.len() == 10 && day.as_bytes()[4] == b'-' {
-        Some(day.to_string())
+    let trimmed = raw.trim();
+    let (negative, rest) = if let Some(rest) = trimmed.strip_prefix('+') {
+        (false, rest)
+    } else if let Some(rest) = trimmed.strip_prefix('-') {
+        (true, rest)
     } else {
-        None
+        (false, trimmed)
+    };
+    let head = rest.split('T').next()?.trim();
+    let mut parts = head.split('-');
+    let year = parts.next()?;
+    if year.len() < 3 || !year.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let year_label = if negative {
+        format!("-{year}")
+    } else {
+        year.to_string()
+    };
+    let month = parts.next();
+    let day = parts.next();
+    match (month, day) {
+        (Some(month), Some(day))
+            if month.len() == 2 && day.len() == 2 && month != "00" && day != "00" =>
+        {
+            Some(format!("{year_label}-{month}-{day}"))
+        }
+        (Some(month), _) if month.len() == 2 && month != "00" => {
+            Some(format!("{year_label}-{month}"))
+        }
+        _ => Some(year_label),
     }
 }
 
@@ -406,33 +442,105 @@ fn parse_wkt(raw: Option<&str>) -> Option<(Option<f64>, Option<f64>)> {
     Some((Some(lat), Some(lon)))
 }
 
-fn classify_event(raw: &str, label: &str) -> String {
-    let lower = label.to_lowercase();
-    if raw.eq_ignore_ascii_case("battle")
-        || lower.contains("battle of")
+fn label_type(lower: &str) -> Option<&'static str> {
+    if lower.contains("battle of")
         || lower.contains("bataille")
         || lower.starts_with("siege of")
         || lower.starts_with("siège")
     {
-        return "battle".into();
-    }
-    if raw.eq_ignore_ascii_case("diplomatic")
-        || raw.eq_ignore_ascii_case("treaty")
-        || lower.contains("treaty")
+        Some("battle")
+    } else if lower.contains("treaty")
         || lower.contains("traité")
         || lower.contains("concordat")
         || lower.contains("peace of")
         || lower.contains("congress of")
         || lower.contains("conférence")
     {
+        Some("diplomatic")
+    } else if lower.contains("coronation") || lower.contains("couronnement") {
+        Some("coronation")
+    } else if lower.contains("abdication") {
+        Some("abdication")
+    } else if lower.contains("exile") || lower.contains("exil") {
+        Some("exile")
+    } else if lower.contains("marriage") || lower.contains("mariage") {
+        Some("marriage")
+    } else {
+        None
+    }
+}
+
+fn classify_event(raw: &str, label: &str) -> String {
+    let lower = label.to_lowercase();
+    if raw.eq_ignore_ascii_case("battle") || label_type(&lower) == Some("battle") {
+        return "battle".into();
+    }
+    if raw.eq_ignore_ascii_case("diplomatic")
+        || raw.eq_ignore_ascii_case("treaty")
+        || label_type(&lower) == Some("diplomatic")
+    {
         return "diplomatic".into();
     }
-    let t = raw.trim().to_lowercase();
-    if t.is_empty() {
-        "historical_fact".into()
-    } else {
-        t
+    if raw.eq_ignore_ascii_case("historical_fact") || raw.trim().is_empty() {
+        return label_type(&lower).unwrap_or("historical_fact").into();
     }
+    raw.trim().to_lowercase()
+}
+
+/// QLever has no Wikibase label service. Label joins time out on the public
+/// endpoint, so the query keeps the event, the date, and the place.
+pub fn events_for_person_query_qlever(qid: &str, limit: u32) -> String {
+    let lim = limit.clamp(1, 10_000);
+    format!(
+        r#"PREFIX wd: <http://www.wikidata.org/entity/>
+PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+SELECT DISTINCT ?event ?date ?place WHERE {{
+  {{
+    ?event wdt:P710 wd:{qid} .
+  }} UNION {{
+    wd:{qid} wdt:P1344 ?event .
+  }}
+  OPTIONAL {{ ?event wdt:P585 ?date . }}
+  OPTIONAL {{ ?event wdt:P276 ?place . }}
+}}
+LIMIT {lim}
+"#
+    )
+}
+
+const QLEVER_WIKIDATA_ENDPOINT: &str = "https://qlever.dev/api/wikidata";
+
+/// Ask the public QLever endpoint. This does not replace `events_for_person_query`.
+pub async fn probe_qlever(qid: &str) -> Result<(usize, usize), String> {
+    let query = events_for_person_query_qlever(qid, 5);
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(40))
+        .build()
+        .map_err(|error| error.to_string())?;
+    let response = client
+        .post(QLEVER_WIKIDATA_ENDPOINT)
+        .header("Accept", "application/sparql-results+json")
+        .header("User-Agent", UA)
+        .form(&[("query", query.as_str())])
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
+    let status = response.status();
+    let body = response.text().await.map_err(|error| error.to_string())?;
+    if !status.is_success() {
+        return Err(format!(
+            "qlever_http_{}: {}",
+            status.as_u16(),
+            body.chars().take(180).collect::<String>()
+        ));
+    }
+    let payload: Value = serde_json::from_str(&body).map_err(|error| error.to_string())?;
+    let raw = payload
+        .pointer("/results/bindings")
+        .and_then(Value::as_array)
+        .map(Vec::len)
+        .unwrap_or(0);
+    Ok((parse_sparql_bindings(&payload, None).len(), raw))
 }
 
 fn predicate_for(event_type: &str) -> &'static str {
@@ -443,8 +551,125 @@ fn predicate_for(event_type: &str) -> &'static str {
         "birth" => "born_in",
         "death" => "died_in",
         "office" => "held_office",
+        "coronation" => "crowned",
+        "abdication" => "abdicated",
         "education" => "studied_at",
         "publication" => "published",
         _ => "participant_in",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn bce_dates_keep_their_sign_and_year_precision() {
+        assert_eq!(
+            normalize_date("+1805-12-02T00:00:00Z").as_deref(),
+            Some("1805-12-02")
+        );
+        assert_eq!(
+            normalize_date("-0044-03-15T00:00:00Z").as_deref(),
+            Some("-0044-03-15")
+        );
+        assert_eq!(
+            normalize_date("-0100-00-00T00:00:00Z").as_deref(),
+            Some("-0100")
+        );
+    }
+
+    #[test]
+    fn a_coronation_is_not_left_as_a_generic_fact() {
+        assert_eq!(
+            classify_event("historical_fact", "Coronation of Napoleon"),
+            "coronation"
+        );
+        assert_eq!(classify_event("birth", "Coronation of Napoleon"), "birth");
+        assert_eq!(classify_event("battle", "Battle of Austerlitz"), "battle");
+    }
+
+    #[test]
+    fn a_qlever_response_keeps_the_date_place_and_coordinates() {
+        let payload = json!({"results": {"bindings": [{
+            "event": {"type": "uri", "value": "http://www.wikidata.org/entity/Q123"},
+            "eventLabel": {"type": "literal", "value": "Coronation of Napoleon"},
+            "date": {"type": "literal", "value": "+1804-12-02T00:00:00Z"},
+            "place": {"type": "uri", "value": "http://www.wikidata.org/entity/Q90"},
+            "placeLabel": {"type": "literal", "value": "Paris"},
+            "geo": {"type": "literal", "value": "Point(2.312200 48.856600)"},
+            "evType": {"type": "literal", "value": "historical_fact"}
+        }]}});
+        let events = parse_sparql_bindings(&payload, None);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].date, "1804-12-02");
+        assert_eq!(events[0].event_type, "coronation");
+        assert_eq!(events[0].place_qid.as_deref(), Some("Q90"));
+        assert_eq!(events[0].place_label.as_deref(), Some("Paris"));
+        assert!((events[0].lat.unwrap() - 48.8566).abs() < 0.0001);
+        assert!((events[0].lon.unwrap() - 2.3122).abs() < 0.0001);
+        let query = events_for_person_query_qlever("Q1048", 5);
+        assert!(query.contains("wdt:P585"));
+        assert!(query.contains("wdt:P276"));
+        assert!(!query.contains("SERVICE"));
+    }
+
+    #[test]
+    fn a_coronation_without_a_place_is_not_promoted() {
+        let payload = json!({"results": {"bindings": [{
+            "event": {"type": "uri", "value": "http://www.wikidata.org/entity/Q123"},
+            "eventLabel": {"type": "literal", "value": "Coronation of Napoleon"},
+            "date": {"type": "literal", "value": "+1804-12-02T00:00:00Z"},
+            "evType": {"type": "literal", "value": "historical_fact"}
+        }]}});
+        let events = parse_sparql_bindings(&payload, None);
+        assert_eq!(events[0].event_type, "historical_fact");
+    }
+
+    #[tokio::test]
+    #[ignore = "probes qlever.dev and must not replace the Wikidata query"]
+    async fn qlever_answers_three_profiles_without_replacing_wdqs() {
+        let mut napoleon_dated = 0;
+        for qid in ["Q5582", "Q1048", "Q517"] {
+            match probe_qlever(qid).await {
+                Ok((dated, raw)) => {
+                    println!("{qid} dated {dated} of {raw} bindings");
+                    if qid == "Q517" {
+                        napoleon_dated = dated;
+                    }
+                }
+                Err(error) => println!("{qid} kept on WDQS: {error}"),
+            }
+        }
+        let wdqs = events_for_person_query("Q517", 5);
+        assert!(wdqs.contains("SERVICE"));
+        assert!(wdqs.contains("wdt:P710"));
+        assert!(
+            napoleon_dated > 0,
+            "QLever returned no dated Napoleon rows, so the WDQS query stays"
+        );
+    }
+
+    #[test]
+    fn qlever_query_does_not_use_the_wikibase_label_service() {
+        let query = events_for_person_query_qlever("Q517", 20);
+        assert!(!query.contains("SERVICE"));
+        assert!(!query.contains("bd:serviceParam"));
+        assert!(!query.contains("rdfs:label"));
+        assert!(query.contains("wdt:P585"));
+        assert!(query.contains("wd:Q517"));
+    }
+
+    #[test]
+    fn signed_year_survives_binding_parse() {
+        let payload = json!({"results": {"bindings": [{
+            "event": {"type": "uri", "value": "http://www.wikidata.org/entity/Q1"},
+            "eventLabel": {"type": "literal", "value": "Crossing of the Rubicon"},
+            "date": {"type": "literal", "value": "-0049-01-10T00:00:00Z"},
+            "evType": {"type": "literal", "value": "historical_fact"}
+        }]}});
+        let events = parse_sparql_bindings(&payload, None);
+        assert_eq!(events[0].date, "-0049-01-10");
     }
 }

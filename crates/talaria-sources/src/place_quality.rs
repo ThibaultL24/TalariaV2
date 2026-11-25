@@ -36,6 +36,7 @@ pub fn is_plausible_place_label(raw: &str) -> bool {
         || lower.starts_with("his ")
         || lower.starts_with("her ")
         || lower.starts_with("their ")
+        || lower.starts_with("its ")
         || lower.starts_with("have ")
         || lower.starts_with("fight")
         || lower.starts_with("chapter")
@@ -90,6 +91,7 @@ const ABSTRACT_NOUNS: &[&str] = &[
     "schisme", "schism", "concile", "council", "rencontre", "meeting", "encounter",
     "victoire", "victory", "guerre", "war", "paix", "peace", "traité", "traite",
     "treaty", "alliance", "coalition", "révolution", "revolution", "empire",
+    "écriture", "ecriture", "l'écriture", "l'ecriture", "writing",
 ];
 
 const ORGANIZATIONS: &[&str] = &[
@@ -250,11 +252,52 @@ fn is_street_address(s: &str) -> bool {
         || body.starts_with("chemin ")
 }
 
+/// A poem or book title is not the place of the action.
+pub fn place_is_the_named_work(place: &str, quote: &str) -> bool {
+    let place_key = fold_label(place);
+    if place_key.chars().count() < 3 {
+        return false;
+    }
+    let folded = fold_label(quote);
+    for marker in ["poeme ", "poem ", "titre ", "intitule "] {
+        let Some(index) = folded.find(marker) else {
+            continue;
+        };
+        let window: String = folded[index + marker.len()..].chars().take(48).collect();
+        if window.contains(&place_key) {
+            return true;
+        }
+    }
+    false
+}
+
+fn fold_label(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| match ch {
+            'à' | 'á' | 'â' | 'ä' => 'a',
+            'é' | 'è' | 'ê' | 'ë' => 'e',
+            'î' | 'ï' => 'i',
+            'ô' | 'ö' => 'o',
+            'ù' | 'û' | 'ü' => 'u',
+            'ç' => 'c',
+            other => other,
+        })
+        .flat_map(|ch| ch.to_lowercase())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
+    fn a_poem_title_is_not_a_place() {
+        let quote = "Marceline Desbordes-Valmore a mis en musique elle-même son poème L'Alouette, publié en 1821.";
+        assert!(place_is_the_named_work("alouette", quote));
+        assert!(!place_is_the_named_work("Lyon", "Le couple s'installe ensuite à Lyon."));
+    }
+
     fn accepts_waterloo() {
         assert!(is_plausible_place_label("Waterloo"));
         assert!(is_plausible_place_label("Saint Helena"));
@@ -286,6 +329,8 @@ mod tests {
         assert!(!is_plausible_place_label("Georges-Antoine Rochegrosse"));
         assert!(!is_plausible_place_label("Anglais"));
         assert!(!is_plausible_place_label("schisme"));
+        assert!(!is_plausible_place_label("écriture"));
+        assert!(!is_plausible_place_label("L'écriture"));
         assert!(!is_plausible_place_label("la rencontre de Nobel et Hess"));
         assert!(is_plausible_place_label("Waterloo"));
         assert!(is_plausible_place_label("Saint Helena"));

@@ -280,6 +280,7 @@ fn classify_predicate(clause: &str) -> Option<(&'static str, &'static str)> {
                 "death of",
                 "passed away",
                 "mourut",
+                "meurt ",
                 "morte à",
                 "mort à",
                 "décédée",
@@ -654,6 +655,13 @@ impl ClauseAnalyzer for DeterministicClauseAnalyzer {
             let (mut place_surface, object_surface) = find_place_or_person_object(&clause_text);
             if place_surface.is_none() {
                 place_surface = crate::resolve::gazetteer_place_in_text(&clause_text);
+            }
+            if matches!(event_type, "battle" | "siege") {
+                place_surface = crate::proposition::anchored_action_place(
+                    &clause_text,
+                    event_type,
+                    place_surface.as_deref().unwrap_or(""),
+                );
             }
 
             // Dense extraction restricted to same clause: we never pull year/place

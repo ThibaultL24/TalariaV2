@@ -166,6 +166,9 @@ pub struct StartIngestBody {
     pub corpus_limit_total: Option<u32>,
     #[serde(default)]
     pub minimum_per_provider: Option<u32>,
+    /// Browser key. Rotating it does not lift the per-person limit.
+    #[serde(default)]
+    pub visitor_key: Option<String>,
 }
 
 fn resolve_wiki_lang(requested: Option<&str>, fallback: &str) -> String {
@@ -341,11 +344,46 @@ pub async fn start_ingest(
     start_explorer_ingest(State(state), Json(body)).await
 }
 
+/// Documentary research writes only when the process is started with
+/// `TALARIA_RESEARCH_WRITES=1`. The default refuses every ingest POST.
+pub fn research_writes_enabled() -> bool {
+    std::env::var("TALARIA_RESEARCH_WRITES").ok().as_deref() == Some("1")
+}
+
+/// The single Wikidata identity allowed to be researched, when one has been named.
+/// An empty or malformed value authorizes nobody.
+pub fn authorized_research_qid() -> Option<String> {
+    let raw = std::env::var("TALARIA_RESEARCH_QID").ok()?;
+    let qid = raw.trim().to_ascii_uppercase();
+    let digits = qid.strip_prefix('Q')?;
+    if digits.is_empty() || digits.len() > 23 || !digits.chars().all(|ch| ch.is_ascii_digit()) {
+        return None;
+    }
+    Some(qid)
+}
+
+/// Writes and the named identity are both required. Any other person is refused.
+pub fn research_identity_allowed(qid: Option<&str>) -> bool {
+    let Some(allowed) = authorized_research_qid() else {
+        return false;
+    };
+    research_writes_enabled() && qid.is_some_and(|requested| requested.trim().to_ascii_uppercase() == allowed)
+}
+
 async fn start_lane_ingest(
     state: AppState,
     body: StartIngestBody,
     lane: &str,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    if !research_writes_enabled() {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "research_writes_disabled",
+                "detail": "La recherche documentaire n'écrit pas dans cette base.",
+            })),
+        ));
+    }
     let subject = body.subject.trim().to_string();
     if subject.len() < 2 {
         return Err((
@@ -377,6 +415,15 @@ async fn start_lane_ingest(
             ));
         }
     }
+    if !research_identity_allowed(body.qid.as_deref()) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "research_identity_not_authorized",
+                "detail": "Cette identité n'est pas autorisée pour la recherche documentaire.",
+            })),
+        ));
+    }
     body.wiki_lang = Some(resolve_wiki_lang(body.wiki_lang.as_deref(), &state.config.wiki_lang));
     body.max_documents = Some(resolve_max_documents(body.max_documents));
     body.corpus_limit_per_provider = Some(
@@ -387,6 +434,10 @@ async fn start_lane_ingest(
         body.corpus_limit_total.filter(|value| *value > 0).unwrap_or(120).min(1500),
     );
     body.minimum_per_provider = Some(body.minimum_per_provider.unwrap_or(3).min(30));
+    if body.max_documents.unwrap_or(400) <= 8 {
+        body.corpus_limit_per_provider = Some(body.corpus_limit_per_provider.unwrap_or(4).min(4));
+        body.corpus_limit_total = Some(body.corpus_limit_total.unwrap_or(16).min(16));
+    }
     if body.live && state.offline_only {
         return Err((
             StatusCode::FORBIDDEN,
@@ -406,6 +457,56 @@ async fn start_lane_ingest(
         &state.pool, lane, &subject, body.qid.as_deref()
     ).await.map_err(db_ingest_error)? {
         return Ok(durable_job_started_response(&existing, true));
+    }
+    if let Some(visitor) = body.visitor_key.as_deref().map(str::trim).filter(|key| key.len() >= 8) {
+        let recent_visitor = ingest_jobs::count_visitor_since(&state.pool, visitor, 3600)
+            .await
+            .map_err(db_ingest_error)?;
+        if !ingest_jobs::visitor_research_open(recent_visitor) {
+            return Err((
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(json!({
+                    "error": "ingest_quota",
+                    "scope": "visitor",
+                    "detail": "Trop de recherches ont été lancées depuis ce navigateur. Réessayez dans une heure.",
+                })),
+            ));
+        }
+    }
+    let recent_identity = ingest_jobs::count_identity_since(
+        &state.pool, lane, &subject, body.qid.as_deref(), 3600,
+    )
+    .await
+    .map_err(db_ingest_error)?;
+    if !ingest_jobs::identity_research_open(recent_identity) {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(json!({
+                "error": "ingest_quota",
+                "scope": "identity",
+                "detail": "Cette personnalité a déjà été recherchée plusieurs fois dans l'heure. La recherche précédente reste disponible.",
+            })),
+        ));
+    }
+    let started_this_minute = ingest_jobs::count_started_since(&state.pool, 60)
+        .await
+        .map_err(db_ingest_error)?;
+    if !ingest_jobs::admission_burst_open(started_this_minute) {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(json!({
+                "error": "ingest_quota",
+                "scope": "burst",
+                "detail": "Trop de recherches viennent d'être lancées. Réessayez dans une minute.",
+            })),
+        ));
+    }
+    let active = ingest_jobs::count_active(&state.pool).await.map_err(db_ingest_error)?;
+    if !ingest_jobs::capacity_open(active) {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(json!({ "error": "ingest_capacity", "active": active })),
+        ));
     }
 
     // Explorer/person: UUID only after QID resolve inside run_person_ingest.
@@ -593,7 +694,7 @@ async fn run_agora_lane(
 fn lane_purpose(lane: &str) -> &'static str {
     match lane {
         LANE_EXPLORER => {
-            "Wikipedia, Wikidata, Wikisource and Commons — dated life facts for the map and timeline"
+            "Wikidata, the Wikipedia article and its sections, then places — dated life facts for the map and timeline"
         }
         LANE_AGORA => {
             "Theories, controversies, opinions, analyses, and academic works about the person"
@@ -796,8 +897,8 @@ pub fn spawn_ingest_workers(
     config: talaria_core::AppConfig,
     jobs: IngestJobMap,
 ) {
-    if config.offline_only {
-        tracing::info!("persistent ingest worker disabled by offline_only");
+    if config.offline_only || !research_writes_enabled() || authorized_research_qid().is_none() {
+        tracing::info!("persistent ingest worker not started");
         return;
     }
     let concurrency = std::env::var("TALARIA_INGEST_WORKERS")
@@ -1146,6 +1247,46 @@ mod tests {
             !providers.iter().any(|p| p == "hal"),
             "HAL stays on the Agora bibliographic lane"
         );
+    }
+
+    #[test]
+    #[test]
+    fn a_full_research_queue_refuses_a_new_identity_only() {
+        use talaria_store::ingest_jobs::{capacity_open, MAX_CONCURRENT_INGESTS};
+        assert!(capacity_open(0));
+        assert!(capacity_open(MAX_CONCURRENT_INGESTS - 1));
+        assert!(!capacity_open(MAX_CONCURRENT_INGESTS));
+    }
+
+    #[test]
+    fn research_writes_stay_closed_unless_the_process_is_opened() {
+        let previous = std::env::var("TALARIA_RESEARCH_WRITES").ok();
+        unsafe { std::env::remove_var("TALARIA_RESEARCH_WRITES") };
+        assert!(!research_writes_enabled());
+        unsafe { std::env::set_var("TALARIA_RESEARCH_WRITES", "true") };
+        assert!(!research_writes_enabled());
+        unsafe { std::env::set_var("TALARIA_RESEARCH_WRITES", "1") };
+        assert!(research_writes_enabled());
+        let previous_qid = std::env::var("TALARIA_RESEARCH_QID").ok();
+        unsafe { std::env::remove_var("TALARIA_RESEARCH_QID") };
+        assert!(!research_identity_allowed(Some("Q466987")));
+        unsafe { std::env::set_var("TALARIA_RESEARCH_QID", "not-a-qid") };
+        assert!(authorized_research_qid().is_none());
+        unsafe { std::env::set_var("TALARIA_RESEARCH_QID", "q466987") };
+        assert_eq!(authorized_research_qid().as_deref(), Some("Q466987"));
+        assert!(research_identity_allowed(Some("Q466987")));
+        assert!(!research_identity_allowed(Some("Q517")));
+        assert!(!research_identity_allowed(None));
+        unsafe { std::env::remove_var("TALARIA_RESEARCH_WRITES") };
+        assert!(!research_identity_allowed(Some("Q466987")));
+        match previous {
+            Some(value) => unsafe { std::env::set_var("TALARIA_RESEARCH_WRITES", value) },
+            None => unsafe { std::env::remove_var("TALARIA_RESEARCH_WRITES") },
+        }
+        match previous_qid {
+            Some(value) => unsafe { std::env::set_var("TALARIA_RESEARCH_QID", value) },
+            None => unsafe { std::env::remove_var("TALARIA_RESEARCH_QID") },
+        }
     }
 
     #[test]

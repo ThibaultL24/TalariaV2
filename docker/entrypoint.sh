@@ -1,5 +1,6 @@
 #!/bin/sh
-# docker/entrypoint.sh — bind Render $PORT and start the API (migrations run in serve).
+# docker/entrypoint.sh — bind Render $PORT and start the API.
+# Pending migrations are refused unless TALARIA_APPLY_MIGRATIONS=1.
 set -eu
 
 PORT="${PORT:-8080}"

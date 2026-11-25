@@ -17,6 +17,8 @@ use crate::types::{DiscoveredDocument, ExternalEntityRef, SourceMetadata, TypedT
 const API: &str = "https://fr.wikisource.org/w/api.php";
 const CONNECTOR_VERSION: &str = "wikisource:fr_v1";
 const SKIP_PREFIXES: &[&str] = &["page:", "livre:", "index:"];
+const PAGE_SIZE: u32 = 15;
+const DOCUMENT_BUDGET: u32 = 40;
 
 /// Wikisource FR live connector (fr.wikisource.org Action API).
 pub struct WikisourceConnector {
@@ -28,12 +30,12 @@ impl WikisourceConnector {
     pub fn new() -> anyhow::Result<Self> {
         Ok(Self {
             http: http_client()?,
-            max_docs: 15,
+            max_docs: DOCUMENT_BUDGET,
         })
     }
 
-    fn cap(&self) -> u32 {
-        self.max_docs.min(15)
+    fn budget(&self) -> u32 {
+        self.max_docs.clamp(1, DOCUMENT_BUDGET)
     }
 
     pub fn document_from_title(title: &str) -> DiscoveredDocument {
@@ -71,38 +73,73 @@ impl WikisourceConnector {
     }
 
     async fn search_titles(&self, label: &str) -> Result<Vec<String>, ConnectorError> {
-        let limit = self.cap().to_string();
-        let response = self
-            .http
-            .get(API)
-            .query(&[
-                ("action", "query"),
-                ("list", "search"),
-                ("srsearch", label),
-                ("srnamespace", "0"),
-                ("srlimit", limit.as_str()),
-                ("format", "json"),
-            ])
-            .send()
-            .await
-            .map_err(|e| ConnectorError::Http(e.to_string()))?
-            .error_for_status()
-            .map_err(|e| ConnectorError::Http(e.to_string()))?
-            .json::<Value>()
-            .await
-            .map_err(|e| ConnectorError::Parse(e.to_string()))?;
-        Ok(parse_search_titles(&response))
+        let mut titles = Vec::new();
+        let mut offset = 0u32;
+        let page = PAGE_SIZE.to_string();
+        for _ in 0..4 {
+            if titles.len() >= self.budget() as usize {
+                break;
+            }
+            let offset_text = offset.to_string();
+            let response = self
+                .http
+                .get(API)
+                .query(&[
+                    ("action", "query"),
+                    ("list", "search"),
+                    ("srsearch", label),
+                    ("srnamespace", "0"),
+                    ("srlimit", page.as_str()),
+                    ("sroffset", offset_text.as_str()),
+                    ("maxlag", "5"),
+                    ("format", "json"),
+                ])
+                .send()
+                .await
+                .map_err(|e| ConnectorError::Http(e.to_string()))?;
+            let retry_after = response
+                .headers()
+                .get("retry-after")
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_string);
+            let status = response.status();
+            let body = response
+                .json::<Value>()
+                .await
+                .map_err(|e| ConnectorError::Parse(e.to_string()))?;
+            if let Some(wait) =
+                mediawiki_wait_seconds(status.as_u16(), retry_after.as_deref(), &body)
+            {
+                return Err(ConnectorError::Http(format!("wikimedia_backoff:{wait}")));
+            }
+            if !status.is_success() {
+                return Err(ConnectorError::Http(format!(
+                    "wikisource_http_{}",
+                    status.as_u16()
+                )));
+            }
+            titles.extend(parse_search_titles(&body));
+            match search_continue_offset(&body) {
+                Some(next) if next > offset => offset = next,
+                _ => break,
+            }
+        }
+        titles.truncate(self.budget() as usize);
+        Ok(titles)
     }
 
     async fn auteur_links(&self, label: &str) -> Result<Vec<String>, ConnectorError> {
-        let titles = format!("Auteur:{label}");
+        self.page_links(&format!("Auteur:{label}")).await
+    }
+
+    async fn page_links(&self, title: &str) -> Result<Vec<String>, ConnectorError> {
         let response = self
             .http
             .get(API)
             .query(&[
                 ("action", "query"),
                 ("prop", "links"),
-                ("titles", titles.as_str()),
+                ("titles", title),
                 ("plnamespace", "0"),
                 ("pllimit", "500"),
                 ("format", "json"),
@@ -158,6 +195,27 @@ pub fn parse_siteinfo_namespaces(json: &Value) -> HashMap<String, i64> {
     map
 }
 
+pub fn search_continue_offset(json: &Value) -> Option<u32> {
+    json.pointer("/continue/sroffset")
+        .and_then(Value::as_u64)
+        .and_then(|value| u32::try_from(value).ok())
+}
+
+/// Honour Retry-After and MediaWiki maxlag. The wait is capped so a connector cannot stall.
+pub fn mediawiki_wait_seconds(status: u16, retry_after: Option<&str>, body: &Value) -> Option<u64> {
+    if let Some(raw) = retry_after {
+        if let Ok(seconds) = raw.trim().parse::<u64>() {
+            return Some(seconds.min(120));
+        }
+    }
+    let maxlag = body.pointer("/error/code").and_then(Value::as_str) == Some("maxlag");
+    if status == 429 || maxlag {
+        Some(5)
+    } else {
+        None
+    }
+}
+
 /// Extract page titles from a MediaWiki search API response.
 pub fn parse_search_titles(json: &Value) -> Vec<String> {
     json.pointer("/query/search")
@@ -190,7 +248,22 @@ fn contains_any(haystack: &str, needles: &[&str]) -> bool {
     needles.iter().any(|needle| folded.contains(needle))
 }
 
-/// Classify Wikisource document genre from title/categories (not event extraction).
+/// An author page is an index. The works it links to are the documents.
+pub fn is_author_index(title: &str) -> bool {
+    let folded = fold_accents(title.trim());
+    folded.starts_with("auteur:") || folded.starts_with("author:")
+}
+
+/// Letters and memoirs are read before general narrative pages.
+pub fn work_rank(title: &str) -> u8 {
+    let genre = classify_genre(title, "", &[]);
+    match genre {
+        "letter" => 0,
+        "memoir" => 1,
+        _ if is_author_index(title) => 9,
+        _ => 2,
+    }
+}
 pub fn classify_genre(title: &str, _wikitext: &str, categories: &[String]) -> &'static str {
     let combined = {
         let cats = categories.join(" ");
@@ -450,13 +523,7 @@ impl SourceConnector for WikisourceConnector {
         subject: &ResolvedSubject,
         cursor: Option<DiscoveryCursor>,
     ) -> Result<DiscoveryPage, ConnectorError> {
-        if cursor.map(|c| c.offset).unwrap_or(0) > 0 {
-            return Ok(DiscoveryPage {
-                documents: vec![],
-                next_cursor: None,
-            });
-        }
-
+        let offset = cursor.map(|item| item.offset).unwrap_or(0) as usize;
         let (had_sitelink, mut titles) = sitelink_titles(subject);
         if titles.is_empty() && !had_sitelink {
             let search = self.search_titles(&subject.label).await;
@@ -464,15 +531,44 @@ impl SourceConnector for WikisourceConnector {
             titles = merge_live_discover(search, links)?;
             titles.retain(|title| !is_skipped_discover_title(title));
         }
-
-        titles.truncate(self.cap() as usize);
-        let documents = titles
-            .into_iter()
-            .map(|title| Self::document_from_title(&title))
+        let author_pages: Vec<String> = titles
+            .iter()
+            .filter(|title| is_author_index(title))
+            .cloned()
             .collect();
+        for author_page in author_pages {
+            if let Ok(links) = self.page_links(&author_page).await {
+                for link in links {
+                    if !is_skipped_discover_title(&link)
+                        && !titles.iter().any(|title| title == &link)
+                    {
+                        titles.push(link);
+                    }
+                }
+            }
+        }
+        titles.retain(|title| !is_author_index(title) && !is_skipped_discover_title(title));
+        titles.sort_by(|left, right| work_rank(left).cmp(&work_rank(right)).then(left.cmp(right)));
+
+        titles.truncate(self.budget() as usize);
+        if offset >= titles.len() {
+            return Ok(DiscoveryPage {
+                documents: vec![],
+                next_cursor: None,
+            });
+        }
+        let end = (offset + PAGE_SIZE as usize).min(titles.len());
+        let documents = titles[offset..end]
+            .iter()
+            .map(|title| Self::document_from_title(title))
+            .collect();
+        let next_cursor = (end < titles.len()).then_some(DiscoveryCursor {
+            token: None,
+            offset: end as u32,
+        });
         Ok(DiscoveryPage {
             documents,
-            next_cursor: None,
+            next_cursor,
         })
     }
 
@@ -506,8 +602,8 @@ impl SourceConnector for WikisourceConnector {
         let normalized = normalize_wikisource(document, &text, &metadata)?;
         let mut raw_metadata = metadata;
         raw_metadata["title"] = Value::String(document.title.clone());
-        raw_metadata["normalized"] = serde_json::to_value(&normalized)
-            .map_err(|e| ConnectorError::Parse(e.to_string()))?;
+        raw_metadata["normalized"] =
+            serde_json::to_value(&normalized).map_err(|e| ConnectorError::Parse(e.to_string()))?;
         let bytes = text.len() as u64;
         Ok(FetchedDocument {
             discovered: document.clone(),
@@ -546,6 +642,14 @@ mod tests {
         assert_eq!(map.get("Page").copied(), Some(104));
         assert_eq!(map.get("Livre").copied(), Some(114));
         assert!(!map.contains_key(""));
+    }
+
+    #[test]
+    fn an_author_page_ranks_after_the_works_it_indexes() {
+        assert!(is_author_index("Auteur:Napoléon Bonaparte"));
+        assert!(!is_author_index("Correspondance de Napoléon"));
+        assert!(work_rank("Lettre de Napoléon") < work_rank("Auteur:Napoléon Bonaparte"));
+        assert!(work_rank("Mémoires de Napoléon") < work_rank("Histoire de Napoléon"));
     }
 
     #[test]
@@ -668,15 +772,50 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn discover_clamps_to_fifteen_even_when_max_docs_higher() {
+    async fn discover_pages_past_fifteen_and_stops_at_the_budget() {
         let mut conn = WikisourceConnector::new().unwrap();
         conn.max_docs = 100;
-        let ids = (1..=20)
+        let ids = (1..=50)
             .map(|n| ("frwikisource".into(), format!("Doc {n}")))
             .collect();
         let subject = napoleon_with_ids(ids);
-        let page = conn.discover(&subject, None).await.unwrap();
-        assert_eq!(page.documents.len(), 15);
+        let first = conn.discover(&subject, None).await.unwrap();
+        assert_eq!(first.documents.len(), 15);
+        let cursor = first.next_cursor.expect("another page remains");
+        let second = conn.discover(&subject, Some(cursor)).await.unwrap();
+        assert_eq!(second.documents.len(), 15);
+        let mut seen = first.documents.len() + second.documents.len();
+        let mut cursor = second.next_cursor;
+        while let Some(next) = cursor {
+            let page = conn.discover(&subject, Some(next)).await.unwrap();
+            seen += page.documents.len();
+            cursor = page.next_cursor;
+        }
+        assert_eq!(seen, 40);
+    }
+
+    #[test]
+    fn retry_after_and_maxlag_are_bounded() {
+        assert_eq!(
+            mediawiki_wait_seconds(200, Some("2"), &serde_json::json!({})),
+            Some(2)
+        );
+        assert_eq!(
+            mediawiki_wait_seconds(429, None, &serde_json::json!({})),
+            Some(5)
+        );
+        assert_eq!(
+            mediawiki_wait_seconds(
+                200,
+                Some("500"),
+                &serde_json::json!({"error": {"code": "maxlag"}})
+            ),
+            Some(120)
+        );
+        assert_eq!(
+            search_continue_offset(&serde_json::json!({"continue": {"sroffset": 15}})),
+            Some(15)
+        );
     }
 
     #[tokio::test]
@@ -689,20 +828,16 @@ mod tests {
         let page = conn.discover(&subject, None).await.unwrap();
         assert_eq!(page.documents.len(), 1);
         assert_eq!(page.documents[0].source_kind, SourceKind::Wikisource);
-        assert!(
-            page.documents[0]
-                .canonical_url
-                .as_ref()
-                .unwrap()
-                .contains("fr.wikisource.org")
-        );
-        assert!(
-            page.documents[0]
-                .canonical_url
-                .as_ref()
-                .unwrap()
-                .contains("Correspondance_de_Napoléon")
-        );
+        assert!(page.documents[0]
+            .canonical_url
+            .as_ref()
+            .unwrap()
+            .contains("fr.wikisource.org"));
+        assert!(page.documents[0]
+            .canonical_url
+            .as_ref()
+            .unwrap()
+            .contains("Correspondance_de_Napoléon"));
     }
 
     #[test]
@@ -756,10 +891,7 @@ mod tests {
 
     #[test]
     fn merge_live_discover_both_err_returns_first_err() {
-        let err = merge_live_discover(
-            Err(http_err("search down")),
-            Err(http_err("links down")),
-        );
+        let err = merge_live_discover(Err(http_err("search down")), Err(http_err("links down")));
         assert!(matches!(err, Err(ConnectorError::Http(ref m)) if m == "search down"));
     }
 
@@ -783,7 +915,9 @@ mod tests {
     fn proofread_needs_review_detects_pr_problematic() {
         assert!(proofread_needs_review("{{PR|problematic}}\nbody"));
         assert!(!proofread_needs_review("{{PR|proofread}}\nbody"));
-        assert!(!proofread_needs_review("plain text with the word problematic"));
+        assert!(!proofread_needs_review(
+            "plain text with the word problematic"
+        ));
     }
 
     #[test]

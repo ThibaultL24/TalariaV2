@@ -1,0 +1,93 @@
+/* web/src/styles/chapter-reading.css */
+.chapter-reading {
+  max-width: 68ch;
+  margin: 0 auto 32px;
+  padding: 8px 16px 0;
+}
+.chapter-reading h2 {
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  line-height: 1.2;
+  margin: 0 0 12px;
+}
+.chapter-reading h3 {
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 28px 0 8px;
+}
+.chapter-reading-kicker {
+  margin: 0;
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+.chapter-reading-intro {
+  font-size: 1.15rem;
+  line-height: 1.6;
+  margin: 0;
+}
+.chapter-reading ol,
+.chapter-reading ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.chapter-reading li + li {
+  margin-top: 8px;
+}
+.chapter-reading button {
+  width: 100%;
+  min-height: 44px;
+  text-align: left;
+  padding: 10px 0;
+  border: 0;
+  border-bottom: 1px solid var(--color-border-subtle);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.chapter-reading button span {
+  display: inline-block;
+  margin-right: 12px;
+  opacity: 0.75;
+}
+.chapter-reading-primary h3 {
+  font-size: 1.05rem;
+}
+.chapter-reading-primary strong {
+  display: block;
+  font-size: 1.2rem;
+  line-height: 1.35;
+}
+.chapter-reading-supporting {
+  font-size: 0.95rem;
+}
+.chapter-reading-context {
+  margin-top: 20px;
+}
+.chapter-reading-context summary {
+  min-height: 44px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.chapter-reading-primary ol {
+  list-style: decimal;
+  padding-left: 1.4rem;
+}
+.chapter-reading-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 24px;
+}
+.chapter-reading-coverage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+@media (max-width: 720px) {
+  .chapter-reading {
+    padding-inline: 12px;
+  }
+}

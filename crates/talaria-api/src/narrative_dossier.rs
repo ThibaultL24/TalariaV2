@@ -61,9 +61,7 @@ pub async fn build_event_dossier(
 
     let mut dossier = assemble_dossier(event, fact, claims, display_lang);
     if !offline_only {
-        let year = event
-            .start_time
-            .map(|time| time.format("%Y").to_string());
+        let year = event.start_time.map(|time| time.format("%Y").to_string());
         let sources: Vec<String> = dossier
             .source_refs
             .iter()
@@ -386,9 +384,9 @@ fn section_matches_event(section_title: &str, event: &CanonicalEventRow) -> bool
                 || lower.contains("business")
                 || lower.contains("fortune")
                 || lower.contains("wealth")
-                || event_topic_tokens(event).iter().any(|token| {
-                    token.chars().count() >= 5 && lower.contains(token.as_str())
-                })
+                || event_topic_tokens(event)
+                    .iter()
+                    .any(|token| token.chars().count() >= 5 && lower.contains(token.as_str()))
         }
     }
 }
@@ -621,11 +619,7 @@ fn section_needles(event_type: &str, lang: &str) -> Vec<&'static str> {
 }
 
 fn event_topic_tokens(event: &CanonicalEventRow) -> Vec<String> {
-    let blob = format!(
-        "{} {}",
-        event.title,
-        event.summary.as_deref().unwrap_or("")
-    );
+    let blob = format!("{} {}", event.title, event.summary.as_deref().unwrap_or(""));
     let person = event
         .person_name
         .split('(')
@@ -696,7 +690,12 @@ fn is_topic_stopword(token: &str) -> bool {
 fn relevance_keywords(event: &CanonicalEventRow) -> (Vec<String>, Vec<String>) {
     let mut keys = event_topic_tokens(event);
     let mut subject_keys = Vec::new();
-    let person = event.person_name.split('(').next().unwrap_or(&event.person_name).trim();
+    let person = event
+        .person_name
+        .split('(')
+        .next()
+        .unwrap_or(&event.person_name)
+        .trim();
     if !person.is_empty() {
         subject_keys.push(person.to_ascii_lowercase());
         if let Some(sur) = talaria_sources::subject_surname(person) {
@@ -846,14 +845,9 @@ fn grounded_scene(event: &CanonicalEventRow, lang: &str, blob: &str) -> Option<S
         .start_time
         .map(|time| time.format("%Y").to_string())
         .filter(|year| blob.contains(year));
-    let place = event
-        .place_label
-        .as_deref()
-        .map(str::trim)
-        .filter(|place| {
-            talaria_quality::is_human_place_label(place)
-                && blob.contains(&place.to_ascii_lowercase())
-        });
+    let place = event.place_label.as_deref().map(str::trim).filter(|place| {
+        talaria_quality::is_human_place_label(place) && blob.contains(&place.to_ascii_lowercase())
+    });
     let fr = lang.starts_with("fr");
     let childhood = blob.contains("age eight")
         || blob.contains("âge de huit")
@@ -877,18 +871,20 @@ fn grounded_scene(event: &CanonicalEventRow, lang: &str, blob: &str) -> Option<S
                 Some(format!("{person} meurt en {year} à {place}."))
             }
             ("death", Some(year), None) => Some(format!("{person} meurt en {year}.")),
-            ("battle" | "siege", Some(year), Some(place)) => {
-                Some(format!("En {year}, {person} est engagé dans un combat à {place}."))
-            }
+            ("battle" | "siege", Some(year), Some(place)) => Some(format!(
+                "En {year}, {person} est engagé dans un combat à {place}."
+            )),
             ("residence", Some(year), Some(place)) => {
                 Some(format!("En {year}, {person} s’installe à {place}."))
             }
-            (_, Some(year), Some(place)) => {
-                Some(format!("En {year}, un épisode de la vie de {person} se joue à {place}."))
-            }
+            (_, Some(year), Some(place)) => Some(format!(
+                "En {year}, un épisode de la vie de {person} se joue à {place}."
+            )),
             (_, Some(year), None) => Some(format!("En {year}, dans la vie de {person}.")),
             _ if childhood => Some(format!("Épisode de l’enfance de {person}.")),
-            _ => Some(format!("Ce que les sources disent de cet épisode de {person}.")),
+            _ => Some(format!(
+                "Ce que les sources disent de cet épisode de {person}."
+            )),
         };
     }
 
@@ -896,10 +892,10 @@ fn grounded_scene(event: &CanonicalEventRow, lang: &str, blob: &str) -> Option<S
         ("marriage" | "wedding", Some(year), Some(place)) => {
             Some(format!("{person} marries in {year} in {place}."))
         }
-        ("marriage" | "wedding", Some(year), None) => {
-            Some(format!("{person} marries in {year}."))
+        ("marriage" | "wedding", Some(year), None) => Some(format!("{person} marries in {year}.")),
+        ("birth", Some(year), Some(place)) => {
+            Some(format!("{person} is born in {year} in {place}."))
         }
-        ("birth", Some(year), Some(place)) => Some(format!("{person} is born in {year} in {place}.")),
         ("birth", Some(year), None) => Some(format!("{person} is born in {year}.")),
         ("death", Some(year), Some(place)) => Some(format!("{person} dies in {year} in {place}.")),
         ("death", Some(year), None) => Some(format!("{person} dies in {year}.")),
@@ -909,12 +905,14 @@ fn grounded_scene(event: &CanonicalEventRow, lang: &str, blob: &str) -> Option<S
         ("residence", Some(year), Some(place)) => {
             Some(format!("In {year}, {person} settles in {place}."))
         }
-        (_, Some(year), Some(place)) => {
-            Some(format!("In {year}, an episode in {person}’s life takes place in {place}."))
-        }
+        (_, Some(year), Some(place)) => Some(format!(
+            "In {year}, an episode in {person}’s life takes place in {place}."
+        )),
         (_, Some(year), None) => Some(format!("In {year}, in {person}’s life.")),
         _ if childhood => Some(format!("From {person}’s childhood.")),
-        _ => Some(format!("What the sources say about this episode in {person}’s life.")),
+        _ => Some(format!(
+            "What the sources say about this episode in {person}’s life."
+        )),
     }
 }
 
@@ -927,7 +925,10 @@ fn weave_paragraph(event: &CanonicalEventRow, lang: &str, claims: &[DossierClaim
     let mut parts: Vec<String> = Vec::new();
     let blob = sources_blob(claims);
     if let Some(scene) = grounded_scene(event, lang, &blob) {
-        let first = claims.first().map(|claim| claim.text.as_str()).unwrap_or("");
+        let first = claims
+            .first()
+            .map(|claim| claim.text.as_str())
+            .unwrap_or("");
         if !scene_repeats_claim(&scene, first) {
             parts.push(scene);
         }
@@ -1204,6 +1205,8 @@ mod tests {
             map_eligible: false,
             lat: None,
             lon: None,
+            coord_precision_level: None,
+            uncertainty_radius_m: None,
         }
     }
 

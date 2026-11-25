@@ -9,6 +9,7 @@ import {
   legendKeyForEventType,
   legendLabel,
 } from "@/lib/event-legend";
+import { readableLabel } from "@/lib/human-label";
 import { useI18n } from "@/lib/i18n";
 import { useThemeStore } from "@/stores/theme-store";
 import { HistographyBrush } from "@/features/entity/timeline-histography-brush";
@@ -39,6 +40,8 @@ type Particle = {
   id: string;
   event: TimelineEvent;
   year: number;
+  spanEnd: number | null;
+  endX: number | null;
   x: number;
   y: number;
   targetX: number;
@@ -300,6 +303,12 @@ export function HistoricalTimeline({
         let alpha = point.alpha;
         if (hoveredId && !hovered) alpha *= point.rank === "major" ? 0.82 : 0.55;
         const radius = point.radius * (hovered ? 1.35 : 1);
+        if (point.endX != null && point.endX > point.x + 8) {
+          dots
+            .moveTo(point.x, point.y)
+            .lineTo(point.endX, point.y)
+            .stroke({ width: 1.5, color: point.color, alpha: alpha * 0.85 });
+        }
         dots.circle(point.x, point.y, radius).fill({ color: point.color, alpha });
         if (selected || hovered) {
           dots.circle(point.x, point.y, radius + (selected ? 6 : 4)).stroke({
@@ -349,6 +358,7 @@ export function HistoricalTimeline({
         seen.add(particle.id);
         particle.event = next.event;
         particle.year = next.time;
+        particle.spanEnd = next.endTime;
         particle.baseY = next.y;
         particle.targetY = next.y;
         particle.radius = next.radius;
@@ -363,6 +373,8 @@ export function HistoricalTimeline({
           id: point.event.id,
           event: point.event,
           year: point.time,
+          spanEnd: point.endTime,
+          endX: null,
           x: point.x,
           y: point.y,
           targetX: point.x,
@@ -387,8 +399,11 @@ export function HistoricalTimeline({
       const visible = new Set(filterEventsByLod(datedRef.current, domainNow).map((event) => event.id));
       for (const particle of particles) {
         const year = eventYear(particle.event) ?? particle.year;
-        const inside = year >= domainNow.start && year <= domainNow.end;
-        particle.targetX = ((particle.year - domainNow.start) / Math.max(1e-6, domainNow.end - domainNow.start)) * width;
+        const spanEnd = particle.spanEnd ?? year;
+        const inside = spanEnd >= domainNow.start && year <= domainNow.end;
+        const span = Math.max(1e-6, domainNow.end - domainNow.start);
+        particle.targetX = ((particle.year - domainNow.start) / span) * width;
+        particle.endX = particle.spanEnd == null ? null : ((particle.spanEnd - domainNow.start) / span) * width;
         const show = inside && visible.has(particle.id);
         particle.targetAlpha = show ? particle.shownAlpha : 0;
         particle.x = particle.targetX;
@@ -790,8 +805,8 @@ export function HistoricalTimeline({
               className={`historical-timeline__tooltip${tooltipAbove ? "" : " is-below"}`}
               style={{ left: tooltipLeft, top: hoverPosition.y }}
             >
-              <div className="historical-timeline__tooltip-year">{eventDate(hovered)}</div>
-              <div className="historical-timeline__tooltip-title">{hovered.title}</div>
+              <div className="historical-timeline__tooltip-year">{eventDate(hovered, locale)}</div>
+              <div className="historical-timeline__tooltip-title">{readableLabel(hovered.title)}</div>
               <div className="historical-timeline__tooltip-meta">
                 {legendLabel(legendKeyForEventType(hovered.event_type), locale)}
               </div>
@@ -799,10 +814,10 @@ export function HistoricalTimeline({
           ) : null}
           {selected ? (
             <article className="historical-timeline__card">
-              <p className="historical-timeline__card-year">{eventDate(selected)}</p>
-              <h3>{selected.title}</h3>
+              <p className="historical-timeline__card-year">{eventDate(selected, locale)}</p>
+              <h3>{readableLabel(selected.title)}</h3>
               <p>{legendLabel(legendKeyForEventType(selected.event_type), locale)}</p>
-              {selected.place_label ? <p>{selected.place_label}</p> : null}
+              {selected.place_label ? <p>{readableLabel(selected.place_label)}</p> : null}
               {selected.time?.kind === "approx" || selected.time?.kind === "unknown" ? (
                 <p className="historical-timeline__card-note">{t.timelineApproximate}</p>
               ) : null}

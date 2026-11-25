@@ -78,4 +78,28 @@ describe("useEntityTimeline", () => {
     expect(result.current.events.some((event) => event.id === "first-person")).toBe(false);
     await waitFor(() => expect(result.current.events[0]?.id).toBe("second-person"));
   });
+
+  it("keeps a distinct cache entry for each chapter and active filter", async () => {
+    const urls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      urls.push(String(url));
+      const chapter = String(url).includes("group=exile") ? "exile" : "campaign";
+      return { ok: true, json: async () => response([chapter], null) };
+    }));
+    const { wrapper, client } = setup();
+    const { result } = renderHook(() => ({
+      campaign: useEntityTimeline("person-1", "group=italian-campaign", "fr", true, 0),
+      exile: useEntityTimeline("person-1", "group=exile&from=1850", "fr", true, 0),
+    }), { wrapper });
+    await waitFor(() => expect(result.current.campaign.events[0]?.id).toBe("campaign"));
+    await waitFor(() => expect(result.current.exile.events[0]?.id).toBe("exile"));
+    const keys = client.getQueryCache().getAll().map((query) => query.queryKey);
+    expect(keys).toEqual(expect.arrayContaining([
+      ["istoria", "timeline", "person-1", "group=italian-campaign", "fr"],
+      ["istoria", "timeline", "person-1", "group=exile&from=1850", "fr"],
+    ]));
+    expect(urls.some((url) => url.includes("group=italian-campaign"))).toBe(true);
+    expect(urls.some((url) => url.includes("group=exile"))).toBe(true);
+    expect(urls.some((url) => url.includes("from=1850"))).toBe(true);
+  });
 });

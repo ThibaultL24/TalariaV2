@@ -18,5 +18,5 @@ pub use dump::{
 };
 pub use geocode::{geocode_place_label, GeocodedPlace};
 pub use promote::promote_event;
-pub use search_rank::{person_search_score, sort_person_search_hits};
+pub use search_rank::{person_search_score, resolve_person_hits, sort_person_search_hits, PersonResolution};
 pub use time::{parse_wikibase_time, WikibaseTime};

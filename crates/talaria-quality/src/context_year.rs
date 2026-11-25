@@ -29,8 +29,6 @@ const APPROX_ELIGIBLE_TYPES: &[&str] = &[
     "departure",
     "travel",
     "exile",
-    "battle",
-    "siege",
     "work",
     "imprisonment",
 ];
@@ -60,7 +58,11 @@ pub fn scan_years_in_range(text: &str, min_year: i32, max_year: i32) -> Vec<i32>
 
 /// Extract years from a section heading.
 /// Handles patterns like "### 1864-1866", "### Dernières années (1864-1867)".
-pub fn years_from_section_heading(heading: &str, min_year: i32, max_year: i32) -> Option<(i32, Option<i32>)> {
+pub fn years_from_section_heading(
+    heading: &str,
+    min_year: i32,
+    max_year: i32,
+) -> Option<(i32, Option<i32>)> {
     let years = scan_years_in_range(heading, min_year, max_year);
     match years.as_slice() {
         [single] => Some((*single, None)),
@@ -80,24 +82,28 @@ pub fn year_from_nearby_context(
 ) -> Option<i32> {
     let min_year = birth_year.unwrap_or(1000);
     let max_year = death_year.unwrap_or(2100);
-    
+
     // First, check if the clause itself has any year we might have missed
     let clause_years = scan_years_in_range(clause_text, min_year, max_year);
     if clause_years.len() == 1 {
         return Some(clause_years[0]);
     }
-    
-    // Look in the full paragraph for contextual years
-    let para_years = scan_years_in_range(full_paragraph, min_year, max_year);
+
+    // A birth year in a neighboring sentence does not date this one.
+    // "born in 1786 … made her way back to France" must stay undated.
+    let para_years = scan_years_in_range(full_paragraph, min_year, max_year)
+        .into_iter()
+        .filter(|year| birth_year != Some(*year) || clause_states_age(clause_text))
+        .collect::<Vec<_>>();
     if para_years.is_empty() {
         return None;
     }
-    
+
     // If only one year in the paragraph, use it
     if para_years.len() == 1 {
         return Some(para_years[0]);
     }
-    
+
     // If multiple years, prefer the one closest to the clause position
     // This is a heuristic: years mentioned earlier in context often apply to later sentences
     // Return the first year that's within the subject's lifespan
@@ -106,7 +112,7 @@ pub fn year_from_nearby_context(
             return Some(y);
         }
     }
-    
+
     None
 }
 
@@ -122,7 +128,7 @@ pub fn year_from_lifespan_midpoint(
         (Some(b), Some(d)) if d > b => (b, d),
         _ => return None,
     };
-    
+
     // Only for events that definitely happened during life
     // Not for posthumous events like burial (which can be pinpointed differently)
     match event_type {
@@ -164,6 +170,36 @@ pub fn local_context_window<'a>(full: &'a str, clause: &str, radius: usize) -> &
     &full[start..end]
 }
 
+fn clause_states_age(clause: &str) -> bool {
+    stated_age_years(clause).is_some()
+}
+
+fn stated_age_years(clause: &str) -> Option<i32> {
+    let folded = clause.to_lowercase();
+    const WORDS: &[(&str, i32)] = &[
+        ("vingt ans", 20),
+        ("dix-neuf ans", 19),
+        ("dix neuf ans", 19),
+        ("dix-huit ans", 18),
+        ("dix huit ans", 18),
+        ("dix-sept ans", 17),
+        ("dix sept ans", 17),
+        ("seize ans", 16),
+        ("quinze ans", 15),
+        ("quatorze ans", 14),
+        ("treize ans", 13),
+        ("douze ans", 12),
+        ("onze ans", 11),
+        ("dix ans", 10),
+    ];
+    for (phrase, age) in WORDS {
+        if folded.contains(phrase) {
+            return Some(*age);
+        }
+    }
+    None
+}
+
 fn floor_char_boundary(s: &str, mut i: usize) -> usize {
     if i >= s.len() {
         return s.len();
@@ -198,10 +234,10 @@ pub fn infer_approximate_year(
     if !is_approx_eligible_type(event_type) {
         return None;
     }
-    
+
     let min_year = birth_year.unwrap_or(1000);
     let max_year = death_year.map(|d| d + 5).unwrap_or(2100); // Allow 5 years after death for burial
-    
+
     // 1. Try section heading first (most reliable context)
     if let Some(heading) = section_heading {
         if let Some((start, end)) = years_from_section_heading(heading, min_year, max_year) {
@@ -209,28 +245,32 @@ pub fn infer_approximate_year(
             return Some((year, "section_heading"));
         }
     }
-    
+
+    if let (Some(age), Some(birth)) = (stated_age_years(clause_text), birth_year) {
+        return Some((birth.saturating_add(age), "stated_age"));
+    }
+
     // 2. Try nearby paragraph context
     if let Some(para) = paragraph_context {
         if let Some(y) = year_from_nearby_context(clause_text, para, birth_year, death_year) {
             return Some((y, "paragraph_context"));
         }
     }
-    
+
     // 3. For burial specifically, use death year
     if event_type == "burial" {
         if let Some(dy) = death_year {
             return Some((dy, "death_year_for_burial"));
         }
     }
-    
+
     // 4. For education, try lifespan inference (very conservative)
     if event_type == "education" {
         if let Some(y) = year_from_lifespan_midpoint(event_type, birth_year, death_year) {
             return Some((y, "lifespan_education"));
         }
     }
-    
+
     None
 }
 
@@ -248,7 +288,11 @@ mod tests {
 
     #[test]
     fn scans_years_correctly() {
-        let years = scan_years_in_range("In 1857, the trial happened after events in 1842.", 1800, 1900);
+        let years = scan_years_in_range(
+            "In 1857, the trial happened after events in 1842.",
+            1800,
+            1900,
+        );
         assert_eq!(years, vec![1842, 1857]);
     }
 
@@ -268,22 +312,53 @@ mod tests {
 
     #[test]
     fn extracts_year_from_section_heading_with_text() {
-        let (start, end) = years_from_section_heading("### Dernières années (1864-1867)", 1800, 1900).unwrap();
+        let (start, end) =
+            years_from_section_heading("### Dernières années (1864-1867)", 1800, 1900).unwrap();
         assert_eq!(start, 1864);
         assert_eq!(end, Some(1867));
     }
 
     #[test]
     fn infers_trial_year_from_paragraph() {
-        let clause = "Baudelaire was successfully prosecuted for creating an offense against public morals.";
+        let clause =
+            "Baudelaire was successfully prosecuted for creating an offense against public morals.";
         let paragraph = "In 1857, Les Fleurs du mal was published. Baudelaire was successfully prosecuted for creating an offense against public morals.";
-        let result = infer_approximate_year("trial", clause, Some(paragraph), None, Some(1821), Some(1867));
+        let result = infer_approximate_year(
+            "trial",
+            clause,
+            Some(paragraph),
+            None,
+            Some(1821),
+            Some(1867),
+        );
         assert_eq!(result, Some((1857, "paragraph_context")));
     }
 
     #[test]
+    fn a_battle_without_its_own_year_is_not_dated_from_the_paragraph() {
+        let clause = "Après la victoire à la bataille de Wagram, un traité est signé au château.";
+        let paragraph = "En 1780, des troupes séjournent dans la région. Après la victoire à la bataille de Wagram, un traité est signé au château.";
+        let result = infer_approximate_year(
+            "battle",
+            clause,
+            Some(paragraph),
+            None,
+            Some(1769),
+            Some(1821),
+        );
+        assert_eq!(result, None);
+    }
+
+    #[test]
     fn infers_burial_year_from_death_year() {
-        let result = infer_approximate_year("burial", "He was buried at Montparnasse.", None, None, Some(1821), Some(1867));
+        let result = infer_approximate_year(
+            "burial",
+            "He was buried at Montparnasse.",
+            None,
+            None,
+            Some(1821),
+            Some(1867),
+        );
         assert_eq!(result, Some((1867, "death_year_for_burial")));
     }
 
@@ -292,24 +367,49 @@ mod tests {
         let clause = "He met Félicien Rops.";
         let paragraph = "In 1857, Les Fleurs du mal was published. He met Félicien Rops.";
         let heading = "### 1866";
-        let result = infer_approximate_year("meeting", clause, Some(paragraph), Some(heading), Some(1821), Some(1867));
+        let result = infer_approximate_year(
+            "meeting",
+            clause,
+            Some(paragraph),
+            Some(heading),
+            Some(1821),
+            Some(1867),
+        );
         // Section heading should win over paragraph
         assert_eq!(result, Some((1866, "section_heading")));
     }
 
     #[test]
     fn education_inference_uses_lifespan() {
-        let result = infer_approximate_year("education", "He was educated in Lyon.", None, None, Some(1821), Some(1867));
+        let result = infer_approximate_year(
+            "education",
+            "He was educated in Lyon.",
+            None,
+            None,
+            Some(1821),
+            Some(1867),
+        );
         // Should infer ~1836 (midpoint of 1827-1846)
         assert!(result.is_some());
         let (year, source) = result.unwrap();
-        assert!(year >= 1827 && year <= 1846, "year {} should be in education range", year);
+        assert!(
+            year >= 1827 && year <= 1846,
+            "year {} should be in education range",
+            year
+        );
         assert_eq!(source, "lifespan_education");
     }
 
     #[test]
     fn non_eligible_types_not_inferred() {
-        let result = infer_approximate_year("publication", "He published a book.", Some("In 1857, he was active."), None, Some(1821), Some(1867));
+        let result = infer_approximate_year(
+            "publication",
+            "He published a book.",
+            Some("In 1857, he was active."),
+            None,
+            Some(1821),
+            Some(1867),
+        );
         assert!(result.is_none());
     }
 
@@ -330,8 +430,43 @@ mod tests {
         // Year outside lifespan should not be picked
         let clause = "Something happened.";
         let paragraph = "In 1999, unrelated event. In 1857, relevant event.";
-        let result = infer_approximate_year("trial", clause, Some(paragraph), None, Some(1821), Some(1867));
+        let result = infer_approximate_year(
+            "trial",
+            clause,
+            Some(paragraph),
+            None,
+            Some(1821),
+            Some(1867),
+        );
         assert_eq!(result, Some((1857, "paragraph_context")));
+    }
+
+    #[test]
+    fn a_birth_year_does_not_date_a_later_return() {
+        let clause = "the young girl somehow made her way back to France";
+        let paragraph = "Marceline Desbordes-Valmore was born in Douai in 1786. Later, the young girl somehow made her way back to France.";
+        let result = infer_approximate_year(
+            "travel",
+            clause,
+            Some(paragraph),
+            None,
+            Some(1786),
+            Some(1859),
+        );
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn a_stated_age_uses_the_known_birth_year() {
+        let result = infer_approximate_year(
+            "work",
+            "De retour à Douai, elle devient comédienne dès l'âge de seize ans",
+            None,
+            None,
+            Some(1786),
+            Some(1859),
+        );
+        assert_eq!(result, Some((1802, "stated_age")));
     }
 
     #[test]
@@ -343,21 +478,16 @@ mod tests {
              Baudelaire was successfully prosecuted for creating an offense against public morals. \
              He died in 1867."
         );
-        let clause = "Baudelaire was successfully prosecuted for creating an offense against public morals.";
+        let clause =
+            "Baudelaire was successfully prosecuted for creating an offense against public morals.";
         let window = local_context_window(&full, clause, 120);
         assert!(window.contains("1857"), "window={window}");
         assert!(
             !window.contains("1821"),
             "birth year should be outside the local window: {window}"
         );
-        let result = infer_approximate_year(
-            "trial",
-            clause,
-            Some(window),
-            None,
-            Some(1821),
-            Some(1867),
-        );
+        let result =
+            infer_approximate_year("trial", clause, Some(window), None, Some(1821), Some(1867));
         assert_eq!(result, Some((1857, "paragraph_context")));
     }
 }

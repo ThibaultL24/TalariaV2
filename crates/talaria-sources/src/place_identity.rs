@@ -382,7 +382,18 @@ impl PlaceIdentityResolver for CompositeIdentityResolver {
     async fn resolve(&self, mention: &str) -> Option<PlaceIdentity> {
         let mut best_identity: Option<PlaceIdentity> = None;
 
+        let offline = std::env::var("TALARIA_OFFLINE_PLACES").ok().as_deref() == Some("1");
         for resolver in &self.resolvers {
+            if offline && resolver.name() != "alias_gazetteer" {
+                continue;
+            }
+            // Getty and the World Historical Gazetteer do not supply the point,
+            // and a stalled call must not stop the biography.
+            if matches!(resolver.name(), "tgn" | "whg")
+                && std::env::var("TALARIA_PLACE_AUTHORITIES").ok().as_deref() != Some("1")
+            {
+                continue;
+            }
             if let Some(identity) = resolver.resolve(mention).await {
                 // If we have no identity yet, take this one
                 if best_identity.is_none() {

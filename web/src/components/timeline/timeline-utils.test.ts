@@ -4,6 +4,7 @@ import type { TimelineEvent } from "@/lib/api";
 import {
   denseVisibleWindow,
   eventImportance,
+  eventSpanEnd,
   eventTimeValue,
   filterEventsByLod,
   formatYearLabel,
@@ -49,7 +50,7 @@ test("a map pin does not raise historical importance", () => {
   expect(eventImportance(mapped)).toBe(eventImportance(plain));
 });
 
-test("a life-span URL does not stretch the axis until the reader asks for it", () => {
+test("a human life opens on its whole documented span", () => {
   const events = Array.from({ length: 20 }, (_, index) => ({
     ...event(`early-${index}`, "anecdote"),
     time: { kind: "exact" as const, start: String(1769 + index), precision: "year" as const },
@@ -60,7 +61,7 @@ test("a life-span URL does not stretch the axis until the reader asks for it", (
       to: "1870",
       span: null,
     }),
-  ).toEqual([1769, 1789]);
+  ).toEqual([1769, 1870]);
   expect(
     resolveVisibleWindow(events, [1769, 1870], false, {
       from: null,
@@ -94,6 +95,29 @@ test("a sparse tail does not stretch the first visible window", () => {
     { ...event("late", "anecdote"), time: { kind: "exact" as const, start: "1870", precision: "year" as const } },
   ];
   expect(denseVisibleWindow(events, [1769, 1870])[1]).toBeLessThan(1830);
+});
+
+test("a siege is a period from its first day to its last", () => {
+  const siege = {
+    ...event("mantua", "siege"),
+    time: {
+      kind: "range" as const,
+      precision: "day" as const,
+      start: "1796-06-04",
+      end: "1797-02-02",
+      surface: "4 June 1796 to 2 February 1797",
+    },
+  };
+  const start = eventTimeValue(siege);
+  const end = eventSpanEnd(siege);
+  expect(start).toBeGreaterThan(1796.4);
+  expect(end).toBeGreaterThan(1797);
+  const placed = layoutConstellation([siege], { start: 1796, end: 1798 }, 900, 400);
+  expect(placed).toHaveLength(1);
+  expect(placed[0].endTime).toBeGreaterThan(placed[0].time);
+  const window = visibleYearWindow([siege], [1700, 1900], false);
+  expect(window[0]).toBeLessThanOrEqual(1796);
+  expect(window[1]).toBeGreaterThanOrEqual(1797);
 });
 
 test("many facts in one year spread along that year instead of stacking on one x", () => {

@@ -7,6 +7,8 @@ import { rankPersonSuggestions } from "@/lib/search-suggestions";
 import { useExplorerStore } from "@/stores/explorer-store";
 import { useProgressiveIngest } from "./use-progressive-ingest";
 
+/** The server never follows fewer than eight pages. Istoria asks for that floor, not the explorer cap of 400. */
+const ON_DEMAND_RESEARCH_DOCUMENTS = 8;
 const SEARCH_DELAY_MS = 180;
 const SEARCH_TTL_MS = 30_000;
 const CACHE_LIMIT = 100;
@@ -41,6 +43,7 @@ export function usePersonPicker(opts: UsePersonPickerOptions = {}) {
   const [searchQuery, setSearchQuery] = useState("");
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [heldIdentity, setHeldIdentity] = useState<SearchSuggestion | null>(null);
 
   const progressiveIngest = useProgressiveIngest({
     onCountsChanged: opts.onCountsChanged,
@@ -93,13 +96,14 @@ export function usePersonPicker(opts: UsePersonPickerOptions = {}) {
       const localId =
         chosen.known_locally && chosen.entity_id ? chosen.entity_id : null;
 
+      setHeldIdentity(chosen);
       if (localId) {
         setEntity(localId, chosen.label, chosen.qid);
       } else {
         setPersonFilter(chosen.label, chosen.label, chosen.qid);
       }
 
-      if (startLifeIngest) {
+      if (startLifeIngest && chosen.qid) {
         void progressiveIngest
           .startIngest({
             subject: chosen.label,
@@ -117,12 +121,28 @@ export function usePersonPicker(opts: UsePersonPickerOptions = {}) {
     [locale, setEntity, setPersonFilter, startLifeIngest, progressiveIngest],
   );
 
+  const requestResearch = useCallback(
+    (item?: SearchSuggestion) => {
+      const chosen = item ?? heldIdentity;
+      if (!chosen?.qid || !/^Q\d+$/.test(chosen.qid)) return;
+      void progressiveIngest.startIngest({
+        subject: chosen.label,
+        qid: chosen.qid,
+        wikiLang: locale,
+        maxDocuments: ON_DEMAND_RESEARCH_DOCUMENTS,
+      });
+    },
+    [heldIdentity, locale, progressiveIngest.startIngest],
+  );
+
   return {
     searchQuery,
     setSearchQuery,
     suggestions,
     searchLoading,
+    heldIdentity,
     selectPerson,
+    requestResearch,
     jobId: progressiveIngest.jobId,
     ingestBusy: progressiveIngest.isRunning,
     error: progressiveIngest.error,

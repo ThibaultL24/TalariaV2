@@ -46,6 +46,10 @@ pub enum ParticipantRole {
     Participant,
     Opponent,
     Ally,
+    Commander,
+    Signatory,
+    Addressee,
+    Contextual,
     Other,
 }
 
@@ -56,6 +60,10 @@ impl ParticipantRole {
             Self::Participant => "participant",
             Self::Opponent => "opponent",
             Self::Ally => "ally",
+            Self::Commander => "commander",
+            Self::Signatory => "signatory",
+            Self::Addressee => "addressee",
+            Self::Contextual => "contextual",
             Self::Other => "other",
         }
     }
@@ -99,6 +107,14 @@ pub enum TypedTime {
     Range {
         start_year: i32,
         end_year: i32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        start_month: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        start_day: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        end_month: Option<u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        end_day: Option<u32>,
         #[serde(skip_serializing_if = "Option::is_none")]
         surface: Option<String>,
     },
@@ -132,8 +148,24 @@ impl TypedTime {
             Self::Range {
                 start_year,
                 end_year,
+                start_month,
+                start_day,
+                end_month,
+                end_day,
                 ..
-            } => format!("range:{start_year}:{end_year}"),
+            } => {
+                if start_month.is_none() && end_month.is_none() {
+                    format!("range:{start_year}:{end_year}")
+                } else {
+                    format!(
+                        "range:{start_year}-{:02}-{:02}:{end_year}-{:02}-{:02}",
+                        start_month.unwrap_or(0),
+                        start_day.unwrap_or(0),
+                        end_month.unwrap_or(0),
+                        end_day.unwrap_or(0)
+                    )
+                }
+            }
             Self::Approx { year, .. } => format!("approx:{year}"),
             Self::Unknown { .. } => "unknown".into(),
         }

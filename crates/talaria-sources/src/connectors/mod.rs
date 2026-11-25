@@ -20,43 +20,43 @@ mod wikidata;
 mod wikipedia;
 mod wikisource;
 
-pub use bnf::{BnfConfig, BnfConnector, normalize_bnf_notice};
+pub use bnf::{normalize_bnf_notice, BnfConfig, BnfConnector};
 pub use commons::{
-    CommonsAsset, CommonsConnector, commonswiki_file_sitelink, file_titles_from_wikitext,
-    listed_files_from_commons_sitelink, parse_mediainfo, parse_p18_filenames, parse_wiki_page_images,
+    commonswiki_file_sitelink, file_titles_from_wikitext, listed_files_from_commons_sitelink,
+    parse_mediainfo, parse_p18_filenames, parse_wiki_page_images, CommonsAsset, CommonsConnector,
 };
 pub use deutsche_biographie::{
-    CONNECTOR_VERSION as DEUTSCHE_BIOGRAPHIE_VERSION, DeutscheBiographieConfig,
-    DeutscheBiographieConnector, GndPersonRecord,
+    DeutscheBiographieConfig, DeutscheBiographieConnector, GndPersonRecord,
+    CONNECTOR_VERSION as DEUTSCHE_BIOGRAPHIE_VERSION,
 };
-pub use europeana::{EuropeanaConfig, EuropeanaConnector, normalize_europeana_item};
+pub use europeana::{normalize_europeana_item, EuropeanaConfig, EuropeanaConnector};
 pub use fixture::FixtureConnector;
 pub use france_archives::{
-    CONNECTOR_VERSION as FRANCE_ARCHIVES_VERSION, FaPersonRecord, FranceArchivesConfig,
-    FranceArchivesConnector,
+    FaPersonRecord, FranceArchivesConfig, FranceArchivesConnector,
+    CONNECTOR_VERSION as FRANCE_ARCHIVES_VERSION,
 };
 pub use gallica::GallicaConnector;
-pub use hal::{CONNECTOR_VERSION as HAL_VERSION, HalConnector, normalize_hal_doc};
-pub use internet_archive::{InternetArchiveConfig, InternetArchiveConnector, normalize_ia_item};
+pub use hal::{normalize_hal_doc, HalConnector, CONNECTOR_VERSION as HAL_VERSION};
+pub use internet_archive::{normalize_ia_item, InternetArchiveConfig, InternetArchiveConnector};
 pub use open_library::OpenLibraryConnector;
 pub use openalex::{
-    CONNECTOR_VERSION as OPENALEX_VERSION, OpenAlexConfig, OpenAlexConnector,
-    normalize_openalex_work, openalex_debate_query,
+    normalize_openalex_work, openalex_debate_query, OpenAlexConfig, OpenAlexConnector,
+    CONNECTOR_VERSION as OPENALEX_VERSION,
 };
-pub use persee::{CONNECTOR_VERSION as PERSEE_VERSION, PerseeConnector, normalize_persee_record};
+pub use persee::{normalize_persee_record, PerseeConnector, CONNECTOR_VERSION as PERSEE_VERSION};
 pub use pop_merimee::{
-    CONNECTOR_VERSION as POP_MERIMEE_VERSION, MerimeeRecord, PopMerimeeConfig, PopMerimeeConnector,
+    MerimeeRecord, PopMerimeeConfig, PopMerimeeConnector, CONNECTOR_VERSION as POP_MERIMEE_VERSION,
 };
 pub use stub::StubConnector;
 pub use theses_fr::{
-    CONNECTOR_VERSION as THESES_FR_VERSION, ThesesFrConfig, ThesesFrConnector,
-    normalize_these_detail,
+    normalize_these_detail, ThesesFrConfig, ThesesFrConnector,
+    CONNECTOR_VERSION as THESES_FR_VERSION,
 };
 pub use wikidata::{WikidataSourceConnector, WikidataSourceConnectorConfig};
 pub use wikipedia::{WikipediaConnector, WikipediaConnectorConfig};
 pub use wikisource::{
-    WikisourceConnector, classify_genre, normalize_wikisource, parse_fetch_page,
-    parse_search_titles, parse_siteinfo_namespaces, proofread_needs_review,
+    classify_genre, is_author_index, normalize_wikisource, parse_fetch_page, parse_search_titles,
+    parse_siteinfo_namespaces, proofread_needs_review, WikisourceConnector,
 };
 
 use std::sync::Arc;
@@ -254,10 +254,7 @@ fn caps_persee() -> SourceCapabilities {
 
 fn caps_heritage_place(kind: SourceKind) -> SourceCapabilities {
     let (tier, idents) = match kind {
-        SourceKind::PopMerimee => (
-            AuthorityTier::Institutional,
-            vec!["merimee_ref".into()],
-        ),
+        SourceKind::PopMerimee => (AuthorityTier::Institutional, vec!["merimee_ref".into()]),
         _ => (AuthorityTier::CommunityCatalog, vec![]),
     };
     SourceCapabilities {
@@ -282,14 +279,8 @@ fn caps_heritage_place(kind: SourceKind) -> SourceCapabilities {
 
 fn caps_life_facts(kind: SourceKind) -> SourceCapabilities {
     let (tier, idents) = match kind {
-        SourceKind::FranceArchives => (
-            AuthorityTier::Institutional,
-            vec!["fa_id".into()],
-        ),
-        SourceKind::DeutscheBiographie => (
-            AuthorityTier::Institutional,
-            vec!["gnd".into()],
-        ),
+        SourceKind::FranceArchives => (AuthorityTier::Institutional, vec!["fa_id".into()]),
+        SourceKind::DeutscheBiographie => (AuthorityTier::Institutional, vec!["gnd".into()]),
         _ => (AuthorityTier::CommunityCatalog, vec![]),
     };
     SourceCapabilities {
@@ -308,7 +299,10 @@ fn caps_life_facts(kind: SourceKind) -> SourceCapabilities {
         default_confidence_structured: 0.85,
         default_confidence_ocr: 0.0,
         identifiers: idents,
-        document_types: vec![DocumentType::AuthorityRecord, DocumentType::StructuredStatement],
+        document_types: vec![
+            DocumentType::AuthorityRecord,
+            DocumentType::StructuredStatement,
+        ],
     }
 }
 
@@ -690,7 +684,11 @@ pub fn default_registry_with_corpus(
     } else {
         // TGN/WHG are PlaceIdentityResolvers, not SourceConnectors
         register_stub(&mut reg, SourceKind::FranceArchives, "enable with --live");
-        register_stub(&mut reg, SourceKind::DeutscheBiographie, "enable with --live");
+        register_stub(
+            &mut reg,
+            SourceKind::DeutscheBiographie,
+            "enable with --live",
+        );
         register_stub(&mut reg, SourceKind::PopMerimee, "enable with --live");
     }
 

@@ -36,6 +36,9 @@ pub struct CanonicalEventRow {
     pub map_eligible: bool,
     pub lat: Option<f64>,
     pub lon: Option<f64>,
+    /// `point` is a situated place. `city` is only the reference town.
+    pub coord_precision_level: Option<String>,
+    pub uncertainty_radius_m: Option<f64>,
 }
 
 pub async fn find_existing_event(
@@ -69,12 +72,12 @@ pub async fn find_existing_event(
 const INSERT_CANONICAL_EVENT_WITH_GEOM: &str = r#"
             INSERT INTO canonical_events (
                 entity_id, event_type, epistemic_status, title, summary, start_time, time_json,
-                place_label, geom, confidence, map_eligible, pipeline
+                place_label, geom, confidence, map_eligible, pipeline, logical_event_id
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8,
                 ST_SetSRID(ST_MakePoint($9, $10), 4326)::geography,
-                $11, $12, 'legacy'
+                $11, $12, 'legacy', $13
             )
             RETURNING id
             "#;
@@ -82,9 +85,9 @@ const INSERT_CANONICAL_EVENT_WITH_GEOM: &str = r#"
 const INSERT_CANONICAL_EVENT_NO_GEOM: &str = r#"
             INSERT INTO canonical_events (
                 entity_id, event_type, epistemic_status, title, summary, start_time, time_json,
-                place_label, confidence, map_eligible, pipeline
+                place_label, confidence, map_eligible, pipeline, logical_event_id
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'legacy')
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'legacy', $11)
             RETURNING id
             "#;
 
@@ -92,36 +95,39 @@ pub async fn insert_canonical_event(
     pool: &PgPool,
     event: &CanonicalEventInsert,
 ) -> anyhow::Result<Uuid> {
+    let logical_event_id = crate::logical_events::create_logical_event(pool, None).await?;
     let id: Uuid = if event.map_eligible {
         sqlx::query_scalar(INSERT_CANONICAL_EVENT_WITH_GEOM)
-        .bind(event.entity_id)
-        .bind(&event.event_type)
-        .bind(&event.epistemic_status)
-        .bind(&event.title)
-        .bind(&event.summary)
-        .bind(event.start_time)
-        .bind(&event.time_json)
-        .bind(&event.place_label)
-        .bind(event.lon)
-        .bind(event.lat)
-        .bind(event.confidence)
-        .bind(event.map_eligible)
-        .fetch_one(pool)
-        .await?
+            .bind(event.entity_id)
+            .bind(&event.event_type)
+            .bind(&event.epistemic_status)
+            .bind(&event.title)
+            .bind(&event.summary)
+            .bind(event.start_time)
+            .bind(&event.time_json)
+            .bind(&event.place_label)
+            .bind(event.lon)
+            .bind(event.lat)
+            .bind(event.confidence)
+            .bind(event.map_eligible)
+            .bind(logical_event_id)
+            .fetch_one(pool)
+            .await?
     } else {
         sqlx::query_scalar(INSERT_CANONICAL_EVENT_NO_GEOM)
-        .bind(event.entity_id)
-        .bind(&event.event_type)
-        .bind(&event.epistemic_status)
-        .bind(&event.title)
-        .bind(&event.summary)
-        .bind(event.start_time)
-        .bind(&event.time_json)
-        .bind(&event.place_label)
-        .bind(event.confidence)
-        .bind(event.map_eligible)
-        .fetch_one(pool)
-        .await?
+            .bind(event.entity_id)
+            .bind(&event.event_type)
+            .bind(&event.epistemic_status)
+            .bind(&event.title)
+            .bind(&event.summary)
+            .bind(event.start_time)
+            .bind(&event.time_json)
+            .bind(&event.place_label)
+            .bind(event.confidence)
+            .bind(event.map_eligible)
+            .bind(logical_event_id)
+            .fetch_one(pool)
+            .await?
     };
 
     Ok(id)
@@ -189,7 +195,9 @@ pub async fn list_timeline_events(
             ce.confidence,
             ce.map_eligible,
             ST_Y(ce.geom::geometry) AS lat,
-            ST_X(ce.geom::geometry) AS lon
+            ST_X(ce.geom::geometry) AS lon,
+            ce.coord_precision_level,
+            ce.uncertainty_radius_m
         FROM canonical_events ce
         INNER JOIN entities e ON e.id = ce.entity_id
         WHERE ce.is_active = true
@@ -221,7 +229,11 @@ pub async fn list_timeline_events(
         .bind(end_year)
         .bind(limit)
         .bind(pipeline)
-        .bind(person.map(fold_latin_accents).map(|value| format!("%{value}%")))
+        .bind(
+            person
+                .map(fold_latin_accents)
+                .map(|value| format!("%{value}%")),
+        )
         .fetch_all(pool)
         .await?;
 
@@ -261,7 +273,9 @@ pub async fn list_geojson_events(
             ce.confidence,
             ce.map_eligible,
             ST_Y(ce.geom::geometry) AS lat,
-            ST_X(ce.geom::geometry) AS lon
+            ST_X(ce.geom::geometry) AS lon,
+            ce.coord_precision_level,
+            ce.uncertainty_radius_m
         FROM canonical_events ce
         INNER JOIN entities e ON e.id = ce.entity_id
         WHERE ce.is_active = true
@@ -296,7 +310,11 @@ pub async fn list_geojson_events(
         .bind(end_year)
         .bind(limit)
         .bind(pipeline)
-        .bind(person.map(fold_latin_accents).map(|value| format!("%{value}%")))
+        .bind(
+            person
+                .map(fold_latin_accents)
+                .map(|value| format!("%{value}%")),
+        )
         .fetch_all(pool)
         .await?;
 
@@ -323,7 +341,9 @@ pub async fn get_canonical_event(
             ce.confidence,
             ce.map_eligible,
             ST_Y(ce.geom::geometry) AS lat,
-            ST_X(ce.geom::geometry) AS lon
+            ST_X(ce.geom::geometry) AS lon,
+            ce.coord_precision_level,
+            ce.uncertainty_radius_m
         FROM canonical_events ce
         INNER JOIN entities e ON e.id = ce.entity_id
         WHERE ce.id = $1
@@ -513,17 +533,144 @@ pub async fn refresh_event_source_refs(
     Ok(())
 }
 
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ReviewEventRow {
+    pub id: Uuid,
+    pub title: String,
+    pub event_type: String,
+    pub time_json: serde_json::Value,
+    pub place_label: Option<String>,
+    pub place_identity_qid: Option<String>,
+    pub lat: Option<f64>,
+    pub lon: Option<f64>,
+    pub occurrence_key: Option<String>,
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct ReviewEvidenceRow {
+    pub id: Uuid,
+    pub quoted_text: Option<String>,
+    pub source_locator: Option<String>,
+}
+
+/// Active person events for one QID. This query does not write.
+pub async fn list_active_events_for_qid<'e, E>(
+    executor: E,
+    qid: &str,
+    limit: i64,
+) -> anyhow::Result<Vec<ReviewEventRow>>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+{
+    let rows = sqlx::query_as::<_, ReviewEventRow>(
+        r#"
+        SELECT
+            ce.id,
+            ce.title,
+            ce.event_type,
+            ce.time_json,
+            ce.place_label,
+            ce.place_identity_qid,
+            ST_Y(ce.geom::geometry) AS lat,
+            ST_X(ce.geom::geometry) AS lon,
+            ce.occurrence_key
+        FROM canonical_events ce
+        INNER JOIN entities e ON e.id = ce.entity_id
+        WHERE e.qid = $1
+          AND ce.is_active = true
+          AND ce.pipeline = 'person'
+        ORDER BY
+            CASE
+                WHEN lower(ce.place_label) IN (
+                    'valmy', 'mondovì', 'mondovi', 'wagram', 'arcis-sur-aube',
+                    'lodi', 'austerlitz', 'ajaccio', 'waterloo', 'paris'
+                ) THEN 0
+                ELSE 1
+            END,
+            ce.start_time ASC NULLS LAST,
+            ce.id ASC
+        LIMIT $2
+        "#,
+    )
+    .bind(qid)
+    .bind(limit)
+    .fetch_all(executor)
+    .await?;
+    Ok(rows)
+}
+
+/// One stable page of active person events. Order is chronological, then id.
+pub async fn list_active_events_page<'e, E>(
+    executor: E,
+    qid: &str,
+    limit: i64,
+    offset: i64,
+) -> anyhow::Result<Vec<ReviewEventRow>>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+{
+    let rows = sqlx::query_as::<_, ReviewEventRow>(
+        r#"
+        SELECT
+            ce.id,
+            ce.title,
+            ce.event_type,
+            ce.time_json,
+            ce.place_label,
+            ce.place_identity_qid,
+            ST_Y(ce.geom::geometry) AS lat,
+            ST_X(ce.geom::geometry) AS lon,
+            ce.occurrence_key
+        FROM canonical_events ce
+        INNER JOIN entities e ON e.id = ce.entity_id
+        WHERE e.qid = $1
+          AND ce.is_active = true
+          AND ce.pipeline = 'person'
+        ORDER BY ce.start_time ASC NULLS LAST, ce.id ASC
+        LIMIT $2 OFFSET $3
+        "#,
+    )
+    .bind(qid)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(executor)
+    .await?;
+    Ok(rows)
+}
+
+/// Evidence quotes for one event. This query does not write.
+pub async fn list_review_evidence<'e, E>(
+    executor: E,
+    canonical_event_id: Uuid,
+) -> anyhow::Result<Vec<ReviewEvidenceRow>>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+{
+    let rows = sqlx::query_as::<_, ReviewEvidenceRow>(
+        r#"
+        SELECT ee.id, ee.quoted_text, ee.source_locator
+        FROM event_evidence ee
+        WHERE ee.canonical_event_id = $1
+        ORDER BY ee.confidence DESC NULLS LAST, ee.created_at ASC, ee.id ASC
+        "#,
+    )
+    .bind(canonical_event_id)
+    .fetch_all(executor)
+    .await?;
+    Ok(rows)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn judge_insert_sql_binds_legacy_pipeline() {
-        for sql in [INSERT_CANONICAL_EVENT_WITH_GEOM, INSERT_CANONICAL_EVENT_NO_GEOM] {
-            assert!(
-                sql.contains("pipeline"),
-                "insert must name pipeline column"
-            );
+        for sql in [
+            INSERT_CANONICAL_EVENT_WITH_GEOM,
+            INSERT_CANONICAL_EVENT_NO_GEOM,
+        ] {
+            assert!(sql.contains("pipeline"), "insert must name pipeline column");
             assert!(
                 sql.contains("'legacy'"),
                 "dump/judge rows must not inherit DEFAULT person"

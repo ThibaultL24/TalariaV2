@@ -50,6 +50,93 @@ pub async fn find_active(
         .await
 }
 
+pub async fn count_active(pool: &PgPool) -> Result<i64, sqlx::Error> {
+    let count = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM ingest_jobs WHERE status IN ('queued','running')",
+    )
+    .fetch_one(pool)
+    .await?;
+    Ok(count)
+}
+
+pub const MAX_CONCURRENT_INGESTS: i64 = 8;
+/// One identity can be researched this many times an hour. A finished job does not invite a loop.
+pub const MAX_IDENTITY_RESEARCHES_PER_HOUR: i64 = 3;
+/// New researches admitted in one minute, whatever the identity. Slows a script that rotates names.
+pub const MAX_NEW_RESEARCHES_PER_MINUTE: i64 = 4;
+
+pub fn identity_research_open(recent_for_identity: i64) -> bool {
+    recent_for_identity < MAX_IDENTITY_RESEARCHES_PER_HOUR
+}
+
+pub fn admission_burst_open(started_this_minute: i64) -> bool {
+    started_this_minute < MAX_NEW_RESEARCHES_PER_MINUTE
+}
+
+pub async fn count_identity_since(
+    pool: &PgPool,
+    lane: &str,
+    subject: &str,
+    qid: Option<&str>,
+    seconds: i64,
+) -> Result<i64, sqlx::Error> {
+    let count = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM ingest_jobs \
+         WHERE lane = $1 AND identity_key = $2 AND created_at > now() - make_interval(secs => $3)",
+    )
+    .bind(lane)
+    .bind(identity_key(subject, qid))
+    .bind(seconds as f64)
+    .fetch_one(pool)
+    .await?;
+    Ok(count)
+}
+
+/// Researches one browser may start in an hour. A new key does not lift the per-person limit.
+pub const MAX_VISITOR_RESEARCHES_PER_HOUR: i64 = 6;
+
+pub fn visitor_research_open(recent_for_visitor: i64) -> bool {
+    recent_for_visitor < MAX_VISITOR_RESEARCHES_PER_HOUR
+}
+
+pub async fn count_visitor_since(
+    pool: &PgPool,
+    visitor_key: &str,
+    seconds: i64,
+) -> Result<i64, sqlx::Error> {
+    let key = visitor_key.trim();
+    if key.len() < 8 {
+        return Ok(0);
+    }
+    let count = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM ingest_jobs \
+         WHERE request_json->>'visitor_key' = $1 \
+           AND created_at > now() - make_interval(secs => $2)",
+    )
+    .bind(key)
+    .bind(seconds as f64)
+    .fetch_one(pool)
+    .await?;
+    Ok(count)
+}
+
+pub async fn count_started_since(pool: &PgPool, seconds: i64) -> Result<i64, sqlx::Error> {
+    let count = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM ingest_jobs \
+         WHERE created_at > now() - make_interval(secs => $1)",
+    )
+    .bind(seconds as f64)
+    .fetch_one(pool)
+    .await?;
+    Ok(count)
+}
+
+/// A new research starts only while fewer than the concurrent limit are already running.
+/// Repeating the same identity still attaches to the job already admitted.
+pub fn capacity_open(active: i64) -> bool {
+    active < MAX_CONCURRENT_INGESTS
+}
+
 /// A partial UNIQUE index handles concurrent inserts across all API replicas.
 pub async fn admit(
     pool: &PgPool,
@@ -192,6 +279,59 @@ mod tests {
         assert_eq!(identity_key("Alexandre Dumas",Some("Q193129")), "qid:Q193129");
         assert_eq!(identity_key("  Victor   Hugo ",None),"name:victor hugo");
         assert_ne!(identity_key("Victor Hugo",Some("Q535")),identity_key("Victor Hugo",None));
+    }
+
+    #[test]
+    fn a_repeated_identity_and_a_burst_stop_before_the_global_cap() {
+        assert!(identity_research_open(0));
+        assert!(identity_research_open(MAX_IDENTITY_RESEARCHES_PER_HOUR - 1));
+        assert!(!identity_research_open(MAX_IDENTITY_RESEARCHES_PER_HOUR));
+        assert!(admission_burst_open(0));
+        assert!(!admission_burst_open(MAX_NEW_RESEARCHES_PER_MINUTE));
+        assert!(visitor_research_open(0));
+        assert!(!visitor_research_open(MAX_VISITOR_RESEARCHES_PER_HOUR));
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn a_visitor_quota_is_visible_to_a_second_connection(pool: PgPool) {
+        let payload = serde_json::json!({
+            "subject": "Victor Hugo",
+            "qid": "Q535",
+            "live": true,
+            "visitor_key": "browser-one-0001"
+        });
+        for _ in 0..3 {
+            let (job, created) = admit(
+                &pool, "explorer", "Victor Hugo", Some("Q535"), None, &payload,
+            )
+            .await
+            .unwrap();
+            assert!(created);
+            let claimed = claim_next(&pool).await.unwrap().unwrap();
+            assert_eq!(claimed.id, job.id);
+            assert!(finish(
+                &pool,
+                job.id,
+                claimed.owner_token.unwrap(),
+                None,
+                &serde_json::json!({"phase": "done"}),
+                Some(&payload),
+                None,
+            )
+            .await
+            .unwrap());
+        }
+        let other_connection = pool.clone();
+        let seen = count_visitor_since(&other_connection, "browser-one-0001", 3600)
+            .await
+            .unwrap();
+        assert_eq!(seen, 3, "the count lives in the database, not in one process");
+        let other = count_visitor_since(&other_connection, "browser-two-0002", 3600)
+            .await
+            .unwrap();
+        assert_eq!(other, 0);
+        assert!(visitor_research_open(seen));
+        assert!(!visitor_research_open(MAX_VISITOR_RESEARCHES_PER_HOUR));
     }
 
     #[sqlx::test(migrations = "../../migrations")]

@@ -1,46 +1,59 @@
 // crates/talaria-store/src/lib.rs
 #![allow(clippy::too_many_arguments)]
 
+pub mod admin_ingest;
 pub mod canonical_events;
-pub mod claims;
 pub mod claim_graph;
+pub mod claims;
+pub mod comments;
 pub mod corpus;
 pub mod corpus_dump;
 pub mod cosmos_judgments;
 pub mod dump_runs;
+pub mod editorial;
 pub mod entities;
-pub mod interaction_types;
-pub mod intuition;
-pub mod judgments;
-pub mod media;
-pub mod multi_source;
-pub mod phrase_candidates;
-pub mod person_events;
-pub mod places;
-pub mod migrate_repair;
-pub mod pool;
 pub mod ingest_jobs;
-pub mod admin_ingest;
 pub mod ingest_provider_checkpoints;
 pub mod ingest_provider_metrics;
+pub mod interaction_types;
+pub mod intuition;
+pub mod intuition_user_signals;
+pub mod judgments;
+pub mod logical_events;
+pub mod logical_reconciliation;
+pub mod media;
+pub mod migrate_repair;
+pub mod multi_source;
+pub mod person_events;
+pub mod phrase_candidates;
+pub mod places;
+pub mod pool;
+pub mod poreia;
 pub mod profiles;
 pub mod quality;
 pub mod sentences;
-pub mod wikibase;
-pub mod wiki_pages;
-pub mod wiki_sections;
-pub mod users;
+pub mod supervisor;
 pub mod user_interactions;
-pub mod intuition_user_signals;
-pub mod comments;
+pub mod users;
 pub mod visit;
 pub mod visit_opportunities;
+pub mod wiki_pages;
+pub mod wiki_sections;
+pub mod wikibase;
 
 pub use canonical_events::{
     find_existing_event, get_canonical_event, insert_canonical_event, insert_event_evidence,
-    list_event_evidence, list_event_narrative_context, list_geojson_events, list_timeline_events,
+    list_active_events_for_qid, list_active_events_page, list_event_evidence,
+    list_event_narrative_context, list_geojson_events, list_review_evidence, list_timeline_events,
     refresh_event_source_refs, CanonicalEventInsert, CanonicalEventRow, EventEvidenceRow,
-    NarrativeContextRow,
+    NarrativeContextRow, ReviewEventRow, ReviewEvidenceRow,
+};
+pub use claim_graph::{
+    attach_claim_source, count_arguments_for_claims, count_sources_for_claims,
+    fragment_for_document, insert_linked_claim_evidence, insert_user_claim,
+    list_arguments_for_claim, list_claim_sources, normalize_argument_statement,
+    parse_argument_relation, ArgumentRelationRow, ClaimCountRow, ClaimSourceRow,
+    FragmentForEvidence, DEFAULT_ARGUMENT_LIMIT, MAX_ARGUMENT_CHARS, MAX_ARGUMENT_LIMIT,
 };
 pub use claims::{
     backfill_life_event_claims, find_claim_by_text, get_claim, insert_claim, insert_claim_evidence,
@@ -48,29 +61,30 @@ pub use claims::{
     list_claims_for_entity, list_sentences_for_claims, ClaimEvidenceRow, ClaimInsert, ClaimRow,
     SentenceForClaims,
 };
-pub use claim_graph::{
-    attach_claim_source, count_arguments_for_claims, count_sources_for_claims,
-    fragment_for_document, insert_linked_claim_evidence, insert_user_claim, list_arguments_for_claim,
-    list_claim_sources, normalize_argument_statement, parse_argument_relation,
-    ArgumentRelationRow, ClaimCountRow, ClaimSourceRow, FragmentForEvidence, DEFAULT_ARGUMENT_LIMIT,
-    MAX_ARGUMENT_CHARS, MAX_ARGUMENT_LIMIT,
+pub use comments::{
+    aggregate_reactions, count_active_comments_for_claims, count_replies_for_parents,
+    delete_reaction, get_comment, insert_comment, insert_reaction, list_comment_authors,
+    list_my_reactions, list_replies_for_parents, list_root_comments, normalize_comment_body,
+    soft_delete_owned_comment, update_owned_comment_body, CommentAuthorRow, CommentCountRow,
+    CommentReactionType, CommentRow, ReactionCountRow, ReactionMineRow, ReplyCountRow,
+    DEFAULT_ROOT_LIMIT, MAX_COMMENT_CHARS, MAX_REPLIES_PER_ROOT, MAX_ROOT_LIMIT,
 };
 pub use corpus::{
-    count_corpus_snapshots, get_corpus_document, link_corpus_snapshot, list_document_contributions,
-    list_document_contributions_for_docs, find_corpus_document_by_locator,
+    count_corpus_snapshots, find_corpus_document_by_locator, get_corpus_document,
+    link_corpus_snapshot, list_document_contributions, list_document_contributions_for_docs,
     list_document_identifiers, list_document_identifiers_for_docs, list_entity_corpus_passages,
-    list_entity_documents,
-    mark_discovered_corpus_document,
-    replace_document_contributions, replace_document_identifiers, replace_document_subjects,
-    upsert_corpus_document, upsert_entity_document_link, ContributionInsert, CorpusDocumentInsert,
-    CorpusDocumentRow, CorpusLocatorMatchRow, CorpusPassageRow, DocumentContributionRow,
+    list_entity_documents, mark_discovered_corpus_document, replace_document_contributions,
+    replace_document_identifiers, replace_document_subjects, upsert_corpus_document,
+    upsert_entity_document_link, ContributionInsert, CorpusDocumentInsert, CorpusDocumentRow,
+    CorpusLocatorMatchRow, CorpusPassageRow, DocumentContributionRow,
     DocumentContributionWithDocRow, DocumentIdentifierRow, DocumentIdentifierWithDocRow,
     EntityDocumentLinkInsert, EntityDocumentsFilter, EntityLinkedDocumentRow, SubjectInsert,
 };
 pub use corpus_dump::{
     corpus_dump_document_status, corpus_dump_document_status_counts, finish_corpus_dump_run,
-    get_corpus_dump_run, latest_corpus_dump_run, mark_corpus_dump_running, start_corpus_dump_run, update_corpus_dump_progress,
-    upsert_corpus_dump_document, CorpusDumpDocumentUpsert, CorpusDumpRunInsert, CorpusDumpRunRow,
+    get_corpus_dump_run, latest_corpus_dump_run, mark_corpus_dump_running, start_corpus_dump_run,
+    update_corpus_dump_progress, upsert_corpus_dump_document, CorpusDumpDocumentUpsert,
+    CorpusDumpRunInsert, CorpusDumpRunRow,
 };
 pub use cosmos_judgments::{
     count_fragment_cosmos_judgments, get_fragment_cosmos_judgment, insert_fragment_cosmos_judgment,
@@ -78,10 +92,26 @@ pub use cosmos_judgments::{
     CosmosJudgmentRow, CosmosJudgmentWrite, FragmentForCosmos,
 };
 pub use dump_runs::{finish_dump_run, start_dump_run};
+pub use editorial::{
+    add_editorial_membership, chapter_coverage, create_editorial_assertion, create_editorial_group,
+    delete_editorial_group, find_published_editorial_group, is_editorial_slug,
+    link_assertion_passage, list_editorial_group_events, list_editorial_groups,
+    review_assertion_passages, set_editorial_group_status, AssertionPassageReview, ChapterCoverage,
+    EditorialEvent, EditorialEventFilter, EditorialEventPage, EditorialGroup, EditorialGroupPage,
+    NewEditorialAssertion, NewEditorialGroup, ASSERTION_ATTESTED, ASSERTION_EDITORIAL,
+    ASSERTION_GAP, ASSERTION_UNCERTAINTY, GROUP_CHRONOLOGICAL, GROUP_DOCUMENTARY, GROUP_NARRATIVE,
+    GROUP_THEMATIC, PASSAGE_CURRENT, PASSAGE_NEEDS_REVIEW, ROLE_CONTEXT, ROLE_PRIMARY,
+    ROLE_SUPPORTING, STATUS_DRAFT, STATUS_PUBLISHED,
+};
 pub use entities::{
-    find_entity_by_qid, find_entity_by_wikipedia_title, fold_latin_accents, get_entity,
-    entity_alias_map, normalize_qid, search_local_entities, update_entity_authority_ids, update_entity_qid,
-    upsert_entity_from_wikidata, upsert_entity_surface, upsert_person_by_qid, EntityRow,
+    entity_alias_map, find_entity_by_qid, find_entity_by_wikipedia_title, fold_latin_accents,
+    get_entity, normalize_qid, search_local_entities, update_entity_authority_ids,
+    update_entity_qid, upsert_entity_from_wikidata, upsert_entity_surface, upsert_person_by_qid,
+    EntityRow,
+};
+pub use interaction_types::{
+    allowed_actions, default_visibility, is_allowed, InteractionAction, InteractionTargetType,
+    InteractionVisibility,
 };
 pub use intuition::{
     find_intuition_publication_for_claim, find_person_event_for_stem, find_quality_event_for_stem,
@@ -91,14 +121,38 @@ pub use intuition::{
     upsert_intuition_term_binding, EventPointerRow, IntuitionPublicationInsert,
     IntuitionPublicationRow, IntuitionTermBindingInsert, QualityConflictRow, SoftClaimExportRow,
 };
+pub use intuition_user_signals::{
+    get_published_claim_intuition, get_signal_by_tx_hash, insert_confirmed_signal,
+    ClaimIntuitionBinding, IntuitionUserSignalInsert, IntuitionUserSignalRow,
+};
 pub use judgments::insert_judgment;
+pub use logical_events::{
+    backfill_logical_identities, diagnose_logical_identities, logical_event_id_of,
+    LogicalIdentityBackfill, LogicalIdentityDiagnostic, LogicalIdentityIssue,
+};
+pub use logical_reconciliation::{
+    propose_logical_reconciliations, propose_reconciliations, ReconciliationProposal,
+    ReconciliationReading,
+};
 pub use media::{upsert_media_asset, MediaAssetInsert};
+pub use migrate_repair::repair_migration_checksums;
 pub use multi_source::{
     add_claim_support, density_report_counts, finish_discovery_run, link_claim_to_event,
     list_place_labels_for_occurrence_stem, mark_discovered_skipped, mark_discovered_snapshotted,
     mark_quality_claims_conflict_by_stem, mark_quality_events_uncertain_by_stem,
     start_discovery_run, upsert_discovered_document, upsert_quality_claim, DensityReportCounts,
     DiscoveredDocumentInsert, DiscoveryRunInsert, QualityClaimInsert,
+};
+pub use person_events::{
+    evidence_hash, find_active_person_event_by_fingerprint, find_active_person_event_by_occurrence,
+    find_active_person_event_by_title, find_active_person_events_for_entity,
+    find_recognized_person_event, insert_person_candidate, insert_person_event,
+    insert_person_quote_evidence, person_density_counts, person_extended_density_counts,
+    resolve_active_person_event, resolve_person_event, revert_person_supersession,
+    supersede_person_event, upsert_raw_corpus_document, upsert_raw_wikidata_document,
+    upsert_raw_wikipedia_article, upsert_raw_wikipedia_document, ExtendedDensityCounts,
+    PersonCandidateInsert, PersonEvent, PersonEventInsert, PersonEventResolution,
+    PersonSupersession, FILIATION_NONE, FILIATION_UNVERIFIED, FILIATION_VERIFIED,
 };
 pub use phrase_candidates::{
     insert_phrase_candidate, list_pending_candidates, update_candidate_status, PendingCandidateRow,
@@ -110,44 +164,11 @@ pub use places::{
     find_active_person_singleton_event, get_place_geocode, list_place_labels_needing_geocode,
     upsert_place_geocode, upsert_place_resolution, PlaceGeocodeRow, PlaceResolutionInsert,
 };
-pub use person_events::{
-    evidence_hash, find_active_person_event_by_fingerprint, find_active_person_event_by_occurrence,
-    find_active_person_event_by_title, find_active_person_events_for_entity, insert_person_candidate,
-    insert_person_event, insert_person_quote_evidence, person_density_counts,
-    person_extended_density_counts, upsert_raw_corpus_document,
-    upsert_raw_wikidata_document, upsert_raw_wikipedia_document,
-    ExtendedDensityCounts, PersonCandidateInsert, PersonEvent, PersonEventInsert,
-};
-pub use migrate_repair::repair_migration_checksums;
 pub use pool::{connect, run_migrations, DbPool};
-pub use users::{
-    consume_wallet_challenge, evm_address_for_user, get_active_session_user, get_wallet_challenge,
-    hash_session_token, insert_session, insert_wallet_challenge, is_check_violation,
-    is_unique_violation, lookup_user_by_evm, postgres_error_code, resolve_or_create_evm_user,
-    revoke_session, AddressError, AuthChallengeRow, NormalizedEvmAddress, SessionRow, UserRow,
-    EVM_WALLET_PROVIDER,
-};
-pub use interaction_types::{
-    allowed_actions, default_visibility, is_allowed, InteractionAction, InteractionTargetType,
-    InteractionVisibility,
-};
-pub use user_interactions::{
-    delete_owned_interaction, find_interaction, get_interaction, list_mine_for_targets,
-    list_user_interactions, replace_claim_stance, summarize_public_counts, upsert_interaction,
-    InteractionCountRow, InteractionMineRow, InteractionUpsertResult, UpsertInteraction,
-    UserInteractionRow,
-};
-pub use intuition_user_signals::{
-    get_published_claim_intuition, get_signal_by_tx_hash, insert_confirmed_signal,
-    ClaimIntuitionBinding, IntuitionUserSignalInsert, IntuitionUserSignalRow,
-};
-pub use comments::{
-    aggregate_reactions, count_active_comments_for_claims, count_replies_for_parents,
-    delete_reaction, get_comment, insert_comment, insert_reaction, list_comment_authors,
-    list_my_reactions, list_replies_for_parents, list_root_comments, normalize_comment_body,
-    soft_delete_owned_comment, update_owned_comment_body, CommentAuthorRow, CommentCountRow,
-    CommentReactionType, CommentRow, DEFAULT_ROOT_LIMIT, MAX_COMMENT_CHARS, MAX_REPLIES_PER_ROOT,
-    MAX_ROOT_LIMIT, ReactionCountRow, ReactionMineRow, ReplyCountRow,
+pub use pool::{migration_consent_granted, pending_migration_decision, APPLY_MIGRATIONS_ENV};
+pub use poreia::{
+    evidence_supports, list_published_occurrences, list_published_sites, review_poreia_site,
+    valid_reason_code, PoreiaDecision, PoreiaOccurrenceRow, PoreiaSiteRow, ReviewOutcome,
 };
 pub use profiles::{
     get_period_by_slug, link_entity_period, link_entity_to_centuries, list_entity_profiles,
@@ -155,24 +176,38 @@ pub use profiles::{
     EntityProfileRow, PeriodRow,
 };
 pub use quality::{
-    apply_place_to_quality_event, count_active_quality_by_type,
+    apply_place_to_quality_event, count_active_quality_by_type, count_sentence_fragments,
     find_active_quality_event_by_fingerprint, find_active_quality_event_by_occurrence_key,
-    find_active_singleton, get_entity_kind, get_event_candidate_by_fingerprint,
-    count_sentence_fragments, find_document_snapshot, insert_document_fragment,
-    insert_document_snapshot, insert_quality_canonical_event,
-    list_event_candidates_by_status, mark_candidate_assembled, quality_lifespan_years,
-    quality_report_counts, reinforce_quality_event, reject_if_singleton_exists,
-    rejection_reason_counts, update_event_candidate_judgment, upsert_entity_with_kind,
-    upsert_event_candidate, DocumentFragmentInsert, DocumentSnapshotInsert, EventCandidateInsert,
-    EventCandidateRow, QualityEventInsert, QualityReportCounts, RejectionReasonCount,
+    find_active_singleton, find_document_snapshot, get_entity_kind,
+    get_event_candidate_by_fingerprint, insert_document_fragment, insert_document_snapshot,
+    insert_quality_canonical_event, list_event_candidates_by_status, mark_candidate_assembled,
+    quality_lifespan_years, quality_report_counts, reinforce_quality_event,
+    reject_if_singleton_exists, rejection_reason_counts, update_event_candidate_judgment,
+    upsert_entity_with_kind, upsert_event_candidate, DocumentFragmentInsert,
+    DocumentSnapshotInsert, EventCandidateInsert, EventCandidateRow, QualityEventInsert,
+    QualityReportCounts, RejectionReasonCount,
 };
 pub use sentences::{
     list_sentences_for_dump_mine, list_sentences_for_extraction, replace_sentences_for_page,
     SentenceRecord, SentenceRow,
 };
-pub use wikibase::{upsert_wikibase_statement, WikibaseStatementInsert};
-pub use wiki_pages::{
-    list_pages_for_sentence_split, store_extracted_page, WikiPageRecord, WikiPageRow,
+pub use supervisor::{
+    ensure_subject_entity, load_subject_coverage, record_supervisor_run, resume_failed_tasks,
+    reusable_supervisor_report, supervisor_subject_spend_usd_micros, upsert_supervised_document,
+    verifiable_source_url, SourcedSite, SubjectCoverage, SupervisorCall, TaskEffect,
+};
+pub use user_interactions::{
+    delete_owned_interaction, find_interaction, get_interaction, list_mine_for_targets,
+    list_user_interactions, replace_claim_stance, summarize_public_counts, upsert_interaction,
+    InteractionCountRow, InteractionMineRow, InteractionUpsertResult, UpsertInteraction,
+    UserInteractionRow,
+};
+pub use users::{
+    consume_wallet_challenge, evm_address_for_user, get_active_session_user, get_wallet_challenge,
+    hash_session_token, insert_session, insert_wallet_challenge, is_check_violation,
+    is_unique_violation, lookup_user_by_evm, postgres_error_code, resolve_or_create_evm_user,
+    revoke_session, AddressError, AuthChallengeRow, NormalizedEvmAddress, SessionRow, UserRow,
+    EVM_WALLET_PROVIDER,
 };
 pub use visit::{
     count_visit_heritage, deactivate_canonical_event, eligibility_for_event_type,
@@ -182,7 +217,11 @@ pub use visit::{
 pub use visit_opportunities::{
     list_visit_now, upsert_visit_opportunity, VisitOpportunityInsert, VisitOpportunityRow,
 };
+pub use wiki_pages::{
+    list_pages_for_sentence_split, store_extracted_page, WikiPageRecord, WikiPageRow,
+};
 pub use wiki_sections::{
     list_pages_for_section_split, list_sections_for_title, list_sections_matching_page,
     replace_sections_for_page, HistoriographySectionRow, WikiSectionRecord, WikiSectionRow,
 };
+pub use wikibase::{upsert_wikibase_statement, WikibaseStatementInsert};

@@ -35,8 +35,22 @@ fn env_nonempty(key: &str) -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
+/// Model calls stay closed unless `TALARIA_LLM_CALLS` is exactly `1`.
+/// `TALARIA_LLM_DISABLED=1` wins even when calls are opened and a key is present.
+/// Loading a key from the environment or from `.env` is not enough.
+pub fn llm_calls_allowed() -> bool {
+    if std::env::var("TALARIA_LLM_DISABLED").ok().as_deref() == Some("1") {
+        return false;
+    }
+    std::env::var("TALARIA_LLM_CALLS").ok().as_deref() == Some("1")
+}
+
 /// Resolve LLM credentials. Preference: `OPENAI_API_KEY` → `OPENROUTER_API_KEY` → `LLM_API_KEY`.
+/// A key is ignored while model calls are closed.
 fn llm_creds() -> Option<LlmCreds> {
+    if !llm_calls_allowed() {
+        return None;
+    }
     if let Some(key) = env_nonempty("OPENAI_API_KEY") {
         let base = env_nonempty("LLM_BASE_URL").unwrap_or_else(|| OPENAI_BASE.into());
         let kind = match env_nonempty("LLM_API")
@@ -95,6 +109,9 @@ pub fn api_key() -> Option<String> {
 }
 
 pub fn model() -> String {
+    if !llm_calls_allowed() {
+        return "disabled".into();
+    }
     llm_creds()
         .map(|c| c.model)
         .unwrap_or_else(|| DEFAULT_OPENAI_MODEL.into())
@@ -106,6 +123,84 @@ fn translation_model() -> String {
 
 pub fn is_configured() -> bool {
     llm_creds().is_some()
+}
+
+pub struct SupervisorCompletion {
+    pub provider: String,
+    pub model: String,
+    pub value: Value,
+    pub input_tokens: u32,
+    pub output_tokens: u32,
+    pub duration_ms: u128,
+    pub tokens_estimated: bool,
+}
+
+pub async fn complete_supervisor_plan(
+    prompt: &str,
+    max_output_tokens: u32,
+) -> anyhow::Result<SupervisorCompletion> {
+    let creds = llm_creds().ok_or_else(|| anyhow::anyhow!("llm_unconfigured"))?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(45))
+        .build()?;
+    let started = std::time::Instant::now();
+    let (status, body) = complete_prompt(
+        &client,
+        &creds,
+        &creds.model,
+        prompt,
+        Some(max_output_tokens),
+    )
+    .await?;
+    let duration_ms = started.elapsed().as_millis();
+    anyhow::ensure!(status.is_success(), "llm_http_{}", status.as_u16());
+    let text = output_text(&body).ok_or_else(|| anyhow::anyhow!("llm_empty"))?;
+    let parsed: Value = serde_json::from_str(
+        text.trim()
+            .trim_start_matches("```json")
+            .trim_end_matches("```")
+            .trim(),
+    )
+    .or_else(|_| serde_json::from_str(extract_json_object(&text)))?;
+    let (input_tokens, output_tokens, tokens_estimated) = usage_tokens(&body, prompt, &text);
+    Ok(SupervisorCompletion {
+        provider: provider_label(),
+        model: creds.model,
+        value: parsed,
+        input_tokens,
+        output_tokens,
+        duration_ms,
+        tokens_estimated,
+    })
+}
+
+fn usage_tokens(body: &Value, prompt: &str, text: &str) -> (u32, u32, bool) {
+    let input = body
+        .pointer("/usage/input_tokens")
+        .or_else(|| body.pointer("/usage/prompt_tokens"))
+        .and_then(Value::as_u64);
+    let output = body
+        .pointer("/usage/output_tokens")
+        .or_else(|| body.pointer("/usage/completion_tokens"))
+        .and_then(Value::as_u64);
+    match (input, output) {
+        (Some(input), Some(output)) => (
+            u32::try_from(input).unwrap_or(u32::MAX),
+            u32::try_from(output).unwrap_or(u32::MAX),
+            false,
+        ),
+        _ => (
+            talaria_ai::estimate_tokens(prompt),
+            talaria_ai::estimate_tokens(text),
+            true,
+        ),
+    }
+}
+
+fn extract_json_object(text: &str) -> &str {
+    let start = text.find('{').unwrap_or(0);
+    let end = text.rfind('}').map(|index| index + 1).unwrap_or(text.len());
+    text.get(start..end).unwrap_or("{}")
 }
 
 pub fn provider_label() -> String {
@@ -122,24 +217,36 @@ async fn complete_prompt(
     creds: &LlmCreds,
     model: &str,
     prompt: &str,
+    max_output_tokens: Option<u32>,
 ) -> anyhow::Result<(reqwest::StatusCode, Value)> {
-    let mut req = match creds.kind {
-        LlmApiKind::Responses => client
-            .post(format!("{}/responses", creds.base_url))
-            .bearer_auth(&creds.key)
-            .json(&json!({
-                "model": model,
-                "input": prompt,
-                "store": false,
-            })),
-        LlmApiKind::ChatCompletions => client
-            .post(format!("{}/chat/completions", creds.base_url))
-            .bearer_auth(&creds.key)
-            .json(&json!({
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-            })),
+    if !llm_calls_allowed() {
+        anyhow::bail!("llm_calls_disabled");
+    }
+    let mut body = match creds.kind {
+        LlmApiKind::Responses => json!({
+            "model": model,
+            "input": prompt,
+            "store": false,
+        }),
+        LlmApiKind::ChatCompletions => json!({
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+        }),
     };
+    if let Some(max_output_tokens) = max_output_tokens {
+        let key = match creds.kind {
+            LlmApiKind::Responses => "max_output_tokens",
+            LlmApiKind::ChatCompletions => "max_tokens",
+        };
+        body[key] = json!(max_output_tokens);
+    }
+    let mut req = client
+        .post(match creds.kind {
+            LlmApiKind::Responses => format!("{}/responses", creds.base_url),
+            LlmApiKind::ChatCompletions => format!("{}/chat/completions", creds.base_url),
+        })
+        .bearer_auth(&creds.key)
+        .json(&body);
     if let Some(referer) = &creds.http_referer {
         req = req.header("HTTP-Referer", referer);
     }
@@ -187,7 +294,14 @@ pub async fn ping() -> PingResult {
     };
 
     let started = std::time::Instant::now();
-    let response = complete_prompt(&client, &creds, &model, "Reply with the single word OK.").await;
+    let response = complete_prompt(
+        &client,
+        &creds,
+        &model,
+        "Reply with the single word OK.",
+        None,
+    )
+    .await;
     let latency_ms = started.elapsed().as_millis();
 
     match response {
@@ -469,7 +583,7 @@ Rules:\n\
 Events:\n{payload}"
     );
 
-    let (status, body) = complete_prompt(client, creds, model, &prompt).await?;
+    let (status, body) = complete_prompt(client, creds, model, &prompt, None).await?;
     if !status.is_success() {
         let message = body
             .pointer("/error/message")
@@ -649,6 +763,7 @@ Sources:\n{sources}",
         &creds,
         &env_nonempty("OPENAI_SYNTHESIS_MODEL").unwrap_or_else(|| creds.model.clone()),
         &prompt,
+        None,
     )
     .await
     .ok()?;
@@ -748,7 +863,7 @@ Keep personal names, place names, years, and [n] citation markers unchanged.\n\
 Do not add facts. Do not wrap in markdown.\n\
 Input: {payload}"
                 );
-                let response = complete_prompt(&client, &creds, &xlat_model, &prompt).await;
+                let response = complete_prompt(&client, &creds, &xlat_model, &prompt, None).await;
                 let (status, body) = match response {
                     Ok(pair) => pair,
                     Err(err) => {
@@ -1106,6 +1221,56 @@ fn first_year(surface: &str) -> Option<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_fake_key_does_not_open_a_model_call() {
+        let prior_key = std::env::var("OPENAI_API_KEY").ok();
+        let prior_router = std::env::var("OPENROUTER_API_KEY").ok();
+        let prior_llm = std::env::var("LLM_API_KEY").ok();
+        let prior_calls = std::env::var("TALARIA_LLM_CALLS").ok();
+        let prior_disabled = std::env::var("TALARIA_LLM_DISABLED").ok();
+        unsafe {
+            std::env::set_var("OPENAI_API_KEY", "sk-test-not-a-real-key");
+            std::env::set_var("OPENROUTER_API_KEY", "sk-test-not-a-real-key");
+            std::env::set_var("LLM_API_KEY", "sk-test-not-a-real-key");
+            std::env::remove_var("TALARIA_LLM_CALLS");
+            std::env::remove_var("TALARIA_LLM_DISABLED");
+        }
+        assert!(!llm_calls_allowed());
+        assert!(!is_configured());
+        assert_eq!(model(), "disabled");
+        unsafe {
+            std::env::set_var("TALARIA_LLM_CALLS", "1");
+            std::env::set_var("TALARIA_LLM_DISABLED", "1");
+        }
+        assert!(
+            !llm_calls_allowed(),
+            "an explicit disable wins over an opened key"
+        );
+        assert!(!is_configured());
+        unsafe {
+            match prior_key {
+                Some(value) => std::env::set_var("OPENAI_API_KEY", value),
+                None => std::env::remove_var("OPENAI_API_KEY"),
+            }
+            match prior_router {
+                Some(value) => std::env::set_var("OPENROUTER_API_KEY", value),
+                None => std::env::remove_var("OPENROUTER_API_KEY"),
+            }
+            match prior_llm {
+                Some(value) => std::env::set_var("LLM_API_KEY", value),
+                None => std::env::remove_var("LLM_API_KEY"),
+            }
+            match prior_calls {
+                Some(value) => std::env::set_var("TALARIA_LLM_CALLS", value),
+                None => std::env::remove_var("TALARIA_LLM_CALLS"),
+            }
+            match prior_disabled {
+                Some(value) => std::env::set_var("TALARIA_LLM_DISABLED", value),
+                None => std::env::remove_var("TALARIA_LLM_DISABLED"),
+            }
+        }
+    }
 
     #[test]
     fn parse_json_array_of_extracts() {

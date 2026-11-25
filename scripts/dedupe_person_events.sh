@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # scripts/dedupe_person_events.sh — deactivate exact title duplicates (pipeline=person).
 # Keeps the best row per (entity_id, lower(title)): map pin > evidence > oldest.
+#
+# This is a display collapse, not a documentary supersession. The kept row does
+# not receive `supersedes`, and a shared title does not prove one historical fact.
+# Do not run it as a logical-identity migration. Unresolved archives stay unassigned.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 set -a

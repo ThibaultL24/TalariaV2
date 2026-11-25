@@ -15,6 +15,9 @@ export interface AppMessages {
   loading: string;
   loadingMap: string;
   searchInProgress: string;
+  researchUnverified: string;
+  researchWritesClosed: string;
+  mapWithoutPoints: string;
   noResults: string;
   emptySearch: string;
   close: string;
@@ -38,6 +41,42 @@ export interface AppMessages {
   timelinePhaseClosing: string;
   timelineOpenDetail: string;
   timelineApproximate: string;
+  openedEarlierVersion: string;
+  viewArchivedVersion: string;
+  viewingArchivedVersion: string;
+  viewActiveVersion: string;
+  unverifiedHistoricalLink: string;
+  chapters: string;
+  allBiography: string;
+  chapterContext: string;
+  unknownChapter: string;
+  chapterPosition: (index: number, total: number) => string;
+  chapterIntroduction: string;
+  chapterProvenance: string;
+  chapterPrimary: string;
+  chapterSupporting: string;
+  chapterContextFacts: string;
+  chapterPlaces: string;
+  chapterNoPlaces: string;
+  chapterSources: string;
+  chapterLimits: string;
+  chapterEmpty: string;
+  chapterNoCompleteness: string;
+  chapterEstablished: (count: number) => string;
+  chapterAttested: (count: number) => string;
+  chapterInReview: (count: number) => string;
+  chapterWithoutPlace: (count: number) => string;
+  chapterImpreciseTime: (count: number) => string;
+  chapterWithEvidence: (count: number) => string;
+  chapterPassages: (count: number) => string;
+  chapterIndependentSources: (count: number) => string;
+  chapterDocumentsRepeat: string;
+  chapterLoadMore: string;
+  chapterRecordedYear: (year: string) => string;
+  chapterEvidenceCount: (count: number) => string;
+  openChapterTimeline: string;
+  openChapterMap: string;
+  townReference: (kilometers: number | null) => string;
   timelineAllMoments: string;
   timelinePhases: string;
   timelineMapCoverage: (timeline: number, mapped: number) => string;
@@ -47,6 +86,7 @@ export interface AppMessages {
   openIstoria: string;
   poreiaChoosePerson: string;
   noPlacesInView: string;
+  eventOffMap: string;
   seeItinerary: string;
   allKinds: string;
   filterByPlaceKind: string;
@@ -73,6 +113,13 @@ export interface AppMessages {
   associationSource: string;
   onlyAssociatedSites: string;
   geoSequence: string;
+  catalogTitle: string;
+  agendaTitle: string;
+  agendaNote: string;
+  catalogEmpty: string;
+  agendaEmpty: string;
+  historicalLink: string;
+  loadMorePlaces: string;
   loadingItinerary: string;
   seeOnMap: string;
   indicativeRoute: string;
@@ -307,6 +354,9 @@ const EN: AppMessages = {
   loading: "Loading…",
   loadingMap: "Placing events on the map…",
   searchInProgress: "Search in progress",
+  researchUnverified: "A finished search is not a verified biography. The facts shown are the ones the engine admitted. The other extracts stay in review.",
+  researchWritesClosed: "Documentary research is closed on this server. No biography is created.",
+  mapWithoutPoints: "No place is precise enough to map. An empty map does not mean this person never travelled.",
   noResults: "No matches.",
   emptySearch: "Open a demo figure from the home page to explore a life.",
   close: "Close",
@@ -330,6 +380,44 @@ const EN: AppMessages = {
   timelinePhaseClosing: "Closing third",
   timelineOpenDetail: "Open the record",
   timelineApproximate: "Approximate or uncertain date",
+  openedEarlierVersion: "This link opened an earlier version. The record below is the current one.",
+  viewArchivedVersion: "View the archived version",
+  viewingArchivedVersion: "Archived version, kept so the correction can be traced. The timeline and the map show the current version.",
+  viewActiveVersion: "View the current version",
+  unverifiedHistoricalLink: "This archived record points at another event. That link has not been confirmed as the same historical fact, so this is the record you opened.",
+  chapters: "Chapters",
+  allBiography: "Full biography",
+  chapterContext: "Editorial context",
+  unknownChapter: "This chapter is not available.",
+  chapterPosition: (index, total) => `Chapter ${index} of ${total}`,
+  chapterIntroduction: "Editorial introduction",
+  chapterProvenance: "Provenance",
+  chapterPrimary: "Essential episodes",
+  chapterSupporting: "Anecdotes and secondary episodes",
+  chapterContextFacts: "Context",
+  chapterPlaces: "Documented places",
+  chapterNoPlaces: "This chapter has no located place. Its events stay in the reading and on the timeline.",
+  openChapterTimeline: "Explore the chronology",
+  openChapterMap: "Explore the places",
+  chapterSources: "Sources",
+  chapterLimits: "What this chapter does not claim",
+  chapterEmpty: "No documented event belongs to this chapter yet.",
+  chapterNoCompleteness: "No completeness percentage: this chapter has no explicit list of expected facts.",
+  chapterEstablished: (count) => `${count} established`,
+  chapterAttested: (count) => `${count} attested`,
+  chapterInReview: (count) => `${count} still being checked`,
+  chapterWithoutPlace: (count) => `${count} without coordinates`,
+  chapterImpreciseTime: (count) => `${count} with an approximate, ranged, or unknown date`,
+  chapterWithEvidence: (count) => `${count} with a stored passage`,
+  chapterPassages: (count) => count === 1 ? "1 passage" : `${count} passages`,
+  chapterIndependentSources: (count) => count === 1 ? "1 distinct source document" : `${count} distinct source documents`,
+  chapterDocumentsRepeat: "Distinct documents can repeat the same account.",
+  chapterLoadMore: "Show the next events",
+  chapterRecordedYear: (year) => `Recorded year: ${year}`,
+  chapterEvidenceCount: (count) => count === 1 ? "1 stored source" : `${count} stored sources`,
+  townReference: (kilometers) => kilometers == null
+    ? "Town reference, not a surveyed point."
+    : `Town reference, within ${kilometers} km. Not a surveyed point.`,
   timelineAllMoments: "All moments",
   timelinePhases: "Time spans",
   timelineMapCoverage: (timeline, mapped) =>
@@ -342,6 +430,7 @@ const EN: AppMessages = {
   openIstoria: "Explore their life in Istoria →",
   poreiaChoosePerson: "Choose a person, then a city, to see places that are actually associated with them.",
   noPlacesInView: "No places in the current map view.",
+  eventOffMap: "This fact stays off the map: its place is not established, or no reliable geometry was kept.",
   seeItinerary: "See the route",
   allKinds: "All",
   filterByPlaceKind: "Filter by place type",
@@ -368,6 +457,13 @@ const EN: AppMessages = {
   associationSource: "Association source ↗",
   onlyAssociatedSites: "Only sites historically associated with the person are offered. The search does not create places.",
   geoSequence: "Indicative geographic sequence. No walking time is calculated.",
+  catalogTitle: "Published places in this radius",
+  agendaTitle: "Cultural calendar",
+  agendaNote: "Exhibitions and performances are separate from the historical timeline. A day has no invented hour.",
+  catalogEmpty: "No published place in this radius yet.",
+  agendaEmpty: "No published cultural event in these dates.",
+  historicalLink: "Historical link",
+  loadMorePlaces: "Load more places",
   loadingItinerary: "Loading the route…",
   seeOnMap: "See on the map",
   indicativeRoute: "Indicative route: travel, opening and hours still need to be checked.",
@@ -621,6 +717,9 @@ const FR: AppMessages = {
   loading: "Chargement…",
   loadingMap: "Placement des événements sur la carte…",
   searchInProgress: "Recherche en cours",
+  researchUnverified: "Une recherche terminée n'est pas une vérification historique. Les faits affichés sont ceux que le moteur a admis. Les autres extraits restent en vérification.",
+  researchWritesClosed: "La recherche documentaire est fermée sur ce serveur. Aucune biographie n'est créée.",
+  mapWithoutPoints: "Aucun lieu n'est assez précis pour être cartographié. Une carte vide ne signifie pas que cette personne n'a jamais voyagé.",
   noResults: "Aucun résultat.",
   emptySearch: "Ouvrez une figure de la démo depuis l’accueil pour explorer une vie.",
   close: "Fermer",
@@ -644,6 +743,44 @@ const FR: AppMessages = {
   timelinePhaseClosing: "Dernier tiers",
   timelineOpenDetail: "Ouvrir la fiche",
   timelineApproximate: "Date approximative ou incertaine",
+  openedEarlierVersion: "Ce lien ouvrait une version antérieure. La fiche ci-dessous est la version actuelle.",
+  viewArchivedVersion: "Voir la version archivée",
+  viewingArchivedVersion: "Version archivée, conservée pour suivre la correction. La frise et la carte montrent la version actuelle.",
+  viewActiveVersion: "Voir la version actuelle",
+  unverifiedHistoricalLink: "Cette archive pointe vers un autre événement. Ce lien n'a pas été confirmé comme le même fait historique : la fiche affichée est celle que vous avez ouverte.",
+  chapters: "Chapitres",
+  allBiography: "Toute la biographie",
+  chapterContext: "Contexte éditorial",
+  unknownChapter: "Ce chapitre n'est pas disponible.",
+  chapterPosition: (index, total) => `Chapitre ${index} sur ${total}`,
+  chapterIntroduction: "Introduction éditoriale",
+  chapterProvenance: "Provenance",
+  chapterPrimary: "Épisodes essentiels",
+  chapterSupporting: "Anecdotes et épisodes secondaires",
+  chapterContextFacts: "Contexte",
+  chapterPlaces: "Lieux documentés",
+  chapterNoPlaces: "Ce chapitre n'a aucun lieu situé. Ses événements restent dans la lecture et sur la frise.",
+  openChapterTimeline: "Explorer la chronologie",
+  openChapterMap: "Explorer les lieux",
+  chapterSources: "Sources",
+  chapterLimits: "Ce que ce chapitre ne prétend pas",
+  chapterEmpty: "Aucun événement documenté n'appartient encore à ce chapitre.",
+  chapterNoCompleteness: "Pas de pourcentage de complétude : ce chapitre n'a pas de liste explicite de faits attendus.",
+  chapterEstablished: (count) => `${count} établis`,
+  chapterAttested: (count) => `${count} attestés`,
+  chapterInReview: (count) => `${count} encore en vérification`,
+  chapterWithoutPlace: (count) => `${count} sans coordonnées`,
+  chapterImpreciseTime: (count) => `${count} avec une date approximative, une fourchette ou une date inconnue`,
+  chapterWithEvidence: (count) => `${count} avec un passage enregistré`,
+  chapterPassages: (count) => count === 1 ? "1 passage" : `${count} passages`,
+  chapterIndependentSources: (count) => count === 1 ? "1 document source distinct" : `${count} documents sources distincts`,
+  chapterDocumentsRepeat: "Des documents distincts peuvent reprendre le même récit.",
+  chapterLoadMore: "Afficher les événements suivants",
+  chapterRecordedYear: (year) => `Année enregistrée : ${year}`,
+  chapterEvidenceCount: (count) => count === 1 ? "1 source enregistrée" : `${count} sources enregistrées`,
+  townReference: (kilometers) => kilometers == null
+    ? "Localisation de référence de la localité, pas un point relevé."
+    : `Localisation de référence de la localité, à ${kilometers} km près.`,
   timelineAllMoments: "Tous les moments",
   timelinePhases: "Périodes",
   timelineMapCoverage: (timeline, mapped) =>
@@ -656,6 +793,7 @@ const FR: AppMessages = {
   openIstoria: "Explorer sa vie dans Istoria →",
   poreiaChoosePerson: "Choisissez une personnalité, puis une ville, pour voir les lieux qui lui sont réellement associés.",
   noPlacesInView: "Aucun lieu dans la vue actuelle de la carte.",
+  eventOffMap: "Ce fait reste hors de la carte : son lieu n'est pas établi, ou aucune géométrie fiable n'a été retenue.",
   seeItinerary: "Voir le parcours",
   allKinds: "Tous",
   filterByPlaceKind: "Filtrer par type de lieu",
@@ -682,6 +820,13 @@ const FR: AppMessages = {
   associationSource: "Source de l’association ↗",
   onlyAssociatedSites: "Seuls les sites historiquement associés à la personne sont proposés. La recherche ne crée aucun lieu.",
   geoSequence: "Séquence géographique indicative. Aucune durée de marche n’est calculée.",
+  catalogTitle: "Lieux publiés dans ce rayon",
+  agendaTitle: "Agenda culturel",
+  agendaNote: "Expositions et spectacles sont distincts de la chronologie historique. Un jour n’a pas d’heure inventée.",
+  catalogEmpty: "Aucun lieu publié dans ce rayon pour le moment.",
+  agendaEmpty: "Aucun événement culturel publié sur ces dates.",
+  historicalLink: "Lien historique",
+  loadMorePlaces: "Charger d’autres lieux",
   loadingItinerary: "Chargement du parcours…",
   seeOnMap: "Voir sur la carte",
   indicativeRoute: "Parcours indicatif : les déplacements, l’ouverture et les horaires sont à vérifier.",

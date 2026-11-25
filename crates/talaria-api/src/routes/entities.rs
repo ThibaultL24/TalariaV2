@@ -90,7 +90,7 @@ pub async fn search(
     if !state.offline_only && items.len() < limit.min(5) as usize {
         if let Ok(client) = WikidataClient::new() {
             if let Ok(Ok(hits)) = tokio::time::timeout(
-                std::time::Duration::from_millis(900),
+                std::time::Duration::from_millis(2_500),
                 client.search_entities(trimmed, lang, limit.max(10) as u32),
             ).await {
                 let known: Vec<String> = local_qids.iter().cloned().collect();

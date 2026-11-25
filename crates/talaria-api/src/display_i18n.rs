@@ -81,13 +81,7 @@ pub fn localize_event_list_items(values: &mut [Value], lang: &str) {
             .and_then(Value::as_str)
             .map(str::to_string);
 
-        let new_title = localize_list_title(
-            lang,
-            &event_type,
-            year,
-            place_now.as_deref(),
-            &title,
-        );
+        let new_title = localize_list_title(lang, &event_type, year, place_now.as_deref(), &title);
         if !new_title.is_empty() && new_title != title {
             obj.insert("title".into(), Value::String(new_title));
         }
@@ -140,9 +134,8 @@ fn structured_headline(
         return born_died_headline(lang, false, year, place.as_deref());
     }
 
-    let label = event_type_label(key, lang)
-        .unwrap_or_else(|| humanize_type(event_type, lang));
-    join_headline(&label, year, place.as_deref())
+    let label = event_type_label(key, lang).unwrap_or_else(|| humanize_type(event_type, lang));
+    join_headline(&label, place.as_deref())
 }
 
 fn born_died_headline(lang: &str, born: bool, year: Option<i32>, place: Option<&str>) -> String {
@@ -209,11 +202,9 @@ fn born_died_headline(lang: &str, born: bool, year: Option<i32>, place: Option<&
     }
 }
 
-fn join_headline(label: &str, year: Option<i32>, place: Option<&str>) -> String {
+/// The title names the event. The date stays in `time_json` and is drawn separately.
+fn join_headline(label: &str, place: Option<&str>) -> String {
     let mut parts = vec![label.to_string()];
-    if let Some(year) = year {
-        parts.push(year.to_string());
-    }
     if let Some(place) = place.filter(|text| !text.is_empty()) {
         parts.push(place.to_string());
     }
@@ -336,12 +327,8 @@ pub async fn localize_json_string_fields(values: &mut [Value], lang: &str, keys:
         unique_order.truncate(MAX_UNIQUE);
     }
 
-    let translated = llm::translate_display_texts_budgeted(
-        lang,
-        &unique_order,
-        Duration::from_secs(12),
-    )
-    .await;
+    let translated =
+        llm::translate_display_texts_budgeted(lang, &unique_order, Duration::from_secs(12)).await;
 
     let mut by_src: HashMap<&str, &str> = HashMap::new();
     for (src, dst) in unique_order.iter().zip(translated.iter()) {
@@ -414,14 +401,7 @@ fn born_died_overlay(text: &str, target: &str) -> Option<String> {
     if let Some((place, year)) = parse_born_died(
         &lower,
         &[
-            "born in ",
-            "né en ",
-            "née en ",
-            "ne en ",
-            "nee en ",
-            "né à ",
-            "née à ",
-            "ne a ",
+            "born in ", "né en ", "née en ", "ne en ", "nee en ", "né à ", "née à ", "ne a ",
             "nee a ",
         ],
     ) {
@@ -552,7 +532,8 @@ fn dotted_kind_overlay(text: &str, target: &str) -> Option<String> {
         ));
     }
     let label = event_type_label(key, target)?;
-    Some(join_headline(&label, year, place.as_deref()))
+    let _ = year;
+    Some(join_headline(&label, place.as_deref()))
 }
 
 fn humanize_type(event_type: &str, lang: &str) -> String {
@@ -984,15 +965,15 @@ mod tests {
         );
         assert_eq!(
             deterministic_display_overlay("office · 1958", "fr").as_deref(),
-            Some("Charge · 1958")
+            Some("Charge")
         );
         assert_eq!(
             deterministic_display_overlay("mariage · 1921", "en").as_deref(),
-            Some("Marriage · 1921")
+            Some("Marriage")
         );
         assert_eq!(
             deterministic_display_overlay("battle · 1815 · Waterloo", "fr").as_deref(),
-            Some("Bataille · 1815 · Waterloo")
+            Some("Bataille · Waterloo")
         );
         assert_eq!(
             deterministic_display_overlay("Moscow", "fr").as_deref(),
@@ -1020,7 +1001,7 @@ mod tests {
         localize_event_list_items(&mut values, "fr");
         assert_eq!(
             values[0].get("title").and_then(Value::as_str),
-            Some("Bataille · 1815 · Waterloo")
+            Some("Bataille · Waterloo")
         );
     }
 

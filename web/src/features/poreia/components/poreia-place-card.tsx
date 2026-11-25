@@ -36,7 +36,7 @@ export function PoreiaPlaceCard({ place, heading = true }: { place: HeritagePlac
           {t.hoursRecorded(place.hoursCheckedAt.slice(0, 10), place.openingHours)}
         </p>
       ) : null}
-      {place.summary ? <p>{place.summary}</p> : null}
+      {place.summary ? <p><span className="v3-eyebrow">{t.historicalLink}</span> {place.summary}</p> : null}
       {place.sources.map((source) => source.url ? (
         <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer">
           {locale === "fr" ? `Source de l’association · ${source.label}` : `Association source · ${source.label}`}

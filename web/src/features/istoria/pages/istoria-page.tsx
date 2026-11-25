@@ -1,7 +1,7 @@
 // web/src/features/istoria/pages/istoria-page.tsx
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { EventDetailCard } from "@/components/detail/event-detail-card";
 import { rememberEntity, useExperienceSubject } from "@/components/entity/entity-context";
 import { ExperienceLayout } from "@/components/layout/experience-layout";
@@ -17,21 +17,16 @@ import {
   type TimelineEvent,
 } from "@/lib/api";
 import { COMPACT_VIEWPORT_MQ } from "@/lib/breakpoints";
-import { getEntityView, type EntityOverview } from "@/lib/entity-views";
+import { fetchChapterEventPage, fetchChapterSuggestions, fetchEntityGroup, fetchEntityGroups, getEntityView, type EntityOverview } from "@/lib/entity-views";
+import { ChapterReading } from "@/features/istoria/chapter-reading";
+import { ChapterSuggestions } from "@/features/istoria/chapter-suggestions";
+import { IdentityOffer } from "@/features/istoria/identity-offer";
+import { biographyFilters } from "@/features/istoria/biography-filters";
 import { useI18n } from "@/lib/i18n";
 import { resolveVisibleWindow } from "@/components/timeline/timeline-utils";
 
 const EntityMap = lazy(() => import("@/features/entity/entity-map").then((mod) => ({ default: mod.EntityMap })));
 const HistoricalTimeline = lazy(() => import("@/components/timeline/historical-timeline").then((mod) => ({ default: mod.HistoricalTimeline })));
-
-function timelineFilters(params: URLSearchParams, view: string): string {
-  const filters = new URLSearchParams();
-  for (const key of ["from", "to", "types"]) {
-    const value = params.get(key);
-    if (value && !(view === "timeline" && (key === "from" || key === "to"))) filters.set(key, value);
-  }
-  return filters.toString();
-}
 
 export function IstoriaPage() {
   const {
@@ -45,6 +40,24 @@ export function IstoriaPage() {
     openPerson,
   } = useExperienceSubject("istoria");
   const { t, locale } = useI18n();
+  const [writesOpen, setWritesOpen] = useState(false);
+  const [researchQid, setResearchQid] = useState<string | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/health", { signal: controller.signal })
+      .then((response) => response.json())
+      .then((body: { research_writes?: boolean; research_qid?: string | null }) => {
+        setWritesOpen(body.research_writes === true);
+        setResearchQid(typeof body.research_qid === "string" ? body.research_qid : null);
+      })
+      .catch(() => {
+        setWritesOpen(false);
+        setResearchQid(null);
+      });
+    return () => controller.abort();
+  }, []);
+  const heldResearchOpen =
+    writesOpen && researchQid !== null && picker.heldIdentity?.qid === researchQid;
   const overviewQuery = useQuery({
     queryKey: ["entity", entityId, "overview", revision],
     enabled: Boolean(entityId),
@@ -54,6 +67,8 @@ export function IstoriaPage() {
     queryFn: ({ signal }) => getEntityView<EntityOverview>(entityId, "overview", new URLSearchParams(), signal),
   });
   const overview = overviewQuery.data;
+  const entityResearchOpen =
+    writesOpen && researchQid !== null && overview?.entity.qid === researchQid;
   useEffect(() => {
     if (!entityId) return;
     rememberEntity(entityId, overview?.entity.label, overview?.entity.qid);
@@ -72,10 +87,48 @@ export function IstoriaPage() {
   const [timelineZoomToken, setTimelineZoomToken] = useState(0);
   const [timelineZoomEventId, setTimelineZoomEventId] = useState<string | undefined>();
   const provider = params.get("provider") ?? "";
-  const filterString = timelineFilters(params, view);
+  const groupSlug = params.get("group") ?? "";
+  const filterString = biographyFilters(params, view);
+  const groupsQuery = useQuery({
+    queryKey: ["istoria", "groups", entityId],
+    enabled: Boolean(entityId),
+    retry: false,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    queryFn: ({ signal }) => fetchEntityGroups(entityId, signal),
+  });
+  const groups = groupsQuery.data?.groups ?? [];
+  const suggestionsQuery = useQuery({
+    queryKey: ["istoria", "chapter-suggestions", entityId, revision],
+    enabled: Boolean(entityId),
+    retry: false,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    queryFn: ({ signal }) => fetchChapterSuggestions(entityId, signal),
+  });
+  const chapterQuery = useQuery({
+    queryKey: ["istoria", "group", entityId, groupSlug],
+    enabled: Boolean(entityId && groupSlug),
+    retry: false,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    queryFn: ({ signal }) => fetchEntityGroup(entityId, groupSlug, signal),
+  });
+  const chapterEventsQuery = useInfiniteQuery({
+    queryKey: ["istoria", "group-events", entityId, groupSlug],
+    enabled: Boolean(entityId && groupSlug && chapterQuery.isSuccess),
+    initialPageParam: null as string | null,
+    retry: false,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    queryFn: ({ pageParam, signal }) => fetchChapterEventPage(entityId, groupSlug, pageParam, signal),
+    getNextPageParam: (lastPage) => lastPage.pagination.next_cursor ?? undefined,
+  });
+  const chapterEvents = chapterEventsQuery.data?.pages.flatMap((page) => page.events) ?? [];
   const activeRequest = useRef("");
   activeRequest.current = `${entityId}/${view}?${filterString}&provider=${provider}`;
   const eventId = params.get("event");
+  const viewingArchive = params.get("revision") === "archived";
   const needsTimeline = view === "timeline" || view === "map";
   const timeline = useEntityTimeline(entityId, filterString, locale, needsTimeline, revision);
   const events = timeline.events;
@@ -92,25 +145,32 @@ export function IstoriaPage() {
   const next = view === "sources" ? sourceNext : (timeline.hasMore ? "next" : null);
   const loading = view === "sources" ? sourceLoading : (needsTimeline && timeline.loading);
   const eventDetailQuery = useQuery({
-    queryKey: ["istoria", "event", entityId, eventId, locale],
+    queryKey: ["istoria", "event", entityId, eventId, locale, viewingArchive],
     enabled: Boolean(entityId && eventId),
     retry: false,
     staleTime: 60_000,
     refetchOnWindowFocus: false,
-    queryFn: ({ signal }) => fetchEventDetail(eventId!, locale, signal),
+    queryFn: ({ signal }) => fetchEventDetail(eventId!, locale, signal, viewingArchive ? "requested" : undefined),
   });
   const selected = eventDetailQuery.data?.event?.entity_id === entityId
     ? eventDetailQuery.data.event
     : undefined;
+  const revisionInfo = eventDetailQuery.data?.revision;
+  const activeEventId = revisionInfo?.active_id ?? selected?.id ?? eventId ?? undefined;
+  const linkedEarlierVersion = Boolean(
+    revisionInfo && revisionInfo.requested_id !== revisionInfo.active_id,
+  );
+  const filiationUnverified = revisionInfo?.filiation === "unverified";
 
   // The URL event ID is the shared selection across timeline, map and details.
   // The detail API can resolve deep links absent from the current timeline page.
   const mapFocus = useMemo(() => {
     if (view !== "map" || !eventId) return undefined;
-    const coords = selected?.coordinates ?? events.find((item) => item.id === eventId)?.coordinates;
-    if (!coords || !Number.isFinite(coords.lat) || !Number.isFinite(coords.lon)) return undefined;
-    return { eventId, lat: coords.lat, lon: coords.lon };
-  }, [view, eventId, selected, events]);
+    const coords = events.find((item) => item.id === activeEventId)?.coordinates
+      ?? (viewingArchive ? undefined : selected?.coordinates);
+    if (!coords || !Number.isFinite(coords.lat) || !Number.isFinite(coords.lon) || !activeEventId) return undefined;
+    return { eventId: activeEventId, lat: coords.lat, lon: coords.lon };
+  }, [view, activeEventId, viewingArchive, selected, events]);
 
   useEffect(() => {
     if (!entityId || view !== "sources") return;
@@ -148,6 +208,15 @@ export function IstoriaPage() {
     const copy = new URLSearchParams(params);
     if (id) copy.set("event", id);
     else copy.delete("event");
+    setParams(copy);
+  }, [params, setParams]);
+
+  const selectChapter = useCallback((slug: string) => {
+    const copy = new URLSearchParams(params);
+    if (slug) copy.set("group", slug);
+    else copy.delete("group");
+    copy.delete("event");
+    copy.delete("revision");
     setParams(copy);
   }, [params, setParams]);
 
@@ -211,6 +280,7 @@ export function IstoriaPage() {
       search={
         <>
           <EntitySearchBox
+            enabled
             suggestions={picker.suggestions}
             onSubmitQuery={picker.setSearchQuery}
             isLoading={picker.searchLoading}
@@ -222,18 +292,109 @@ export function IstoriaPage() {
           />
           {picker.ingestBusy && (
             <p role="status">
-              Collecting sources · {picker.timelineEvents} events · {picker.mapPins} map points
+              {picker.ingestPhase || (locale === "fr" ? "Recherche en cours" : "Research in progress")}
+              {picker.currentPage ? ` · ${picker.currentPage}` : ""}
+              {` · ${picker.timelineEvents}`}
             </p>
           )}
           {picker.error && <p role="alert">{picker.error}</p>}
-          {!entityId && !picker.ingestBusy && (
+          {!entityId && picker.heldIdentity && (
+            <IdentityOffer
+              identity={picker.heldIdentity}
+              locale={locale}
+              busy={picker.ingestBusy}
+              error={picker.error}
+              writesOpen={heldResearchOpen}
+              onResearch={() => {
+                if (heldResearchOpen) picker.requestResearch();
+              }}
+            />
+          )}
+          {!entityId && !picker.heldIdentity && !picker.ingestBusy && (
             <p className="v3-note">Rechercher une personnalité pour découvrir sa vie et ses sources.</p>
           )}
         </>
       }
     >
       {pageError && <p className="v3-inline-alert" role="alert">{pageError}</p>}
-      {view === "overview" && overview && (
+      {entityId && view === "overview" && overview?.entity.qid && (
+        <p>
+          <button
+            type="button"
+            onClick={() => {
+              if (!entityResearchOpen) return;
+              picker.requestResearch({
+                label: overview.entity.label,
+                qid: overview.entity.qid,
+                known_locally: true,
+                entity_id: entityId,
+              });
+            }}
+            disabled={!entityResearchOpen || picker.ingestBusy}
+          >
+            {locale === "fr" ? "Enrichir le corpus" : "Enrich the corpus"}
+          </button>
+        </p>
+      )}
+      {entityId && view === "overview" && (
+        <p className="v3-note" role="status">{t.researchUnverified}</p>
+      )}
+      {entityId && view === "overview" && (
+        <ChapterSuggestions
+          suggestions={suggestionsQuery.data?.suggestions ?? []}
+          periods={suggestionsQuery.data?.periods ?? []}
+          sections={suggestionsQuery.data?.sections ?? []}
+          places={suggestionsQuery.data?.places ?? []}
+          locale={locale === "fr" ? "fr" : "en"}
+        />
+      )}
+      {entityId && view !== "overview" && ((suggestionsQuery.data?.periods?.length ?? 0) + (suggestionsQuery.data?.suggestions?.length ?? 0) > 0) && (
+        <p className="v3-note">
+          <Link to={`/istoria/${entityId}/overview`}>{locale === "fr" ? "Périodes et catégories" : "Periods and categories"}</Link>
+        </p>
+      )}
+      {entityId && (groups.length > 0 || groupSlug) && (
+        <nav className="v3-provider-tabs" aria-label={t.chapters}>
+          <button type="button" aria-pressed={!groupSlug} onClick={() => selectChapter("")}>
+            {t.allBiography}
+          </button>
+          {groups.map((group) => (
+            <button
+              key={group.id}
+              type="button"
+              aria-pressed={groupSlug === group.slug}
+              onClick={() => selectChapter(group.slug)}
+            >
+              {group.title}
+            </button>
+          ))}
+        </nav>
+      )}
+      {chapterQuery.data?.group && view === "overview" && (
+        <ChapterReading
+          group={chapterQuery.data.group}
+          chapterIndex={Math.max(1, groups.findIndex((item) => item.slug === groupSlug) + 1)}
+          chapterCount={groups.length}
+          events={chapterEvents}
+          complete={!chapterEventsQuery.hasNextPage}
+          loadingMore={chapterEventsQuery.isFetchingNextPage}
+          onLoadMore={() => void chapterEventsQuery.fetchNextPage()}
+          coverage={chapterQuery.data.coverage}
+          timelineTo={`/istoria/${entityId}/timeline?${params}`}
+          mapTo={`/istoria/${entityId}/map?${params}`}
+          onSelect={select}
+        />
+      )}
+      {chapterQuery.data?.group && view !== "overview" && (
+        <p className="v3-note">{chapterQuery.data.group.title}</p>
+      )}
+      {groupSlug && chapterQuery.isError && (
+        <p className="v3-note" role="status">
+          {t.unknownChapter}{" "}
+          <button type="button" onClick={() => selectChapter("")}>{t.allBiography}</button>
+        </p>
+      )}
+      {view === "overview" && overview && !chapterQuery.data && (
         <section className="v3-stats">
           {Object.entries(overview.stats).map(([key, value]) => (
             <article key={key}>
@@ -260,7 +421,7 @@ export function IstoriaPage() {
                 {view === "map" && (
                   <form className="v3-filters v3-filters--compact" onSubmit={(event) => event.preventDefault()}>
                     <label>
-                      From{" "}
+                      {locale === "fr" ? "De" : "From"}{" "}
                       <input
                         type="number"
                         value={params.get("from") ?? ""}
@@ -268,7 +429,7 @@ export function IstoriaPage() {
                       />
                     </label>
                     <label>
-                      To{" "}
+                      {locale === "fr" ? "À" : "To"}{" "}
                       <input
                         type="number"
                         value={params.get("to") ?? ""}
@@ -286,7 +447,7 @@ export function IstoriaPage() {
           <EntityMap
             id={entityId}
             filters={filterString}
-            selected={eventId ?? undefined}
+            selected={activeEventId}
             focus={mapFocus}
             onSelect={select}
             mode={mobileStage ? "fullscreen" : "desktop"}
@@ -298,6 +459,11 @@ export function IstoriaPage() {
           <>
             <p className="v3-note">
               {t.visiblePeriod(String(from || "?"), String(to || "?"))}
+              {timeline.hasMore
+                ? locale === "fr"
+                  ? " Les moments se chargent progressivement."
+                  : " Moments load progressively."
+                : ""}
             </p>
             <HistoricalTimeline
             key={entityId}
@@ -306,7 +472,7 @@ export function IstoriaPage() {
             from={from}
             to={to}
             coverage={{ timeline: overview.stats.timeline_events, mapped: overview.stats.mapped_events }}
-            spotlightEventId={eventId ?? undefined}
+            spotlightEventId={activeEventId}
             zoomToEventId={timelineZoomEventId}
             zoomToEventToken={timelineZoomToken}
             mode={mobileStage ? "fullscreen" : "desktop"}
@@ -353,6 +519,8 @@ export function IstoriaPage() {
             {[...sources].sort((left, right) => Number(right.language?.toLowerCase().startsWith(locale)) - Number(left.language?.toLowerCase().startsWith(locale))).map((source) => (
               <article key={source.id}>
                 <span>
+                  {locale === "fr" ? "Notice de catalogue" : "Catalog notice"}
+                  {" · "}
                   {providerLabel(source.source_kind)} · {source.document_type.replaceAll("_", " ")}
                 </span>
                 <h3>{source.title}</h3>
@@ -375,12 +543,29 @@ export function IstoriaPage() {
       {selected && (
         <aside className="v3-detail">
           <div className="v3-detail-links">
-            {selected.map_eligible && (
+            {selected.map_eligible ? (
               <Link to={`/istoria/${entityId}/map?${params}`}>View on map</Link>
+            ) : (
+              <p className="v3-note">{t.eventOffMap}</p>
             )}
             <Link to={`/istoria/${entityId}/timeline?${params}`}>View in timeline</Link>
           </div>
-          <EventDetailCard event={selected} onClose={() => select()} />
+          {filiationUnverified && (
+            <p className="v3-note">{t.unverifiedHistoricalLink}</p>
+          )}
+          {linkedEarlierVersion && (
+            <p className="v3-note">
+              {viewingArchive ? t.viewingArchivedVersion : t.openedEarlierVersion}{" "}
+              <button
+                type="button"
+                className="underline"
+                onClick={() => update("revision", viewingArchive ? "" : "archived")}
+              >
+                {viewingArchive ? t.viewActiveVersion : t.viewArchivedVersion}
+              </button>
+            </p>
+          )}
+          <EventDetailCard event={selected} pinRequestedVersion={viewingArchive} onClose={() => select()} />
         </aside>
       )}
     </ExperienceLayout>

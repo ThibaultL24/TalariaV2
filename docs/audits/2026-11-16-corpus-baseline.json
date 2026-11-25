@@ -1,0 +1,76 @@
+{
+  "measured_at": "2026-11-16",
+  "database": "talaria_engine_development",
+  "access": "read_only",
+  "code_ref": "origin/refactor/talaria-repo-cleanup-v3",
+  "code_sha": "87ac398",
+  "residence_patch": "bench/historical-engine",
+  "migrations_applied_max": 54,
+  "migration_055_applied": false,
+  "canonical_events": {
+    "person_active": 2218,
+    "person_inactive": 1299,
+    "inactive_without_logical_id": 1297,
+    "other_pipelines": 0
+  },
+  "logical_events": 2218,
+  "editorial_groups": 0,
+  "editorial_memberships": 0,
+  "entities": 3122,
+  "people_with_active_events": 19,
+  "event_candidates": {
+    "assembled": 3990,
+    "rejected": 2155,
+    "needs_review": 93,
+    "accepted": 1
+  },
+  "active_person_events": {
+    "timeline_eligible": 2218,
+    "map_eligible": 828,
+    "without_place_label": 98,
+    "without_geometry": 253,
+    "without_logical_id": 0,
+    "time_exact_year": 2137,
+    "time_exact_day": 18,
+    "time_approx_year": 63,
+    "time_unknown": 0,
+    "date_precision_column_null": 2038,
+    "epistemic_status_attested": 2218,
+    "epistemic_note": "attested is the column default. It is not a manual verification.",
+    "with_wikipedia_or_wikidata_document": 2198,
+    "without_wikipedia_or_wikidata_document": 20,
+    "also_linked_to_a_catalog": 1635,
+    "event_type_historical_fact": 1175,
+    "event_type_anecdote": 5
+  },
+  "evidence": {
+    "rows": 47112,
+    "quotes_at_least_40_chars": 47017,
+    "distinct_documents": 1124,
+    "distinct_events": 3497
+  },
+  "raw_documents": {
+    "total": 1355,
+    "by_source": {
+      "wikipedia": 392,
+      "open_alex": 276,
+      "hal": 252,
+      "theses_fr": 156,
+      "gallica": 132,
+      "persee": 130,
+      "wikidata": 16,
+      "bnf": 1
+    }
+  },
+  "napoleon_battles": {
+    "active_events": 190,
+    "evidence_rows": 5161,
+    "distinct_quotes": 289,
+    "wikipedia_rows": 191,
+    "wikipedia_distinct_quotes": 191,
+    "open_alex_rows": 3060,
+    "open_alex_distinct_quotes": 24
+  },
+  "live_ingest": "not run",
+  "ai_cost": 0
+}

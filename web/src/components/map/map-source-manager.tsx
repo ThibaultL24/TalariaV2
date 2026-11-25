@@ -56,6 +56,7 @@ function dropClusteredEventsSource(map: Map): void {
   removeLayer(map, "clusters");
   removeLayer(map, "selected-event");
   removeLayer(map, "unclustered-events");
+  removeLayer(map, "reference-areas");
   if (map.getSource("events")) map.removeSource("events");
 }
 
@@ -63,6 +64,7 @@ function ensureEventLayers(map: Map, isDark: boolean): void {
   const L = getExplorerEventLayers(isDark);
   removeLayer(map, "cluster-count");
   removeLayer(map, "clusters");
+  tryAddLayer(map, L.referenceAreaLayer);
   tryAddLayer(map, L.unclusteredEventsLayer);
   tryAddLayer(map, L.selectedEventLayer);
   tryAddLayer(map, L.anecdotesLayer);

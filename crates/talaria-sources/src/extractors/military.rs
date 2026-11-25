@@ -20,28 +20,30 @@ impl CandidateExtractor for MilitaryCampaignExtractor {
         let subject = input.effective_subject();
         let title = input.page_title.clone().unwrap_or_default();
 
-        // Page-level battle/siege → at least one occurrence (place from title).
+        // A dedicated event page. The quote is the opening passage, not the bare title.
         if let Some((etype, place, object)) = classify_page_title(&title) {
-            let year = first_year(&input.text, input.subject_death_year);
-            let place_opt = if place.is_empty() { None } else { Some(place) };
-            out.push(RawCandidate {
-                event_type: etype.into(),
-                predicate: predicate_for(etype).into(),
-                subject_surface: subject.clone(),
-                time_surface: year,
-                place_surface: place_opt,
-                object_surface: Some(object),
-                participant_surfaces: vec![],
-                clause_text: title.clone(),
-                clause_index: 0,
-                start_offset: 0,
-                end_offset: title.len() as i32,
-                cross_clause_join: false,
-                extractor_id: self.extractor_id().into(),
-                is_posthumous: false,
-                lat: None,
-                lon: None,
-            });
+            if let Some(passage) = event_page_passage(&input.text, &subject) {
+                let year = first_year(&passage, input.subject_death_year);
+                let place_opt = if place.is_empty() { None } else { Some(place) };
+                out.push(RawCandidate {
+                    event_type: etype.into(),
+                    predicate: predicate_for(etype).into(),
+                    subject_surface: subject.clone(),
+                    time_surface: year,
+                    place_surface: place_opt,
+                    object_surface: Some(object),
+                    participant_surfaces: vec![],
+                    clause_text: passage,
+                    clause_index: 0,
+                    start_offset: 0,
+                    end_offset: title.len() as i32,
+                    cross_clause_join: false,
+                    extractor_id: self.extractor_id().into(),
+                    is_posthumous: false,
+                    lat: None,
+                    lon: None,
+                });
+            }
         }
 
         for (i, unit) in crate::extractors::split_prose_units(&input.text)
@@ -91,10 +93,54 @@ fn predicate_for(etype: &str) -> &'static str {
     match etype {
         "battle" => "fought_at",
         "siege" => "besieged",
-        "treaty" => "signed",
+        "treaty" | "diplomatic" => "signed",
         "imprisonment" => "captured_at",
         _ => "campaign_at",
     }
+}
+
+/// The opening that names the subject. A bare title is not a passage.
+fn event_page_passage(text: &str, subject: &str) -> Option<String> {
+    let block = text.trim();
+    if block.is_empty() {
+        return None;
+    }
+    let first = block.split("\n\n").next().unwrap_or(block).trim();
+    let opening: String = first.chars().take(900).collect();
+    if names_subject(&opening, subject) {
+        return Some(opening);
+    }
+    let wider: String = block.chars().take(1200).collect();
+    names_subject(&wider, subject).then_some(wider)
+}
+
+fn names_subject(text: &str, subject: &str) -> bool {
+    let subject = subject.split('(').next().unwrap_or(subject).trim();
+    if subject.is_empty() {
+        return false;
+    }
+    let lower = text.to_lowercase();
+    contains_phrase_local(&lower, &subject.to_lowercase())
+        || subject
+            .split_whitespace()
+            .next_back()
+            .filter(|word| word.chars().count() >= 4)
+            .is_some_and(|word| contains_phrase_local(&lower, &word.to_lowercase()))
+}
+
+fn contains_phrase_local(text: &str, phrase: &str) -> bool {
+    let text_words: Vec<&str> = text
+        .split(|ch: char| !ch.is_alphanumeric() && ch != '-')
+        .filter(|word| !word.is_empty())
+        .collect();
+    let phrase_words: Vec<&str> = phrase
+        .split(|ch: char| !ch.is_alphanumeric() && ch != '-')
+        .filter(|word| !word.is_empty())
+        .collect();
+    !phrase_words.is_empty()
+        && text_words
+            .windows(phrase_words.len())
+            .any(|window| window == phrase_words.as_slice())
 }
 
 fn classify_page_title(title: &str) -> Option<(&'static str, String, String)> {
@@ -115,6 +161,13 @@ fn classify_page_title(title: &str) -> Option<(&'static str, String, String)> {
     if lower.contains("campaign") || lower.contains("campagne") {
         return Some(("military_campaign", String::new(), t.to_string()));
     }
+    if lower.starts_with("armistice of ")
+        || lower.starts_with("armistice de ")
+        || lower.starts_with("convention of ")
+        || lower.starts_with("convention de ")
+    {
+        return Some(("diplomatic", place_after_of(t), t.to_string()));
+    }
     if lower.starts_with("treaty of ")
         || lower.starts_with("treaties of ")
         || lower.starts_with("traité de ")
@@ -128,6 +181,14 @@ fn classify_page_title(title: &str) -> Option<(&'static str, String, String)> {
         return Some(("treaty", place, t.to_string()));
     }
     None
+}
+
+fn place_after_of(title: &str) -> String {
+    title
+        .split_once(" of ")
+        .or_else(|| title.split_once(" de "))
+        .map(|(_, place)| title_case_place(place))
+        .unwrap_or_else(|| title_case_place(title))
 }
 
 fn title_case_place(s: &str) -> String {
@@ -436,6 +497,80 @@ mod tests {
         assert!(
             raws.iter().any(|r| r.event_type == "battle"
                 && r.place_surface.as_deref().is_some_and(|p| p.contains("Patay"))),
+            "{raws:?}"
+        );
+    }
+
+    #[test]
+    fn arcole_opening_keeps_the_battle_and_bonaparte() {
+        let text = "The Battle of Arcole or Battle of Arcola (15–17 November 1796) was fought between French and Austrian forces southeast of Verona. The battle saw a bold maneuver by Napoleon Bonaparte's French Army of Italy.";
+        let raws = MilitaryCampaignExtractor.extract(&ExtractorInput {
+            text: text.into(),
+            page_title: Some("Battle of Arcole".into()),
+            subject_label: Some("Napoleon".into()),
+            document_type: "article".into(),
+            subject_death_year: Some(1821),
+            ..Default::default()
+        });
+        let kept: Vec<_> = raws
+            .iter()
+            .filter(|raw| crate::extractors::keep_extracted_raw(raw, "Battle of Arcole", "Napoleon"))
+            .filter(|raw| {
+                talaria_quality::quote_may_attest(&raw.clause_text, raw.place_surface.as_deref())
+            })
+            .collect();
+        assert!(
+            kept.iter().any(|raw| {
+                raw.event_type == "battle"
+                    && raw.time_surface.as_deref() == Some("1796")
+                    && raw.place_surface.as_deref().is_some_and(|place| place.contains("Arcole"))
+                    && raw.clause_text.contains("was fought")
+                    && raw.clause_text.contains("Bonaparte")
+            }),
+            "{kept:?}"
+        );
+    }
+
+    #[test]
+    fn cherasco_armistice_is_read_as_a_dated_agreement() {
+        let text = "The Armistice of Cherasco was a truce signed at Cherasco on 28 April 1796 between Victor Amadeus III of Sardinia and Napoleon Bonaparte.";
+        let raws = MilitaryCampaignExtractor.extract(&ExtractorInput {
+            text: text.into(),
+            page_title: Some("Armistice of Cherasco".into()),
+            subject_label: Some("Napoleon".into()),
+            document_type: "article".into(),
+            subject_death_year: Some(1821),
+            ..Default::default()
+        });
+        assert!(
+            raws.iter().any(|raw| {
+                raw.event_type == "diplomatic"
+                    && raw.time_surface.as_deref() == Some("1796")
+                    && raw.place_surface.as_deref().is_some_and(|place| place.contains("Cherasco"))
+                    && raw.clause_text.contains("signed")
+            }),
+            "{raws:?}"
+        );
+    }
+
+    #[test]
+    fn campo_formio_uses_the_treaty_sentence_not_the_bare_title() {
+        let text = "The Treaty of Campo Formio was a peace treaty signed on 17 October 1797 between the French Republic and Austria. Napoleon Bonaparte signed it for France.";
+        let raws = MilitaryCampaignExtractor.extract(&ExtractorInput {
+            text: text.into(),
+            page_title: Some("Treaty of Campo Formio".into()),
+            subject_label: Some("Napoleon".into()),
+            document_type: "article".into(),
+            subject_death_year: Some(1821),
+            ..Default::default()
+        });
+        assert!(
+            raws.iter().any(|raw| {
+                raw.event_type == "treaty"
+                    && raw.time_surface.as_deref() == Some("1797")
+                    && raw.clause_text.contains("signed")
+                    && raw.clause_text != "Treaty of Campo Formio"
+            }),
             "{raws:?}"
         );
     }

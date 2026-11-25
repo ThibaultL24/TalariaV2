@@ -22,6 +22,7 @@ const EVENT_HIT_LAYERS = [
   "anecdotes",
   "selected-event",
   "unclustered-events",
+  "reference-areas",
 ] as const;
 
 function existingHitLayers(map: Map): string[] {

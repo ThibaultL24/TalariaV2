@@ -132,16 +132,34 @@ fn clause_names_subject(clause: &str, subject: &str) -> bool {
         return false;
     }
     let lower = clause.to_lowercase();
-    let subject_l = subject.to_lowercase();
-    if lower.contains(&subject_l) {
+    if contains_phrase(&lower, &subject.to_lowercase()) {
         return true;
     }
     if let Some(sur) = crate::seeds::subject_surname(subject) {
-        if lower.contains(&sur.to_lowercase()) {
+        if contains_phrase(&lower, &sur.to_lowercase()) {
             return true;
         }
     }
     false
+}
+
+fn contains_phrase(text: &str, phrase: &str) -> bool {
+    let text_words = name_words(text);
+    let phrase_words = name_words(phrase);
+    if phrase_words.is_empty() {
+        return false;
+    }
+    text_words
+        .windows(phrase_words.len())
+        .any(|window| window == phrase_words.as_slice())
+}
+
+fn name_words(value: &str) -> Vec<String> {
+    value
+        .split(|ch: char| !ch.is_alphanumeric() && ch != '-')
+        .filter(|word| !word.is_empty())
+        .map(|word| word.to_lowercase())
+        .collect()
 }
 
 /// Keep extract on the bio page and on place/battle pages we chose to follow.
@@ -152,6 +170,11 @@ pub fn keep_extracted_raw(raw: &RawCandidate, page_title: &str, subject: &str) -
         // (prose may carry P19/P20 places that Wikidata statements omit).
         return page_is_subject_biography(page_title, subject)
             && clause_is_about_subject(&raw.clause_text, subject);
+    }
+    if let Some(place) = raw.place_surface.as_deref() {
+        if !place.is_empty() && !crate::place_quality::is_plausible_place_label(place) {
+            return false;
+        }
     }
     if raw.extractor_id == "infobox" || raw.extractor_id == "structured_statement" {
         return true;
@@ -173,11 +196,11 @@ pub fn clause_is_about_subject(clause: &str, subject: &str) -> bool {
     }
     let lower = clause.to_lowercase();
     let subject_l = subject.to_lowercase();
-    if lower.contains(&subject_l) {
+    if contains_phrase(&lower, &subject_l) {
         return true;
     }
     if let Some(sur) = crate::seeds::subject_surname(subject) {
-        if lower.contains(&sur.to_lowercase()) {
+        if contains_phrase(&lower, &sur.to_lowercase()) {
             return true;
         }
     }
@@ -186,7 +209,7 @@ pub fn clause_is_about_subject(clause: &str, subject: &str) -> bool {
     }
     if let Some(agent) = leading_person_agent(clause) {
         let agent_l = agent.to_lowercase();
-        if subject_l.contains(&agent_l) || agent_l.contains(&subject_l) {
+        if contains_phrase(&agent_l, &subject_l) || contains_phrase(&subject_l, &agent_l) {
             return true;
         }
         if let Some(sur) = crate::seeds::subject_surname(subject) {
@@ -235,6 +258,13 @@ fn leading_person_agent(clause: &str) -> Option<String> {
         {
             continue;
         }
+        if matches!(
+            lower.as_str(),
+            "battle" | "siege" | "treaty" | "armistice" | "campaign" | "convention" | "truce"
+                | "capitulation" | "bataille" | "traite"
+        ) {
+            continue;
+        }
         let first = clean.chars().next()?;
         if first.is_uppercase() {
             words.push(clean.to_string());
@@ -267,6 +297,33 @@ mod subject_clause_tests {
         assert!(clause_is_about_subject(
             "After Charles's coronation, Joan participated in the unsuccessful siege of Paris in September 1429.",
             "Joan of Arc"
+        ));
+    }
+
+    #[test]
+    fn drops_a_napoleonic_adjective() {
+        let raw = super::RawCandidate {
+            event_type: "battle".into(),
+            predicate: "fought_at".into(),
+            subject_surface: "Napoleon".into(),
+            time_surface: Some("1815".into()),
+            place_surface: Some("Tolentino".into()),
+            object_surface: None,
+            participant_surfaces: vec![],
+            clause_text: "The Battle of Tolentino was fought by the Napoleonic King of Naples Joachim Murat.".into(),
+            clause_index: 0,
+            start_offset: 0,
+            end_offset: 80,
+            cross_clause_join: false,
+            extractor_id: "military_campaign".into(),
+            is_posthumous: false,
+            lat: None,
+            lon: None,
+        };
+        assert!(!super::keep_extracted_raw(
+            &raw,
+            "Battle of Tolentino",
+            "Napoleon"
         ));
     }
 

@@ -622,12 +622,7 @@ pub async fn quality_lifespan_years(
     let birth_year = birth.and_then(|(t,)| t.map(|t| t.year()));
     let death_year = death.and_then(|(t,)| t.map(|t| t.year()));
 
-    Ok((
-        birth_year,
-        death_year,
-        birth.is_some(),
-        death.is_some(),
-    ))
+    Ok((birth_year, death_year, birth.is_some(), death.is_some()))
 }
 
 #[derive(Debug, Clone)]
@@ -663,6 +658,34 @@ pub struct QualityEventInsert {
     pub place_identity_qid: Option<String>,
 }
 
+async fn logical_id_for_quality_insert(
+    pool: &PgPool,
+    event: &QualityEventInsert,
+) -> anyhow::Result<Uuid> {
+    let Some(old_id) = event.supersedes else {
+        return crate::logical_events::create_logical_event(pool, event.occurrence_key.as_deref())
+            .await;
+    };
+    let existing: Option<Option<Uuid>> =
+        sqlx::query_scalar("SELECT logical_event_id FROM canonical_events WHERE id = $1")
+            .bind(old_id)
+            .fetch_optional(pool)
+            .await?;
+    if let Some(id) = existing.flatten() {
+        return Ok(id);
+    }
+    let id =
+        crate::logical_events::create_logical_event(pool, event.occurrence_key.as_deref()).await?;
+    sqlx::query(
+        "UPDATE canonical_events SET logical_event_id = $1 WHERE id = $2 AND logical_event_id IS NULL",
+    )
+    .bind(id)
+    .bind(old_id)
+    .execute(pool)
+    .await?;
+    Ok(id)
+}
+
 /// Append-only insert into the person lane. Never mutates prior rows in place.
 pub async fn insert_quality_canonical_event(
     pool: &PgPool,
@@ -681,6 +704,7 @@ pub async fn insert_quality_canonical_event(
         .execute(pool)
         .await?;
     }
+    let logical_event_id = logical_id_for_quality_insert(pool, event).await?;
 
     let id: Uuid = if event.map_eligible && event.lat.is_some() && event.lon.is_some() {
         sqlx::query_scalar(
@@ -690,12 +714,13 @@ pub async fn insert_quality_canonical_event(
                 place_label, place_entity_id, geom, confidence, map_eligible,
                 historically_valid, timeline_eligible, source_count, evidence_count,
                 fingerprint, occurrence_key, occurrence_stem, primary_object, is_active, supersedes, predicate,
-                assembler_version, pipeline, event_candidate_id, place_identity_qid
+                assembler_version, pipeline, event_candidate_id, place_identity_qid,
+                logical_event_id
             )
             VALUES (
                 $1,$2,$3,$4,$5,$6,$7,$8,$9,
                 ST_SetSRID(ST_MakePoint($10,$11),4326)::geography,
-                $12,$13,$14,$15,$16,$17,$18,$19,$20,$21,true,$22,$23,$24,'person',$25,$26
+                $12,$13,$14,$15,$16,$17,$18,$19,$20,$21,true,$22,$23,$24,'person',$25,$26,$27
             )
             RETURNING id
             "#,
@@ -726,6 +751,7 @@ pub async fn insert_quality_canonical_event(
         .bind(&event.assembler_version)
         .bind(event.event_candidate_id)
         .bind(&event.place_identity_qid)
+        .bind(logical_event_id)
         .fetch_one(pool)
         .await?
     } else {
@@ -736,10 +762,11 @@ pub async fn insert_quality_canonical_event(
                 place_label, place_entity_id, confidence, map_eligible,
                 historically_valid, timeline_eligible, source_count, evidence_count,
                 fingerprint, occurrence_key, occurrence_stem, primary_object, is_active, supersedes, predicate,
-                assembler_version, pipeline, event_candidate_id, place_identity_qid
+                assembler_version, pipeline, event_candidate_id, place_identity_qid,
+                logical_event_id
             )
             VALUES (
-                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,true,$20,$21,$22,'person',$23,$24
+                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,true,$20,$21,$22,'person',$23,$24,$25
             )
             RETURNING id
             "#,
@@ -768,6 +795,7 @@ pub async fn insert_quality_canonical_event(
         .bind(&event.assembler_version)
         .bind(event.event_candidate_id)
         .bind(&event.place_identity_qid)
+        .bind(logical_event_id)
         .fetch_one(pool)
         .await?
     };
@@ -961,7 +989,9 @@ mod tests {
     fn insert_document_fragment_binds_metadata_as_tenth_param() {
         let src = include_str!("quality.rs");
         let prod = src.split("#[cfg(test)]").next().expect("prod source");
-        let tenth = prod.matches("VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)").count();
+        let tenth = prod
+            .matches("VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)")
+            .count();
         assert_eq!(
             tenth, 3,
             "all three INSERT branches must bind metadata as $10"

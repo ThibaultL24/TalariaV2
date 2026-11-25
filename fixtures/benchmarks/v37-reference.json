@@ -1,0 +1,153 @@
+{
+  "frozen": "2026-11-16",
+  "rule": "Hand chronology, checked against Wikidata identities before any probe. Do not add or remove events after seeing the engine score.",
+  "validation": [
+    "A direct event names a person, a place, and a date that standard biographies agree on.",
+    "An imprecise event is the same fact with a year or a season instead of a day.",
+    "A redundant event is the same fact under another name and must not be counted twice.",
+    "An off-topic event belongs to another life.",
+    "A wrong-place event moves a real fact to a place where it did not happen.",
+    "A partial date keeps the year or the season and does not invent a day.",
+    "A missing-coordinate event can be real while the gazetteer has no point.",
+    "A legendary or contested story is not an established fact.",
+    "An absent event is real and searchable, and this corpus or this short extract may not contain it."
+  ],
+  "persons": [
+    {
+      "label": "Napoleon",
+      "qid": "Q517",
+      "wikipedia_title": "Napoleon",
+      "pages": [
+        "Battle of Montenotte",
+        "Battle of Millesimo",
+        "Battle of Mondovì",
+        "Battle of Lodi",
+        "Battle of Lonato",
+        "Battle of Castiglione",
+        "Battle of Arcole",
+        "Battle of Rivoli",
+        "Armistice of Cherasco",
+        "Siege of Mantua (1796–1797)",
+        "Treaty of Campo Formio"
+      ],
+      "catalog_query": "title_t:(Lonato OR Millesimo OR Mondovi OR Rivoli) AND (Napoleon OR Bonaparte)",
+      "traps": ["penicillin", "radium", "crowned emperor in 1796"],
+      "events": [
+        {"id": "montenotte", "class": "attested_direct", "year": 1796, "place": "montenotte", "claim": "French victory at Montenotte on 12 April 1796."},
+        {"id": "millesimo", "class": "attested_direct", "year": 1796, "place": "millesimo", "claim": "Combat at Millesimo on 13–14 April 1796."},
+        {"id": "mondovi", "class": "attested_direct", "year": 1796, "place": "mondovi", "claim": "Combat at Mondovì on 21 April 1796."},
+        {"id": "lodi", "class": "attested_direct", "year": 1796, "place": "lodi", "claim": "Passage of the bridge at Lodi on 10 May 1796."},
+        {"id": "lodi-bridge", "class": "redundant", "year": 1796, "place": "lodi", "same_as": "lodi", "claim": "The bridge at Lodi is the same combat as Lodi."},
+        {"id": "lonato", "class": "attested_direct", "year": 1796, "place": "lonato", "claim": "Battle of Lonato on 3 and 4 August 1796."},
+        {"id": "castiglione", "class": "attested_direct", "year": 1796, "place": "castiglione", "claim": "Battle of Castiglione on 5 August 1796."},
+        {"id": "arcole", "class": "attested_direct", "year": 1796, "place": "arcole", "claim": "Battle of Arcole, 15–17 November 1796."},
+        {"id": "rivoli", "class": "attested_direct", "year": 1797, "place": "rivoli", "claim": "Battle of Rivoli on 14–15 January 1797."},
+        {"id": "mantua", "class": "attested_direct", "year": 1797, "place": "mantua", "claim": "Mantua surrendered on 2 February 1797."},
+        {"id": "campo-formio", "class": "attested_direct", "year": 1797, "place": "campo formio", "claim": "Treaty of Campo Formio, 17 October 1797."},
+        {"id": "cherasco", "class": "absent_searchable", "year": 1796, "place": "cherasco", "claim": "Armistice of Cherasco, 28 April 1796."},
+        {"id": "mombello", "class": "no_coordinates", "year": 1796, "place": "mombello", "claim": "Napoleon held court at Mombello in June 1796. The fact does not require a map point."},
+        {"id": "spring-1796", "class": "partial_date", "year": 1796, "place": "italy", "claim": "The campaign opens in the spring of 1796. The day is not one event."},
+        {"id": "rivoli-in-paris", "class": "wrong_place", "year": 1797, "place": "paris", "claim": "Rivoli was not fought in Paris."},
+        {"id": "milan-crown-1796", "class": "legendary", "year": 1796, "place": "milan", "claim": "The imperial coronation is 1804, not the Italian campaign of 1796."},
+        {"id": "radium", "class": "off_topic", "year": 1898, "place": "paris", "claim": "The discovery of radium is Marie Curie's, not this campaign."}
+      ]
+    },
+    {
+      "label": "Victor Hugo",
+      "qid": "Q535",
+      "wikipedia_title": "Victor Hugo",
+      "pages": ["Victor Hugo"],
+      "catalog_query": "title_t:(Hugo) AND (Guernesey OR Jersey OR Misérables OR Misérables)",
+      "traps": ["moscow", "shortest correspondence", "apocryphal"],
+      "events": [
+        {"id": "birth", "class": "attested_direct", "year": 1802, "place": "besancon", "claim": "Born in Besançon on 26 February 1802."},
+        {"id": "marriage", "class": "attested_direct", "year": 1822, "place": "paris", "claim": "Married Adèle Foucher on 12 October 1822."},
+        {"id": "leopoldine", "class": "attested_direct", "anecdote": true, "year": 1843, "place": "villequier", "claim": "Léopoldine drowned at Villequier on 4 September 1843."},
+        {"id": "jersey", "class": "attested_direct", "year": 1852, "place": "jersey", "claim": "Exile in Jersey from 1852."},
+        {"id": "guernsey", "class": "attested_direct", "year": 1855, "place": "guernsey", "claim": "Residence at Hauteville House, Guernsey, from October 1855."},
+        {"id": "contemplations", "class": "attested_direct", "year": 1856, "place": null, "claim": "Les Contemplations published in 1856."},
+        {"id": "miserables", "class": "attested_direct", "year": 1862, "place": null, "claim": "Les Misérables published in 1862."},
+        {"id": "return", "class": "attested_direct", "year": 1870, "place": "paris", "claim": "Returned to Paris on 5 September 1870."},
+        {"id": "exile-span", "class": "partial_date", "year": 1851, "place": null, "claim": "The exile covers the Second Empire. One year does not date every residence."},
+        {"id": "marine-terrace", "class": "no_coordinates", "anecdote": true, "year": 1852, "place": "marine terrace", "claim": "Marine Terrace is the Jersey house. A missing point does not erase the residence."},
+        {"id": "shortest-letter", "class": "legendary", "year": null, "place": null, "claim": "The shortest correspondence with a publisher is told as apocryphal."},
+        {"id": "exile-moscow", "class": "wrong_place", "year": 1855, "place": "moscow", "claim": "The exile was in the Channel Islands, not Moscow."},
+        {"id": "austerlitz", "class": "off_topic", "year": 1805, "place": "austerlitz", "claim": "Austerlitz is not an event of Hugo's life."}
+      ]
+    },
+    {
+      "label": "Marie Curie",
+      "qid": "Q7186",
+      "wikipedia_title": "Marie Curie",
+      "pages": ["Marie Curie"],
+      "catalog_query": "title_t:(Curie) AND (polonium OR radium)",
+      "traps": ["penicillin", "lonato"],
+      "events": [
+        {"id": "birth", "class": "attested_imprecise", "year": 1867, "place": "warsaw", "claim": "Born in Warsaw in 1867. The day is 7 November."},
+        {"id": "polonium", "class": "attested_direct", "year": 1898, "place": "paris", "claim": "Polonium announced in July 1898."},
+        {"id": "radium", "class": "attested_direct", "year": 1898, "place": "paris", "claim": "Radium announced in December 1898."},
+        {"id": "nobel-physics", "class": "attested_direct", "year": 1903, "place": null, "claim": "Nobel Prize in Physics, 1903, shared with Pierre Curie and Henri Becquerel."},
+        {"id": "pierre-death", "class": "attested_direct", "year": 1906, "place": "paris", "claim": "Pierre Curie died in Paris on 19 April 1906."},
+        {"id": "nobel-chemistry", "class": "attested_direct", "year": 1911, "place": null, "claim": "Nobel Prize in Chemistry, 1911."},
+        {"id": "laboratory", "class": "attested_direct", "year": 1914, "place": "paris", "claim": "The Radium Institute laboratory in Paris."},
+        {"id": "death", "class": "attested_direct", "year": 1934, "place": "sancellemoz", "claim": "Died at Sancellemoz on 4 July 1934."},
+        {"id": "research-1890s", "class": "partial_date", "year": 1898, "place": "paris", "claim": "The pitchblende work is a campaign of years, not one day."},
+        {"id": "penicillin", "class": "wrong_place", "year": 1928, "place": null, "claim": "Penicillin is not Curie's discovery."},
+        {"id": "langevin", "class": "legendary", "year": 1911, "place": "paris", "claim": "The 1911 public scandal is contested personal history, not a scientific discovery."},
+        {"id": "lonato", "class": "off_topic", "year": 1796, "place": "lonato", "claim": "Lonato is not Curie's life."}
+      ]
+    },
+    {
+      "label": "Leonardo da Vinci",
+      "qid": "Q762",
+      "wikipedia_title": "Leonardo da Vinci",
+      "pages": ["Leonardo da Vinci"],
+      "catalog_query": "title_t:(Leonardo) AND (Mona OR Cenacolo OR Amboise)",
+      "traps": ["bicycle", "rivoli"],
+      "events": [
+        {"id": "birth", "class": "attested_direct", "year": 1452, "place": "vinci", "claim": "Born in Vinci on 15 April 1452."},
+        {"id": "last-supper", "class": "attested_imprecise", "year": 1495, "place": "milan", "claim": "The Last Supper painted in Milan in the later 1490s."},
+        {"id": "mona-lisa", "class": "attested_imprecise", "year": 1503, "place": null, "claim": "The Mona Lisa is dated approximately, around 1503 and later."},
+        {"id": "france", "class": "attested_direct", "year": 1516, "place": "amboise", "claim": "Entered Francis I's service and lived at Clos Lucé from 1516."},
+        {"id": "death", "class": "attested_direct", "year": 1519, "place": "amboise", "claim": "Died at Amboise on 2 May 1519."},
+        {"id": "vitruvian", "class": "partial_date", "year": 1490, "place": null, "claim": "The Vitruvian Man is placed around 1490."},
+        {"id": "bicycle", "class": "legendary", "year": null, "place": null, "claim": "A bicycle among his drawings is not an established invention."},
+        {"id": "rivoli", "class": "off_topic", "year": 1797, "place": "rivoli", "claim": "Rivoli is not Leonardo's life."}
+      ]
+    },
+    {
+      "label": "Aristotle",
+      "qid": "Q868",
+      "wikipedia_title": "Aristotle",
+      "pages": ["Aristotle"],
+      "catalog_query": "title_t:(Aristotle) AND (Lyceum OR Stagira)",
+      "traps": ["euripus", "polonium"],
+      "events": [
+        {"id": "birth", "class": "attested_imprecise", "year": -384, "place": "stagira", "claim": "Born at Stagira in 384 BC. The day is not known."},
+        {"id": "academy", "class": "attested_imprecise", "year": -367, "place": "athens", "claim": "Studied at Plato's Academy. The arrival year is approximate."},
+        {"id": "alexander", "class": "attested_imprecise", "year": -343, "place": "mieza", "claim": "Tutored Alexander, traditionally from 343 BC, through later biographies."},
+        {"id": "lyceum", "class": "attested_imprecise", "year": -335, "place": "athens", "claim": "Opened the Lyceum around 335 BC."},
+        {"id": "death", "class": "attested_imprecise", "year": -322, "place": "chalcis", "claim": "Died at Chalcis in 322 BC."},
+        {"id": "euripus", "class": "legendary", "year": -322, "place": "chalcis", "claim": "The story that he drowned himself in the Euripus is not an established fact."},
+        {"id": "polonium", "class": "off_topic", "year": 1898, "place": "paris", "claim": "Polonium is not an Aristotelian event."}
+      ]
+    },
+    {
+      "label": "Marceline Desbordes-Valmore",
+      "qid": "Q466987",
+      "wikipedia_title": "Marceline Desbordes-Valmore",
+      "pages": ["Marceline Desbordes-Valmore"],
+      "catalog_query": "title_t:\"Desbordes-Valmore\"",
+      "traps": ["rivoli", "radium"],
+      "events": [
+        {"id": "birth", "class": "attested_direct", "year": 1786, "place": "douai", "claim": "Born in Douai on 20 June 1786."},
+        {"id": "guadeloupe", "class": "attested_direct", "anecdote": true, "year": 1801, "place": "guadeloupe", "claim": "Sailed to Guadeloupe with her mother at the end of 1801."},
+        {"id": "rochefort", "class": "partial_date", "year": 1801, "place": "rochefort", "claim": "A stay at Rochefort precedes the voyage. The day is not given."},
+        {"id": "mother-death", "class": "attested_direct", "anecdote": true, "year": 1802, "place": "guadeloupe", "claim": "Her mother died of yellow fever in Guadeloupe in May 1802."},
+        {"id": "death", "class": "attested_direct", "year": 1859, "place": "paris", "claim": "Died in Paris on 23 July 1859."},
+        {"id": "elegies", "class": "absent_searchable", "year": 1819, "place": null, "claim": "Élégies, Marie et romances (1819) may be absent from a short extract."},
+        {"id": "rivoli", "class": "off_topic", "year": 1797, "place": "rivoli", "claim": "Rivoli is not her life."}
+      ]
+    }
+  ]
+}

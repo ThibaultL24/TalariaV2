@@ -181,4 +181,26 @@ mod tests {
         );
         assert_ne!(dense, bad);
     }
+
+    #[test]
+    fn two_meetings_in_one_city_and_year_are_not_one_occurrence() {
+        let t = year(1796);
+        let josephine = occurrence_key_for_event(
+            "Napoleon",
+            "meeting",
+            "met",
+            &t,
+            Some("Paris"),
+            Some("Josephine"),
+        );
+        let barras = occurrence_key_for_event(
+            "Napoleon",
+            "meeting",
+            "met",
+            &t,
+            Some("Paris"),
+            Some("Barras"),
+        );
+        assert_ne!(josephine, barras);
+    }
 }

@@ -39,6 +39,16 @@ export function eventTimeValue(event: TimelineEvent): number | null {
       ? event.start_time
       : event.time.start;
   if (!raw) return null;
+  return instantValue(raw);
+}
+
+/** End of a typed range, on the same fractional-year scale as `eventTimeValue`. */
+export function eventSpanEnd(event: TimelineEvent): number | null {
+  if (event.time?.kind !== "range" || !event.time.end) return null;
+  return instantValue(event.time.end);
+}
+
+function instantValue(raw: string): number | null {
   const match = raw.match(/^(-?\d{1,6})(?:-(\d{2}))?(?:-(\d{2}))?/);
   if (!match) return null;
   const year = Number(match[1]);
@@ -49,6 +59,17 @@ export function eventTimeValue(event: TimelineEvent): number | null {
   const fraction = (Math.min(12, Math.max(1, month)) - 1) / 12;
   const dayFraction = day ? (Math.min(28, Math.max(1, day)) - 1) / 365 : 0;
   return year + fraction + dayFraction;
+}
+
+function boundYears(event: TimelineEvent): number[] {
+  const years: number[] = [];
+  const start = eventYear(event);
+  if (start != null) years.push(start);
+  if (event.time?.kind === "range" && event.time.end) {
+    const end = Number(event.time.end.match(/^(-?\d{1,6})/)?.[1]);
+    if (Number.isFinite(end)) years.push(end);
+  }
+  return years;
 }
 
 export function eventYear(event: TimelineEvent): number | null {
@@ -273,6 +294,7 @@ const FAMILY_ANCHOR: Record<string, number> = {
 export interface ConstellationPoint {
   event: TimelineEvent;
   time: number;
+  endTime: number | null;
   x: number;
   y: number;
   rank: VisualRank;
@@ -293,8 +315,7 @@ export function visibleYearWindow(
   complete: boolean,
 ): YearWindow {
   const years = events
-    .map(eventYear)
-    .filter((year): year is number => year != null)
+    .flatMap(boundYears)
     .sort((a, b) => a - b);
   if (years.length === 0) return bounds;
   if (!complete) {
@@ -312,6 +333,10 @@ export function resolveVisibleWindow(
   complete: boolean,
   url: { from: string | null; to: string | null; span: string | null },
 ): YearWindow {
+  const life = bounds[1] - bounds[0];
+  if ((url.span == null || url.span === "full") && life > 1 && life <= 130) {
+    return bounds;
+  }
   const fitted = visibleYearWindow(events, bounds, complete);
   if (url.span === "full") return bounds;
   const from = url.from != null ? Number(url.from) : Number.NaN;
@@ -330,8 +355,7 @@ export function resolveVisibleWindow(
 /** Drop a sparse tail of late outliers so the life years can use the axis. */
 export function denseVisibleWindow(events: TimelineEvent[], bounds: YearWindow): YearWindow {
   const years = events
-    .map(eventYear)
-    .filter((year): year is number => year != null)
+    .flatMap(boundYears)
     .sort((a, b) => a - b);
   if (years.length < 12) return bounds;
   const unique: number[] = [];
@@ -366,7 +390,10 @@ export function layoutConstellation(
   const groups = new Map<number, TimelineEvent[]>();
   for (const event of events) {
     const time = eventTimeValue(event);
-    if (time === null || time < domain.start || time > domain.end) continue;
+    if (time === null) continue;
+    const endTime = eventSpanEnd(event);
+    const last = endTime ?? time;
+    if (last < domain.start || time > domain.end) continue;
     const key = Math.floor(time);
     const group = groups.get(key) ?? [];
     group.push(event);
@@ -400,6 +427,7 @@ export function layoutConstellation(
       rough.push({
         event,
         time: plotTime,
+        endTime: eventSpanEnd(event),
         x: yearToX(plotTime, domain, width),
         y: padding.top + lane * usable,
         rank,

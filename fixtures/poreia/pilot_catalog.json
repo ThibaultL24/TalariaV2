@@ -1,0 +1,74 @@
+{
+  "retrieved_at": "2026-11-08T22:00:00Z",
+  "publication_status": "quarantine",
+  "sites": [
+    {
+      "wikidata_qid": "Q59210966",
+      "label": "Tombeau de l'Empereur Napoléon aux Invalides",
+      "kind": "burial_site",
+      "coordinates": { "lat": 48.855242, "lon": 2.312514 },
+      "subject_qid": "Q517",
+      "relation_role": "thematic",
+      "relation_pid": null,
+      "source_url": "https://www.wikidata.org/wiki/Q59210966",
+      "summary": "Wikidata nomme ce monument « Tombeau de l'Empereur Napoléon aux Invalides » et le situe dans le dôme des Invalides (P276 = Q152109). La commande portée par la fiche est celle de Louis-Philippe Ier (P88 = Q7771). Les énoncés P119 de Napoléon (Q517) désignent la cathédrale Saint-Louis-des-Invalides (Q4992220) et la Vallée du Tombeau (Q3554092), pas cet identifiant. Le lien retenu est l'intitulé de la fiche, pas une sépulture P119."
+    },
+    {
+      "wikidata_qid": "Q64436",
+      "label": "arc de triomphe de l'Étoile",
+      "kind": "monument",
+      "coordinates": { "lat": 48.87378, "lon": 2.29504 },
+      "subject_qid": "Q517",
+      "relation_role": "commissioned",
+      "relation_pid": "P88",
+      "source_url": "https://www.wikidata.org/wiki/Q64436",
+      "summary": "Wikidata indique que l'arc de triomphe de l'Étoile a été commandé par Napoléon (P88 = Q517). La fiche ne porte pas d'énoncé P547 (commémore). Coordonnées P625 : 48.87378, 2.29504."
+    },
+    {
+      "wikidata_qid": "Q315318",
+      "label": "pont Van-Gogh",
+      "kind": "bridge",
+      "coordinates": { "lat": 43.65694444, "lon": 4.62111111 },
+      "subject_qid": "Q5582",
+      "relation_role": "named_after",
+      "relation_pid": "P138",
+      "source_url": "https://www.wikidata.org/wiki/Q315318",
+      "summary": "Wikidata indique que ce pont est nommé d'après Vincent van Gogh (P138 = Q5582). La fiche ne porte pas de résidence P551. Coordonnées P625 : 43.65694444, 4.62111111."
+    },
+    {
+      "wikidata_qid": "Q17076145",
+      "label": "Fondation Vincent van Gogh Arles",
+      "kind": "cultural_institution",
+      "coordinates": { "lat": 43.678131, "lon": 4.625651 },
+      "subject_qid": "Q5582",
+      "relation_role": "thematic",
+      "relation_pid": null,
+      "source_url": "https://www.wikidata.org/wiki/Q17076145",
+      "summary": "Wikidata date la création de la Fondation Vincent van Gogh Arles de 1985, à la précision de l'année (P571), et la situe à Arles (P276 = Q48292). Vincent van Gogh est mort en 1890 : cette fiche ne documente ni une résidence ni une visite. Le lien est thématique."
+    }
+  ],
+  "media": [
+    {
+      "site_qid": "Q64436",
+      "commons_title": "Arc de Triomphe - Août 2026.jpg",
+      "author": "ZeusUpsistos",
+      "license": "CC BY-SA 4.0",
+      "attribution": "Own work",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Arc_de_Triomphe_-_Ao%C3%BBt_2026.jpg"
+    }
+  ],
+  "occurrences": [
+    {
+      "site_qid": "Q17076145",
+      "wikidata_qid": "Q141613312",
+      "kind": "exhibition",
+      "title": "Van Gogh et les Étoiles",
+      "occurs_on": "2024-06-01",
+      "ends_on": "2024-09-08",
+      "time_precision": "day",
+      "coordinates": { "lat": 43.678131, "lon": 4.625651 },
+      "source_url": "https://www.wikidata.org/wiki/Q141613312",
+      "summary": "Wikidata situe l'exposition « Van Gogh et les Étoiles » à la Fondation Vincent van Gogh Arles (P276 = Q17076145), du 2024-06-01 au 2024-09-08, précision du jour. Les énoncés consultés le 2026-11-08 n'ont pas de référence externe. Aucune heure n'est connue."
+    }
+  ]
+}

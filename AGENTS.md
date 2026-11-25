@@ -70,7 +70,7 @@ Talaria Engine is a Rust workspace (Wikipedia dump → sentences → phrase-cand
 
 ### Services (dev)
 - Postgres + PostGIS: `docker compose up -d` → host port `5433` (see `docker-compose.yml`). Required by everything.
-- API + CLI (`talaria-api`, binary `talaria`): `cargo run -p talaria-api -- serve` → port `8080`. `serve` auto-runs migrations. It also serves `web/dist` as a fallback when that dir exists.
+- API + CLI (`talaria-api`, binary `talaria`): `cargo run -p talaria-api -- serve` → port `8080`. `serve` and `migrate` refuse pending migrations unless `TALARIA_APPLY_MIGRATIONS=1`. Apply them with an explicit `migrate`, then start `serve`. The API also serves `web/dist` as a fallback when that dir exists.
 - Web explorer (Vite): `cd web && npm run dev` → port `5173`, proxies `/api` → `http://localhost:8080`, so the API must be running for live data.
 - COSMOS Python NLP sidecar is OPTIONAL: real extraction needs `sidecar/cosmos` + spaCy models (`sidecar/README.md`); for dev/CI use `cosmos-extract --mock` (rule-based, no models).
 
