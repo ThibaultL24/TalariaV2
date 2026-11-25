@@ -3,34 +3,34 @@
 
 :root {
   /* Aegean Day — RGB for glows & glass */
-  --rgb-sea-accent: 15, 95, 122;
+  --rgb-sea-accent: 24, 59, 86;
 
   /* Canvas / marble surfaces */
-  --color-bg-primary: #f7f3ea;
-  --color-bg-surface: #fffcf6;
-  --color-bg-elevated: #f2e7d2;
+  --color-bg-primary: #f5f0e5;
+  --color-bg-surface: #fbf8f1;
+  --color-bg-elevated: #efe6d4;
 
-  --color-text-primary: #20313a;
-  --color-text-secondary: #53686f;
-  --color-text-muted: #75858a;
+  --color-text-primary: #183b56;
+  --color-text-secondary: #3e5568;
+  --color-text-muted: #5e7080;
 
   /* Navigation & exploration — Aegean blue */
-  --color-primary: #0f5f7a;
-  --color-primary-hover: #0b5068;
-  --color-primary-soft: #dceef2;
+  --color-primary: #183b56;
+  --color-primary-hover: #10283b;
+  --color-primary-soft: #d7e4e8;
 
-  /* Selection & active moment — sunset orange */
-  --color-accent: #e76f3c;
-  --color-accent-hover: #c95a30;
-  --color-accent-soft: #fae3d8;
+  /* Selection & active moment — Roman terracotta */
+  --color-accent: #b96346;
+  --color-accent-hover: #9a4e35;
+  --color-accent-soft: #f3e0d6;
 
   /* Legacy aliases (navigation was --color-accent / --color-accent-strong) */
   --color-accent-strong: var(--color-primary-hover);
 
-  --color-sand: #e9d8b6;
-  --color-stone: #c8ad7c;
+  --color-sand: #e7dcc4;
+  --color-stone: #b89a60;
 
-  --color-success: #567a68;
+  --color-success: #747c57;
   --color-warning: #6B7280;
   --color-danger: #374151;
   --color-trust-high: #2f855a;
@@ -52,7 +52,7 @@
   --glow-accent: 0 0 24px -10px rgba(231, 111, 60, 0.35);
 
   /* Typographie — Marcellus preferred, Cinzel fallback */
-  --font-display: "Marcellus", "Cinzel", Georgia, serif;
+  --font-display: "Cormorant Garamond", "EB Garamond", "Marcellus", Georgia, serif;
   --font-body: "Inter", "Segoe UI", system-ui, sans-serif;
 
   --text-entity-title: 22px;

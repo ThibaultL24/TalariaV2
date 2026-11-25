@@ -1,12 +1,12 @@
 // web/src/pages/home-page.tsx
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { TalariaHeroWordmark } from "@/components/brand/talaria-hero-wordmark";
 import { Navbar } from "@/components/layout/navbar";
 import { EntitySearchBox } from "@/components/search/entity-search-box";
 import { usePersonPicker } from "@/hooks/use-person-picker";
 import { fetchDemoRoster, type DemoRosterItem } from "@/lib/api";
 import { DEMO_ROSTER, type DemoRosterEntry } from "@/lib/demo-roster";
+import { experienceHref } from "@/lib/experiences";
 import { useI18n } from "@/lib/i18n";
 import type { SearchSuggestion } from "@/lib/schemas/entity";
 import { useExplorerStore } from "@/stores/explorer-store";
@@ -15,10 +15,30 @@ interface RosterCard extends DemoRosterEntry {
   stats?: DemoRosterItem;
 }
 
+function MediterraneanHeroLoop() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const controller = new AbortController();
+    void fetch("/media/home/mediterranean-loop.webm", { method: "HEAD", signal: controller.signal })
+      .then((response) => {
+        if (response.ok) setReady(true);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+  if (!ready) return null;
+  return (
+    <video className="v43-hero__sea" autoPlay muted loop playsInline poster="/brand/hero-aegean-day.jpg">
+      <source src="/media/home/mediterranean-loop.webm" type="video/webm" />
+    </video>
+  );
+}
+
 export function HomePage() {
   const { t, locale } = useI18n();
   const navigate = useNavigate();
-  const { setEntity, setPersonFilter } = useExplorerStore();
+  const { setEntity, setPersonFilter, entityId: heldEntityId } = useExplorerStore();
   const { suggestions, setSearchQuery, searchLoading, selectPerson } = usePersonPicker({ startLifeIngest: false });
   const [roster, setRoster] = useState<RosterCard[]>(() =>
     DEMO_ROSTER.map((entry) => ({ ...entry })),
@@ -44,8 +64,8 @@ export function HomePage() {
   }, []);
 
   function onSelect(item: SearchSuggestion) {
-    selectPerson(item);
-    navigate("/istoria");
+    const entityId = selectPerson(item);
+    navigate(entityId ? experienceHref("istoria", entityId) : "/istoria");
   }
 
   function openFigure(entry: RosterCard, lane: "explorer" | "agora") {
@@ -56,7 +76,7 @@ export function HomePage() {
       } else {
         setPersonFilter(label, label, entry.qid);
       }
-      navigate("/agora");
+      navigate(entry.stats?.entity_id ? experienceHref("agora", entry.stats.entity_id) : "/agora");
       return;
     }
     if (entry.stats?.entity_id) {
@@ -68,76 +88,123 @@ export function HomePage() {
     navigate("/istoria");
   }
 
+  const fr = locale === "fr";
+  const lifeHref = experienceHref("istoria", heldEntityId ?? undefined);
+  const placeHref = experienceHref("poreia", heldEntityId ?? undefined);
+  const ideaHref = experienceHref("agora", heldEntityId ?? undefined);
+  const featured = roster.find((entry) => entry.qid === "Q517");
+  const featuredLabel = featured ? (fr ? featured.labelFr : featured.labelEn) : null;
+  const featuredReady = Boolean(featured?.stats?.entity_id && (featured.stats.event_count ?? 0) > 0);
+
   return (
     <div className="app-shell app-shell--home">
       <Navbar />
-      <main className="home-main">
-        <section
-          className="hero hero--landing hero--home hero--aegean-photo"
-          aria-labelledby="home-hero-title"
-        >
-          <div className="hero__grid">
-            <div className="hero__copy">
-              <h1 id="home-hero-title" className="hero__title hero__title--wordmark">
-                <TalariaHeroWordmark />
-              </h1>
-              <p className="hero__subtitle">{t.heroSubtitle}</p>
-              <div className="mx-auto mt-6 w-full max-w-xl">
-                <EntitySearchBox
-                  suggestions={suggestions}
-                  onSubmitQuery={setSearchQuery}
-                  onSelect={onSelect}
-                  isLoading={searchLoading}
-                />
-              </div>
-              <div className="hero__cta">
-                <Link className="button button--primary hero__cta-primary" to="/istoria">
-                  {t.startExploration}
-                </Link>
-                <Link className="button button--ghost hero__cta-secondary" to="/poreia">
-                  {locale === "fr" ? "Découvrir les lieux · Poreia" : "Discover places · Poreia"}
-                </Link>
-                <Link className="button button--ghost hero__cta-secondary" to="/agora">
-                  {t.openAgora}
-                </Link>
-              </div>
+      <main className="home-v43">
+        <section className="v43-hero" aria-labelledby="home-hero-title">
+          <div className="v43-hero__plate" aria-hidden="true">
+            <img className="v43-hero__sea" alt="" src="/brand/hero-aegean-day.jpg" />
+            <MediterraneanHeroLoop />
+            <img className="v43-hero__fresco" alt="" src="/media/home/school-of-athens.jpg" />
+          </div>
+          <div className="v43-hero__copy">
+            <p className="v43-eyebrow">
+              <img alt="" className="v43-sandal" src="/brand/talaria-sandal.png" />
+              {fr ? "Méditerranée · Culture · Mémoire" : "Mediterranean · Culture · Memory"}
+            </p>
+            <h1 id="home-hero-title">
+              {fr ? <>Le temps.<br />Les lieux. Les idées.</> : <>Time.<br />Places. Ideas.</>}
+            </h1>
+            <p>
+              {fr
+                ? "Un musée vivant. Choisissez une personnalité, puis traversez sa vie, son héritage et ses idées sans perdre le fil."
+                : "A living museum. Choose a person, then move through their life, their heritage and their ideas without losing the thread."}
+            </p>
+            <div className="v43-search">
+              <EntitySearchBox
+                suggestions={suggestions}
+                onSubmitQuery={setSearchQuery}
+                onSelect={onSelect}
+                isLoading={searchLoading}
+              />
             </div>
+            <div className="v43-quick">
+              <Link to={lifeHref}>{fr ? "Sa vie" : "Their life"}</Link>
+              <Link to={placeHref}>{fr ? "Son patrimoine" : "Their heritage"}</Link>
+              <Link to={ideaHref}>{fr ? "Ses idées et ses débats" : "Their ideas and debates"}</Link>
+            </div>
+            <p className="v43-credit">
+              {fr
+                ? "Raphaël, L’École d’Athènes, domaine public, devant une vue méditerranéenne."
+                : "Raphael, The School of Athens, public domain, over a Mediterranean view."}
+            </p>
           </div>
         </section>
 
-        <section className="home-visions" aria-labelledby="home-visions-title">
-          <div className="home-visions__inner">
-            <header className="home-visions__header">
-              <h2 id="home-visions-title" className="home-visions__title">{t.homeVisionsTitle}</h2>
-              <p className="home-visions__hint">{t.homeVisionsHint}</p>
-            </header>
-            <ul className="home-visions__grid">
-              <li className="home-visions__card home-visions__card--scholar">
-                <div className="home-visions__card-art home-visions__card-art--istoria" role="img" aria-label={locale === "fr" ? "Bibliothèque antique, symbole d’enquête et de savoir" : "Ancient library, symbol of inquiry and knowledge"} />
-                <h3 className="home-visions__card-title">Istoria</h3>
-                <p className="experience-etymology">{locale === "fr" ? "ἱστορία · Enquête, recherche et connaissance de l’histoire" : "ἱστορία · Inquiry, research and historical understanding"}</p>
-                <p className="home-visions__card-text">{t.visionScholarDesc}</p>
-                <Link className="button button--primary" to="/istoria">{t.visionScholarCta}</Link>
-              </li>
-              <li className="home-visions__card home-visions__card--visit">
-                <div className="home-visions__card-art home-visions__card-art--poreia" role="img" aria-label={locale === "fr" ? "Chemin ancien dans un paysage méditerranéen" : "Ancient path across a Mediterranean landscape"} />
-                <div className="home-visions__card-top">
-                  <h3 className="home-visions__card-title">Poreia</h3>
-                  <p className="experience-etymology">{locale === "fr" ? "πορεία · Voyage, cheminement et découverte des lieux" : "πορεία · Journey, exploration and discovery of places"}</p>
-
-                </div>
-                <p className="home-visions__card-text">{t.visionVisitDesc}</p>
-                <Link className="button button--ghost" to="/poreia">{t.visionVisitCta}</Link>
-              </li>
-              <li className="home-visions__card home-visions__card--agora">
-                <div className="home-visions__card-art home-visions__card-art--agora" role="img" aria-label={locale === "fr" ? "Agora grecque, place des échanges et des débats" : "Greek agora, a place for public debate"} />
-                <h3 className="home-visions__card-title">{t.visionAgoraTitle}</h3>
-                <p className="experience-etymology">{locale === "fr" ? "ἀγορά · Place publique, échange et débat des idées" : "ἀγορά · Public forum, exchange and debate"}</p>
-                <p className="home-visions__card-text">{t.visionAgoraDesc}</p>
-                <Link className="button button--ghost" to="/agora">{t.visionAgoraCta}</Link>
-              </li>
-            </ul>
+        <section className="v43-wrap" aria-labelledby="home-visions-title">
+          <header className="v43-head">
+            <div>
+              <p className="v43-eyebrow">{fr ? "Trois regards sur le monde" : "Three ways of looking"}</p>
+              <h2 id="home-visions-title">{fr ? "Choisissez votre voyage." : "Choose the journey."}</h2>
+            </div>
+            <p>{t.homeVisionsHint}</p>
+          </header>
+          <div className="v43-worlds">
+            <Link className="v43-world" to={lifeHref} style={{ ["--art" as string]: "url(/media/home/david-alps.jpg)" }}>
+              <span className="v43-eyebrow">01 / {fr ? "Le temps" : "Time"}</span>
+              <strong>Istoria</strong>
+              <em>{fr ? "Vies, événements et siècles" : "Lives, events and centuries"}</em>
+            </Link>
+            <Link className="v43-world" to={placeHref} style={{ ["--art" as string]: "url(/media/home/invalides-dome.jpg)" }}>
+              <span className="v43-eyebrow">02 / {fr ? "Les lieux" : "Places"}</span>
+              <strong>Poreia</strong>
+              <em>{fr ? "Musées, lieux de mémoire et agenda culturel" : "Museums, memory places and a cultural calendar"}</em>
+            </Link>
+            <Link className="v43-world" to={ideaHref} style={{ ["--art" as string]: "url(/media/home/school-of-athens.jpg)" }}>
+              <span className="v43-eyebrow">03 / {fr ? "Les idées" : "Ideas"}</span>
+              <strong>Agora</strong>
+              <em>{fr ? "Cours, textes, sources et discussions" : "Courses, texts, sources and discussion"}</em>
+            </Link>
           </div>
+        </section>
+
+        <section className="v43-wrap v43-feature">
+          <figure className="v43-feature__art">
+            <img alt={fr ? "Jacques-Louis David, Bonaparte franchissant le Grand-Saint-Bernard" : "Jacques-Louis David, Bonaparte crossing the Alps"} src="/media/home/david-alps.jpg" />
+            <figcaption>
+              {fr
+                ? "Jacques-Louis David, Bonaparte franchissant le Grand-Saint-Bernard, domaine public. Illustration d’accueil, pas une preuve du corpus."
+                : "Jacques-Louis David, Bonaparte crossing the Alps, public domain. A welcome image, not evidence from the corpus."}
+            </figcaption>
+          </figure>
+          <div>
+            <p className="v43-eyebrow">{fr ? "Un récit à découvrir" : "A life to open"}</p>
+            <h2>{featuredLabel ?? (fr ? "Une vie déjà préparée" : "A prepared life")}</h2>
+            <p>
+              {featuredReady && featured?.stats
+                ? t.demoRosterStats(featured.stats.event_count, featured.stats.map_pin_count, featured.stats.claim_count)
+                : (fr ? "Le récit s’ouvrira quand cette personnalité sera dans le corpus." : "The account opens once this person is in the corpus.")}
+            </p>
+            <button type="button" className="button button--primary" onClick={() => featured && openFigure(featured, "explorer")}>
+              {fr ? "Entrer dans Istoria" : "Enter Istoria"}
+            </button>
+          </div>
+        </section>
+
+        <section className="v43-wrap" aria-label={fr ? "Salle d’images" : "Picture room"}>
+          <ul className="v43-gallery">
+            <li>
+              <img alt={fr ? "Dôme des Invalides, au-dessus du tombeau de Napoléon" : "Dome of Les Invalides, above Napoleon’s tomb"} src="/media/home/invalides-dome.jpg" />
+              <span>{fr ? "Les Invalides · Wikimedia Commons" : "Les Invalides · Wikimedia Commons"}</span>
+            </li>
+            <li>
+              <img alt={fr ? "Cathédrale Santa Maria del Fiore, Florence" : "Florence Cathedral, Santa Maria del Fiore"} src="/media/home/florence-duomo.jpg" />
+              <span>{fr ? "Florence, Santa Maria del Fiore · Wikimedia Commons" : "Florence, Santa Maria del Fiore · Wikimedia Commons"}</span>
+            </li>
+            <li>
+              <img alt={fr ? "Raphaël, L’École d’Athènes" : "Raphael, The School of Athens"} src="/media/home/school-of-athens.jpg" />
+              <span>{fr ? "Raphaël · L’École d’Athènes, domaine public" : "Raphael · The School of Athens, public domain"}</span>
+            </li>
+          </ul>
         </section>
 
         <section className="demo-roster" aria-labelledby="demo-roster-title">
@@ -227,6 +294,20 @@ export function HomePage() {
             </p>
           </div>
         </section>
+
+        <footer className="home-footer">
+          <nav className="home-footer__nav" aria-label={locale === "fr" ? "Pied de page" : "Footer"}>
+            <Link to="/istoria">Istoria</Link>
+            <Link to="/poreia">Poreia</Link>
+            <Link to="/agora">Agora</Link>
+            <Link to="/about">{locale === "fr" ? "Qui sommes-nous ?" : "About"}</Link>
+          </nav>
+          <p className="home-footer__note">
+            {locale === "fr"
+              ? "La sandale ailée reste l’emblème. Les photographies d’accueil sont des vues méditerranéennes du projet, pas des archives historiques."
+              : "The winged sandal remains the emblem. The home photographs are Mediterranean views from the project, not historical archives."}
+          </p>
+        </footer>
       </main>
     </div>
   );

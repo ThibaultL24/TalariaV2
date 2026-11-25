@@ -148,6 +148,7 @@ export interface AppMessages {
   collectAgora: string;
   explorer: string;
   heroEyebrow: string;
+  homeHeroTitle: string;
   heroSubtitle: string;
   startExploration: string;
   openAgora: string;
@@ -493,7 +494,9 @@ const EN: AppMessages = {
   collectAgora: "Collect scholarship",
   explorer: "Map",
   heroEyebrow: "Historical geography",
-  heroSubtitle: "Open a demo life. See it as points in time. Read the debates in the Agora.",
+  homeHeroTitle: "Time. Places. Ideas.",
+  heroSubtitle:
+    "Explore the lives that shaped the world, the places that keep their memory, and the ideas that cross the centuries.",
   startExploration: "Open a life",
   openAgora: "Open the Agora",
   livingMap: "A life in points",
@@ -639,7 +642,7 @@ const EN: AppMessages = {
   agoraSourceFilter: "Filter by catalog",
   agoraFilterEmpty: "No items for this catalog.",
   demoRosterTitle: "Demo figures",
-  demoRosterHint: "Ten curated lives — open the map or the Agora. Free search is paused for this demo.",
+  demoRosterHint: "Figures already prepared in Talaria. Search above finds any other person.",
   demoRosterStats: (events, pins, claims) =>
     `${events} facts · ${pins} on map · ${claims} debates`,
   demoRosterPending: "Not loaded yet — open to collect.",
@@ -649,7 +652,7 @@ const EN: AppMessages = {
   demoIntuitionLive: "Intuition testnet publish enabled for this deployment.",
   demoIntuitionModeled:
     "Theories are modeled (MetaSudo). Operators enable testnet with INTUITION_ALLOW_LIVE=1.",
-  homeVisionsTitle: "Three ways to explore",
+  homeVisionsTitle: "One person, three worlds",
   homeVisionsHint:
     "Istoria investigates documented lives, Poreia explores heritage places, and Agora hosts interpretations and debate.",
   visionScholarTitle: "Istoria",
@@ -856,7 +859,9 @@ const FR: AppMessages = {
   collectAgora: "Collecter l’agora",
   explorer: "Carte",
   heroEyebrow: "Géographie historique",
-  heroSubtitle: "Ouvrez une vie de la démo. Voyez-la en points dans le temps. Lisez les débats dans l’Agora.",
+  homeHeroTitle: "Le temps. Les lieux. Les idées.",
+  heroSubtitle:
+    "Explorez les vies qui ont façonné le monde, les lieux qui perpétuent leur mémoire et les idées qui traversent les siècles.",
   startExploration: "Ouvrir une vie",
   openAgora: "Ouvrir l’Agora",
   livingMap: "Une vie en points",
@@ -1002,7 +1007,7 @@ const FR: AppMessages = {
   agoraSourceFilter: "Filtrer par catalogue",
   agoraFilterEmpty: "Aucun élément pour ce catalogue.",
   demoRosterTitle: "Figures de la démo",
-  demoRosterHint: "Dix vies choisies — ouvrir la carte ou l’Agora. La recherche libre est en pause pour cette démo.",
+  demoRosterHint: "Personnalités déjà préparées dans Talaria. La recherche ci-dessus en trouve d’autres.",
   demoRosterStats: (events, pins, claims) =>
     `${events} faits · ${pins} sur carte · ${claims} débats`,
   demoRosterPending: "Pas encore chargé — ouvrir pour collecter.",
@@ -1012,7 +1017,7 @@ const FR: AppMessages = {
   demoIntuitionLive: "Publication Intuition testnet activée sur ce déploiement.",
   demoIntuitionModeled:
     "Théories modélisées (MetaSudo). Activer le testnet avec INTUITION_ALLOW_LIVE=1.",
-  homeVisionsTitle: "Trois façons d’explorer",
+  homeVisionsTitle: "Une personnalité, trois univers",
   homeVisionsHint:
     "Istoria retrace les vies documentées, Poreia explore les lieux de mémoire et Agora accueille les interprétations et les débats.",
   visionScholarTitle: "Istoria",
