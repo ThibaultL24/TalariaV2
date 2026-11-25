@@ -163,7 +163,11 @@ export function AgoraPage() {
         }
       />
       <main className="agora-canvas min-h-0 flex-1 overflow-y-auto">
-        <ExperienceNavigation entityId={activeEntityId || undefined} compact={Boolean(activeEntityId)} />
+        <ExperienceNavigation
+          entityId={activeEntityId || undefined}
+          compact={Boolean(activeEntityId)}
+          subjectLabel={localizedPersonLabel(entityLabel, locale) || undefined}
+        />
         <section className="hero hero--landing hero--home hero--agora hero--agora-photo px-4 py-8">
           <div className="mx-auto max-w-3xl">
             <p className="hero__eyebrow">{localizedPersonLabel(entityLabel, locale) || t.agora}</p>
